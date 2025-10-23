@@ -1,0 +1,13 @@
+{
+	"name": "@nuasite/agent-summary",
+	"version": "0.0.1",
+	"module": "src/index.ts",
+	"type": "module",
+	"devDependencies": {
+		"astro": "^5.12.4",
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	}
+}

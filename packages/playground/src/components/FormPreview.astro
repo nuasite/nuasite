@@ -1,0 +1,46 @@
+---
+import { Form } from '@nuasite/components'
+---
+
+<Form formId="playground-contact" successMessage="You're on the list!" errorMessage="Something felt off — give it another go.">
+	<div class="grid gap-4 sm:grid-cols-2">
+		<label class="text-sm font-medium text-slate-200">
+			Name
+			<input
+				class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+				type="text"
+				name="name"
+				placeholder="Ada Lovelace"
+				required
+			/>
+		</label>
+		<label class="text-sm font-medium text-slate-200">
+			Email
+			<input
+				class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+				type="email"
+				name="email"
+				placeholder="ada@nua.dev"
+				required
+			/>
+		</label>
+	</div>
+	<label class="mt-4 block text-sm font-medium text-slate-200">
+		Project brief
+		<textarea
+			class="mt-1 h-36 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-slate-100 placeholder:text-slate-500 shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+			name="message"
+			placeholder="Tell us a little bit about what you’re building."
+			required
+		></textarea>
+	</label>
+	<div class="mt-6 flex flex-wrap items-center gap-3">
+		<button
+			type="submit"
+			class="inline-flex items-center justify-center rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300"
+		>
+			Send message
+		</button>
+		<p class="text-xs text-slate-400">No spam. We’ll get back within 2 business days.</p>
+	</div>
+</Form>

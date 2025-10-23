@@ -1,0 +1,18 @@
+{
+	"name": "@nuasite/build",
+	"version": "0.0.1",
+	"bin": {
+		"nua-build": "src/cli.ts"
+	},
+	"type": "module",
+	"dependencies": {
+		"stacktracey": "^2.1.8"
+	},
+	"devDependencies": {
+		"astro": "^5.12.4",
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	}
+}

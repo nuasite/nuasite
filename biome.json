@@ -1,0 +1,60 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.2.7/schema.json",
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	},
+	"files": {
+		"includes": [
+			"**/*.ts",
+			"**/*.tsx",
+			"!**/node_modules",
+			"!**/dist",
+			"!**/client/src",
+			"!**/.react-router"
+		]
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"complexity": {
+				"noUselessFragments": "off",
+				"noStaticOnlyClass": "off",
+				"noBannedTypes": "off",
+				"useDateNow": "off"
+			},
+			"correctness": {
+				"noUnusedImports": "off",
+				"noChildrenProp": "off",
+				"noUnusedFunctionParameters": "off",
+				"noUnusedPrivateClassMembers": "off",
+				"noUnusedVariables": "off",
+				"noEmptyPattern": "off",
+				"useParseIntRadix": "off",
+				"useExhaustiveDependencies": "on",
+				"useHookAtTopLevel": "on"
+			},
+			"style": {
+				"useImportType": "off",
+				"useTemplate": "off",
+				"useExponentiationOperator": "off",
+				"noNonNullAssertion": "off",
+				"useExportType": "on"
+			},
+			"suspicious": {
+				"noTemplateCurlyInString": "off",
+				"noShadowRestrictedNames": "off",
+				"noExplicitAny": "off",
+				"noConfusingVoidType": "off",
+				"noArrayIndexKey": "off",
+				"noAssignInExpressions": "off",
+				"noConsole": { "level": "error", "options": { "allow": ["info", "warn", "error", "debug", "log"] } }
+			},
+			"a11y": "off"
+		}
+	}
+}

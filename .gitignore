@@ -1,0 +1,16 @@
+# node_modules
+/packages/**/node_modules
+
+# node_modules
+/packages/**/node_modules
+/node_modules
+
+# build
+/dist
+/packages/**/dist
+/packages/**/temp
+/**/tsconfig.tsbuildinfo
+/packages/create/resources/templates/default/admin/lib
+
+# env / config
+/docker-compose.override.yaml

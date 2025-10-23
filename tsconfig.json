@@ -1,0 +1,24 @@
+{
+	"files": [],
+	"include": [],
+	"references": [
+		{
+			"path": "./packages/agent-summary"
+		},
+		{
+			"path": "./packages/nua-build"
+		},
+		{
+			"path": "./packages/components"
+		},
+		{
+			"path": "./packages/core"
+		},
+		{
+			"path": "./packages/nua"
+		},
+		{
+			"path": "./packages/playground"
+		}
+	]
+}

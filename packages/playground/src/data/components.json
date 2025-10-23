@@ -1,0 +1,47 @@
+[
+	{
+		"name": "Form",
+		"slug": "form",
+		"githubUrl": "https://github.com/nuasite/nua/packages/components/form/index.astro",
+		"tagline": "Progressive enhancement with zero cruft.",
+		"description": "Wrap any HTML form in our progressive enhancement layer to get spam protection, resilient fetch submissions, and friendly status messaging out of the box.",
+		"status": "ready",
+		"order": 1,
+		"highlights": [
+			"Honeypot field is generated automatically to discourage bots.",
+			"Graceful async submission with loading, success, and error banners.",
+			"No imposed styles — compose layouts with your own Tailwind utilities."
+		],
+		"props": [
+			{
+				"name": "formId",
+				"required": true,
+				"description": "Unique identifier used to wire the client widget to your _nua endpoint and status messages."
+			},
+			{
+				"name": "action",
+				"description": "Override the default `/_nua/form/{formId}` endpoint when you need a custom backend."
+			},
+			{
+				"name": "successMessage",
+				"description": "Message shown when the submission succeeds. Defaults to \"Success!\"."
+			},
+			{
+				"name": "errorMessage",
+				"description": "Message shown when the submission fails. Defaults to \"Something went wrong!\"."
+			},
+			{
+				"name": "submittingMessage",
+				"description": "Message shown when the submission is in progress. Defaults to \"Submitting...\"."
+			},
+			{
+				"name": "networkErrorMessage",
+				"description": "Message shown when the submission fails due to a network error. Defaults to \"Network error!\"."
+			},
+			{
+				"name": "tryAgainMessage",
+				"description": "Message shown when the user can try submitting again. Defaults to \"Try again\"."
+			}
+		]
+	}
+]
