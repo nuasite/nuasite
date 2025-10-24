@@ -40,3 +40,9 @@ jobs:
         run: bash ./scripts/npm-publish/run.sh
         env:
           NPM_TAG: ${{ steps.versions.outputs.npmTag }}
+
+      - name: "Dump npm logs on failure"
+        if: failure()
+        run: |
+          echo "=== NPM Debug Logs ==="
+          find /home/runner/.npm/_logs -name "*.log" -type f -exec echo "=== {} ===" \; -exec cat {} \;
