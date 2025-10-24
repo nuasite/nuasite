@@ -1,7 +1,12 @@
 {
 	"name": "@nuasite/build",
-	"version": "0.0.10",
+	"version": "0.0.1",
 	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nuasite/nua.git",
+		"directory": "packages/build"
+	},
 	"bin": {
 		"nua-build": "src/cli.ts"
 	},

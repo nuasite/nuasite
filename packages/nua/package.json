@@ -2,7 +2,11 @@
 	"name": "@nuasite/nua",
 	"version": "0.0.10",
 	"license": "Apache-2.0",
-	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nuasite/nua.git",
+		"directory": "packages/nua"
+	},
 	"dependencies": {
 		"@astrojs/check": "^0.9.4",
 		"@astrojs/mdx": "4.3.0",
