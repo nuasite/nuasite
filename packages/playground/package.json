@@ -1,14 +1,16 @@
 {
-  "name": "playground",
-  "type": "module",
-  "version": "0.0.1",
-  "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro"
-  },
-  "dependencies": {
-    "@nuasite/nua": "workspace:*"
-  }
+	"name": "playground",
+	"type": "module",
+	"version": "0.0.2",
+	"license": "Apache-2.0",
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview",
+		"astro": "astro"
+	},
+	"dependencies": {
+		"@nuasite/nua": "workspace:*",
+		"astro": "^5.15.1"
+	}
 }

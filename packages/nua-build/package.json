@@ -1,15 +1,17 @@
 {
 	"name": "@nuasite/build",
-	"version": "0.0.1",
+	"version": "0.0.2",
+	"license": "Apache-2.0",
 	"bin": {
 		"nua-build": "src/cli.ts"
 	},
 	"type": "module",
 	"dependencies": {
+		"@nuasite/agent-summary": "workspace:*",
+		"astro": "^5.15.1",
 		"stacktracey": "^2.1.8"
 	},
 	"devDependencies": {
-		"astro": "^5.12.4",
 		"@types/bun": "latest"
 	},
 	"peerDependencies": {

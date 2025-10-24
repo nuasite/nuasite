@@ -1,20 +1,23 @@
 {
 	"name": "@nuasite/components",
-	"description": "Nua Site astro components",
+	"description": "Nua Site astro components.",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/nuasite/nua.git",
 		"directory": "packages/components"
 	},
-	"version": "0.0.1",
+	"license": "Apache-2.0",
+	"version": "0.0.2",
 	"type": "module",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
 	"exports": {
 		".": "./src/index.ts"
 	},
-	"dependencies": {
-		"astro": "^5.12.4"
+	"peerDependencies": {
+		"typescript": "^5"
 	},
-	"keywords": ["withastro"]
+	"keywords": [
+		"withastro"
+	]
 }

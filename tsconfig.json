@@ -12,12 +12,6 @@
 			"path": "./packages/components"
 		},
 		{
-			"path": "./packages/core"
-		},
-		{
-			"path": "./packages/nua"
-		},
-		{
 			"path": "./packages/playground"
 		}
 	]

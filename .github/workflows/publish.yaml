@@ -1,0 +1,35 @@
+name: Publish
+on:
+  push:
+    tags:
+      - '**'
+jobs:
+  publish-node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup node
+        uses: actions/setup-node@v3
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.9
+      - name: Install deps
+        run: |
+          bun --version
+          bun install --frozen-lockfile
+
+      - name: Extract version
+        id: versions
+        uses: ./.github/actions/extract-version
+        with:
+          version: ${{ github.ref }}
+
+      - name: "Build app"
+        run: bun run build
+
+      - name: "Publish NPM"
+        run: bash ./scripts/npm-publish/run.sh
+        env:
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+          NPM_TAG: ${{ steps.versions.outputs.npmTag }}

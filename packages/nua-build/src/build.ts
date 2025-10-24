@@ -1,9 +1,9 @@
-import { build as astroBuild } from 'astro'
+import { build as astroBuild, type AstroInlineConfig } from 'astro'
 import Stacktracey from 'stacktracey'
 
-export async function build() {
+export async function build(inlineConfig: AstroInlineConfig) {
 	try {
-		await astroBuild({})
+		await astroBuild(inlineConfig)
 	} catch (error) {
 		if (error instanceof Error) {
 			const stack = new Stacktracey(error.stack).withSources()

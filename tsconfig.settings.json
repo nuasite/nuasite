@@ -1,5 +1,9 @@
 {
 	"compilerOptions": {
+		"composite": true,
+		"declaration": true,
+		"emitDeclarationOnly": true,
+
 		// Environment setup & latest features
 		"lib": ["ESNext"],
 		"target": "ESNext",
@@ -12,7 +16,6 @@
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
 		"verbatimModuleSyntax": true,
-		"noEmit": true,
 
 		// Best practices
 		"strict": true,

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type { PageMeta, RedirectMeta } from './types'
 import { extractMetaFromHtml, formatDestination, normalizeRoute, resolveHtmlPath, updateAgentsSummary } from './utils'
 
-export const agentsSummaryIntegration = (): AstroIntegration => {
+export const agentsSummary = (): AstroIntegration => {
 	const redirectPathnames = new Set<string>()
 	const redirects: RedirectMeta[] = []
 
@@ -80,5 +80,3 @@ export const agentsSummaryIntegration = (): AstroIntegration => {
 		},
 	}
 }
-
-export default agentsSummaryIntegration
