@@ -3,6 +3,10 @@ on:
   push:
     tags:
       - '**'
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
 jobs:
   publish-node:
     runs-on: ubuntu-latest
@@ -10,10 +14,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.9
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
       - name: Install deps
         run: |
           bun --version
@@ -25,10 +31,8 @@ jobs:
         with:
           version: ${{ github.ref }}
 
-      - name: "Build app"
+      - name: Build app
         run: bun run build
 
-      - name: "Publish NPM"
-        run: bash ./scripts/npm-publish/run.sh
-        env:
-          NPM_TAG: ${{ steps.versions.outputs.npmTag }}
+      - name: Publish
+        run: bun publish
