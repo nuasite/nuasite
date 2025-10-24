@@ -30,6 +30,24 @@
         "typescript": "^5",
       },
     },
+    "packages/build": {
+      "name": "@nuasite/build",
+      "version": "0.0.1",
+      "bin": {
+        "nua-build": "src/cli.ts",
+      },
+      "dependencies": {
+        "@nuasite/agent-summary": "workspace:*",
+        "astro": "^5.15.1",
+        "stacktracey": "^2.1.8",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+      },
+      "peerDependencies": {
+        "typescript": "^5",
+      },
+    },
     "packages/components": {
       "name": "@nuasite/components",
       "version": "0.0.1",
@@ -68,24 +86,6 @@
         "astro": "^5.12.4",
         "flowbite": "^3.1.2",
         "tailwindcss": "^4.1.11",
-      },
-    },
-    "packages/nua-build": {
-      "name": "@nuasite/build",
-      "version": "0.0.1",
-      "bin": {
-        "nua-build": "src/cli.ts",
-      },
-      "dependencies": {
-        "@nuasite/agent-summary": "workspace:*",
-        "astro": "^5.15.1",
-        "stacktracey": "^2.1.8",
-      },
-      "devDependencies": {
-        "@types/bun": "latest",
-      },
-      "peerDependencies": {
-        "typescript": "^5",
       },
     },
     "packages/playground": {
@@ -310,7 +310,7 @@
 
     "@nuasite/agent-summary": ["@nuasite/agent-summary@workspace:packages/agent-summary"],
 
-    "@nuasite/build": ["@nuasite/build@workspace:packages/nua-build"],
+    "@nuasite/build": ["@nuasite/build@workspace:packages/build"],
 
     "@nuasite/components": ["@nuasite/components@workspace:packages/components"],
 

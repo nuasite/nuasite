@@ -6,7 +6,7 @@
 			"path": "./packages/agent-summary"
 		},
 		{
-			"path": "./packages/nua-build"
+			"path": "./packages/build"
 		},
 		{
 			"path": "./packages/components"

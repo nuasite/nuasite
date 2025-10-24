@@ -31,5 +31,4 @@ jobs:
       - name: "Publish NPM"
         run: bash ./scripts/npm-publish/run.sh
         env:
-          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
           NPM_TAG: ${{ steps.versions.outputs.npmTag }}
