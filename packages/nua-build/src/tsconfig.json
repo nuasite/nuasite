@@ -1,7 +1,1 @@
-{
-	"extends": "../tsconfig.settings.json",
-	"compilerOptions": {
-		"outDir": "../dist/types"
-	},
-	"references": [{ "path": "../../agent-summary/src" }]
-}
+../../build/dist/types
