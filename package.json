@@ -2,7 +2,7 @@
 	"name": "@nuasite/oss",
 	"type": "module",
 	"private": true,
-	"version": "0.0.2",
+	"version": "0.0.1",
 	"scripts": {
 		"build": "bun run ts:build",
 		"clean": "bun run clean:generated && bun run clean:dependencies",
@@ -18,7 +18,11 @@
 		"ts:clean": "tsc --build --clean",
 		"tag-version": "./scripts/tag-version/run.sh $@"
 	},
+	"dependencies": {
+		"@types/js-yaml": "^4.0.9"
+	},
 	"devDependencies": {
+		"@actions/core": "^1.11.1",
 		"@biomejs/biome": "^2.2.7",
 		"@types/bun": "latest",
 		"dprint": "^0.50.2",
@@ -29,8 +33,5 @@
 	},
 	"workspaces": [
 		"packages/*"
-	],
-	"dependencies": {
-		"@types/js-yaml": "^4.0.9"
-	}
+	]
 }
