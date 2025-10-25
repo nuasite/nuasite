@@ -50,7 +50,7 @@ if [[ "$current_branch" =~ ^v[0-9]+\.[0-9]+$ ]]; then
     fi
 fi
 
-bun run ./scripts/tag-version/bump-version.ts "$@"
+bun run ./scripts/tag-version/bump-version.ts "$@" --rewrite-workspace
 
 # https://github.com/oven-sh/bun/issues/18906
 docker run -v `pwd`:/src --workdir /src oven/bun:1.2.7 bun install

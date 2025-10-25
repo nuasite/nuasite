@@ -59,26 +59,10 @@ const rewriteWorkspaceRecord = (record: JsonRecord, version: string): { changed:
 	return changed ? { changed: true, value: next } : { changed: false, value: record }
 }
 
-const rewriteDependencySections = (packageJson: JsonRecord, version: string): JsonRecord => {
-	const nextPackageJson: JsonRecord = { ...packageJson, version }
-
-	for (const section of dependencySectionKeys) {
-		const sectionValue = packageJson[section as DependencySectionKey]
-		if (!isRecord(sectionValue)) {
-			continue
-		}
-		const rewritten = rewriteWorkspaceRecord(sectionValue, version)
-		if (rewritten.changed) {
-			nextPackageJson[section as DependencySectionKey] = rewritten.value
-		}
-	}
-
-	return nextPackageJson
-}
-
 ;(async () => {
 	const cwd = process.cwd()
 	const version = process.argv[2]
+	const rewriteWorkspace = process.argv.includes('--rewrite-workspace')
 	const dirs = [cwd, ...await glob(process.cwd() + '/packages/*', { onlyDirectories: true })]
 
 	await Promise.all(dirs.map(async (dir): Promise<void> => {
@@ -90,7 +74,22 @@ const rewriteDependencySections = (packageJson: JsonRecord, version: string): Js
 		}
 		try {
 			const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as JsonRecord
-			const newPackageJson = rewriteDependencySections(packageJson, version)
+			const nextPackageJson: JsonRecord = { ...packageJson, version }
+
+			if (rewriteWorkspace) {
+				for (const section of dependencySectionKeys) {
+					const sectionValue = packageJson[section as DependencySectionKey]
+					if (!isRecord(sectionValue)) {
+						continue
+					}
+					const rewritten = rewriteWorkspaceRecord(sectionValue, version)
+					if (rewritten.changed) {
+						nextPackageJson[section as DependencySectionKey] = rewritten.value
+					}
+				}
+			}
+
+			const newPackageJson = nextPackageJson
 			await fs.writeFile(packageJsonPath, JSON.stringify(newPackageJson, null, '	') + '\n', 'utf8')
 		} catch (e) {
 			console.log(dir)
