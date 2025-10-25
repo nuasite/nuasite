@@ -51,7 +51,7 @@ const versions = collectVersions()
 
 // Determine which package is being packed:
 // npm sets INIT_CWD to the original cwd; during (pre)pack it equals the package dir.
-const pkgFile = path.join(packageDir, 'package.json')
+const pkgFile = path.join(packageDir(), 'package.json')
 const pkgJson = readJSON(pkgFile)
 
 // Save original for restore
