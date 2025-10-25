@@ -1,6 +1,6 @@
-# @nuasite/build
+# @nuasite/cli
 
-`@nuasite/build` is the build tool that powers [Astro](https://astro.build/) projects updated by
+`@nuasite/cli` is the cli tool that powers [Astro](https://astro.build/) projects updated by
 [Nua Site](https://www.nuasite.com). It wraps `astro build`, automatically
 wires up the `@nuasite/agent-summary` integration, and prints readable stack
 traces when something goes wrong.
@@ -10,7 +10,7 @@ traces when something goes wrong.
 Add the package to your workspace (it is usually used as a dev dependency):
 
 ```bash
-bun add -d @nuasite/build
+bun add -d @nuasite/cli
 ```
 
 The package bundles Astro and expects `typescript@^5` to be available (peer
@@ -18,16 +18,16 @@ dependency).
 
 ## CLI usage
 
-Once installed you get the `nua-build` binary:
+Once installed you get the `nua` binary:
 
 ```bash
 # run directly
-bunx nua-build
+bunx nua build
 
 # or wire it into package.json
 {
   "scripts": {
-    "build": "nua-build"
+    "build": "nua build"
   }
 }
 ```

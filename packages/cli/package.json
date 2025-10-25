@@ -1,5 +1,5 @@
 {
-	"name": "@nuasite/build",
+	"name": "@nuasite/cli",
 	"version": "0.0.17",
 	"license": "Apache-2.0",
 	"type": "module",
@@ -12,10 +12,10 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/nuasite/nuasite.git",
-		"directory": "packages/build"
+		"directory": "packages/cli"
 	},
 	"bin": {
-		"nua-build": "src/cli.ts"
+		"nua": "src/index.ts"
 	},
 	"scripts": {
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",

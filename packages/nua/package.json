@@ -22,7 +22,7 @@
 		"@astrojs/mdx": "4.3.0",
 		"@astrojs/rss": "4.0.11",
 		"@astrojs/sitemap": "3.4.1",
-		"@nuasite/build": "workspace:*",
+		"@nuasite/cli": "workspace:*",
 		"@nuasite/components": "workspace:*",
 		"@nuasite/core": "workspace:*",
 		"@tailwindcss/vite": "^4.1.11",
