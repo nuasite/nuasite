@@ -1,9 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { ledgerPath, packageDir } from './paths'
 
 const ROOT = process.cwd()
 const PKGS_DIRS = ['packages'] // add more if needed
-const LEDGER = path.join(ROOT, '.rewritten-workspace-deps.json')
+const LEDGER = ledgerPath()
 
 function readJSON(p) {
 	return JSON.parse(fs.readFileSync(p, 'utf8'))
@@ -50,7 +51,7 @@ const versions = collectVersions()
 
 // Determine which package is being packed:
 // npm sets INIT_CWD to the original cwd; during (pre)pack it equals the package dir.
-const pkgFile = path.join(process.env.INIT_CWD ?? ROOT, 'package.json')
+const pkgFile = path.join(packageDir, 'package.json')
 const pkgJson = readJSON(pkgFile)
 
 // Save original for restore

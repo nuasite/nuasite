@@ -1,7 +1,7 @@
 import fs from 'node:fs'
-import path from 'node:path'
+import { ledgerPath } from './paths'
 
-const LEDGER = path.join(process.cwd(), '.rewritten-workspace-deps.json')
+const LEDGER = ledgerPath	()
 if (!fs.existsSync(LEDGER)) process.exit(0)
 
 const entries = JSON.parse(fs.readFileSync(LEDGER, 'utf8'))
