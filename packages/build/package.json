@@ -1,9 +1,14 @@
 {
   "name": "@nuasite/build",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "license": "Apache-2.0",
   "type": "module",
-  "files": ["dist/**", "src/**", "README.md", "package.json"],
+  "files": [
+    "dist/**",
+    "src/**",
+    "README.md",
+    "package.json"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nuasite/nuasite.git",

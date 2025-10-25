@@ -1,14 +1,19 @@
 {
   "name": "@nuasite/agent-summary",
   "description": "Create simple summary of the project for LLM.",
-  "files": ["dist/**", "src/**", "README.md", "package.json"],
+  "files": [
+    "dist/**",
+    "src/**",
+    "README.md",
+    "package.json"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nuasite/nuasite.git",
     "directory": "packages/agent-summary"
   },
   "license": "Apache-2.0",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "module": "src/index.ts",
   "types": "src/index.ts",
   "type": "module",
