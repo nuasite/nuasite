@@ -1,32 +1,32 @@
 {
-  "name": "@nuasite/core",
-  "version": "0.0.16",
-  "license": "Apache-2.0",
-  "files": [
-    "dist/**",
-    "src/**",
-    "README.md",
-    "package.json"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/nuasite/nuasite.git",
-    "directory": "packages/core"
-  },
-  "scripts": {
-    "prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
-    "postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
-  },
-  "devDependencies": {
-    "@astrojs/check": "^0.9.4",
-    "@astrojs/mdx": "4.3.0",
-    "@astrojs/rss": "4.0.11",
-    "@astrojs/sitemap": "3.4.1"
-  },
-  "peerDependencies": {
-    "@astrojs/check": "*",
-    "@astrojs/mdx": "*",
-    "@astrojs/rss": "*",
-    "@astrojs/sitemap": "*"
-  }
+	"name": "@nuasite/core",
+	"version": "0.0.17",
+	"license": "Apache-2.0",
+	"files": [
+		"dist/**",
+		"src/**",
+		"README.md",
+		"package.json"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nuasite/nuasite.git",
+		"directory": "packages/core"
+	},
+	"scripts": {
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
+	},
+	"devDependencies": {
+		"@astrojs/check": "^0.9.4",
+		"@astrojs/mdx": "4.3.0",
+		"@astrojs/rss": "4.0.11",
+		"@astrojs/sitemap": "3.4.1"
+	},
+	"peerDependencies": {
+		"@astrojs/check": "*",
+		"@astrojs/mdx": "*",
+		"@astrojs/rss": "*",
+		"@astrojs/sitemap": "*"
+	}
 }

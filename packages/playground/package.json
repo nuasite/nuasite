@@ -1,17 +1,17 @@
 {
-  "name": "playground",
-  "private": true,
-  "type": "module",
-  "version": "0.0.16",
-  "license": "Apache-2.0",
-  "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro"
-  },
-  "dependencies": {
-    "@nuasite/nua": "workspace:*",
-    "astro": "^5.15.1"
-  }
+	"name": "playground",
+	"private": true,
+	"type": "module",
+	"version": "0.0.17",
+	"license": "Apache-2.0",
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview",
+		"astro": "astro"
+	},
+	"dependencies": {
+		"@nuasite/nua": "workspace:*",
+		"astro": "^5.15.1"
+	}
 }

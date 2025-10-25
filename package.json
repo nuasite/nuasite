@@ -1,39 +1,39 @@
 {
-  "name": "@nuasite/oss",
-  "type": "module",
-  "private": true,
-  "version": "0.0.16",
-  "scripts": {
-    "build": "bun run ts:build",
-    "clean": "bun run clean:generated && bun run clean:dependencies",
-    "clean:dependencies": "rm -rf packages/*/node_modules || true; rm -rf node_modules || true",
-    "clean:generated": "rm -rf dist || true; rm -rf packages/*/dist || true; rm -rf packages/*/temp || true",
-    "lint": "biome lint .",
-    "lint:fix": "biome lint . --write",
-    "format": "dprint fmt",
-    "format:check": "dprint check",
-    "test": "bun test --conditions=typescript packages",
-    "ts:build": "tsc --build",
-    "ts:watch": "tsc --build --watch",
-    "ts:clean": "tsc --build --clean",
-    "tag-version": "./scripts/tag-version/run.sh $@",
-    "prepack": "bun run ./scripts/workspace-deps/resolve-deps.ts",
-    "postpack": "bun run ./scripts/workspace-deps/restore-deps.ts"
-  },
-  "dependencies": {
-    "@types/js-yaml": "^4.0.9"
-  },
-  "devDependencies": {
-    "@actions/core": "^1.11.1",
-    "@biomejs/biome": "^2.2.7",
-    "@types/bun": "latest",
-    "dprint": "^0.50.2",
-    "fast-glob": "^3.3.3",
-    "js-yaml": "^4.1.0",
-    "json5": "^2.2.3",
-    "typescript": "^5"
-  },
-  "workspaces": [
-    "packages/*"
-  ]
+	"name": "@nuasite/oss",
+	"type": "module",
+	"private": true,
+	"version": "0.0.17",
+	"scripts": {
+		"build": "bun run ts:build",
+		"clean": "bun run clean:generated && bun run clean:dependencies",
+		"clean:dependencies": "rm -rf packages/*/node_modules || true; rm -rf node_modules || true",
+		"clean:generated": "rm -rf dist || true; rm -rf packages/*/dist || true; rm -rf packages/*/temp || true",
+		"lint": "biome lint .",
+		"lint:fix": "biome lint . --write",
+		"format": "dprint fmt",
+		"format:check": "dprint check",
+		"test": "bun test --conditions=typescript packages",
+		"ts:build": "tsc --build",
+		"ts:watch": "tsc --build --watch",
+		"ts:clean": "tsc --build --clean",
+		"tag-version": "./scripts/tag-version/run.sh $@",
+		"prepack": "bun run ./scripts/workspace-deps/resolve-deps.ts",
+		"postpack": "bun run ./scripts/workspace-deps/restore-deps.ts"
+	},
+	"dependencies": {
+		"@types/js-yaml": "^4.0.9"
+	},
+	"devDependencies": {
+		"@actions/core": "^1.11.1",
+		"@biomejs/biome": "^2.2.7",
+		"@types/bun": "latest",
+		"dprint": "^0.50.2",
+		"fast-glob": "^3.3.3",
+		"js-yaml": "^4.1.0",
+		"json5": "^2.2.3",
+		"typescript": "^5"
+	},
+	"workspaces": [
+		"packages/*"
+	]
 }

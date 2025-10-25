@@ -1,34 +1,34 @@
 {
-  "name": "@nuasite/nua",
-  "version": "0.0.16",
-  "license": "Apache-2.0",
-  "files": [
-    "dist/**",
-    "src/**",
-    "README.md",
-    "package.json"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/nuasite/nuasite.git",
-    "directory": "packages/nua"
-  },
-  "scripts": {
-    "prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
-    "postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
-  },
-  "dependencies": {
-    "@astrojs/check": "^0.9.4",
-    "@astrojs/mdx": "4.3.0",
-    "@astrojs/rss": "4.0.11",
-    "@astrojs/sitemap": "3.4.1",
-    "@nuasite/build": "workspace:*",
-    "@nuasite/components": "workspace:*",
-    "@nuasite/core": "workspace:*",
-    "@tailwindcss/vite": "^4.1.11",
-    "astro": "^5.12.4",
-    "flowbite": "^3.1.2",
-    "tailwindcss": "^4.1.11",
-    "typescript": "^5.1.6"
-  }
+	"name": "@nuasite/nua",
+	"version": "0.0.17",
+	"license": "Apache-2.0",
+	"files": [
+		"dist/**",
+		"src/**",
+		"README.md",
+		"package.json"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nuasite/nuasite.git",
+		"directory": "packages/nua"
+	},
+	"scripts": {
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
+	},
+	"dependencies": {
+		"@astrojs/check": "^0.9.4",
+		"@astrojs/mdx": "4.3.0",
+		"@astrojs/rss": "4.0.11",
+		"@astrojs/sitemap": "3.4.1",
+		"@nuasite/build": "workspace:*",
+		"@nuasite/components": "workspace:*",
+		"@nuasite/core": "workspace:*",
+		"@tailwindcss/vite": "^4.1.11",
+		"astro": "^5.12.4",
+		"flowbite": "^3.1.2",
+		"tailwindcss": "^4.1.11",
+		"typescript": "^5.1.6"
+	}
 }
