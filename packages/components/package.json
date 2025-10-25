@@ -1,13 +1,17 @@
 {
 	"name": "@nuasite/components",
 	"description": "Nua Site astro components.",
+	"license": "Apache-2.0",
+	"version": "0.0.11",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/nuasite/nuasite.git",
 		"directory": "packages/components"
 	},
-	"license": "Apache-2.0",
-	"version": "0.0.11",
+	"scripts": {
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
+	},
 	"type": "module",
 	"module": "src/index.ts",
 	"types": "src/index.ts",

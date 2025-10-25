@@ -7,6 +7,10 @@
 		"url": "git+https://github.com/nuasite/nuasite.git",
 		"directory": "packages/core"
 	},
+	"scripts": {
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
+	},
 	"devDependencies": {
 		"@astrojs/check": "^0.9.4",
 		"@astrojs/mdx": "4.3.0",
