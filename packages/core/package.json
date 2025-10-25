@@ -4,7 +4,7 @@
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/nuasite/nua.git",
+		"url": "git+https://github.com/nuasite/nuasite.git",
 		"directory": "packages/core"
 	},
 	"devDependencies": {
