@@ -1,43 +1,51 @@
-# Astro Starter Kit: Minimal
+# Nua Site playground
 
-```sh
-bun create astro@latest -- --template minimal
+This is a tiny Astro project that uses `@nuasite/nua` so we can verify package
+changes in a realistic environment before publishing. It is not shipped to npm;
+use it as a manual testing ground when iterating on the packages in this repo.
+
+## Install
+
+From the repository root (recommended):
+
+```bash
+bun install
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+This installs the workspace dependencies, including this playground. To update
+only the playground you can run the same command inside `packages/playground`.
 
-## 🚀 Project Structure
+## Commands
 
-Inside of your Astro project, you'll see the following folders and files:
+All scripts are defined in `packages/playground/package.json` and can be run via
+the root workspace using Bun:
 
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
+```bash
+bun workspace playground run dev     # astro dev
+bun workspace playground run build   # astro build
+bun workspace playground run preview # astro preview
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+You can also run `bunx astro ...` from the playground directory if you prefer.
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+## Linking local packages
 
-Any static assets, like images, can be placed in the `public/` directory.
+While developing other packages (for example `@nuasite/components`) you can
+point this playground at your local changes because Bun workspaces automatically
+symlink them. Just import from the package name as usual:
 
-## 🧞 Commands
+```astro
+---
+import { Form } from '@nuasite/components'
+---
 
-All commands are run from the root of the project, from a terminal:
+<Form formId="contact" />
+```
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `bun install`             | Installs dependencies                            |
-| `bun dev`             | Starts local dev server at `localhost:4321`      |
-| `bun build`           | Build your production site to `./dist/`          |
-| `bun preview`         | Preview your build locally, before deploying     |
-| `bun astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `bun astro -- --help` | Get help using the Astro CLI                     |
+Running `bun workspace playground run dev` will now exercise your local code.
 
-## 👀 Want to learn more?
+## Troubleshooting
 
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+- Run `bun run clean` from the repo root to wipe `node_modules` and `dist/`.
+- If the dev server does not pick up changes, restart `bun workspace playground run dev`.
+- When dependencies look stale, try `bun install --force`.
