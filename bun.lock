@@ -19,7 +19,7 @@
     },
     "packages/agent-summary": {
       "name": "@nuasite/agent-summary",
-      "version": "0.0.12",
+      "version": "0.0.18",
       "dependencies": {
         "astro": "^5.12.4",
       },
@@ -30,11 +30,11 @@
         "typescript": "^5",
       },
     },
-    "packages/build": {
-      "name": "@nuasite/build",
-      "version": "0.0.12",
+    "packages/cli": {
+      "name": "@nuasite/cli",
+      "version": "0.0.18",
       "bin": {
-        "nua-build": "src/cli.ts",
+        "nua": "src/index.ts",
       },
       "dependencies": {
         "@nuasite/agent-summary": "workspace:*",
@@ -50,14 +50,14 @@
     },
     "packages/components": {
       "name": "@nuasite/components",
-      "version": "0.0.12",
+      "version": "0.0.18",
       "peerDependencies": {
         "typescript": "^5",
       },
     },
     "packages/core": {
       "name": "@nuasite/core",
-      "version": "0.0.12",
+      "version": "0.0.18",
       "devDependencies": {
         "@astrojs/check": "^0.9.4",
         "@astrojs/mdx": "4.3.0",
@@ -73,13 +73,13 @@
     },
     "packages/nua": {
       "name": "@nuasite/nua",
-      "version": "0.0.12",
+      "version": "0.0.18",
       "dependencies": {
         "@astrojs/check": "^0.9.4",
         "@astrojs/mdx": "4.3.0",
         "@astrojs/rss": "4.0.11",
         "@astrojs/sitemap": "3.4.1",
-        "@nuasite/build": "workspace:*",
+        "@nuasite/cli": "workspace:*",
         "@nuasite/components": "workspace:*",
         "@nuasite/core": "workspace:*",
         "@tailwindcss/vite": "^4.1.11",
@@ -91,7 +91,7 @@
     },
     "packages/playground": {
       "name": "playground",
-      "version": "0.0.12",
+      "version": "0.0.18",
       "dependencies": {
         "@nuasite/nua": "workspace:*",
         "astro": "^5.15.1",
@@ -311,7 +311,7 @@
 
     "@nuasite/agent-summary": ["@nuasite/agent-summary@workspace:packages/agent-summary"],
 
-    "@nuasite/build": ["@nuasite/build@workspace:packages/build"],
+    "@nuasite/cli": ["@nuasite/cli@workspace:packages/cli"],
 
     "@nuasite/components": ["@nuasite/components@workspace:packages/components"],
 
