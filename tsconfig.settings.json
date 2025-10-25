@@ -1,8 +1,11 @@
 {
 	"compilerOptions": {
 		"composite": true,
+		"noEmitOnError": true,
 		"declaration": true,
 		"emitDeclarationOnly": true,
+		"declarationMap": true,
+		"incremental": true,
 
 		// Environment setup & latest features
 		"lib": ["ESNext"],

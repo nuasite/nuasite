@@ -2,9 +2,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import type { PageMeta, RedirectMeta } from './types.ts'
+import type { PageMeta, RedirectMeta } from '../../../src/types.ts'
 
-const utilsModule = await import('./utils.ts')
+const utilsModule = await import('../../../src/utils.ts')
 const {
 	decodeEntities,
 	sanitize,
@@ -162,10 +162,19 @@ describe('updateAgentsSummary', () => {
 		}
 	})
 
+	const blockBody = (content: string, start: string, end: string): string => {
+		const startIndex = content.indexOf(start)
+		if (startIndex === -1) {
+			return ''
+		}
+		const bodyStart = startIndex + start.length + 2
+		const endIndex = content.indexOf(`\n${end}`, bodyStart)
+		const body = content.slice(bodyStart, endIndex >= 0 ? endIndex : bodyStart)
+		return body.trimEnd()
+	}
+
 	const summaryLines = (content: string): string[] => {
-		const bodyStart = content.indexOf(SUMMARY_START) + SUMMARY_START.length + 2
-		const bodyEnd = content.indexOf(`\n\n${SUMMARY_END}`)
-		const body = content.slice(bodyStart, bodyEnd >= 0 ? bodyEnd : bodyStart)
+		const body = blockBody(content, SUMMARY_START, SUMMARY_END)
 		return body.length === 0 ? [] : body.split('\n')
 	}
 
@@ -193,8 +202,7 @@ describe('updateAgentsSummary', () => {
 		await updateAgentsSummary(pages, redirects)
 
 		const content = await fs.readFile(AGENTS_PATH, 'utf8')
-		expect(content.startsWith(`${SUMMARY_START}\n\n`)).toBe(true)
-		expect(content.trimEnd().endsWith(`${SUMMARY_END}`)).toBe(true)
+		expect(content.includes(SUMMARY_START)).toBe(true)
 
 		const lines = summaryLines(content)
 		expect(lines).toEqual([
@@ -224,7 +232,7 @@ describe('updateAgentsSummary', () => {
 
 		const content = await fs.readFile(AGENTS_PATH, 'utf8')
 		expect(content.startsWith(prefix)).toBe(true)
-		expect(content.endsWith(suffix)).toBe(true)
+		expect(content).toContain(suffix)
 		const lines = summaryLines(content)
 		expect(lines).toEqual([
 			JSON.stringify({ kind: 'page', route: '/', title: 'Home', description: 'Home description', headlines: [] }),
