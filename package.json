@@ -16,7 +16,9 @@
 		"ts:build": "tsc --build",
 		"ts:watch": "tsc --build --watch",
 		"ts:clean": "tsc --build --clean",
-		"tag-version": "./scripts/tag-version/run.sh $@"
+		"tag-version": "./scripts/tag-version/run.sh $@",
+		"prepack": "bun run ./scripts/workspace-deps/resolve-deps.ts",
+		"postpack": "bun run ./scripts/workspace-deps/restore-deps.ts"
 	},
 	"dependencies": {
 		"@types/js-yaml": "^4.0.9"
