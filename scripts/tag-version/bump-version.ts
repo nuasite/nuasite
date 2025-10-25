@@ -19,7 +19,7 @@ import * as fs from 'node:fs/promises'
 				...packageJson,
 				version,
 			}
-			await fs.writeFile(packageJsonPath, JSON.stringify(newPackageJson, null, '  ') + '\n', 'utf8')
+			await fs.writeFile(packageJsonPath, JSON.stringify(newPackageJson, null, '\t') + '\n', 'utf8')
 		} catch (e) {
 			console.log(dir)
 			throw e
