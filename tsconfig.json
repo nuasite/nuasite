@@ -6,7 +6,7 @@
 			"path": "./packages/agent-summary"
 		},
 		{
-			"path": "./packages/build"
+			"path": "./packages/cli"
 		},
 		{
 			"path": "./packages/components"
