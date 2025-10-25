@@ -16,7 +16,7 @@
 		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
 	},
 	"dependencies": {
-		"@nuasite/agent-summary": "0.0.11",
+		"@nuasite/agent-summary": "workspace:*",
 		"astro": "^5.15.1",
 		"stacktracey": "^2.1.8"
 	},
