@@ -12,7 +12,7 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"@nuasite/agent-summary": "0.0.8",
+		"@nuasite/agent-summary": "workspace:*",
 		"astro": "^5.15.1",
 		"stacktracey": "^2.1.8"
 	},
