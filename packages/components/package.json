@@ -3,6 +3,7 @@
   "description": "Nua Site astro components.",
   "license": "Apache-2.0",
   "version": "0.0.15",
+  "files": ["dist/**", "src/**", "README.md", "package.json"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nuasite/nuasite.git",

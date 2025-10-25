@@ -1,6 +1,7 @@
 {
   "name": "@nuasite/agent-summary",
   "description": "Create simple summary of the project for LLM.",
+  "files": ["dist/**", "src/**", "README.md", "package.json"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nuasite/nuasite.git",
