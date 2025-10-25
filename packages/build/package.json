@@ -1,29 +1,29 @@
 {
-	"name": "@nuasite/build",
-	"version": "0.0.12",
-	"license": "Apache-2.0",
-	"type": "module",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/nuasite/nuasite.git",
-		"directory": "packages/build"
-	},
-	"bin": {
-		"nua-build": "src/cli.ts"
-	},
-	"scripts": {
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
-		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
-	},
-	"dependencies": {
-		"@nuasite/agent-summary": "workspace:*",
-		"astro": "^5.15.1",
-		"stacktracey": "^2.1.8"
-	},
-	"devDependencies": {
-		"@types/bun": "latest"
-	},
-	"peerDependencies": {
-		"typescript": "^5"
-	}
+  "name": "@nuasite/build",
+  "version": "0.0.13",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nuasite/nuasite.git",
+    "directory": "packages/build"
+  },
+  "bin": {
+    "nua-build": "src/cli.ts"
+  },
+  "scripts": {
+    "prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+    "postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
+  },
+  "dependencies": {
+    "@nuasite/agent-summary": "workspace:*",
+    "astro": "^5.15.1",
+    "stacktracey": "^2.1.8"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
 }
