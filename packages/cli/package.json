@@ -14,13 +14,11 @@
 		"url": "git+https://github.com/nuasite/nuasite.git",
 		"directory": "packages/cli"
 	},
-	"main": "src/index.ts",
-	"types": "src/index.ts",
 	"bin": {
-		"nua": "dist/nua"
+		"nua": "src/index.ts"
 	},
 	"scripts": {
-		"build": "bun build --compile --outfile=dist/nua --external lightningcss --external astro src/index.ts",
+		"build": "bun build --target=bun --outdir=dist --external lightningcss --external astro src/index.ts",
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
 		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
 	},
