@@ -19,39 +19,6 @@ if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
     exit 1
 fi
 
-workspace_dirs=()
-if [[ -d packages ]]; then
-    while IFS= read -r dir; do
-        workspace_dirs+=("$dir")
-    done < <(find packages -mindepth 1 -maxdepth 1 -type d -print | sort)
-fi
-
-resolved_workspace_dirs=()
-
-resolve_workspace_deps() {
-    resolved_workspace_dirs=()
-    local dir
-    for dir in "${workspace_dirs[@]}"; do
-        if [[ -f "$dir/package.json" ]] && grep -q '"workspace:' "$dir/package.json"; then
-            (cd "$dir" && bun run ../../scripts/workspace-deps/resolve-deps.ts)
-            resolved_workspace_dirs+=("$dir")
-        fi
-    done
-}
-
-restore_workspace_deps() {
-    local status=0
-    local dir
-    for dir in "${resolved_workspace_dirs[@]}"; do
-        if [[ -f "$dir/package.json" ]]; then
-            (cd "$dir" && bun run ../../scripts/workspace-deps/restore-deps.ts) || status=$?
-        fi
-    done
-    return $status
-}
-
-trap restore_workspace_deps EXIT
-
 
 # Check for modified or untracked files
 if [[ -n $(git status --porcelain) ]]; then
@@ -85,8 +52,6 @@ fi
 
 bun run ./scripts/tag-version/bump-version.ts "$@"
 
-resolve_workspace_deps
-
 # https://github.com/oven-sh/bun/issues/18906
 docker run -v `pwd`:/src --workdir /src oven/bun:1.2.7 bun install
 
@@ -95,6 +60,3 @@ git commit -m "v$1"
 git tag "v$1"
 git push origin "$current_branch"
 git push origin "v$1"
-
-restore_workspace_deps
-resolved_workspace_dirs=()
