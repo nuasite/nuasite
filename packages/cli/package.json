@@ -1,36 +1,36 @@
 {
-	"name": "@nuasite/cli",
-	"version": "0.0.23",
-	"license": "Apache-2.0",
-	"type": "module",
-	"files": [
-		"dist/**",
-		"src/**",
-		"README.md",
-		"package.json"
-	],
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/nuasite/nuasite.git",
-		"directory": "packages/cli"
-	},
-	"bin": {
-		"nua": "src/index.ts"
-	},
-	"scripts": {
-		"build": "bun build --target=bun --outdir=dist --external lightningcss --external astro src/index.ts",
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
-		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
-	},
-	"dependencies": {
-		"@nuasite/agent-summary": "workspace:*",
-		"astro": "^5.15.1",
-		"stacktracey": "^2.1.8"
-	},
-	"devDependencies": {
-		"@types/bun": "latest"
-	},
-	"peerDependencies": {
-		"typescript": "^5"
-	}
+  "name": "@nuasite/cli",
+  "version": "0.0.24",
+  "license": "Apache-2.0",
+  "type": "module",
+  "files": [
+    "dist/**",
+    "src/**",
+    "README.md",
+    "package.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nuasite/nuasite.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "nua": "src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build --target=bun --outdir=dist --external lightningcss --external astro src/index.ts",
+    "prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+    "postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
+  },
+  "dependencies": {
+    "@nuasite/agent-summary": "0.0.24",
+    "astro": "^5.15.1",
+    "stacktracey": "^2.1.8"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
 }
