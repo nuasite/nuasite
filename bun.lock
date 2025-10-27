@@ -34,7 +34,7 @@
       "name": "@nuasite/cli",
       "version": "0.0.18",
       "bin": {
-        "nua": "src/index.ts",
+        "nua": "dist/nua",
       },
       "dependencies": {
         "@nuasite/agent-summary": "workspace:*",
@@ -43,8 +43,6 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
-      },
-      "peerDependencies": {
         "typescript": "^5",
       },
     },
@@ -94,7 +92,6 @@
       "version": "0.0.18",
       "dependencies": {
         "@nuasite/nua": "workspace:*",
-        "astro": "^5.15.1",
       },
     },
   },
