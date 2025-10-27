@@ -4,7 +4,7 @@
 	"private": true,
 	"version": "0.0.24",
 	"scripts": {
-		"build": "bun run ts:build",
+		"build": "bun run ts:build && bun run --filter './packages/*' build",
 		"clean": "bun run clean:generated && bun run clean:dependencies",
 		"clean:dependencies": "rm -rf packages/*/node_modules || true; rm -rf node_modules || true",
 		"clean:generated": "rm -rf dist || true; rm -rf packages/*/dist || true; rm -rf packages/*/temp || true",
