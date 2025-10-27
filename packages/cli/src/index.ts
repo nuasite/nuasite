@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { agentsSummary } from '@nuasite/agent-summary'
 import { dev, preview } from 'astro'
 import { build } from './build'
