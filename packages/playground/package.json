@@ -1,15 +1,15 @@
 {
-  "name": "playground",
-  "private": true,
-  "type": "module",
-  "version": "0.0.24",
-  "license": "Apache-2.0",
-  "scripts": {
-    "dev": "nua dev",
-    "build": "nua build",
-    "preview": "nua preview"
-  },
-  "dependencies": {
-    "@nuasite/nua": "0.0.24"
-  }
+	"name": "playground",
+	"private": true,
+	"type": "module",
+	"version": "0.0.24",
+	"license": "Apache-2.0",
+	"scripts": {
+		"dev": "nua dev",
+		"build": "nua build",
+		"preview": "nua preview"
+	},
+	"dependencies": {
+		"@nuasite/nua": "workspace:*"
+	}
 }
