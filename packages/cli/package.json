@@ -19,7 +19,7 @@
 	},
 	"scripts": {
 		"build": "bun build --target=bun --outdir=dist --external lightningcss --external astro src/index.ts",
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"dependencies": {
 		"@nuasite/agent-summary": "workspace:*",

@@ -14,7 +14,7 @@
 		"directory": "packages/core"
 	},
 	"scripts": {
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"devDependencies": {
 		"@astrojs/check": "^0.9.4",

@@ -15,7 +15,7 @@
 		"directory": "packages/components"
 	},
 	"scripts": {
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"type": "module",
 	"module": "src/index.ts",
