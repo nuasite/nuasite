@@ -23,8 +23,8 @@
 	},
 	"dependencies": {
 		"@nuasite/agent-summary": "workspace:*",
-		"astro": "^5.15.1",
-		"stacktracey": "^2.1.8"
+		"astro": "5.15.1",
+		"stacktracey": "2.1.8"
 	},
 	"devDependencies": {
 		"@types/bun": "latest"
