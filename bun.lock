@@ -19,7 +19,7 @@
     },
     "packages/agent-summary": {
       "name": "@nuasite/agent-summary",
-      "version": "0.0.27",
+      "version": "0.0.28",
       "dependencies": {
         "astro": "^5.12.4",
       },
@@ -32,7 +32,7 @@
     },
     "packages/cli": {
       "name": "@nuasite/cli",
-      "version": "0.0.27",
+      "version": "0.0.28",
       "bin": {
         "nua": "src/index.ts",
       },
@@ -50,14 +50,14 @@
     },
     "packages/components": {
       "name": "@nuasite/components",
-      "version": "0.0.27",
+      "version": "0.0.28",
       "peerDependencies": {
         "typescript": "^5",
       },
     },
     "packages/core": {
       "name": "@nuasite/core",
-      "version": "0.0.27",
+      "version": "0.0.28",
       "devDependencies": {
         "@astrojs/check": "0.9.5",
         "@astrojs/mdx": "4.3.8",
@@ -73,7 +73,7 @@
     },
     "packages/nua": {
       "name": "@nuasite/nua",
-      "version": "0.0.27",
+      "version": "0.0.28",
       "dependencies": {
         "@astrojs/check": "^0.9.4",
         "@astrojs/mdx": "4.3.8",
@@ -87,11 +87,12 @@
         "flowbite": "3.1.2",
         "tailwindcss": "4.1.16",
         "typescript": "^5",
+        "vite": "6.4.1",
       },
     },
     "packages/playground": {
       "name": "playground",
-      "version": "0.0.27",
+      "version": "0.0.28",
       "dependencies": {
         "@nuasite/nua": "workspace:*",
       },
