@@ -3,8 +3,8 @@ import path from 'node:path'
 import type { PageMeta, RedirectMeta } from './types'
 
 export const AGENTS_PATH = path.resolve('AGENTS.md')
-export const SUMMARY_START = '<!-- AUTO-GENERATED:PAGE_SUMMARY -->'
-export const SUMMARY_END = '<!-- END AUTO-GENERATED:PAGE_SUMMARY -->'
+export const SUMMARY_START = '<page_summary>'
+export const SUMMARY_END = '</page_summary>'
 
 export const decodeEntities = (value: string): string => {
 	return value
