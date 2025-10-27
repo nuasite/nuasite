@@ -5,13 +5,11 @@
 	"version": "0.0.18",
 	"license": "Apache-2.0",
 	"scripts": {
-		"dev": "astro dev",
-		"build": "astro build",
-		"preview": "astro preview",
-		"astro": "astro"
+		"dev": "nua dev",
+		"build": "nua build",
+		"preview": "nua preview"
 	},
 	"dependencies": {
-		"@nuasite/nua": "workspace:*",
-		"astro": "^5.15.1"
+		"@nuasite/nua": "workspace:*"
 	}
 }
