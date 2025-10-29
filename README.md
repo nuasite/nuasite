@@ -9,12 +9,12 @@ hosted service.
 
 | Package | Summary |
 | --- | --- |
-| `@nuasite/nua` | Meta package that pins the versions of Astro, Tailwind CSS, Flowbite, and the Nua Site tooling used during hosted builds. |
-| `@nuasite/core` | Dependency manifest that keeps official Astro integrations (`@astrojs/*`) aligned with the platform. |
-| `@nuasite/build` | CLI wrapper around `astro build` that wires in the `@nuasite/agent-summary` integration and prints readable stack traces. |
-| `@nuasite/components` | Reusable Astro components (currently the Nua Site form widget) with TypeScript-friendly props. |
-| `@nuasite/agent-summary` | Astro integration that produces `AGENTS.md`, a machine-readable catalog of every generated page. |
-| `packages/playground` | Example Astro project used to manually test the packages in this repo. |
+| [`@nuasite/nua`](/packages/nua) | Meta package that pins the versions of Astro, Tailwind CSS, Flowbite, and the Nua Site tooling used during hosted builds. |
+| [`@nuasite/core`](/packages/core) | Dependency manifest that keeps official Astro integrations (`@astrojs/*`) aligned with the platform. |
+| [`@nuasite/cli`](/packages/cli) | CLI wrapper around `astro build` that wires in the `@nuasite/agent-summary` integration and prints readable stack traces. |
+| [`@nuasite/components`](/packages/components) | Reusable Astro components (currently the Nua Site form widget) with TypeScript-friendly props. |
+| [`@nuasite/agent-summary`](/packages/agent-summary) | Astro integration that produces `AGENTS.md`, a machine-readable catalog of every generated page. |
+| [`packages/playground`](https://github.com/nuasite/nua/tree/main/packages/playground) | Example Astro project used to manually test the packages in this repo. |
 
 ## Getting started
 
@@ -41,11 +41,8 @@ Each package keeps its sources in `packages/<name>/src` and may publish
 generated files to `packages/<name>/dist`. The repo is managed as a single Bun
 workspace, so cross-package changes can be made in one PR. A few tips:
 
-- Use `bun run clean` if you need to reset local `dist/` and `node_modules/`.
 - The playground project (`packages/playground`) can be linked against local
   packages to test them inside a real Astro site.
-- `scripts/tag-version/run.sh` is a helper used by maintainers when cutting
-  releases; most contributors will not need it.
 
 ## Feedback & contributions
 
