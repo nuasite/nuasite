@@ -27,6 +27,8 @@
 		"typescript": "^5"
 	},
 	"keywords": [
+		"nuasite",
+		"ui",
 		"withastro"
 	]
 }
