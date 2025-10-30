@@ -9,6 +9,7 @@
 		"README.md",
 		"package.json"
 	],
+	"homepage": "https://github.com/nuasite/nuasite/blob/main/packages/components/README.md",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/nuasite/nuasite.git",
