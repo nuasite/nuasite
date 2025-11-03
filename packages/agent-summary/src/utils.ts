@@ -153,7 +153,18 @@ export const updateAgentsSummary = async (pages: PageMeta[], redirects: Redirect
 
 	if (agentsContent.includes(SUMMARY_START) && agentsContent.includes(SUMMARY_END)) {
 		const startIndex = agentsContent.indexOf(SUMMARY_START)
-		const endIndex = agentsContent.indexOf(SUMMARY_END) + SUMMARY_END.length
+		const summaryEndIndex = agentsContent.indexOf(SUMMARY_END, startIndex)
+		if (summaryEndIndex === -1) {
+			const recovered = `${agentsContent.slice(0, startIndex)}${summaryBlock}`
+			await fs.writeFile(AGENTS_PATH, recovered, 'utf8')
+			return
+		}
+
+		let endIndex = summaryEndIndex + SUMMARY_END.length
+		while (endIndex < agentsContent.length && (agentsContent[endIndex] === '\n' || agentsContent[endIndex] === '\r')) {
+			endIndex += 1
+		}
+
 		const updated = `${agentsContent.slice(0, startIndex)}${summaryBlock}${agentsContent.slice(endIndex)}`
 		await fs.writeFile(AGENTS_PATH, updated, 'utf8')
 		return

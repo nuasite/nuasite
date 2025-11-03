@@ -167,10 +167,18 @@ describe('updateAgentsSummary', () => {
 		if (startIndex === -1) {
 			return ''
 		}
-		const bodyStart = startIndex + start.length + 2
-		const endIndex = content.indexOf(`\n${end}`, bodyStart)
-		const body = content.slice(bodyStart, endIndex >= 0 ? endIndex : bodyStart)
-		return body.trimEnd()
+
+		let bodyStart = startIndex + start.length
+		while (bodyStart < content.length && (content[bodyStart] === '\n' || content[bodyStart] === '\r')) {
+			bodyStart += 1
+		}
+
+		const endWithNewline = content.indexOf(`\n${end}`, bodyStart)
+		const endIndex = endWithNewline >= 0
+			? endWithNewline
+			: content.indexOf(end, bodyStart)
+		const body = endIndex >= 0 ? content.slice(bodyStart, endIndex) : content.slice(bodyStart)
+		return body.replace(/\r/g, '').trimEnd()
 	}
 
 	const summaryLines = (content: string): string[] => {
