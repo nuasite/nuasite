@@ -146,7 +146,9 @@ const createJsonlRecords = (pages: PageMeta[], redirects: RedirectMeta[]): strin
 export const updateAgentsSummary = async (pages: PageMeta[], redirects: RedirectMeta[]): Promise<void> => {
 	const jsonlRecords = createJsonlRecords(pages, redirects)
 	const summaryBody = jsonlRecords.join('\n')
-	const summaryBlock = `${SUMMARY_START}\n\n${summaryBody}${summaryBody ? '\n' : ''}\n${SUMMARY_END}\n`
+	const summaryBlock = summaryBody
+		? `${SUMMARY_START}\n${summaryBody}\n${SUMMARY_END}\n`
+		: `${SUMMARY_START}\n${SUMMARY_END}\n`
 	const agentsContent = await fs.readFile(AGENTS_PATH, 'utf8').catch(() => '')
 
 	if (agentsContent.includes(SUMMARY_START) && agentsContent.includes(SUMMARY_END)) {
@@ -158,6 +160,6 @@ export const updateAgentsSummary = async (pages: PageMeta[], redirects: Redirect
 	}
 
 	const prefix = agentsContent.trimEnd()
-	const separator = prefix.length === 0 ? '' : '\n\n'
+	const separator = prefix.length === 0 ? '' : '\n'
 	await fs.writeFile(AGENTS_PATH, `${prefix}${separator}${summaryBlock}`, 'utf8')
 }

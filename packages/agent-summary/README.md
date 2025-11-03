@@ -46,10 +46,8 @@ JSONL excerpt:
 
 ```
 <page_summary>
-
 {"kind":"page","route":"/docs/getting-started","title":"Getting started","description":"Overview of the quickstart workflow.","headlines":[{"level":"h1","text":"Getting started"},{"level":"h2","text":"Install"}]}
 {"kind":"redirect","route":"/old-path","to":"/docs/getting-started","status":"302"}
-
 </page_summary>
 ```
 
