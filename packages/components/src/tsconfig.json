@@ -1,6 +1,7 @@
 {
 	"extends": ["../tsconfig.settings.json", "astro/tsconfigs/strictest"],
 	"compilerOptions": {
+		"lib": ["DOM", "ESNext"],
 		"outDir": "../dist/types"
 	},
 }
