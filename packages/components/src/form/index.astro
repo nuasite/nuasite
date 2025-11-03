@@ -1,5 +1,6 @@
 ---
 import type { FormProps } from './types';
+import { submitButtonRegex } from './utils';
 
 export type Props = FormProps
 
@@ -11,72 +12,76 @@ const {
 	submittingMessage = "Submitting...",
 	networkErrorMessage = "Network error!",
 	tryAgainMessage = "Try again",
+	fastSubmitMessage = "Please wait a moment before submitting.",
+	...rest
 } = Astro.props;
 
 const slotContent = await Astro.slots.render("default");
-const submitButtonRegex =
-	/<button(?![^>]*type\s*=\s*["']button["'])[^>]*>|<input[^>]*type\s*=\s*["']submit["'][^>]*>/i;
 
 if (!submitButtonRegex.test(slotContent)) {
 	console.error(`❌ No submit button found in form "${formId}".`);
 	throw new Error(`Form "${formId}" is missing a submit button`);
 }
 
-const honeypotFieldName = `contact_${crypto.randomUUID().substring(0, 8)}`;
+const honeypotFieldName = `contact_required`;
 const honeypotId = `${honeypotFieldName}_${formId}`;
+const tokenFieldName = `token_${crypto.randomUUID().substring(0, 8)}`;
+const tokenId = `${tokenFieldName}_${formId}`;
 ---
 
 <astro-form>
 	<form
 		action={action}
-		method="post"
 		class="astro-from"
 		data-form-id={formId}
 		data-honeypot-field={honeypotFieldName}
+		data-token-field={tokenFieldName}
 		data-success-message={successMessage}
 		data-error-message={errorMessage}
 		data-submitting-message={submittingMessage}
 		data-network-error-message={networkErrorMessage}
 		data-try-again-message={tryAgainMessage}
-		novalidate
+		data-fast-submit-message={fastSubmitMessage}
+		{...rest}
 	>
-		<div class="absolute opacity-0 pointer-events-none -left-[9999px]">
-			<label for={honeypotId}>Leave this field empty</label>
-			<input
-				type="text"
-				id={honeypotId}
-				name={honeypotFieldName}
-				tabindex="-1"
-				autocomplete="off"
-				aria-hidden="true"
-			/>
+		<div class="relative index-1">
+			<div class="sr-only">
+				<label for={honeypotId}>Leave this field empty</label>
+				<input
+					type="text"
+					id={honeypotId}
+					name={honeypotFieldName}
+					tabindex="-1"
+					autocomplete="off"
+					aria-hidden="true"
+				/>
+			</div>
+			<slot />
 		</div>
 
-	  <div class="relative index-1">
-	    <slot />
-	  </div>
+		<input type="hidden" id={tokenId} name={tokenFieldName} value="" />
 
-	  <div id={`${formId}-status`} class="mt-4 hidden" role="alert" aria-live="polite">
-	    <div class="status-success hidden text-green-600 bg-green-50 border border-green-200 rounded-md p-3 mb-4">
-	      <svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
-	        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-	      </svg>
-	      <span>{successMessage}</span>
-	    </div>
-	    <div class="status-error hidden text-red-600 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
-	      <svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
-	        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-	      </svg>
-	      <span>{errorMessage}</span>
-	    </div>
-	    <div class="status-loading hidden text-blue-600 bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
-	      <svg class="w-5 h-5 inline mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
-	        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-	        <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-	      </svg>
-	      <span>{submittingMessage}</span>
-	    </div>
-	  </div>
+		<div id={`${formId}-status`} class="mt-4 hidden" role="alert" aria-live="polite">
+			<div class="status-success hidden text-green-600 bg-green-50 border border-green-200 rounded-md p-3 mb-4">
+				<svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
+					<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+				</svg>
+				<span>{successMessage}</span>
+			</div>
+			<div class="status-error hidden text-red-600 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
+				<svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
+					<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+				</svg>
+				<span>{errorMessage}</span>
+			</div>
+			<div class="status-loading hidden text-blue-600 bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+				<svg class="w-5 h-5 inline mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+					<path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+				</svg>
+				<span>{submittingMessage}</span>
+			</div>
+		</div>
 	</form>
 </astro-form>
 
@@ -90,13 +95,16 @@ const honeypotId = `${honeypotFieldName}_${formId}`;
 				return
 			}
 
+			const minSubmitDelay = 1200
 			const formId = form?.dataset.formId
 			const honeypotFieldName = form.dataset.honeypotField
+			const tokenFieldName = form.dataset.tokenField
 			const successMessage = form.dataset.successMessage
 			const errorMessage = form.dataset.errorMessage
 			const submittingMessage = form.dataset.submittingMessage
 			const networkErrorMessage = form.dataset.networkErrorMessage
 			const tryAgainMessage = form.dataset.tryAgainMessage
+			const fastSubmitMessage = form.dataset.fastSubmitMessage
 
 			const statusContainer = document.getElementById(`${formId}-status`)
 			const successStatus = statusContainer?.querySelector('.status-success')
@@ -144,11 +152,54 @@ const honeypotId = `${honeypotFieldName}_${formId}`;
 				}
 			};
 
+			const tokenInput = tokenFieldName
+				? form.querySelector(`[name="${tokenFieldName}"]`) as HTMLInputElement | null
+				: null
+
+			const createTokenValue = () => {
+				const timestamp = Date.now()
+				const randomSegment = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+					? crypto.randomUUID().replace(/-/g, '')
+					: Math.random().toString(36).slice(2)
+
+				return {
+					value: `${formId || 'form'}:${timestamp}:${randomSegment}`,
+					timestamp,
+				}
+			}
+
+			let activationTime = performance.now()
+
+			const refreshSubmissionGuards = () => {
+				activationTime = performance.now()
+
+				if (tokenInput) {
+					const { value } = createTokenValue()
+					tokenInput.value = value
+					tokenInput.defaultValue = value
+				}
+			}
+
+			refreshSubmissionGuards()
+
 			form.addEventListener('submit', async (e) => {
 				e.preventDefault()
 
 				const honey = honeypotFieldName && form.querySelector(`[name="${honeypotFieldName}"]`) as HTMLInputElement
 				if (honey && honey.value) {
+					showError(tryAgainMessage)
+					return
+				}
+
+				const elapsed = performance.now() - activationTime
+				if (minSubmitDelay > 0 && elapsed < minSubmitDelay) {
+					showError(fastSubmitMessage || tryAgainMessage)
+					return
+				}
+
+				activationTime = performance.now()
+
+				if (tokenInput && !tokenInput.value) {
 					showError(tryAgainMessage)
 					return
 				}
@@ -168,6 +219,7 @@ const honeypotId = `${honeypotFieldName}_${formId}`;
 					if (response.ok && 'success' in result && result.success) {
 						showSuccess(successMessage)
 						form.reset()
+						refreshSubmissionGuards()
 					} else {
 						showError(errorMessage)
 					}
