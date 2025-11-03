@@ -6,7 +6,7 @@
 	"license": "Apache-2.0",
 	"scripts": {
 		"dev": "astro dev",
-		"build": "astro build",
+		"build": "nua build",
 		"preview": "astro preview"
 	},
 	"dependencies": {
