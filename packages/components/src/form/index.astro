@@ -1,6 +1,6 @@
 ---
 import type { FormProps } from './types';
-import { submitButtonRegex } from './utils';
+import { submitButtonRegex, honeypotConflictRegex, honeypotFields } from './utils';
 
 export type Props = FormProps
 
@@ -24,8 +24,12 @@ if (!submitButtonRegex.test(slotContent)) {
 	throw new Error(`Form "${formId}" is missing a submit button`);
 }
 
-const honeypotFieldName = `contact_required`;
-const honeypotId = `${honeypotFieldName}_${formId}`;
+if (honeypotConflictRegex.test(slotContent)) {
+	console.error(`❌ Form "${formId}" contains field names ending with "_required" which conflict with honeypot fields.`);
+	throw new Error(`Form "${formId}" has conflicting field names. Avoid using field names ending with "_required" as they are reserved for honeypot fields.`);
+}
+
+const cssHoneypotField = `css_trap_${crypto.randomUUID().substring(0, 8)}`;
 const tokenFieldName = `token_${crypto.randomUUID().substring(0, 8)}`;
 const tokenId = `${tokenFieldName}_${formId}`;
 ---
@@ -35,7 +39,6 @@ const tokenId = `${tokenFieldName}_${formId}`;
 		action={action}
 		class="astro-from"
 		data-form-id={formId}
-		data-honeypot-field={honeypotFieldName}
 		data-token-field={tokenFieldName}
 		data-success-message={successMessage}
 		data-error-message={errorMessage}
@@ -43,40 +46,52 @@ const tokenId = `${tokenFieldName}_${formId}`;
 		data-network-error-message={networkErrorMessage}
 		data-try-again-message={tryAgainMessage}
 		data-fast-submit-message={fastSubmitMessage}
+		data-required-fields={honeypotFields.map(field => field.name).join(',')}
 		method={method}
 		{...rest}
 	>
 		<div class="relative index-1">
 			<div class="sr-only">
-				<label for={honeypotId}>Leave this field empty</label>
-				<input
-					type="text"
-					id={honeypotId}
-					name={honeypotFieldName}
-					tabindex="-1"
-					autocomplete="off"
-					aria-hidden="true"
-				/>
+				{honeypotFields.map(field => (
+					<label for={`${field.name}_${formId}`}>Leave this {field.name} empty</label>
+					<input
+						type={field.type}
+						id={`${field.name}_${formId}`}
+						name={field.name}
+						tabindex="-1"
+						autocomplete="off"
+						aria-hidden="true"
+					/>
+				))}
 			</div>
+
+			<input
+				type="text"
+				name={cssHoneypotField}
+				style="position: absolute; left: -9999px; opacity: 0;"
+				tabindex="-1"
+				autocomplete="nope"
+			/>
+
 			<slot />
 		</div>
 
 		<input type="hidden" id={tokenId} name={tokenFieldName} value="" />
 
 		<div id={`${formId}-status`} class="mt-4 hidden" role="alert" aria-live="polite">
-			<div class="status-success hidden text-green-600 bg-green-50 border border-green-200 rounded-md p-3 mb-4">
+			<div data-status="success" class="hidden text-green-600 bg-green-50 border border-green-200 rounded-md p-3 mb-4">
 				<svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
 					<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
 				</svg>
 				<span>{successMessage}</span>
 			</div>
-			<div class="status-error hidden text-red-600 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
+			<div data-status="error" class="hidden text-red-600 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
 				<svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
 					<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
 				</svg>
 				<span>{errorMessage}</span>
 			</div>
-			<div class="status-loading hidden text-blue-600 bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+			<div data-status="loading" class="hidden text-blue-600 bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
 				<svg class="w-5 h-5 inline mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
 					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 					<path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -89,6 +104,14 @@ const tokenId = `${tokenFieldName}_${formId}`;
 
 <script>
 	class AstroForm extends HTMLElement {
+		private interactionScore = 0;
+		private fieldInteractions = new Set<string>();
+		private mouseMovements = 0;
+		private keyboardEvents = 0;
+		private focusEvents = 0;
+		private startTime = Date.now();
+		private honeypotFieldNames: string[] = []
+
 		connectedCallback() {
 			const form = this.querySelector('form')
 
@@ -97,9 +120,10 @@ const tokenId = `${tokenFieldName}_${formId}`;
 				return
 			}
 
+			this.setupInteractionTracking(form)
+
 			const minSubmitDelay = 1200
 			const formId = form?.dataset.formId
-			const honeypotFieldName = form.dataset.honeypotField
 			const tokenFieldName = form.dataset.tokenField
 			const successMessage = form.dataset.successMessage
 			const errorMessage = form.dataset.errorMessage
@@ -107,11 +131,12 @@ const tokenId = `${tokenFieldName}_${formId}`;
 			const networkErrorMessage = form.dataset.networkErrorMessage
 			const tryAgainMessage = form.dataset.tryAgainMessage
 			const fastSubmitMessage = form.dataset.fastSubmitMessage
+			this.honeypotFieldNames = form.dataset.requiredFields?.split(',') || []
 
 			const statusContainer = document.getElementById(`${formId}-status`)
-			const successStatus = statusContainer?.querySelector('.status-success')
-			const errorStatus = statusContainer?.querySelector('.status-error')
-			const loadingStatus = statusContainer?.querySelector('.status-loading')
+			const successStatus = statusContainer?.querySelector('[data-status="success"]')
+			const errorStatus = statusContainer?.querySelector('[data-status="error"]')
+			const loadingStatus = statusContainer?.querySelector('[data-status="loading"]')
 
 			const hideAllStatus = () => {
 				statusContainer?.classList.add('hidden')
@@ -187,8 +212,22 @@ const tokenId = `${tokenFieldName}_${formId}`;
 			form.addEventListener('submit', async (e) => {
 				e.preventDefault()
 
-				const honey = honeypotFieldName && form.querySelector(`[name="${honeypotFieldName}"]`) as HTMLInputElement
-				if (honey && honey.value) {
+				if (!this.passesHumanityChecks(form)) {
+					showError(tryAgainMessage)
+					return
+				}
+
+				for (const fieldName of this.honeypotFieldNames) {
+					const field = form.querySelector(`[name="${fieldName}"]`) as HTMLInputElement;
+					if (field && field.value.trim()) {
+						showError(tryAgainMessage)
+						return
+					}
+				}
+
+				// Check CSS honeypot
+				const cssHoneypot = form.querySelector('input[style*="position: absolute; left: -9999px"]') as HTMLInputElement;
+				if (cssHoneypot && cssHoneypot.value.trim()) {
 					showError(tryAgainMessage)
 					return
 				}
@@ -230,6 +269,83 @@ const tokenId = `${tokenFieldName}_${formId}`;
 					showError(networkErrorMessage)
 				}
 			})
+		}
+
+		private setupInteractionTracking(form: HTMLFormElement) {
+			let mouseMoveTimeout: NodeJS.Timeout;
+			document.addEventListener('mousemove', () => {
+				clearTimeout(mouseMoveTimeout);
+				mouseMoveTimeout = setTimeout(() => {
+					this.mouseMovements++;
+					this.updateInteractionScore();
+				}, 100);
+			});
+
+			form.addEventListener('keydown', (e) => {
+				if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+					this.keyboardEvents++;
+					this.updateInteractionScore();
+				}
+			});
+
+			const inputs = form.querySelectorAll('input[type="text"], input[type="email"], textarea');
+			inputs.forEach(input => {
+				input.addEventListener('focus', () => {
+					this.focusEvents++;
+					this.fieldInteractions.add((input as HTMLInputElement).name);
+					this.updateInteractionScore();
+				});
+			});
+		}
+
+		private updateInteractionScore() {
+			this.interactionScore =
+				(this.mouseMovements > 0 ? 1 : 0) +
+				(this.keyboardEvents > 5 ? 1 : 0) +
+				(this.focusEvents > 1 ? 1 : 0) +
+				(this.fieldInteractions.size > 1 ? 1 : 0);
+		}
+
+		private detectSuspiciousBrowser(): boolean {
+			// Check for headless browser indicators
+			const suspiciousIndicators = [
+				// Missing expected browser features
+				!window.navigator.webdriver === undefined,
+				!window.navigator.plugins.length,
+				!window.navigator.languages.length,
+
+				// Headless Chrome indicators
+				window.navigator.userAgent.includes('HeadlessChrome'),
+				window.outerWidth === 0,
+				window.outerHeight === 0,
+
+				// Puppeteer indicators
+				(window as any).__nightmare,
+				(window as any)._phantom,
+				(window as any).callPhantom,
+			];
+
+			return suspiciousIndicators.some(indicator => indicator);
+		}
+
+		private passesHumanityChecks(form: HTMLFormElement): boolean {
+			const timeSpent = Date.now() - this.startTime;
+
+			if (timeSpent < 3000) return false;
+
+			if (this.interactionScore < 2) return false;
+
+			for (const fieldName of this.honeypotFieldNames) {
+				const field = form.querySelector(`[name="${fieldName}"]`) as HTMLInputElement
+				if (field && field.value.trim()) return false
+			}
+
+			const cssHoneypot = form.querySelector('input[style*="position: absolute; left: -9999px"]') as HTMLInputElement
+			if (cssHoneypot && cssHoneypot.value.trim()) return false
+
+			if (this.detectSuspiciousBrowser()) return false
+
+			return true
 		}
 	}
 
