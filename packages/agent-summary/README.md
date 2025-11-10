@@ -3,6 +3,7 @@
 `@nuasite/agent-summary` is a tiny Astro integration that turns your built site into a machine-readable catalog (`AGENTS.md`) for agentic or LLM-driven tooling. During `astro build` it walks every generated HTML page, extracts lightweight metadata, captures redirects, and keeps several machine-friendly blocks in `AGENTS.md` up to date.
 
 ## What it does
+
 - Discovers every concrete page emitted by Astro (skipping redirect-only routes).
 - Reads the built HTML, normalizes the title/description, and records prominent headings as contextual breadcrumbs.
 - Serializes each page (and redirect) into JSONL blocks bounded by dedicated `<page_summary*>` markers.
@@ -18,12 +19,13 @@ bun add -D @nuasite/agent-summary
 ```
 
 ## Usage
+
 1. Ensure there is an `AGENTS.md` at the project root (the integration will create one if it is missing).
 2. Register the integration in your `astro.config.mjs`:
 
 ```ts
-import { defineConfig } from 'astro/config'
 import { agentsSummary } from '@nuasite/agent-summary'
+import { defineConfig } from 'astro/config'
 
 export default defineConfig({
 	integrations: [

@@ -41,8 +41,8 @@ helper utilities:
 import type { FormProps } from '@nuasite/components'
 
 const defaults: FormProps = {
-  formId: 'contact',
-  successMessage: 'Success!',
+	formId: 'contact',
+	successMessage: 'Success!',
 }
 ```
 

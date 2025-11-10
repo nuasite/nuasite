@@ -1,4 +1,4 @@
-import { build as astroBuild, type AstroInlineConfig } from 'astro'
+import { type AstroInlineConfig, build as astroBuild } from 'astro'
 import Stacktracey from 'stacktracey'
 
 export async function build(inlineConfig: AstroInlineConfig) {

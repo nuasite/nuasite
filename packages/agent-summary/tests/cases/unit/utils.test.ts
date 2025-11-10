@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { promises as fs } from 'node:fs'
-import path from 'node:path'
 import os from 'node:os'
+import path from 'node:path'
 import type { PageMeta, RedirectMeta } from '../../../src/types.ts'
 
 const utilsModule = await import('../../../src/utils.ts')
@@ -58,9 +58,11 @@ describe('resolveHtmlPath', () => {
 
 	afterEach(async () => {
 		const tempRoots = await fs.readdir(os.tmpdir())
-		await Promise.all(tempRoots
-			.filter((name) => name.startsWith('agent-summary-test-'))
-			.map((name) => fs.rm(path.join(os.tmpdir(), name), { recursive: true, force: true }).catch(() => {})))
+		await Promise.all(
+			tempRoots
+				.filter((name) => name.startsWith('agent-summary-test-'))
+				.map((name) => fs.rm(path.join(os.tmpdir(), name), { recursive: true, force: true }).catch(() => {})),
+		)
 	})
 
 	it('finds index.html inside a directory', async () => {

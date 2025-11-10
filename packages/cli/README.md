@@ -42,12 +42,12 @@ You can also drive the builder yourself if you need to supply a custom inline
 config:
 
 ```ts
-import { build } from '@nuasite/build'
 import { agentsSummary } from '@nuasite/agent-summary'
+import { build } from '@nuasite/build'
 
 await build({
-  root: new URL('../site', import.meta.url),
-  integrations: [agentsSummary()],
+	root: new URL('../site', import.meta.url),
+	integrations: [agentsSummary()],
 })
 ```
 

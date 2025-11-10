@@ -1,5 +1,5 @@
-import glob from 'fast-glob'
 import * as fs from 'node:fs/promises'
+import glob from 'fast-glob'
 
 ;(async () => {
 	const cwd = process.cwd()
