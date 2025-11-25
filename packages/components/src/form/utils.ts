@@ -6,4 +6,4 @@ export const honeypotFields = [
 	{ name: `website_url_required`, type: 'url' },
 	{ name: `phone_number_required`, type: 'tel' },
 	{ name: `company_name_required`, type: 'text' },
-] as const;
+] as const

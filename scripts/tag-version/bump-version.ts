@@ -1,6 +1,5 @@
-import * as fs from 'node:fs/promises'
 import glob from 'fast-glob'
-
+import * as fs from 'node:fs/promises'
 ;(async () => {
 	const cwd = process.cwd()
 	const version = process.argv[2]

@@ -81,8 +81,8 @@ if (canProxyDirectly && command && ['build', 'dev', 'preview'].includes(command)
 				root: process.cwd(),
 				integrations: [agentsSummary()],
 				vite: {
-					server: {}
-				}
+					server: {},
+				},
 			}
 
 			for (let i = 0; i < args.length; i++) {
