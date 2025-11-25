@@ -100,6 +100,10 @@ const componentEntries = [
 			{
 				"name": "deliveryBase",
 				"description": "Prefix for the transform endpoint. Defaults to `/cdn-cgi/image`."
+			},
+			{
+				"name": "allowedDomains",
+				"description": "List of hostnames allowed for transforms; leave empty to allow all and fall back to plain `src` when not matched."
 			}
 		]
 	}

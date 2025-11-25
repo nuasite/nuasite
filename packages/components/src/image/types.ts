@@ -100,4 +100,6 @@ export type ImageProps = BaseProps & {
 	transformOptions?: CloudflareImageTransformOptions
 	/** Prefix for transform delivery path, defaults to `/cdn-cgi/image`. */
 	deliveryBase?: string
+	/** Allowed domains for image delivery. */
+	allowedDomains?: string[]
 }
