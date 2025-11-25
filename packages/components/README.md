@@ -39,10 +39,10 @@ can override the default success, error, submitting, and retry copy via props.
 
 ```astro
 ---
-import { ResponsiveImage } from '@nuasite/components'
+import { Image } from '@nuasite/components'
 ---
 
-<ResponsiveImage
+<Image
   src="https://cdn.nuasite.com/assets/www-mangoweb-cz/vakovako-3.webp"
   alt="Abstract architectural pattern with curved windows."
   widths={[480, 768, 1024, 1400, 1920]}
@@ -57,6 +57,7 @@ Key props:
 - `sizes`: `sizes` attribute string; controls browser selection.
 - `transformOptions`: Cloudflare transform params (quality, fit, dpr, format, etc.).
 - `deliveryBase`: Override `/cdn-cgi/image` if you proxy through another path or domain.
+- `allowedDomains`: Whitelist of hostnames that should be transformed. Leave empty to allow all; when set, non-matching hosts fall back to the original `src` with no transform.
 
 Absolute `src` values keep their origin and prepend the transform path, e.g.
 `https://cdn.nuasite.com/cdn-cgi/image/.../assets/file.webp`.
