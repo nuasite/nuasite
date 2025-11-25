@@ -1,7 +1,7 @@
 /**
  * Base properties for form components containing optional message strings
  */
-export interface BaseProps extends astroHTML.JSX.FormHTMLAttributes {
+interface BaseProps extends astroHTML.JSX.FormHTMLAttributes {
 	/** Message to display when form submission is successful */
 	successMessage?: string
 	/** Message to display when form submission encounters an error */
