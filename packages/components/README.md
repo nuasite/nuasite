@@ -1,9 +1,10 @@
 # @nuasite/components
 
 Reusable [Astro](https://astro.build/) components optimized for sites connected to
-[Nua Site](https://www.nuasite.com). The package currently ships a form widget
-that takes care of wiring up Nua Site submissions while providing friendly UI
-states you can customize.
+[Nua Site](https://www.nuasite.com). The package currently ships:
+
+- `Form`: Progressive enhancement for Nua Site form submissions with friendly UI states.
+- `Image`: Ergonomic Cloudflare Image Transform helper that builds `/cdn-cgi/image/<options>/<src>` URLs and responsive `srcset`.
 
 ## Install
 
@@ -15,6 +16,8 @@ The package targets Astro projects and expects `typescript@^5` to be available
 in your workspace (peer dependency).
 
 ## Usage
+
+### Form
 
 ```astro
 ---
@@ -31,6 +34,32 @@ import { Form } from '@nuasite/components'
 
 Pass either a `formId` issued by Nua Site, or a custom `action` URL. You
 can override the default success, error, submitting, and retry copy via props.
+
+### Responsive image (Cloudflare)
+
+```astro
+---
+import { ResponsiveImage } from '@nuasite/components'
+---
+
+<ResponsiveImage
+  src="https://cdn.nuasite.com/assets/www-mangoweb-cz/vakovako-3.webp"
+  alt="Abstract architectural pattern with curved windows."
+  widths={[480, 768, 1024, 1400, 1920]}
+  sizes="(min-width: 1024px) 60vw, 100vw"
+  transformOptions={{ fit: 'cover', dpr: 1.5 }}
+/>
+```
+
+Key props:
+
+- `widths`: Breakpoints used to build `srcset` (defaults provided).
+- `sizes`: `sizes` attribute string; controls browser selection.
+- `transformOptions`: Cloudflare transform params (quality, fit, dpr, format, etc.).
+- `deliveryBase`: Override `/cdn-cgi/image` if you proxy through another path or domain.
+
+Absolute `src` values keep their origin and prepend the transform path, e.g.
+`https://cdn.nuasite.com/cdn-cgi/image/.../assets/file.webp`.
 
 ## Types
 
