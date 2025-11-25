@@ -1,0 +1,62 @@
+---
+import type { CloudflareImageTransformOptions, ImageProps } from './types'
+import { serializeOptions } from './utils'
+
+export type Props = ImageProps
+
+const {
+  src,
+  alt,
+  widths = [480, 768, 1024, 1400],
+  sizes = '(min-width: 1024px) 50vw, 100vw',
+  quality = 85,
+  format = 'auto',
+  transformOptions = {},
+  deliveryBase = '/cdn-cgi/image',
+  loading = 'lazy',
+  decoding = 'async',
+  ...rest
+} = Astro.props
+
+const isAbsoluteSrc = typeof src === 'string' && (src.startsWith('http://') || src.startsWith('https://'))
+const parsedSrc = isAbsoluteSrc ? new URL(src) : null
+const baseFromSrc = parsedSrc ? parsedSrc.origin : ''
+const normalizeBaseRaw = deliveryBase.endsWith('/') ? deliveryBase.slice(0, -1) : deliveryBase
+const normalizeBase =
+  isAbsoluteSrc && normalizeBaseRaw.startsWith('/')
+    ? `${baseFromSrc}${normalizeBaseRaw}`
+    : normalizeBaseRaw
+const normalizeSource = parsedSrc
+  ? `${parsedSrc.pathname}${parsedSrc.search}`
+  : src?.replace(/^\/+/, '')
+
+const baseOptions: CloudflareImageTransformOptions = {
+  quality,
+  format,
+  ...transformOptions,
+}
+
+const buildUrl = (width: number) => {
+  const optionsWithWidth: CloudflareImageTransformOptions = {
+    ...baseOptions,
+    width,
+  }
+
+  const optionsString = serializeOptions(optionsWithWidth)
+  return `${normalizeBase}/${optionsString}${normalizeSource}`
+}
+
+const effectiveWidths = widths.length ? widths : [1400]
+const srcset = effectiveWidths.map((width) => `${buildUrl(width)} ${width}w`).join(', ')
+const fallbackSrc = buildUrl(effectiveWidths[effectiveWidths.length - 1]!)
+---
+
+<img
+  src={fallbackSrc}
+  srcset={srcset}
+  sizes={sizes}
+  alt={alt}
+  loading={loading}
+  decoding={decoding}
+  {...rest}
+/>
