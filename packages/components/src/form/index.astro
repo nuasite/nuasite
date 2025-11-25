@@ -1,6 +1,6 @@
 ---
-import type { FormProps } from './types';
-import { submitButtonRegex, honeypotConflictRegex, honeypotFields } from './utils';
+import type { FormProps } from './types'
+import { submitButtonRegex, honeypotConflictRegex, honeypotFields } from './utils'
 
 export type Props = FormProps
 
@@ -15,23 +15,23 @@ const {
 	tryAgainMessage = "Try again",
 	fastSubmitMessage = "Please wait a moment before submitting.",
 	...rest
-} = Astro.props;
+} = Astro.props
 
-const slotContent = await Astro.slots.render("default");
+const slotContent = await Astro.slots.render("default")
 
 if (!submitButtonRegex.test(slotContent)) {
-	console.error(`❌ No submit button found in form "${formId}".`);
-	throw new Error(`Form "${formId}" is missing a submit button`);
+	console.error(`❌ No submit button found in form "${formId}".`)
+	throw new Error(`Form "${formId}" is missing a submit button`)
 }
 
 if (honeypotConflictRegex.test(slotContent)) {
-	console.error(`❌ Form "${formId}" contains field names ending with "_required" which conflict with honeypot fields.`);
-	throw new Error(`Form "${formId}" has conflicting field names. Avoid using field names ending with "_required" as they are reserved for honeypot fields.`);
+	console.error(`❌ Form "${formId}" contains field names ending with "_required" which conflict with honeypot fields.`)
+	throw new Error(`Form "${formId}" has conflicting field names. Avoid using field names ending with "_required" as they are reserved for honeypot fields.`)
 }
 
-const cssHoneypotField = `css_trap_${crypto.randomUUID().substring(0, 8)}`;
-const tokenFieldName = `token_${crypto.randomUUID().substring(0, 8)}`;
-const tokenId = `${tokenFieldName}_${formId}`;
+const cssHoneypotField = `css_trap_${crypto.randomUUID().substring(0, 8)}`
+const tokenFieldName = `token_${crypto.randomUUID().substring(0, 8)}`
+const tokenId = `${tokenFieldName}_${formId}`
 ---
 
 <astro-form>
