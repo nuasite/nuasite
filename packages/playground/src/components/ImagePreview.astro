@@ -1,0 +1,17 @@
+---
+import Image from '@nuasite/components/Image.astro'
+---
+
+<div class="space-y-4">
+	<p class="text-sm text-slate-300">
+		Cloudflare Image Transform via <code class="rounded border border-slate-800 bg-slate-900 px-1 py-0.5 text-xs">/cdn-cgi/image</code>
+	</p>
+	<Image
+		src="https://cdn.nuasite.com/assets/www-mangoweb-cz/vakovako-3.webp"
+		alt="Abstract architectural pattern with curved windows."
+		widths={[480, 768, 1024, 1400, 1920]}
+		sizes="(min-width: 1024px) 64vw, 100vw"
+		class="w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900 shadow-lg"
+		transformOptions={{ fit: 'cover' }}
+	/>
+</div>

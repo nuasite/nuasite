@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/layout.astro'
 import FormPreview from '../components/FormPreview.astro'
+import ImagePreview from '../components/ImagePreview.astro'
 
 type StatusKey = 'ready' | 'beta' | 'soon'
 
@@ -62,6 +63,43 @@ const componentEntries = [
 			{
 				"name": "tryAgainMessage",
 				"description": "Message shown when the user can try submitting again. Defaults to \"Try again\"."
+			}
+		]
+	},
+	{
+		"name": "Responsive Image",
+		"slug": "image",
+		"githubUrl": "https://github.com/nuasite/nua/packages/components/image/index.astro",
+		"tagline": "Cloudflare `/cdn-cgi/image` made ergonomic.",
+		"description": "Generate responsive `srcset` URLs for Cloudflare Image Transform with a simple Astro component and typed options.",
+		"status": "ready",
+		"order": 2,
+		"highlights": [
+			"Builds `/cdn-cgi/image/<options>/<src>` URLs automatically with width breakpoints.",
+			"Supports most Cloudflare transform params via `transformOptions`.",
+			"Safe defaults for quality, format, and responsive `sizes`."
+		],
+		"props": [
+			{
+				"name": "src",
+				"required": true,
+				"description": "Original image path or absolute URL to transform."
+			},
+			{
+				"name": "widths",
+				"description": "Array of breakpoints used to generate the `srcset` (defaults provided)."
+			},
+			{
+				"name": "sizes",
+				"description": "Value for the `sizes` attribute; controls how browsers pick `srcset` entries."
+			},
+			{
+				"name": "transformOptions",
+				"description": "Cloudflare Image Transform options merged into every generated URL (fit, dpr, quality, etc.)."
+			},
+			{
+				"name": "deliveryBase",
+				"description": "Prefix for the transform endpoint. Defaults to `/cdn-cgi/image`."
 			}
 		]
 	}
@@ -201,6 +239,8 @@ const upcomingComponents = [
 								<div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-6 shadow-inner">
 									{component.slug === 'form' ? (
 										<FormPreview />
+									) : component.slug === 'image' ? (
+										<ImagePreview />
 									) : (
 										<div class="flex h-full min-h-[220px] items-center justify-center rounded-xl border border-dashed border-slate-800 bg-slate-950/60 px-6 py-12 text-center text-sm text-slate-500">
 											Preview coming soon.

@@ -19,12 +19,13 @@
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"type": "module",
-	"module": "src/index.ts",
-	"types": "src/index.ts",
-	"exports": {
-		".": "./src/index.ts",
-		"./Form.astro": "./src/form/index.astro"
-	},
+ "module": "src/index.ts",
+ "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./Form.astro": "./src/form/index.astro",
+    "./Image.astro": "./src/image/index.astro"
+  },
 	"peerDependencies": {
 		"typescript": "^5"
 	},
