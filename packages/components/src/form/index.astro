@@ -254,15 +254,17 @@ const tokenId = `${tokenFieldName}_${formId}`
 						headers: { 'X-Requested-With': 'XMLHttpRequest' },
 					})
 
-					let result = {};
+					let result: any = {};
 					try { result = await response.json() } catch {}
 
 					if (response.ok && 'success' in result && result.success) {
-						showSuccess(successMessage)
+						const message = result.message || successMessage
+						showSuccess(message)
 						form.reset()
 						refreshSubmissionGuards()
 					} else {
-						showError(errorMessage)
+						const message = result.error || result.message || errorMessage
+						showError(message)
 					}
 				} catch (err) {
 					console.error('Form submission error:', err);
