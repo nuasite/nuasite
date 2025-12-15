@@ -15,7 +15,8 @@
 		"directory": "packages/core"
 	},
 	"scripts": {
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
 	},
 	"devDependencies": {
 		"@astrojs/check": "catalog:astro",

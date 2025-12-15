@@ -31,7 +31,8 @@
 		"vite": "catalog:build"
 	},
 	"scripts": {
-		"test": "bun test"
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts",
+		"postpack": "bun run ../../scripts/workspace-deps/restore-deps.ts"
 	},
 	"keywords": [
 		"devtools",
