@@ -64,6 +64,7 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 					componentDefinitions,
 					config,
 					idCounter,
+					command,
 				}
 
 				updateConfig({

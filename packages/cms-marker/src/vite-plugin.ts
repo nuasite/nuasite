@@ -8,10 +8,11 @@ export interface VitePluginContext {
 	componentDefinitions: Record<string, ComponentDefinition>
 	config: Required<CmsMarkerOptions>
 	idCounter: { value: number }
+	command: 'dev' | 'build' | 'preview' | 'sync'
 }
 
 export function createVitePlugin(context: VitePluginContext): Plugin[] {
-	const { manifestWriter, componentDefinitions, config } = context
+	const { manifestWriter, componentDefinitions, config, command } = context
 
 	const virtualManifestPlugin: Plugin = {
 		name: 'cms-marker-virtual-manifest',
@@ -34,8 +35,11 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 	}
 
 	// Create the Astro transform plugin to inject source location attributes
+	// Only enabled in dev mode - during build, source locations are handled
+	// in build-processor.ts after HTML is generated
 	const astroTransformPlugin = createAstroTransformPlugin({
 		markComponents: config.markComponents,
+		enabled: command === 'dev',
 	})
 
 	// Note: We cannot use transformIndexHtml for static Astro builds because

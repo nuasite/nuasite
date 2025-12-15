@@ -5,6 +5,7 @@ import type { Plugin } from 'vite'
 
 export interface AstroTransformOptions {
 	markComponents?: boolean
+	enabled?: boolean
 }
 
 /**
@@ -15,16 +16,27 @@ export interface AstroTransformOptions {
  * NOTE: Component marking is NOT done here because modifying component tags
  * in the raw .astro source breaks Astro's JSX-like parser. Component marking
  * is done at the HTML output level instead (in dev-middleware and build-processor).
+ *
+ * IMPORTANT: This plugin should only run in dev mode. During build, modifying
+ * .astro source files can cause Vite's build-import-analysis to fail with
+ * parsing errors. In build mode, source locations are extracted from Astro's
+ * compiler output in build-processor.ts instead.
  */
 export function createAstroTransformPlugin(options: AstroTransformOptions = {}): Plugin {
 	// Component marking is intentionally disabled at the transform level
 	// const { markComponents = true } = options;
+	const { enabled = true } = options
 
 	return {
 		name: 'astro-cms-source-injector',
 		enforce: 'pre', // Run before Astro's own transforms
 
 		async transform(code: string, id: string) {
+			// Skip transformation if disabled (e.g., during build mode)
+			if (!enabled) {
+				return null
+			}
+
 			if (!id.endsWith('.astro')) {
 				return null
 			}
