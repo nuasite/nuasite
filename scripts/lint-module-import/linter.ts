@@ -1,4 +1,4 @@
-import glob from 'fast-glob'
+import { Glob } from 'bun'
 import JSON5 from 'json5'
 import { existsSync } from 'node:fs'
 import * as fs from 'node:fs/promises'
@@ -13,7 +13,11 @@ const allowedUnused = new Set([
 const allowedDirectoryImports = new Set([''])
 
 const processPackage = async (dir: string, projectList: ProjectList) => {
-	const files = await glob([`${dir}/src/**/*.{ts,tsx}`, `!${dir}/src/generated/**`], { onlyFiles: true })
+	const glob = new Glob(`${dir}/src/**/*.{ts,tsx}`)
+	const excludeGlob = new Glob(`${dir}/src/generated/**`)
+	const allFiles = Array.from(glob.scanSync())
+	const excludedFiles = new Set(Array.from(excludeGlob.scanSync()))
+	const files = allFiles.filter(file => !excludedFiles.has(file))
 	const contents = await Promise.all(files.map(async (it): Promise<[file: string, content: string]> => [it, await fs.readFile(it, 'utf-8')]))
 	const imports = new Set<string>()
 	const errors: { file: string; message: string; type: string }[] = []
@@ -112,7 +116,8 @@ interface Project {
 	}
 }
 ;(async () => {
-	const dirs = (await glob(process.cwd() + '/packages/*', { onlyDirectories: true }))
+	const glob = new Glob(process.cwd() + '/packages/*')
+	const dirs = Array.from(glob.scanSync({ onlyFiles: false }))
 		.filter(dir => !dir.endsWith('packages/playground'))
 		.filter(it => existsSync(`${it}/package.json`))
 		.filter(it => existsSync(join(it, 'src', 'tsconfig.json')))
