@@ -24,13 +24,13 @@
 	},
 	"dependencies": {
 		"@nuasite/agent-summary": "workspace:*",
-		"astro": "5.15.1",
-		"stacktracey": "2.1.8"
+		"astro": "catalog:astro",
+		"stacktracey": "catalog:parsers"
 	},
 	"devDependencies": {
-		"@types/bun": "latest"
+		"@types/bun": "catalog:build"
 	},
 	"peerDependencies": {
-		"typescript": "^5"
+		"typescript": "catalog:build"
 	}
 }

@@ -18,10 +18,10 @@
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"devDependencies": {
-		"@astrojs/check": "0.9.5",
-		"@astrojs/mdx": "4.3.8",
-		"@astrojs/rss": "4.0.13",
-		"@astrojs/sitemap": "3.6.0"
+		"@astrojs/check": "catalog:astro",
+		"@astrojs/mdx": "catalog:astro",
+		"@astrojs/rss": "catalog:astro",
+		"@astrojs/sitemap": "catalog:astro"
 	},
 	"peerDependencies": {
 		"@astrojs/check": "*",

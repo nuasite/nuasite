@@ -18,20 +18,52 @@
 		"ts:clean": "tsc --build --clean",
 		"tag-version": "./scripts/tag-version/run.sh $@"
 	},
-	"dependencies": {
-		"@types/js-yaml": "^4.0.9"
-	},
 	"devDependencies": {
-		"@actions/core": "^1.11.1",
-		"@biomejs/biome": "^2.3.1",
-		"@types/bun": "latest",
-		"dprint": "^0.50.2",
-		"fast-glob": "^3.3.3",
-		"js-yaml": "^4.1.0",
-		"json5": "^2.2.3",
-		"typescript": "^5"
+		"@actions/core": "catalog:build",
+		"@biomejs/biome": "catalog:build",
+		"@types/bun": "catalog:build",
+		"@types/js-yaml": "catalog:build",
+		"dprint": "catalog:build",
+		"js-yaml": "catalog:build",
+		"json5": "catalog:build",
+		"typescript": "catalog:build"
 	},
-	"workspaces": [
-		"packages/*"
-	]
+	"workspaces": {
+		"packages": [
+			"packages/*"
+		],
+		"catalog": {
+			"@types/bun": "latest"
+		},
+		"catalogs": {
+			"build": {
+				"@actions/core": "^1.11.1",
+				"@biomejs/biome": "^2.3.1",
+				"@types/bun": "latest",
+				"@types/js-yaml": "^4.0.9",
+				"dprint": "^0.50.2",
+				"js-yaml": "^4.1.0",
+				"json5": "^2.2.3",
+				"typescript": "^5",
+				"vite": "^6"
+			},
+			"astro": {
+				"@astrojs/check": "0.9.5",
+				"@astrojs/compiler": "^2.13.0",
+				"@astrojs/mdx": "4.3.8",
+				"@astrojs/rss": "4.0.13",
+				"@astrojs/sitemap": "3.6.0",
+				"astro": "^5.12.4"
+			},
+			"parsers": {
+				"node-html-parser": "^6.1.13",
+				"stacktracey": "2.1.8"
+			},
+			"ui": {
+				"@tailwindcss/vite": "^4.1.11",
+				"flowbite": "3.1.2",
+				"tailwindcss": "4.1.16"
+			}
+		}
+	}
 }

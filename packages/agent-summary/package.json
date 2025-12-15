@@ -19,13 +19,13 @@
 	"types": "src/index.ts",
 	"type": "module",
 	"dependencies": {
-		"astro": "^5.12.4"
+		"astro": "catalog:astro"
 	},
 	"devDependencies": {
-		"@types/bun": "latest"
+		"@types/bun": "catalog:build"
 	},
 	"peerDependencies": {
-		"typescript": "^5"
+		"typescript": "catalog:build"
 	},
 	"keywords": [
 		"devtools",
