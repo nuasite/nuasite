@@ -27,7 +27,7 @@
 		"./Image.astro": "./src/image/index.astro"
 	},
 	"peerDependencies": {
-		"typescript": "^5"
+		"typescript": "catalog:build"
 	},
 	"keywords": [
 		"nuasite",
