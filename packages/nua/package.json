@@ -23,6 +23,7 @@
 		"@astrojs/rss": "catalog:astro",
 		"@astrojs/sitemap": "catalog:astro",
 		"@nuasite/cli": "workspace:*",
+		"@nuasite/cms-marker": "workspace:*",
 		"@nuasite/components": "workspace:*",
 		"@nuasite/core": "workspace:*",
 		"@tailwindcss/vite": "catalog:ui",
