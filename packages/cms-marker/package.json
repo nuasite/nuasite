@@ -19,12 +19,12 @@
 	"types": "src/index.ts",
 	"type": "module",
 	"dependencies": {
-		"astro": "catalog:astro"
+		"@astrojs/compiler": "catalog:astro",
+		"astro": "catalog:astro",
+		"node-html-parser": "catalog:parsers"
 	},
 	"devDependencies": {
-		"@astrojs/compiler": "catalog:astro",
-		"@types/bun": "catalog:build",
-		"node-html-parser": "catalog:parsers"
+		"@types/bun": "catalog:build"
 	},
 	"peerDependencies": {
 		"typescript": "catalog:build",

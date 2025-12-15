@@ -14,7 +14,7 @@ const allowedDirectoryImports = new Set([''])
 
 const processPackage = async (dir: string, projectList: ProjectList) => {
 	const glob = new Glob(`${dir}/src/**/*.{ts,tsx}`)
-	const excludeGlob = new Glob(`${dir}/src/generated/**`)
+	const excludeGlob = new Glob(`${dir}/**/src/generated/**`)
 	const allFiles = Array.from(glob.scanSync())
 	const excludedFiles = new Set(Array.from(excludeGlob.scanSync()))
 	const files = allFiles.filter(file => !excludedFiles.has(file))
