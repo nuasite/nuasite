@@ -297,4 +297,130 @@ const message = \`Welcome to our site\`;
 		expect(result2?.line).toBe(3) // Definition line
 		expect(result2?.type).toBe('variable')
 	})
+
+	test('should find prop values passed to components', async () => {
+		await fs.writeFile(
+			path.join(testDir, 'src/layouts/Layout.astro'),
+			`---
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+<html>
+<head>
+  <title>{title}</title>
+</head>
+<body><slot /></body>
+</html>
+`,
+		)
+
+		await fs.writeFile(
+			path.join(testDir, 'src/pages/index.astro'),
+			`---
+import Layout from '../layouts/Layout.astro';
+---
+<Layout title="My Page Title">
+  <h1>Welcome</h1>
+</Layout>
+`,
+		)
+
+		// Should find where the title prop is passed, not where it's used in Layout
+		const result = await findSourceLocation('My Page Title', 'title')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/pages/index.astro')
+		expect(result?.line).toBe(4) // Line where <Layout title="..." is
+		expect(result?.type).toBe('prop')
+		expect(result?.variableName).toBe('title')
+	})
+
+	test('should find prop values on multi-line component tags', async () => {
+		await fs.writeFile(
+			path.join(testDir, 'src/components/Card.astro'),
+			`---
+interface Props {
+  heading: string;
+  description: string;
+}
+const { heading, description } = Astro.props;
+---
+<div>
+  <h2>{heading}</h2>
+  <p>{description}</p>
+</div>
+`,
+		)
+
+		await fs.writeFile(
+			path.join(testDir, 'src/pages/cards.astro'),
+			`---
+import Card from '../components/Card.astro';
+---
+<Card
+  heading="Feature Card"
+  description="This is a great feature"
+/>
+`,
+		)
+
+		const headingResult = await findSourceLocation('Feature Card', 'h2')
+		expect(headingResult).toBeDefined()
+		expect(headingResult?.file).toBe('src/pages/cards.astro')
+		expect(headingResult?.type).toBe('prop')
+		expect(headingResult?.variableName).toBe('heading')
+
+		const descResult = await findSourceLocation('This is a great feature', 'p')
+		expect(descResult).toBeDefined()
+		expect(descResult?.file).toBe('src/pages/cards.astro')
+		expect(descResult?.type).toBe('prop')
+		expect(descResult?.variableName).toBe('description')
+	})
+
+	test('should prefer static content over prop when both exist', async () => {
+		await fs.writeFile(
+			path.join(testDir, 'src/components/Header.astro'),
+			`---
+---
+<h1>Static Title</h1>
+`,
+		)
+
+		await fs.writeFile(
+			path.join(testDir, 'src/pages/home.astro'),
+			`---
+import Header from '../components/Header.astro';
+---
+<Header />
+<p>Other content</p>
+`,
+		)
+
+		const result = await findSourceLocation('Static Title', 'h1')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Header.astro')
+		expect(result?.type).toBe('static')
+		expect(result?.line).toBe(3)
+	})
+
+	test('should handle short text content', async () => {
+		await fs.writeFile(
+			path.join(testDir, 'src/components/Badge.astro'),
+			`---
+---
+<span>OK</span>
+<span>NEW</span>
+`,
+		)
+
+		const result = await findSourceLocation('OK', 'span')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Badge.astro')
+		expect(result?.line).toBe(3)
+		expect(result?.type).toBe('static')
+	})
 })

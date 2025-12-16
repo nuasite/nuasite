@@ -94,7 +94,7 @@ export class ComponentRegistry {
 
 		while (i < content.length) {
 			// Skip whitespace and newlines
-			while (i < content.length && /\s/.test(content[i])) i++
+			while (i < content.length && /\s/.test(content[i] ?? '')) i++
 			if (i >= content.length) break
 
 			// Skip comments
@@ -113,27 +113,27 @@ export class ComponentRegistry {
 
 			// Extract property name
 			const nameStart = i
-			while (i < content.length && /\w/.test(content[i])) i++
+			while (i < content.length && /\w/.test(content[i] ?? '')) i++
 			const name = content.substring(nameStart, i)
 
 			if (!name) break
 
 			// Skip whitespace
-			while (i < content.length && /\s/.test(content[i])) i++
+			while (i < content.length && /\s/.test(content[i] ?? '')) i++
 
 			// Check for optional marker
 			const optional = content[i] === '?'
 			if (optional) i++
 
 			// Skip whitespace
-			while (i < content.length && /\s/.test(content[i])) i++
+			while (i < content.length && /\s/.test(content[i] ?? '')) i++
 
 			// Expect colon
 			if (content[i] !== ':') break
 			i++
 
 			// Skip whitespace
-			while (i < content.length && /\s/.test(content[i])) i++
+			while (i < content.length && /\s/.test(content[i] ?? '')) i++
 
 			// Extract type (up to semicolon, handling nested braces)
 			const typeStart = i
@@ -154,7 +154,7 @@ export class ComponentRegistry {
 			if (content[i] === ';') i++
 
 			// Skip whitespace
-			while (i < content.length && /[ \t]/.test(content[i])) i++
+			while (i < content.length && /[ \t]/.test(content[i] ?? '')) i++
 
 			// Check for inline comment
 			let description: string | undefined
@@ -215,7 +215,7 @@ export class ComponentRegistry {
 
 		// Find the frontmatter section
 		const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
-		if (!frontmatterMatch) return props
+		if (!frontmatterMatch?.[1]) return props
 
 		const frontmatter = frontmatterMatch[1]
 

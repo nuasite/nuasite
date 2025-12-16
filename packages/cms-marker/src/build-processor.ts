@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
+import { findSourceLocation } from './source-finder'
 import type { CmsMarkerOptions } from './types'
 
 // Concurrency limit for parallel processing
@@ -66,8 +67,23 @@ async function processFile(
 		idGenerator,
 	)
 
-	// Note: Source locations are now extracted from Astro's compiler attributes
-	// in html-processor.ts, so we don't need the expensive findSourceLocation calls
+	// During build, source location attributes are not injected by astro-transform.ts
+	// (disabled to avoid Vite parse errors). Use findSourceLocation to look up source files.
+	for (const entry of Object.values(result.entries)) {
+		// Skip entries that already have source info from component detection
+		if (entry.sourcePath && !entry.sourcePath.endsWith('.html')) {
+			continue
+		}
+
+		const sourceLocation = await findSourceLocation(entry.text, entry.tag)
+		if (sourceLocation) {
+			entry.sourcePath = sourceLocation.file
+			entry.sourceLine = sourceLocation.line
+			entry.sourceSnippet = sourceLocation.snippet
+			entry.sourceType = sourceLocation.type
+			entry.variableName = sourceLocation.variableName
+		}
+	}
 
 	// Add to manifest writer (handles per-page manifest writes)
 	manifestWriter.addPage(pagePath, result.entries, result.components)
