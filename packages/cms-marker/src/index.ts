@@ -16,6 +16,7 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 		manifestFile = 'cms-manifest.json',
 		markComponents = true,
 		componentDirs = ['src/components'],
+		contentDir = 'src/content',
 	} = options
 
 	let componentDefinitions: Record<string, ComponentDefinition> = {}
@@ -35,6 +36,7 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 		manifestFile,
 		markComponents,
 		componentDirs,
+		contentDir,
 	}
 
 	return {
@@ -89,4 +91,7 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 }
 
 // Re-export types for consumers
-export type { CmsManifest, CmsMarkerOptions, ComponentDefinition, ComponentInstance, ManifestEntry } from './types'
+export { findCollectionSource, parseMarkdownContent } from './source-finder'
+export type { CollectionInfo, MarkdownContent } from './source-finder'
+export type { CmsManifest, CmsMarkerOptions, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry } from './types'
+

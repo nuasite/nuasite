@@ -4,8 +4,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
-import { findSourceLocation } from './source-finder'
-import type { CmsMarkerOptions } from './types'
+import { findCollectionSource, findMarkdownSourceLocation, findSourceLocation, parseMarkdownContent } from './source-finder'
+import type { CmsMarkerOptions, CollectionEntry } from './types'
 
 // Concurrency limit for parallel processing
 const MAX_CONCURRENT = 10
@@ -48,6 +48,24 @@ async function processFile(
 	const pagePath = getPagePath(filePath, outDir)
 	const html = await fs.readFile(filePath, 'utf-8')
 
+	// First, try to detect if this page is from a content collection
+	// We need to know this BEFORE processing HTML to skip marking markdown-rendered elements
+	const collectionInfo = await findCollectionSource(pagePath, config.contentDir)
+	const isCollectionPage = !!collectionInfo
+
+	// Parse markdown content early if this is a collection page
+	// We need the body content to find the wrapper element during HTML processing
+	let mdContent: Awaited<ReturnType<typeof parseMarkdownContent>> | undefined
+	if (collectionInfo) {
+		mdContent = await parseMarkdownContent(collectionInfo)
+	}
+
+	// Get the first non-empty line of the markdown body for wrapper detection
+	const bodyFirstLine = mdContent?.body
+		?.split('\n')
+		.find((line) => line.trim().length > 0)
+		?.trim()
+
 	// Create ID generator - use atomic increment
 	const pageIdStart = idCounter.value
 	const idGenerator = () => `cms-${idCounter.value++}`
@@ -63,18 +81,57 @@ async function processFile(
 			generateManifest: config.generateManifest,
 			markComponents: config.markComponents,
 			componentDirs: config.componentDirs,
+			// Skip marking markdown-rendered content on collection pages
+			// The markdown body is treated as a single editable unit
+			skipMarkdownContent: isCollectionPage,
+			// Pass collection info for wrapper element marking
+			collectionInfo: collectionInfo
+				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine }
+				: undefined,
 		},
 		idGenerator,
 	)
 
 	// During build, source location attributes are not injected by astro-transform.ts
 	// (disabled to avoid Vite parse errors). Use findSourceLocation to look up source files.
+
+	let collectionEntry: CollectionEntry | undefined
+
+	// Build collection entry if this is a collection page
+	if (collectionInfo && mdContent) {
+		collectionEntry = {
+			collectionName: mdContent.collectionName,
+			collectionSlug: mdContent.collectionSlug,
+			sourcePath: mdContent.file,
+			frontmatter: mdContent.frontmatter,
+			body: mdContent.body,
+			bodyStartLine: mdContent.bodyStartLine,
+			wrapperId: result.collectionWrapperId,
+		}
+	}
+
 	for (const entry of Object.values(result.entries)) {
 		// Skip entries that already have source info from component detection
 		if (entry.sourcePath && !entry.sourcePath.endsWith('.html')) {
 			continue
 		}
 
+		// Try to find source in collection markdown frontmatter first
+		if (collectionInfo) {
+			const mdSource = await findMarkdownSourceLocation(entry.text, collectionInfo)
+			if (mdSource) {
+				entry.sourcePath = mdSource.file
+				entry.sourceLine = mdSource.line
+				entry.sourceSnippet = mdSource.snippet
+				entry.sourceType = mdSource.type
+				entry.variableName = mdSource.variableName
+				entry.collectionName = mdSource.collectionName
+				entry.collectionSlug = mdSource.collectionSlug
+				continue
+			}
+		}
+
+		// Fall back to searching Astro files
 		const sourceLocation = await findSourceLocation(entry.text, entry.tag)
 		if (sourceLocation) {
 			entry.sourcePath = sourceLocation.file
@@ -86,7 +143,7 @@ async function processFile(
 	}
 
 	// Add to manifest writer (handles per-page manifest writes)
-	manifestWriter.addPage(pagePath, result.entries, result.components)
+	manifestWriter.addPage(pagePath, result.entries, result.components, collectionEntry)
 
 	// Write transformed HTML back
 	await fs.writeFile(filePath, result.html, 'utf-8')

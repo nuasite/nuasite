@@ -156,9 +156,8 @@ describe('processHtml', () => {
 		)
 
 		expect(Object.keys(result.entries)).toHaveLength(1)
-		expect(result.entries['cms-0']).toEqual({
+		expect(result.entries['cms-0']).toMatchObject({
 			id: 'cms-0',
-			file: 'test.html',
 			tag: 'h1',
 			text: 'Hello World',
 			sourcePath: 'src/test.astro',
@@ -322,6 +321,192 @@ describe('processHtml', () => {
 		)
 
 		expect(result.html).not.toContain('data-cms-styled')
+	})
+
+	test('should skip elements without source attributes when skipMarkdownContent is true', async () => {
+		// Simulating HTML with mixed template and markdown-rendered content
+		// Template elements have data-astro-source-file, markdown content doesn't
+		const html = `
+			<div data-astro-source-file="src/pages/test.astro" data-astro-source-line="5:0">
+				<h1 data-astro-source-file="src/pages/test.astro" data-astro-source-line="6:0">Template Title</h1>
+				<div>
+					<p>Markdown paragraph one</p>
+					<p>Markdown paragraph two</p>
+					<h3>Markdown heading</h3>
+				</div>
+			</div>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: false,
+				skipMarkdownContent: true,
+			},
+			getNextId,
+		)
+
+		// Template elements should be marked
+		expect(result.html).toContain('<div data-cms-id="cms-0"')
+		expect(result.html).toContain('<h1 data-cms-id="cms-1"')
+
+		// Markdown-rendered elements (no source file) should NOT be marked
+		expect(result.html).not.toContain('<p data-cms-id')
+		expect(result.html).not.toContain('<h3 data-cms-id')
+	})
+
+	test('should mark all elements when skipMarkdownContent is false', async () => {
+		const html = `
+			<div data-astro-source-file="src/pages/test.astro" data-astro-source-line="5:0">
+				<h1 data-astro-source-file="src/pages/test.astro" data-astro-source-line="6:0">Template Title</h1>
+				<div>
+					<p>Markdown paragraph</p>
+				</div>
+			</div>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: false,
+				skipMarkdownContent: false,
+			},
+			getNextId,
+		)
+
+		// All elements should be marked
+		expect(result.html).toContain('<div data-cms-id')
+		expect(result.html).toContain('<h1 data-cms-id')
+		expect(result.html).toContain('<p data-cms-id')
+	})
+
+	test('should mark collection wrapper element when collectionInfo is provided', async () => {
+		const html = `
+			<div data-astro-source-file="src/pages/services/[slug].astro" data-astro-source-line="10:0">
+				<h1 data-astro-source-file="src/pages/services/[slug].astro" data-astro-source-line="11:0">Title</h1>
+				<div data-astro-source-file="src/pages/services/[slug].astro" data-astro-source-line="12:0" class="prose">
+					<p>Markdown content</p>
+					<h2>Another heading</h2>
+				</div>
+			</div>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+				skipMarkdownContent: true,
+				collectionInfo: { name: 'services', slug: 'test-service' },
+			},
+			getNextId,
+		)
+
+		// Should have collection wrapper marked with standard data-cms-id
+		expect(result.collectionWrapperId).toBeDefined()
+		expect(result.html).toContain(`data-cms-id="${result.collectionWrapperId}"`)
+		
+		// Collection info should be in the manifest entry, not on the HTML
+		expect(result.html).not.toContain('data-cms-collection-name')
+		expect(result.html).not.toContain('data-cms-collection-slug')
+		
+		// Manifest entry should have collection info
+		const wrapperEntry = result.entries[result.collectionWrapperId!]
+		expect(wrapperEntry).toBeDefined()
+		expect(wrapperEntry.sourceType).toBe('collection')
+		expect(wrapperEntry.collectionName).toBe('services')
+		expect(wrapperEntry.collectionSlug).toBe('test-service')
+	})
+
+	test('should mark the innermost wrapper element containing markdown', async () => {
+		const html = `
+			<main data-astro-source-file="src/layouts/layout.astro" data-astro-source-line="5:0">
+				<article data-astro-source-file="src/pages/blog/[slug].astro" data-astro-source-line="15:0">
+					<div data-astro-source-file="src/pages/blog/[slug].astro" data-astro-source-line="16:0" class="prose">
+						<p>Markdown paragraph</p>
+					</div>
+				</article>
+			</main>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+				collectionInfo: { name: 'blog', slug: 'test-post' },
+			},
+			getNextId,
+		)
+
+		// The innermost wrapper (div.prose) should be marked with data-cms-id
+		expect(result.collectionWrapperId).toBeDefined()
+		expect(result.html).toContain('class="prose"')
+		
+		// The div with prose class should have the data-cms-id attribute
+		expect(result.html).toMatch(/class="prose"[^>]*data-cms-id/)
+		
+		// Manifest entry for wrapper should have collection info
+		const wrapperEntry = result.entries[result.collectionWrapperId!]
+		expect(wrapperEntry).toBeDefined()
+		expect(wrapperEntry.sourceType).toBe('collection')
+		expect(wrapperEntry.collectionName).toBe('blog')
+		expect(wrapperEntry.collectionSlug).toBe('test-post')
+	})
+
+	test('should not mark collection wrapper when collectionInfo is not provided', async () => {
+		const html = `
+			<div data-astro-source-file="src/pages/test.astro" data-astro-source-line="5:0">
+				<p>Regular content</p>
+			</div>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		expect(result.collectionWrapperId).toBeUndefined()
+		// No entry should have collection sourceType
+		for (const entry of Object.values(result.entries)) {
+			expect(entry.sourceType).not.toBe('collection')
+		}
 	})
 })
 

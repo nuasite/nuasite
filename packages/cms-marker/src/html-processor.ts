@@ -11,12 +11,23 @@ export interface ProcessHtmlOptions {
 	componentDirs?: string[]
 	excludeComponentDirs?: string[]
 	markStyledSpans?: boolean
+	/** When true, only mark elements that have source file attributes (from Astro templates) */
+	skipMarkdownContent?: boolean
+	/** Collection info for marking the wrapper element containing markdown content */
+	collectionInfo?: {
+		name: string
+		slug: string
+		/** First line of the markdown body (used to find wrapper element in build mode) */
+		bodyFirstLine?: string
+	}
 }
 
 export interface ProcessHtmlResult {
 	html: string
 	entries: Record<string, ManifestEntry>
 	components: Record<string, ComponentInstance>
+	/** ID of the element wrapping collection markdown content */
+	collectionWrapperId?: string
 }
 
 /**
@@ -116,6 +127,8 @@ export async function processHtml(
 		componentDirs = ['src/components'],
 		excludeComponentDirs = ['src/pages', 'src/layouts', 'src/layout'],
 		markStyledSpans = true,
+		skipMarkdownContent = false,
+		collectionInfo,
 	} = options
 
 	const root = parse(html, {
@@ -133,6 +146,7 @@ export async function processHtml(
 	const components: Record<string, ComponentInstance> = {}
 	const sourceLocationMap = new Map<string, { file: string; line: number }>()
 	const markedComponentRoots = new Set<any>()
+	let collectionWrapperId: string | undefined
 
 	// First pass: detect and mark component root elements
 	// A component root is detected by data-astro-source-file pointing to a component directory
@@ -218,6 +232,112 @@ export async function processHtml(
 		})
 	}
 
+	// Collection wrapper detection pass: find the element that wraps markdown content
+	// Two strategies:
+	// 1. Dev mode: look for elements with data-astro-source-file containing children without it
+	// 2. Build mode: find element whose first child content matches the start of markdown body
+	if (collectionInfo) {
+		const allElements = root.querySelectorAll('*')
+		let foundWrapper = false
+
+		// Strategy 1: Dev mode - look for source file attributes
+		for (const node of allElements) {
+			const sourceFile = node.getAttribute('data-astro-source-file')
+			if (!sourceFile) continue
+
+			// Check if this element has any direct child elements without source file attribute
+			// These would be markdown-rendered elements
+			const childElements = node.childNodes.filter(
+				(child: any) => child.nodeType === 1 && child.tagName,
+			)
+			const hasMarkdownChildren = childElements.some(
+				(child: any) => !child.getAttribute?.('data-astro-source-file'),
+			)
+
+			if (hasMarkdownChildren) {
+				// Check if any ancestor already has been marked as a collection wrapper
+				// We want the innermost wrapper
+				let parent = node.parentNode
+				let hasAncestorWrapper = false
+				while (parent) {
+					if ((parent as any).getAttribute?.(attributeName)?.startsWith('cms-collection-')) {
+						hasAncestorWrapper = true
+						break
+					}
+					parent = parent.parentNode
+				}
+
+				if (!hasAncestorWrapper) {
+					// Mark this as the collection wrapper using the standard attribute
+					const id = getNextId()
+					node.setAttribute(attributeName, id)
+					collectionWrapperId = id
+					foundWrapper = true
+					// Don't break - we want the deepest wrapper, so we'll overwrite
+				}
+			}
+		}
+
+		// Strategy 2: Build mode - find element by matching markdown body content
+		if (!foundWrapper && collectionInfo.bodyFirstLine) {
+			// Normalize the first line of markdown body for comparison
+			// Strip markdown syntax to compare with rendered HTML text
+			const bodyStart = collectionInfo.bodyFirstLine
+				.replace(/^\*\*|\*\*$/g, '') // Remove markdown bold markers at start/end
+				.replace(/\*\*/g, '') // Remove any remaining markdown bold markers
+				.replace(/\*/g, '') // Remove markdown italic markers
+				.replace(/^#+ /, '') // Remove heading markers
+				.replace(/^\s*[-*+]\s+/, '') // Remove list markers
+				.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Extract link text
+				.trim()
+				.substring(0, 50) // Take first 50 chars for matching
+
+			if (bodyStart.length > 10) {
+				// Store all candidates that match the body start
+				const candidates: Array<{ node: any; blockChildCount: number }> = []
+
+				for (const node of allElements) {
+					const tag = node.tagName?.toLowerCase?.() ?? ''
+					// Skip script, style, etc.
+					if (['script', 'style', 'head', 'meta', 'link'].includes(tag)) continue
+
+					// Check if this element's first text content starts with the markdown body
+					const firstChild = node.childNodes.find(
+						(child: any) => child.nodeType === 1 && child.tagName,
+					) as any
+
+					if (firstChild) {
+						const firstChildText = (firstChild.innerText || '').trim().substring(0, 80)
+						if (firstChildText.includes(bodyStart)) {
+							// Count block-level child elements
+							// Markdown typically renders to multiple block elements (p, h2, h3, ul, ol, etc.)
+							const blockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre', 'table', 'hr']
+							const blockChildCount = node.childNodes.filter(
+								(child: any) => child.nodeType === 1 && blockTags.includes(child.tagName?.toLowerCase?.()),
+							).length
+
+							candidates.push({ node, blockChildCount })
+						}
+					}
+				}
+
+				// Pick the candidate with the most block children (likely the markdown wrapper)
+				// Filter out already-marked elements
+				const unmarkedCandidates = candidates.filter(c => !c.node.getAttribute(attributeName))
+				if (unmarkedCandidates.length > 0) {
+					const best = unmarkedCandidates.reduce((a, b) => (b.blockChildCount > a.blockChildCount ? b : a))
+					if (best.blockChildCount >= 2) {
+						// Markdown body should have at least 2 block children
+						const id = getNextId()
+						best.node.setAttribute(attributeName, id)
+						collectionWrapperId = id
+						foundWrapper = true
+					}
+				}
+			}
+		}
+	}
+
 	// Third pass: assign IDs to all qualifying text elements and extract source locations
 	root.querySelectorAll('*').forEach((node) => {
 		const tag = node.tagName?.toLowerCase?.() ?? ''
@@ -229,12 +349,18 @@ export async function processHtml(
 		const textContent = (node.innerText ?? '').trim()
 		if (!includeEmptyText && !textContent) return
 
-		const id = getNextId()
-		node.setAttribute(attributeName, id)
-
 		// Extract source location from Astro compiler attributes
 		const sourceFile = node.getAttribute('data-astro-source-file')
 		const sourceLine = node.getAttribute('data-astro-source-line')
+
+		// When skipMarkdownContent is true, only mark elements that have source file attributes
+		// (meaning they come from Astro templates, not rendered markdown content)
+		if (skipMarkdownContent && !sourceFile) {
+			return
+		}
+
+		const id = getNextId()
+		node.setAttribute(attributeName, id)
 
 		if (sourceFile && sourceLine) {
 			const lineNum = parseInt(sourceLine.split(':')[0] ?? '1', 10)
@@ -291,8 +417,12 @@ export async function processHtml(
 			// Get direct text content (without placeholders)
 			const directText = textWithPlaceholders.replace(/\{\{cms:[^}]+\}\}/g, '').trim()
 
+			// Check if this is the collection wrapper
+			const isCollectionWrapper = id === collectionWrapperId
+
 			// Skip pure container elements (no direct text, only child CMS elements)
-			if (!directText && childCmsIds.length > 0) {
+			// BUT always include the collection wrapper
+			if (!directText && childCmsIds.length > 0 && !isCollectionWrapper) {
 				return
 			}
 
@@ -313,16 +443,18 @@ export async function processHtml(
 
 			entries[id] = {
 				id,
-				file: fileId,
 				tag,
 				text: textWithPlaceholders.trim(),
 				sourcePath: sourceLocation?.file || sourcePath,
 				childCmsIds: childCmsIds.length > 0 ? childCmsIds : undefined,
 				sourceLine: sourceLocation?.line,
 				sourceSnippet: undefined,
-				sourceType: undefined,
+				sourceType: isCollectionWrapper ? 'collection' : undefined,
 				variableName: undefined,
 				parentComponentId,
+				// Add collection info for the wrapper entry
+				collectionName: isCollectionWrapper ? collectionInfo?.name : undefined,
+				collectionSlug: isCollectionWrapper ? collectionInfo?.slug : undefined,
 			}
 		})
 	}
@@ -337,6 +469,7 @@ export async function processHtml(
 		html: root.toString(),
 		entries,
 		components,
+		collectionWrapperId,
 	}
 }
 

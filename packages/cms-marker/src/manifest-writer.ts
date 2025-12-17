@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { CmsManifest, ComponentDefinition, ComponentInstance, ManifestEntry } from './types'
+import type { CmsManifest, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry } from './types'
 
 /**
  * Manages streaming manifest writes during build.
@@ -8,19 +8,24 @@ import type { CmsManifest, ComponentDefinition, ComponentInstance, ManifestEntry
  */
 export class ManifestWriter {
 	private globalManifest: CmsManifest
-	private pageManifests: Map<string, { entries: Record<string, ManifestEntry>; components: Record<string, ComponentInstance> }> = new Map()
+	private pageManifests: Map<string, {
+		entries: Record<string, ManifestEntry>
+		components: Record<string, ComponentInstance>
+		collection?: CollectionEntry
+	}> = new Map()
 	private outDir: string = ''
 	private manifestFile: string
 	private componentDefinitions: Record<string, ComponentDefinition>
 	private writeQueue: Promise<void> = Promise.resolve()
 
-	constructor(manifestFile: string = 'cms-manifest.json', componentDefinitions: Record<string, ComponentDefinition> = {}) {
+	constructor(manifestFile: string, componentDefinitions: Record<string, ComponentDefinition> = {}) {
 		this.manifestFile = manifestFile
 		this.componentDefinitions = componentDefinitions
 		this.globalManifest = {
 			entries: {},
 			components: {},
 			componentDefinitions,
+			collections: {},
 		}
 	}
 
@@ -59,17 +64,25 @@ export class ManifestWriter {
 		pagePath: string,
 		entries: Record<string, ManifestEntry>,
 		components: Record<string, ComponentInstance>,
+		collection?: CollectionEntry,
 	): void {
 		// Store in memory
-		this.pageManifests.set(pagePath, { entries, components })
+		this.pageManifests.set(pagePath, { entries, components, collection })
 
 		// Update global manifest
 		Object.assign(this.globalManifest.entries, entries)
 		Object.assign(this.globalManifest.components, components)
 
+		// Add collection entry to global manifest
+		if (collection) {
+			const collectionKey = `${collection.collectionName}/${collection.collectionSlug}`
+			this.globalManifest.collections = this.globalManifest.collections || {}
+			this.globalManifest.collections[collectionKey] = collection
+		}
+
 		// Queue the write operation (non-blocking)
 		if (this.outDir) {
-			this.writeQueue = this.writeQueue.then(() => this.writePageManifest(pagePath, entries, components))
+			this.writeQueue = this.writeQueue.then(() => this.writePageManifest(pagePath, entries, components, collection))
 		}
 	}
 
@@ -80,17 +93,28 @@ export class ManifestWriter {
 		pagePath: string,
 		entries: Record<string, ManifestEntry>,
 		components: Record<string, ComponentInstance>,
+		collection?: CollectionEntry,
 	): Promise<void> {
 		const manifestPath = this.getPageManifestPath(pagePath)
 		const manifestDir = path.dirname(manifestPath)
 
 		await fs.mkdir(manifestDir, { recursive: true })
 
-		const pageManifest = {
+		const pageManifest: {
+			page: string
+			entries: Record<string, ManifestEntry>
+			components: Record<string, ComponentInstance>
+			componentDefinitions: Record<string, ComponentDefinition>
+			collection?: CollectionEntry
+		} = {
 			page: pagePath,
 			entries,
 			components,
 			componentDefinitions: this.componentDefinitions,
+		}
+
+		if (collection) {
+			pageManifest.collection = collection
 		}
 
 		await fs.writeFile(manifestPath, JSON.stringify(pageManifest, null, 2), 'utf-8')
@@ -134,7 +158,11 @@ export class ManifestWriter {
 	/**
 	 * Get a page's manifest data (for dev mode)
 	 */
-	getPageManifest(pagePath: string): { entries: Record<string, ManifestEntry>; components: Record<string, ComponentInstance> } | undefined {
+	getPageManifest(pagePath: string): {
+		entries: Record<string, ManifestEntry>
+		components: Record<string, ComponentInstance>
+		collection?: CollectionEntry
+	} | undefined {
 		return this.pageManifests.get(pagePath)
 	}
 
@@ -147,6 +175,7 @@ export class ManifestWriter {
 			entries: {},
 			components: {},
 			componentDefinitions: this.componentDefinitions,
+			collections: {},
 		}
 		this.writeQueue = Promise.resolve()
 	}

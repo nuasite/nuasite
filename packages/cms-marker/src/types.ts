@@ -7,6 +7,8 @@ export interface CmsMarkerOptions {
 	manifestFile?: string
 	markComponents?: boolean
 	componentDirs?: string[]
+	/** Directory containing content collections (default: 'src/content') */
+	contentDir?: string
 }
 
 export interface ComponentProp {
@@ -27,16 +29,19 @@ export interface ComponentDefinition {
 
 export interface ManifestEntry {
 	id: string
-	file: string
 	tag: string
 	text: string
 	sourcePath?: string
 	sourceLine?: number
 	sourceSnippet?: string
-	sourceType?: 'static' | 'variable' | 'prop' | 'computed'
+	sourceType?: 'static' | 'variable' | 'prop' | 'computed' | 'collection'
 	variableName?: string
 	childCmsIds?: string[]
 	parentComponentId?: string
+	/** Collection name for collection entries (e.g., 'services', 'blog') */
+	collectionName?: string
+	/** Entry slug for collection entries (e.g., '3d-tisk') */
+	collectionSlug?: string
 }
 
 export interface ComponentInstance {
@@ -50,8 +55,28 @@ export interface ComponentInstance {
 	parentId?: string
 }
 
+/** Represents a content collection entry (markdown file) */
+export interface CollectionEntry {
+	/** Collection name (e.g., 'services', 'blog') */
+	collectionName: string
+	/** Entry slug (e.g., '3d-tisk') */
+	collectionSlug: string
+	/** Path to the markdown file relative to project root */
+	sourcePath: string
+	/** Frontmatter fields with their values and line numbers */
+	frontmatter: Record<string, { value: string; line: number }>
+	/** Full markdown body content */
+	body: string
+	/** Line number where body starts (1-indexed) */
+	bodyStartLine: number
+	/** ID of the wrapper element containing the rendered markdown */
+	wrapperId?: string
+}
+
 export interface CmsManifest {
 	entries: Record<string, ManifestEntry>
 	components: Record<string, ComponentInstance>
 	componentDefinitions: Record<string, ComponentDefinition>
+	/** Content collection entries indexed by "collectionName/slug" */
+	collections?: Record<string, CollectionEntry>
 }

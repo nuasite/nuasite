@@ -5,15 +5,40 @@ export interface SourceLocation {
 	file: string
 	line: number
 	snippet?: string
-	type?: 'static' | 'variable' | 'prop' | 'computed'
+	type?: 'static' | 'variable' | 'prop' | 'computed' | 'collection'
 	variableName?: string
 	definitionLine?: number
+	/** Collection name for collection entries */
+	collectionName?: string
+	/** Entry slug for collection entries */
+	collectionSlug?: string
 }
 
 export interface VariableReference {
 	name: string
 	pattern: string
 	definitionLine: number
+}
+
+export interface CollectionInfo {
+	name: string
+	slug: string
+	file: string
+}
+
+export interface MarkdownContent {
+	/** Frontmatter fields as key-value pairs with line numbers */
+	frontmatter: Record<string, { value: string; line: number }>
+	/** The full markdown body content */
+	body: string
+	/** Line number where body starts */
+	bodyStartLine: number
+	/** File path relative to cwd */
+	file: string
+	/** Collection name */
+	collectionName: string
+	/** Collection slug */
+	collectionSlug: string
 }
 
 /**
@@ -46,7 +71,7 @@ export async function findSourceLocation(
 		// If not found directly, try searching for prop values in parent components
 		for (const dir of searchDirs) {
 			try {
-				const result = await searchForPropInParents(dir, textContent, tag)
+				const result = await searchForPropInParents(dir, textContent)
 				if (result) {
 					return result
 				}
@@ -102,7 +127,7 @@ async function searchAstroFile(
 		const content = await fs.readFile(filePath, 'utf-8')
 		const lines = content.split('\n')
 
-		const cleanText = cleanTextForSearch(textContent)
+		const cleanText = normalizeText(textContent)
 		const textPreview = cleanText.slice(0, Math.min(30, cleanText.length))
 
 		// Extract variable references from frontmatter
@@ -217,113 +242,103 @@ async function searchAstroFile(
 /**
  * Search for prop values passed to components
  */
-async function searchForPropInParents(
-	dir: string,
-	textContent: string,
-	tag: string,
-): Promise<SourceLocation | undefined> {
-	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
-		const cleanText = cleanTextForSearch(textContent)
+async function searchForPropInParents(dir: string, textContent: string): Promise<SourceLocation | undefined> {
+	const entries = await fs.readdir(dir, { withFileTypes: true })
+	const cleanText = normalizeText(textContent)
 
-		for (const entry of entries) {
-			const fullPath = path.join(dir, entry.name)
+	for (const entry of entries) {
+		const fullPath = path.join(dir, entry.name)
 
-			if (entry.isDirectory()) {
-				const result = await searchForPropInParents(fullPath, textContent, tag)
-				if (result) return result
-			} else if (entry.isFile() && entry.name.endsWith('.astro')) {
-				const content = await fs.readFile(fullPath, 'utf-8')
-				const lines = content.split('\n')
+		if (entry.isDirectory()) {
+			const result = await searchForPropInParents(fullPath, textContent)
+			if (result) return result
+		} else if (entry.isFile() && entry.name.endsWith('.astro')) {
+			const content = await fs.readFile(fullPath, 'utf-8')
+			const lines = content.split('\n')
 
-				// Look for component tags with prop values matching our text
-				for (let i = 0; i < lines.length; i++) {
-					const line = lines[i]
+			// Look for component tags with prop values matching our text
+			for (let i = 0; i < lines.length; i++) {
+				const line = lines[i]
 
-					// Match component usage like <ComponentName propName="value" />
-					const componentMatch = line?.match(/<([A-Z]\w+)/)
-					if (!componentMatch) continue
+				// Match component usage like <ComponentName propName="value" />
+				const componentMatch = line?.match(/<([A-Z]\w+)/)
+				if (!componentMatch) continue
 
-					// Collect only the opening tag (until first > or />), not nested content
-					let openingTag = ''
-					let endLine = i
-					for (let j = i; j < Math.min(i + 10, lines.length); j++) {
-						openingTag += ' ' + lines[j]
-						endLine = j
+				// Collect only the opening tag (until first > or />), not nested content
+				let openingTag = ''
+				let endLine = i
+				for (let j = i; j < Math.min(i + 10, lines.length); j++) {
+					openingTag += ' ' + lines[j]
+					endLine = j
 
-						// Stop at the end of opening tag (either /> or >)
-						if (lines[j]?.includes('/>')) {
-							// Self-closing tag
-							break
-						} else if (lines[j]?.includes('>')) {
-							// Opening tag ends here, don't include nested content
-							// Truncate to just the opening tag part
-							const tagEndIndex = openingTag.indexOf('>')
-							if (tagEndIndex !== -1) {
-								openingTag = openingTag.substring(0, tagEndIndex + 1)
-							}
-							break
+					// Stop at the end of opening tag (either /> or >)
+					if (lines[j]?.includes('/>')) {
+						// Self-closing tag
+						break
+					} else if (lines[j]?.includes('>')) {
+						// Opening tag ends here, don't include nested content
+						// Truncate to just the opening tag part
+						const tagEndIndex = openingTag.indexOf('>')
+						if (tagEndIndex !== -1) {
+							openingTag = openingTag.substring(0, tagEndIndex + 1)
 						}
+						break
+					}
+				}
+
+				// Extract all prop values from the opening tag only
+				const propMatches = openingTag.matchAll(/(\w+)=["']([^"']+)["']/g)
+				for (const match of propMatches) {
+					const propName = match[1]
+					const propValue = match[2]
+
+					if (!propValue) {
+						continue
 					}
 
-					// Extract all prop values from the opening tag only
-					const propMatches = openingTag.matchAll(/(\w+)=["']([^"']+)["']/g)
-					for (const match of propMatches) {
-						const propName = match[1]
-						const propValue = match[2]
+					const normalizedValue = normalizeText(propValue)
 
-						if (!propValue) {
-							continue
+					if (normalizedValue === cleanText) {
+						// Find which line actually contains this prop
+						let propLine = i
+
+						for (let k = i; k <= endLine; k++) {
+							const line = lines[k]
+							if (!line) {
+								continue
+							}
+
+							if (propName && line.includes(propName) && line.includes(propValue)) {
+								propLine = k
+								break
+							}
 						}
 
-						const normalizedValue = normalizeText(propValue)
-
-						if (normalizedValue === cleanText) {
-							// Find which line actually contains this prop
-							let propLine = i
-							let propLineIndex = i
-
-							for (let k = i; k <= endLine; k++) {
-								const line = lines[k]
-								if (!line) {
-									continue
-								}
-
-								if (propName && line.includes(propName) && line.includes(propValue)) {
-									propLine = k
-									propLineIndex = k
-									break
-								}
+						// Extract complete component tag starting from where the component tag opens
+						const componentSnippetLines: string[] = []
+						for (let k = i; k <= endLine; k++) {
+							const line = lines[k]
+							if (!line) {
+								continue
 							}
 
-							// Extract complete component tag starting from where the component tag opens
-							const componentSnippetLines: string[] = []
-							for (let k = i; k <= endLine; k++) {
-								const line = lines[k]
-								if (!line) {
-									continue
-								}
+							componentSnippetLines.push(line)
+						}
 
-								componentSnippetLines.push(line)
-							}
+						const propSnippet = componentSnippetLines.join('\n')
 
-							const propSnippet = componentSnippetLines.join('\n')
-
-							// Found the prop being passed with our text value
-							return {
-								file: path.relative(process.cwd(), fullPath),
-								line: propLine + 1,
-								snippet: propSnippet,
-								type: 'prop',
-								variableName: propName,
-							}
+						// Found the prop being passed with our text value
+						return {
+							file: path.relative(process.cwd(), fullPath),
+							line: propLine + 1,
+							snippet: propSnippet,
+							type: 'prop',
+							variableName: propName,
 						}
 					}
 				}
 			}
 		}
-	} catch {
-		// Error reading directory
 	}
 
 	return undefined
@@ -468,8 +483,289 @@ function normalizeText(text: string): string {
 }
 
 /**
- * Clean text for search comparison
+ * Find markdown collection file for a given page path
+ * @param pagePath - The URL path of the page (e.g., '/services/3d-tisk')
+ * @param contentDir - The content directory (default: 'src/content')
+ * @returns Collection info if found, undefined otherwise
  */
-function cleanTextForSearch(text: string): string {
-	return normalizeText(text)
+export async function findCollectionSource(
+	pagePath: string,
+	contentDir: string = 'src/content',
+): Promise<CollectionInfo | undefined> {
+	// Remove leading/trailing slashes
+	const cleanPath = pagePath.replace(/^\/+|\/+$/g, '')
+	const pathParts = cleanPath.split('/')
+
+	if (pathParts.length < 2) {
+		// Need at least collection/slug
+		return undefined
+	}
+
+	const contentPath = path.join(process.cwd(), contentDir)
+
+	try {
+		// Check if content directory exists
+		await fs.access(contentPath)
+	} catch {
+		return undefined
+	}
+
+	// Try different collection/slug combinations
+	// Strategy 1: First segment is collection, rest is slug
+	// e.g., /services/3d-tisk -> collection: services, slug: 3d-tisk
+	const collectionName = pathParts[0]
+	const slug = pathParts.slice(1).join('/')
+
+	if (!collectionName || !slug) {
+		return undefined
+	}
+
+	const collectionPath = path.join(contentPath, collectionName)
+
+	try {
+		await fs.access(collectionPath)
+		const stat = await fs.stat(collectionPath)
+		if (!stat.isDirectory()) {
+			return undefined
+		}
+	} catch {
+		return undefined
+	}
+
+	// Look for markdown files matching the slug
+	const mdFile = await findMarkdownFile(collectionPath, slug)
+	if (mdFile) {
+		return {
+			name: collectionName,
+			slug,
+			file: path.relative(process.cwd(), mdFile),
+		}
+	}
+
+	return undefined
 }
+
+/**
+ * Find a markdown file in a collection directory by slug
+ */
+async function findMarkdownFile(collectionPath: string, slug: string): Promise<string | undefined> {
+	// Try direct match: slug.md or slug.mdx
+	const directPaths = [
+		path.join(collectionPath, `${slug}.md`),
+		path.join(collectionPath, `${slug}.mdx`),
+	]
+
+	for (const p of directPaths) {
+		try {
+			await fs.access(p)
+			return p
+		} catch {
+			// File doesn't exist, continue
+		}
+	}
+
+	// Try nested path for slugs with slashes
+	const slugParts = slug.split('/')
+	if (slugParts.length > 1) {
+		const nestedPath = path.join(collectionPath, ...slugParts.slice(0, -1))
+		const fileName = slugParts[slugParts.length - 1]
+		const nestedPaths = [
+			path.join(nestedPath, `${fileName}.md`),
+			path.join(nestedPath, `${fileName}.mdx`),
+		]
+		for (const p of nestedPaths) {
+			try {
+				await fs.access(p)
+				return p
+			} catch {
+				// File doesn't exist, continue
+			}
+		}
+	}
+
+	// Try index file in slug directory
+	const indexPaths = [
+		path.join(collectionPath, slug, 'index.md'),
+		path.join(collectionPath, slug, 'index.mdx'),
+	]
+
+	for (const p of indexPaths) {
+		try {
+			await fs.access(p)
+			return p
+		} catch {
+			// File doesn't exist, continue
+		}
+	}
+
+	return undefined
+}
+
+/**
+ * Find text content in a markdown file and return source location
+ * Only matches frontmatter fields, not body content (body is handled separately as a whole)
+ * @param textContent - The text content to search for
+ * @param collectionInfo - Collection information (name, slug, file path)
+ * @returns Source location if found in frontmatter
+ */
+export async function findMarkdownSourceLocation(
+	textContent: string,
+	collectionInfo: CollectionInfo,
+): Promise<SourceLocation | undefined> {
+	try {
+		const filePath = path.join(process.cwd(), collectionInfo.file)
+		const content = await fs.readFile(filePath, 'utf-8')
+		const lines = content.split('\n')
+		const normalizedSearch = normalizeText(textContent)
+
+		// Parse frontmatter
+		let frontmatterEnd = -1
+		let inFrontmatter = false
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i]?.trim()
+			if (line === '---') {
+				if (!inFrontmatter) {
+					inFrontmatter = true
+				} else {
+					frontmatterEnd = i
+					break
+				}
+			}
+		}
+
+		// Search in frontmatter only (for title, subtitle, etc.)
+		if (frontmatterEnd > 0) {
+			for (let i = 1; i < frontmatterEnd; i++) {
+				const line = lines[i]
+				if (!line) continue
+
+				// Extract value from YAML key: value
+				const match = line.match(/^\s*(\w+):\s*(.+)$/)
+				if (match) {
+					const key = match[1]
+					let value = match[2]?.trim() || ''
+
+					// Handle quoted strings
+					if ((value.startsWith('"') && value.endsWith('"')) ||
+						(value.startsWith("'") && value.endsWith("'"))) {
+						value = value.slice(1, -1)
+					}
+
+					if (normalizeText(value) === normalizedSearch) {
+						return {
+							file: collectionInfo.file,
+							line: i + 1,
+							snippet: line,
+							type: 'collection',
+							variableName: key,
+							collectionName: collectionInfo.name,
+							collectionSlug: collectionInfo.slug,
+						}
+					}
+				}
+			}
+		}
+
+		// Body content is not searched line-by-line anymore
+		// Use parseMarkdownContent to get the full body as one entry
+	} catch {
+		// Error reading file
+	}
+
+	return undefined
+}
+
+/**
+ * Parse markdown file and extract frontmatter fields and full body content
+ * @param collectionInfo - Collection information (name, slug, file path)
+ * @returns Parsed markdown content with frontmatter and body
+ */
+export async function parseMarkdownContent(
+	collectionInfo: CollectionInfo,
+): Promise<MarkdownContent | undefined> {
+	try {
+		const filePath = path.join(process.cwd(), collectionInfo.file)
+		const content = await fs.readFile(filePath, 'utf-8')
+		const lines = content.split('\n')
+
+		// Parse frontmatter
+		let frontmatterStart = -1
+		let frontmatterEnd = -1
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i]?.trim()
+			if (line === '---') {
+				if (frontmatterStart === -1) {
+					frontmatterStart = i
+				} else {
+					frontmatterEnd = i
+					break
+				}
+			}
+		}
+
+		const frontmatter: Record<string, { value: string; line: number }> = {}
+
+		// Extract frontmatter fields
+		if (frontmatterEnd > 0) {
+			for (let i = frontmatterStart + 1; i < frontmatterEnd; i++) {
+				const line = lines[i]
+				if (!line) continue
+
+				// Extract value from YAML key: value (simple single-line values only)
+				const match = line.match(/^\s*(\w+):\s*(.+)$/)
+				if (match) {
+					const key = match[1]
+					let value = match[2]?.trim() || ''
+
+					// Handle quoted strings
+					if ((value.startsWith('"') && value.endsWith('"')) ||
+						(value.startsWith("'") && value.endsWith("'"))) {
+						value = value.slice(1, -1)
+					}
+
+					if (key && value) {
+						frontmatter[key] = { value, line: i + 1 }
+					}
+				}
+			}
+		}
+
+		// Extract body (everything after frontmatter)
+		const bodyStartLine = frontmatterEnd > 0 ? frontmatterEnd + 1 : 0
+		const bodyLines = lines.slice(bodyStartLine)
+		const body = bodyLines.join('\n').trim()
+
+		return {
+			frontmatter,
+			body,
+			bodyStartLine: bodyStartLine + 1, // 1-indexed
+			file: collectionInfo.file,
+			collectionName: collectionInfo.name,
+			collectionSlug: collectionInfo.slug,
+		}
+	} catch {
+		// Error reading file
+	}
+
+	return undefined
+}
+
+/**
+ * Strip markdown syntax for text comparison
+ */
+function stripMarkdownSyntax(text: string): string {
+	return text
+		.replace(/^#+\s+/, '') // Headers
+		.replace(/\*\*([^*]+)\*\*/g, '$1') // Bold
+		.replace(/\*([^*]+)\*/g, '$1') // Italic
+		.replace(/__([^_]+)__/g, '$1') // Bold (underscore)
+		.replace(/_([^_]+)_/g, '$1') // Italic (underscore)
+		.replace(/`([^`]+)`/g, '$1') // Inline code
+		.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Links
+		.replace(/^\s*[-*+]\s+/, '') // List items
+		.replace(/^\s*\d+\.\s+/, '') // Numbered lists
+		.trim()
+}
+
