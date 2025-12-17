@@ -1,0 +1,357 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/layout.astro';
+
+export async function getStaticPaths() {
+  const servicesEntries = await getCollection('services');
+  return servicesEntries.map(entry => ({
+    params: { slug: entry.slug },
+    props: { entry }
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await entry.render();
+const { title, subtitle, heroImageDesktop, heroImageMobile, stats, ctaText, ctaLink } = entry.data;
+---
+
+<Layout title={title ? `${title} - Authentica` : "Authentica"}>
+  <main class="font-['Wix_Madefor_Display'] text-black overflow-hidden">
+    <div class="px-5 pt-8 sm:px-10 lg:pt-0 xl:px-20 2xl:max-w-screen-2xl 2xl:mx-auto 2xl:px-12">
+
+      <!-- Hero Section -->
+      <section class="py-2.5">
+        <div class="flex flex-col gap-8 lg:gap-4">
+          {title && (
+            <h2 class="text-3xl font-bold leading-tight text-center md:text-left md:text-4xl lg:text-5xl lg:max-w-4xl wide:text-6xl">
+              {title}
+            </h2>
+          )}
+          <div class="relative">
+            {heroImageDesktop && (
+              <img
+                src={heroImageDesktop}
+                alt={title || "Service hero image"}
+                class="hidden w-full object-cover rounded-lg md:block md:h-[50vh] xl:rounded-2xl 2xl:h-[45vh] wide:h-[50vh]"
+                width="2560"
+                height="653"
+                loading="eager"
+              />
+            )}
+            {heroImageMobile && (
+              <img
+                src={heroImageMobile}
+                alt={title || "Service hero image mobile"}
+                class="block w-full h-[84vh] object-cover rounded-lg md:hidden"
+                width="1000"
+                height="1500"
+                loading="eager"
+              />
+            )}
+          </div>
+          {subtitle && (
+            <div class="py-8 lg:w-[900px] lg:mx-auto lg:py-16">
+              <p class="text-sm font-medium leading-normal text-center md:text-left md:text-2xl md:leading-9 wide:text-3xl wide:leading-10">
+                <strong>{subtitle}</strong>
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <!-- Stats Section -->
+      {stats && stats.length > 0 && (
+        <section class="py-8 md:py-16 xl:py-20 2xl:py-[85px]">
+          <div class="grid grid-cols-1 gap-8 md:grid-cols-4 md:items-start lg:gap-4 max-w-7xl mx-auto">
+            {stats.map((stat) => (
+              <div class="text-center">
+                <h3 class="font-bold text-black text-[40.5px] leading-none md:text-[56px] xl:text-[96px] 2xl:mb-14">
+                  {stat.value}
+                </h3>
+                <p class="mt-2 text-sm font-bold uppercase sm:text-base lg:text-xl xl:text-2xl">
+                  {stat.label}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <!-- Full Width Image Section -->
+      {entry.slug === 'logistika-a-fulfillment' && (
+        <section class="py-8">
+          <img
+            src="/assets/313560c4e29d-authentica-logistics-fulfillment-fotka-celou-sirku-1803x643px-scaled-jpg.webp"
+            alt="Wide shot of warehouse interior"
+            class="w-full h-[70vh] object-cover rounded-lg xl:rounded-2xl"
+            width="2560"
+            height="913"
+            loading="eager"
+          />
+        </section>
+      )}
+
+      <!-- Main Content Sections -->
+      <div class="prose prose-services">
+        <Content />
+      </div>
+
+      <!-- Two Images Section -->
+      {entry.slug === 'logistika-a-fulfillment' && (
+        <section class="flex flex-col gap-8 py-8 md:flex-row 2xl:gap-24">
+          <div class="flex items-end w-full md:w-1/4 xl:w-[30%]">
+            <img
+              src="/assets/2acc7292d877-authentica-logistics-fulfillment-fotka-leva-mala-427x368px-jpg.webp"
+              alt="Small warehouse detail"
+              class="object-cover w-full rounded-lg md:h-[20vh] xl:h-[40vh] xl:rounded-2xl"
+              width="427"
+              height="368"
+              loading="eager"
+            />
+          </div>
+          <div class="w-full md:w-3/4 xl:w-[70%]">
+            <img
+              src="/assets/7d3a796c0f02-authentica-logistics-fulfillment-fotka-prava-velka-1280x734px-jpg.webp"
+              alt="Large warehouse view"
+              class="object-cover w-full h-full rounded-lg md:h-[40vh] xl:h-[80vh] xl:rounded-2xl"
+              width="2560"
+              height="1468"
+              loading="eager"
+            />
+          </div>
+        </section>
+      )}
+
+      <!-- Centered Image Section -->
+      {entry.slug === 'logistika-a-fulfillment' && (
+        <section class="py-8">
+          <img
+            src="/assets/793b56433d66-authentica-logistics-fulfillment-fotka-stred-900x641px-jpg.webp"
+            alt="Center warehouse image"
+            class="w-full mx-auto rounded-lg xl:w-[900px] xl:rounded-2xl"
+            width="1800"
+            height="1282"
+            loading="eager"
+          />
+        </section>
+      )}
+
+      <!-- CTA Banner Section -->
+      {ctaText && (
+        <section class="py-12">
+          <div class="bg-[#f2f2f2] rounded-lg grid gap-8 p-8 text-center max-w-4xl mx-auto lg:rounded-2xl lg:p-16">
+            <h3 class="text-2xl font-bold leading-tight md:text-5xl md:leading-[54px]">
+              {ctaText}
+            </h3>
+            {ctaLink && (
+              <div>
+                <a
+                  href={ctaLink}
+                  class="inline-block px-8 py-4 text-sm font-bold text-white transition bg-black rounded-full md:text-lg hover:bg-gray-800"
+                >
+                  Ozvěte se – ukážeme vám, jak může vypadat spolehlivá a škálovatelná logistika.
+                </a>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+    </div>
+
+    <!-- Contact Form Section -->
+    <section class="bg-white text-black py-16 lg:py-28 relative">
+      <div class="px-5 sm:px-10 xl:px-20 2xl:max-w-screen-2xl 2xl:mx-auto 2xl:px-12 flex flex-col lg:flex-row gap-16 lg:gap-8">
+        <div class="flex flex-col gap-4 text-center lg:text-left lg:w-1/2">
+          <p class="text-3xl font-bold leading-tight md:text-4xl lg:text-5xl wide:text-6xl">
+            Máte chuť vytvořit nezapomenutelný<br>projekt?
+          </p>
+          <div class="mt-8 space-y-4">
+            <div>
+              <div class="text-sm font-bold uppercase">zavolejte</div>
+              <a href="tel:+420739382357" class="text-2xl font-bold md:text-3xl hover:underline">+420 739 382 357</a>
+            </div>
+            <div>
+              <div class="text-sm font-bold uppercase">napište</div>
+              <a href="mailto:fulfillment@authentica.cz" class="text-2xl font-bold md:text-3xl hover:underline">fulfillment@authentica.cz</a>
+            </div>
+          </div>
+        </div>
+        <div class="lg:w-1/2">
+          <form novalidate>
+            <div class="grid grid-cols-1 gap-y-2">
+              <div>
+                <label for="surname" class="text-sm font-medium">Jméno a příjmení *</label>
+                <input
+                  type="text"
+                  name="surname"
+                  id="surname"
+                  required
+                  class="mt-1 w-full h-[60px] bg-[#f2f2f2] rounded-lg px-4 text-base font-medium border-0 focus:ring-2 focus:ring-black"
+                />
+              </div>
+              <div>
+                <label for="company" class="text-sm font-medium">Společnost *</label>
+                <input
+                  type="text"
+                  name="company"
+                  id="company"
+                  required
+                  class="mt-1 w-full h-[60px] bg-[#f2f2f2] rounded-lg px-4 text-base font-medium border-0 focus:ring-2 focus:ring-black"
+                />
+              </div>
+              <div>
+                <label for="phone" class="text-sm font-medium">Telefon *</label>
+                <input
+                  type="tel"
+                  name="phone"
+                  id="phone"
+                  required
+                  class="mt-1 w-full h-[60px] bg-[#f2f2f2] rounded-lg px-4 text-base font-medium border-0 focus:ring-2 focus:ring-black"
+                />
+              </div>
+              <div>
+                <label for="e-mail" class="text-sm font-medium">E-mail *</label>
+                <input
+                  type="email"
+                  name="e-mail"
+                  id="e-mail"
+                  required
+                  class="mt-1 w-full h-[60px] bg-[#f2f2f2] rounded-lg px-4 text-base font-medium border-0 focus:ring-2 focus:ring-black"
+                />
+              </div>
+              <div>
+                <label for="message" class="text-sm font-medium">Řekněte nám o svém projektu *</label>
+                <textarea
+                  name="message"
+                  id="message"
+                  rows="4"
+                  required
+                  class="mt-1 w-full h-[80px] bg-[#f2f2f2] rounded-lg px-4 py-3 text-base font-medium border-0 focus:ring-2 focus:ring-black resize-none"
+                ></textarea>
+              </div>
+            </div>
+            <div class="flex flex-col gap-8 mt-8 md:flex-row md:items-center md:justify-between">
+              <div class="relative flex items-start">
+                <div class="flex items-center h-5">
+                  <input
+                    id="gdpr"
+                    name="gdpr"
+                    type="checkbox"
+                    class="w-8 h-8 bg-white border-black rounded-full appearance-none cursor-pointer border checked:bg-black checked:border-black focus:outline-none checked:after:content-['✓'] checked:after:block checked:after:text-white checked:after:text-center checked:after:text-lg checked:after:font-bold"
+                  />
+                </div>
+                <div class="ml-3 text-sm">
+                  <label for="gdpr" class="font-medium text-gray-700">
+                    Souhlasím se <a href="/ochrana-osobnich-udaju" class="underline">Zásadami ochrany osobních údajů</a> společnosti Authentica
+                  </label>
+                </div>
+              </div>
+              <button
+                type="submit"
+                class="self-start px-8 py-4 font-bold text-white transition bg-black border border-transparent rounded-full hover:bg-gray-800 md:self-auto"
+              >
+                Odeslat
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</Layout>
+
+<style>
+  /* Prose styling for markdown content - let it flow naturally */
+  .prose-services {
+    color: inherit;
+    max-width: none;
+  }
+
+  /* Hide the first paragraph (subtitle, already rendered above) */
+  .prose-services :global(p:first-child) {
+    display: none;
+  }
+
+  .prose-services :global(p) {
+    margin-bottom: 1rem;
+    text-align: left;
+    font-size: 0.875rem;
+    line-height: 1.25;
+    font-weight: 500;
+  }
+
+  @media (min-width: 768px) {
+    .prose-services :global(p) {
+      font-size: 1.5rem;
+      line-height: 2.25rem;
+    }
+  }
+
+  .prose-services :global(strong) {
+    font-weight: 500;
+  }
+
+  .prose-services :global(a) {
+    text-decoration: underline;
+    color: inherit;
+  }
+
+  .prose-services :global(ul) {
+    list-style-type: disc;
+    padding-left: 1.25rem;
+    margin-bottom: 1rem;
+    text-align: left;
+    font-size: 0.875rem;
+    line-height: 1.25;
+    font-weight: 400;
+    margin-top: 1rem;
+  }
+
+  @media (min-width: 768px) {
+    .prose-services :global(ul) {
+      padding-left: 1.875rem;
+      font-size: 1.5rem;
+      line-height: 2.25rem;
+    }
+  }
+
+  .prose-services :global(li) {
+    margin-bottom: 0.375rem;
+  }
+
+  /* Style headings from markdown */
+  .prose-services :global(h2),
+  .prose-services :global(h3) {
+    font-weight: bold;
+    margin-bottom: 1.25rem;
+    margin-top: 2rem;
+    text-align: left;
+    font-size: 1.25rem;
+    line-height: 1.5rem;
+  }
+
+  @media (min-width: 640px) {
+    .prose-services :global(h2),
+    .prose-services :global(h3) {
+      font-size: 1.5rem;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .prose-services :global(h2),
+    .prose-services :global(h3) {
+      font-size: 1.75rem;
+      line-height: 2.75rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .prose-services :global(h2),
+    .prose-services :global(h3) {
+      font-size: 2.25rem;
+      line-height: 2.75rem;
+    }
+  }
+</style>
