@@ -425,17 +425,17 @@ describe('processHtml', () => {
 		// Should have collection wrapper marked with standard data-cms-id
 		expect(result.collectionWrapperId).toBeDefined()
 		expect(result.html).toContain(`data-cms-id="${result.collectionWrapperId}"`)
-		
+
 		// Collection info should be in the manifest entry, not on the HTML
 		expect(result.html).not.toContain('data-cms-collection-name')
 		expect(result.html).not.toContain('data-cms-collection-slug')
-		
+
 		// Manifest entry should have collection info
 		const wrapperEntry = result.entries[result.collectionWrapperId!]
 		expect(wrapperEntry).toBeDefined()
-		expect(wrapperEntry.sourceType).toBe('collection')
-		expect(wrapperEntry.collectionName).toBe('services')
-		expect(wrapperEntry.collectionSlug).toBe('test-service')
+		expect(wrapperEntry?.sourceType).toBe('collection')
+		expect(wrapperEntry?.collectionName).toBe('services')
+		expect(wrapperEntry?.collectionSlug).toBe('test-service')
 	})
 
 	test('should mark the innermost wrapper element containing markdown', async () => {
@@ -468,16 +468,16 @@ describe('processHtml', () => {
 		// The innermost wrapper (div.prose) should be marked with data-cms-id
 		expect(result.collectionWrapperId).toBeDefined()
 		expect(result.html).toContain('class="prose"')
-		
+
 		// The div with prose class should have the data-cms-id attribute
 		expect(result.html).toMatch(/class="prose"[^>]*data-cms-id/)
-		
+
 		// Manifest entry for wrapper should have collection info
 		const wrapperEntry = result.entries[result.collectionWrapperId!]
 		expect(wrapperEntry).toBeDefined()
-		expect(wrapperEntry.sourceType).toBe('collection')
-		expect(wrapperEntry.collectionName).toBe('blog')
-		expect(wrapperEntry.collectionSlug).toBe('test-post')
+		expect(wrapperEntry?.sourceType).toBe('collection')
+		expect(wrapperEntry?.collectionName).toBe('blog')
+		expect(wrapperEntry?.collectionSlug).toBe('test-post')
 	})
 
 	test('should not mark collection wrapper when collectionInfo is not provided', async () => {

@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite'
+import { createAstroTransformPlugin } from './astro-transform'
 import type { ManifestWriter } from './manifest-writer'
 import type { CmsMarkerOptions, ComponentDefinition } from './types'
-import { createAstroTransformPlugin } from './astro-transform'
 
 export interface VitePluginContext {
 	manifestWriter: ManifestWriter
@@ -35,11 +35,12 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 	}
 
 	// Create the Astro transform plugin to inject source location attributes
-	// Only enabled in dev mode - during build, source locations are handled
-	// in build-processor.ts after HTML is generated
+	// NOTE: Disabled - Astro's native compiler already injects source location
+	// attributes (data-astro-source-file, data-astro-source-loc) in dev mode.
+	// Our html-processor recognizes these native attributes automatically.
 	const astroTransformPlugin = createAstroTransformPlugin({
 		markComponents: config.markComponents,
-		enabled: command === 'dev',
+		enabled: false, // Not needed - Astro provides source attributes natively
 	})
 
 	// Note: We cannot use transformIndexHtml for static Astro builds because

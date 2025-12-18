@@ -201,7 +201,10 @@ export async function processHtml(
 			// Extract component name from file path (e.g., "src/components/Welcome.astro" -> "Welcome")
 			const componentName = extractComponentName(sourceFile)
 			// Parse source loc - format is "line:col" e.g. "20:21"
-			const sourceLocAttr = node.getAttribute('data-astro-source-line') || '1:0'
+			// Support both our custom attribute and Astro's native attribute
+			const sourceLocAttr = node.getAttribute('data-astro-source-loc')
+				|| node.getAttribute('data-astro-source-line')
+				|| '1:0'
 			const sourceLine = parseInt(sourceLocAttr.split(':')[0] ?? '1', 10)
 
 			components[id] = {
@@ -350,8 +353,10 @@ export async function processHtml(
 		if (!includeEmptyText && !textContent) return
 
 		// Extract source location from Astro compiler attributes
+		// Support both Astro's native attribute (data-astro-source-loc) and our custom one (data-astro-source-line)
 		const sourceFile = node.getAttribute('data-astro-source-file')
-		const sourceLine = node.getAttribute('data-astro-source-line')
+		const sourceLine = node.getAttribute('data-astro-source-loc')
+			|| node.getAttribute('data-astro-source-line')
 
 		// When skipMarkdownContent is true, only mark elements that have source file attributes
 		// (meaning they come from Astro templates, not rendered markdown content)
@@ -371,6 +376,7 @@ export async function processHtml(
 			// Component roots need these for identification
 			if (!markedComponentRoots.has(node)) {
 				node.removeAttribute('data-astro-source-file')
+				node.removeAttribute('data-astro-source-loc')
 				node.removeAttribute('data-astro-source-line')
 			}
 		}
@@ -462,6 +468,7 @@ export async function processHtml(
 	// Clean up any remaining source attributes from component-marked elements
 	markedComponentRoots.forEach((node: any) => {
 		node.removeAttribute('data-astro-source-file')
+		node.removeAttribute('data-astro-source-loc')
 		node.removeAttribute('data-astro-source-line')
 	})
 

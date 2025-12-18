@@ -9,18 +9,18 @@ export interface AstroTransformOptions {
 }
 
 /**
- * Vite plugin that transforms .astro files to inject source location metadata
- * This runs during Astro's compilation phase and adds data-astro-source-file and
- * data-astro-source-line attributes to HTML elements in the template.
+ * Vite plugin that transforms .astro files to inject source location metadata.
  *
- * NOTE: Component marking is NOT done here because modifying component tags
- * in the raw .astro source breaks Astro's JSX-like parser. Component marking
- * is done at the HTML output level instead (in dev-middleware and build-processor).
+ * NOTE: This plugin is currently DISABLED because Astro's native compiler already
+ * injects `data-astro-source-file` and `data-astro-source-loc` attributes in dev mode.
+ * Our html-processor now recognizes both Astro's native attributes and our custom ones.
  *
- * IMPORTANT: This plugin should only run in dev mode. During build, modifying
- * .astro source files can cause Vite's build-import-analysis to fail with
- * parsing errors. In build mode, source locations are extracted from Astro's
- * compiler output in build-processor.ts instead.
+ * HISTORICAL CONTEXT: This plugin was created before we discovered Astro's native
+ * source tracking. It caused Vite's build-import-analysis to fail with parsing errors
+ * because modifying .astro source files confuses Vite's JavaScript parser.
+ *
+ * KEEPING FOR: Potential future use cases where custom source attribute injection
+ * might be needed, or for testing purposes.
  */
 export function createAstroTransformPlugin(options: AstroTransformOptions = {}): Plugin {
 	// Component marking is intentionally disabled at the transform level
