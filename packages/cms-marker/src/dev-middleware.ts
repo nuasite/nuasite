@@ -2,7 +2,7 @@ import type { ViteDevServer } from 'vite'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import { findCollectionSource, parseMarkdownContent } from './source-finder'
-import type { CollectionEntry, CmsMarkerOptions, ComponentDefinition } from './types'
+import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition } from './types'
 
 /**
  * Get the normalized page path from a URL
@@ -90,14 +90,14 @@ export function createDevMiddleware(
 		const requestUrl = req.url || 'unknown'
 
 		// Intercept response chunks
-		res.write = function(chunk: any, ...args: any[]) {
+		res.write = function (chunk: any, ...args: any[]) {
 			if (chunk) {
 				chunks.push(Buffer.from(chunk))
 			}
 			return true
 		} as any
 
-		res.end = function(chunk: any, ...args: any[]) {
+		res.end = function (chunk: any, ...args: any[]) {
 			if (chunk) {
 				chunks.push(Buffer.from(chunk))
 			}

@@ -182,14 +182,18 @@ async function searchAstroFile(
 					const matchLength = Math.min(cleanText.length, sectionTextOnly.length)
 					score = 50 + (matchLength / cleanText.length) * 40
 					matched = true
-					matches.push({ line: i + 1, score, type: 'static' })
+					// Find the actual line containing the text
+					const actualLine = findLineContainingText(lines, i, 5, textPreview)
+					matches.push({ line: actualLine, score, type: 'static' })
 				}
 
 				// Check for short exact text match (static content)
 				if (!matched && cleanText.length > 0 && cleanText.length <= 10 && sectionTextOnly.includes(cleanText)) {
 					score = 80
 					matched = true
-					matches.push({ line: i + 1, score, type: 'static' })
+					// Find the actual line containing the text
+					const actualLine = findLineContainingText(lines, i, 5, cleanText)
+					matches.push({ line: actualLine, score, type: 'static' })
 				}
 
 				// Try matching first few words for longer text (static content)
@@ -198,7 +202,9 @@ async function searchAstroFile(
 					if (firstWords && sectionTextOnly.includes(firstWords)) {
 						score = 40
 						matched = true
-						matches.push({ line: i + 1, score, type: 'static' })
+						// Find the actual line containing the text
+						const actualLine = findLineContainingText(lines, i, 5, firstWords)
+						matches.push({ line: actualLine, score, type: 'static' })
 					}
 				}
 			}
@@ -457,6 +463,22 @@ function collectSection(lines: string[], startLine: number, numLines: number): s
 		text += ' ' + lines[i]?.trim().replace(/\s+/g, ' ')
 	}
 	return text
+}
+
+/**
+ * Find the actual line containing the matched text within a section
+ * Returns 1-indexed line number
+ */
+function findLineContainingText(lines: string[], startLine: number, numLines: number, searchText: string): number {
+	const normalizedSearch = searchText.toLowerCase()
+	for (let i = startLine; i < Math.min(startLine + numLines, lines.length); i++) {
+		const lineText = stripHtmlTags(lines[i] || '').toLowerCase()
+		if (lineText.includes(normalizedSearch)) {
+			return i + 1 // Return 1-indexed line number
+		}
+	}
+	// If not found on a specific line, return the opening tag line
+	return startLine + 1
 }
 
 /**

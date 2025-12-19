@@ -211,7 +211,7 @@ const text = 'What\'s up';
 		expect(result?.file).toBe('src/components/ui/Card.astro')
 	})
 
-	test('should return line where tag opens, not where text is', async () => {
+	test('should return line where text is, not just where tag opens', async () => {
 		await fs.writeFile(
 			path.join(testDir, 'src/components/MultiLine.astro'),
 			`---
@@ -225,7 +225,7 @@ const text = 'What\'s up';
 		const result = await findSourceLocation('Link Text', 'a')
 
 		expect(result).toBeDefined()
-		expect(result?.line).toBe(3) // Line where <a opens, not line 5 where text is
+		expect(result?.line).toBe(5) // Line where text is, not line 3 where tag opens
 	})
 
 	test('should distinguish between multiple similar tags', async () => {
