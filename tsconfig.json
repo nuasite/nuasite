@@ -10,9 +10,6 @@
 		},
 		{
 			"path": "./packages/components"
-		},
-		{
-			"path": "./packages/playground"
 		}
 	]
 }

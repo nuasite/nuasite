@@ -34,9 +34,7 @@ jobs:
         with:
           bun-version: 1.3.5
       - name: Install deps
-        run: |
-          bun --version
-          bun install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Run ${{ matrix.job_name }}
         run: ${{ matrix.run_script }}
