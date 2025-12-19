@@ -2,7 +2,7 @@
 	"name": "@nuasite/components",
 	"description": "Nua Site astro components.",
 	"license": "Apache-2.0",
-	"version": "0.0.52",
+	"version": "0.0.53",
 	"files": [
 		"dist/**",
 		"src/**",
