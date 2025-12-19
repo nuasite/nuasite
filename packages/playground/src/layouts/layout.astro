@@ -15,6 +15,7 @@ const { title } = Astro.props;
 		<meta name="viewport" content="width=device-width" />
 		<meta name="generator" content={Astro.generator} />
 		<title>{title}</title>
+		<script src="/cms-editor.js" is:inline></script>
 	</head>
 	<body>
 		<slot />

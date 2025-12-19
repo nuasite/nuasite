@@ -1,7 +1,8 @@
 import type { ViteDevServer } from 'vite'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
-import type { CmsMarkerOptions, ComponentDefinition } from './types'
+import { findCollectionSource, parseMarkdownContent } from './source-finder'
+import type { CollectionEntry, CmsMarkerOptions, ComponentDefinition } from './types'
 
 /**
  * Get the normalized page path from a URL
@@ -109,9 +110,9 @@ export function createDevMiddleware(
 
 				// Process HTML asynchronously
 				processHtmlForDev(html, pagePath, config, idCounter)
-					.then(({ html: transformed, entries, components }) => {
+					.then(({ html: transformed, entries, components, collection }) => {
 						// Store in manifest writer
-						manifestWriter.addPage(pagePath, entries, components)
+						manifestWriter.addPage(pagePath, entries, components, collection)
 
 						// Restore original methods and send transformed HTML
 						res.write = originalWrite
@@ -158,6 +159,22 @@ async function processHtmlForDev(
 	let pageCounter = 0
 	const idGenerator = () => `cms-${pageCounter++}`
 
+	// Check if this is a collection page (e.g., /services/example -> services collection, example slug)
+	const collectionInfo = await findCollectionSource(pagePath, config.contentDir)
+	const isCollectionPage = !!collectionInfo
+
+	// Parse markdown content if this is a collection page
+	let mdContent: Awaited<ReturnType<typeof parseMarkdownContent>> | undefined
+	if (collectionInfo) {
+		mdContent = await parseMarkdownContent(collectionInfo)
+	}
+
+	// Get the first non-empty line of the markdown body for wrapper detection
+	const bodyFirstLine = mdContent?.body
+		?.split('\n')
+		.find((line) => line.trim().length > 0)
+		?.trim()
+
 	const result = await processHtml(
 		html,
 		pagePath,
@@ -169,9 +186,30 @@ async function processHtmlForDev(
 			generateManifest: config.generateManifest,
 			markComponents: config.markComponents,
 			componentDirs: config.componentDirs,
+			// Skip marking markdown-rendered content on collection pages
+			// The markdown body is treated as a single editable unit
+			skipMarkdownContent: isCollectionPage,
+			// Pass collection info for wrapper element marking
+			collectionInfo: collectionInfo
+				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine }
+				: undefined,
 		},
 		idGenerator,
 	)
+
+	// Build collection entry if this is a collection page
+	let collectionEntry: CollectionEntry | undefined
+	if (collectionInfo && mdContent) {
+		collectionEntry = {
+			collectionName: mdContent.collectionName,
+			collectionSlug: mdContent.collectionSlug,
+			sourcePath: mdContent.file,
+			frontmatter: mdContent.frontmatter,
+			body: mdContent.body,
+			bodyStartLine: mdContent.bodyStartLine,
+			wrapperId: result.collectionWrapperId,
+		}
+	}
 
 	// In dev mode, we use the source info from Astro compiler attributes
 	// which is already extracted by html-processor, so no need to call findSourceLocation
@@ -179,5 +217,6 @@ async function processHtmlForDev(
 		html: result.html,
 		entries: result.entries,
 		components: result.components,
+		collection: collectionEntry,
 	}
 }
