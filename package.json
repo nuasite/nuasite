@@ -53,7 +53,7 @@
 				"@astrojs/mdx": "4.3.8",
 				"@astrojs/rss": "4.0.13",
 				"@astrojs/sitemap": "3.6.0",
-				"astro": "^5.12.4"
+				"astro": "^5.16.6"
 			},
 			"parsers": {
 				"node-html-parser": "^6.1.13",
