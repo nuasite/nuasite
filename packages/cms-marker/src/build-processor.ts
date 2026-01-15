@@ -86,7 +86,7 @@ async function processFile(
 			skipMarkdownContent: isCollectionPage,
 			// Pass collection info for wrapper element marking
 			collectionInfo: collectionInfo
-				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine }
+				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine, contentPath: collectionInfo.file }
 				: undefined,
 		},
 		idGenerator,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { cleanText, processHtml } from '../../src/html-processor'
+import { cleanText, INLINE_STYLE_TAGS, processHtml } from '../../src/html-processor'
 
 describe('processHtml', () => {
 	test('should add CMS IDs to qualifying elements', async () => {
@@ -507,6 +507,396 @@ describe('processHtml', () => {
 		for (const entry of Object.values(result.entries)) {
 			expect(entry.sourceType).not.toBe('collection')
 		}
+	})
+
+	test('should include contentPath in manifest entry for collection wrapper', async () => {
+		const html = `
+			<div data-astro-source-file="src/pages/services/[slug].astro" data-astro-source-line="10:0">
+				<div data-astro-source-file="src/pages/services/[slug].astro" data-astro-source-line="12:0" class="prose">
+					<p>Markdown content</p>
+				</div>
+			</div>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+				collectionInfo: {
+					name: 'services',
+					slug: '3d-tisk',
+					contentPath: 'src/content/services/3d-tisk.md',
+				},
+			},
+			getNextId,
+		)
+
+		expect(result.collectionWrapperId).toBeDefined()
+		const wrapperEntry = result.entries[result.collectionWrapperId!]
+		expect(wrapperEntry).toBeDefined()
+		expect(wrapperEntry?.contentPath).toBe('src/content/services/3d-tisk.md')
+		expect(wrapperEntry?.collectionName).toBe('services')
+		expect(wrapperEntry?.collectionSlug).toBe('3d-tisk')
+	})
+
+	test('should add data-cms-markdown attribute to collection wrapper', async () => {
+		const html = `
+			<div data-astro-source-file="src/pages/blog/[slug].astro" data-astro-source-line="10:0">
+				<div data-astro-source-file="src/pages/blog/[slug].astro" data-astro-source-line="12:0">
+					<p>Markdown content</p>
+				</div>
+			</div>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+				collectionInfo: { name: 'blog', slug: 'my-post' },
+			},
+			getNextId,
+		)
+
+		expect(result.collectionWrapperId).toBeDefined()
+		// The wrapper element should have data-cms-markdown="true"
+		expect(result.html).toContain('data-cms-markdown="true"')
+	})
+
+	test('should find collection wrapper in build mode using bodyFirstLine', async () => {
+		// Build mode: no data-astro-source-file attributes, must match by content
+		const html = `
+			<main>
+				<article>
+					<div class="prose">
+						<p>This is the first paragraph of the markdown body.</p>
+						<p>This is the second paragraph.</p>
+						<h2>A heading in markdown</h2>
+					</div>
+				</article>
+			</main>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+				collectionInfo: {
+					name: 'blog',
+					slug: 'test-post',
+					bodyFirstLine: 'This is the first paragraph of the markdown body.',
+					contentPath: 'src/content/blog/test-post.md',
+				},
+			},
+			getNextId,
+		)
+
+		expect(result.collectionWrapperId).toBeDefined()
+		const wrapperEntry = result.entries[result.collectionWrapperId!]
+		expect(wrapperEntry).toBeDefined()
+		expect(wrapperEntry?.sourceType).toBe('collection')
+		expect(wrapperEntry?.collectionName).toBe('blog')
+		expect(wrapperEntry?.collectionSlug).toBe('test-post')
+		expect(wrapperEntry?.contentPath).toBe('src/content/blog/test-post.md')
+		// Should have data-cms-markdown on the wrapper
+		expect(result.html).toContain('data-cms-markdown="true"')
+	})
+
+	test('should handle markdown syntax in bodyFirstLine matching', async () => {
+		const html = `
+			<main>
+				<div class="content">
+					<p><strong>Bold text</strong> at the start of the body.</p>
+					<p>Second paragraph.</p>
+				</div>
+			</main>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+				collectionInfo: {
+					name: 'services',
+					slug: 'test',
+					// In markdown this would be **Bold text**
+					bodyFirstLine: '**Bold text** at the start of the body.',
+				},
+			},
+			getNextId,
+		)
+
+		expect(result.collectionWrapperId).toBeDefined()
+		expect(result.entries[result.collectionWrapperId!]?.sourceType).toBe('collection')
+	})
+
+	test('should skip inline text styling elements by default', async () => {
+		const html = '<p>Hello <strong>bold</strong> and <em>italic</em> text</p>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		// Only the p tag should be marked, not strong or em
+		expect(result.html).toContain('<p data-cms-id')
+		expect(result.html).not.toContain('<strong data-cms-id')
+		expect(result.html).not.toContain('<em data-cms-id')
+
+		// The p element's text should include the inline content
+		const pEntry = Object.values(result.entries).find(e => e.tag === 'p')
+		expect(pEntry).toBeDefined()
+		expect(pEntry?.text).toBe('Hello bold and italic text')
+	})
+
+	test('should skip all INLINE_STYLE_TAGS elements', async () => {
+		// Test a few of the inline style tags
+		const html = `
+			<div>
+				<p><strong>bold</strong></p>
+				<p><b>bold2</b></p>
+				<p><em>italic</em></p>
+				<p><i>italic2</i></p>
+				<p><u>underline</u></p>
+				<p><mark>highlight</mark></p>
+				<p><code>code</code></p>
+				<p><small>small</small></p>
+			</div>
+		`
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: false,
+			},
+			getNextId,
+		)
+
+		// None of the inline style tags should have data-cms-id
+		for (const tag of ['strong', 'b', 'em', 'i', 'u', 'mark', 'code', 'small']) {
+			expect(result.html).not.toContain(`<${tag} data-cms-id`)
+		}
+
+		// But the p tags should have data-cms-id
+		const pMatches = result.html.match(/<p data-cms-id/g)
+		expect(pMatches?.length).toBe(8)
+	})
+
+	test('should mark inline style elements when skipInlineStyleTags is false', async () => {
+		const html = '<p>Hello <strong>bold</strong> text</p>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: false,
+				skipInlineStyleTags: false,
+			},
+			getNextId,
+		)
+
+		// Both p and strong should be marked
+		expect(result.html).toContain('<p data-cms-id')
+		expect(result.html).toContain('<strong data-cms-id')
+	})
+
+	test('should skip styled spans with only text styling classes', async () => {
+		const html = '<p>Hello <span class="font-bold text-red-600">styled</span> text</p>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: false,
+			},
+			getNextId,
+		)
+
+		// p should be marked, but styled span should not
+		expect(result.html).toContain('<p data-cms-id')
+		expect(result.html).not.toContain('<span data-cms-id')
+	})
+
+	test('should mark spans with layout classes', async () => {
+		const html = '<p>Hello <span class="flex items-center">layout span</span> text</p>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: false,
+			},
+			getNextId,
+		)
+
+		// Both p and span (with layout classes) should be marked
+		expect(result.html).toContain('<p data-cms-id')
+		// Span with layout classes should have data-cms-id (attribute order may vary)
+		expect(result.html).toMatch(/<span[^>]*data-cms-id/)
+	})
+
+	test('should mark spans without any classes', async () => {
+		const html = '<p>Hello <span>plain span</span> text</p>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: false,
+			},
+			getNextId,
+		)
+
+		// Both p and plain span should be marked
+		expect(result.html).toContain('<p data-cms-id')
+		expect(result.html).toContain('<span data-cms-id')
+	})
+
+	test('should preserve inline elements in parent text for manifest', async () => {
+		const html = '<p>Start <strong>middle</strong> end</p>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		// Only p should have an entry
+		expect(Object.keys(result.entries)).toHaveLength(1)
+		const pEntry = Object.values(result.entries)[0]
+		expect(pEntry?.tag).toBe('p')
+		// Text should include the inline element's text
+		expect(pEntry?.text).toBe('Start middle end')
+		// No child CMS IDs since strong is not marked
+		expect(pEntry?.childCmsIds).toBeUndefined()
+	})
+
+	test('should populate html field for elements with inline style elements', async () => {
+		const html = '<p>Text with <strong>bold</strong> and <em>italic</em> content</p>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		const pEntry = Object.values(result.entries).find(e => e.tag === 'p')
+		expect(pEntry).toBeDefined()
+		// text should be plain text
+		expect(pEntry?.text).toBe('Text with bold and italic content')
+		// html should contain the inline HTML elements
+		expect(pEntry?.html).toBe('Text with <strong>bold</strong> and <em>italic</em> content')
+	})
+
+	test('should not populate html field for elements without inline style elements', async () => {
+		const html = '<p>Plain text without any styling</p>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		const pEntry = Object.values(result.entries).find(e => e.tag === 'p')
+		expect(pEntry).toBeDefined()
+		expect(pEntry?.text).toBe('Plain text without any styling')
+		// html should be undefined for plain text
+		expect(pEntry?.html).toBeUndefined()
 	})
 })
 

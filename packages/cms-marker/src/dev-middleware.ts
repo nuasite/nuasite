@@ -90,14 +90,14 @@ export function createDevMiddleware(
 		const requestUrl = req.url || 'unknown'
 
 		// Intercept response chunks
-		res.write = function (chunk: any, ...args: any[]) {
+		res.write = function(chunk: any, ...args: any[]) {
 			if (chunk) {
 				chunks.push(Buffer.from(chunk))
 			}
 			return true
 		} as any
 
-		res.end = function (chunk: any, ...args: any[]) {
+		res.end = function(chunk: any, ...args: any[]) {
 			if (chunk) {
 				chunks.push(Buffer.from(chunk))
 			}
@@ -191,7 +191,7 @@ async function processHtmlForDev(
 			skipMarkdownContent: isCollectionPage,
 			// Pass collection info for wrapper element marking
 			collectionInfo: collectionInfo
-				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine }
+				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine, contentPath: collectionInfo.file }
 				: undefined,
 		},
 		idGenerator,

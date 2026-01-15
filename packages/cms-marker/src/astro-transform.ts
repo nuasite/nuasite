@@ -182,8 +182,8 @@ function injectSourceAttributes(code: string, ast: any, filePath: string): strin
 		// Validate line exists - if not, there's a bug in AST positions or bounds checking
 		if (line === undefined) {
 			console.error(
-				`[astro-cms-marker] Invalid modification at line ${mod.line + 1} in ${filePath}. ` +
-				`This indicates a bug in @astrojs/compiler AST positions or bounds checking. Skipping modification.`
+				`[astro-cms-marker] Invalid modification at line ${mod.line + 1} in ${filePath}. `
+					+ `This indicates a bug in @astrojs/compiler AST positions or bounds checking. Skipping modification.`,
 			)
 			continue
 		}
@@ -191,8 +191,8 @@ function injectSourceAttributes(code: string, ast: any, filePath: string): strin
 		// Validate column is within line bounds
 		if (mod.column < 0 || mod.column > line.length) {
 			console.error(
-				`[astro-cms-marker] Invalid column ${mod.column} at line ${mod.line + 1} in ${filePath}. ` +
-				`Line length is ${line.length}. Skipping modification.`
+				`[astro-cms-marker] Invalid column ${mod.column} at line ${mod.line + 1} in ${filePath}. `
+					+ `Line length is ${line.length}. Skipping modification.`,
 			)
 			continue
 		}

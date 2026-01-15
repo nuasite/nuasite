@@ -94,4 +94,3 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
 export type { CollectionInfo, MarkdownContent } from './source-finder'
 export type { CmsManifest, CmsMarkerOptions, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry } from './types'
-

@@ -30,11 +30,14 @@ export interface ComponentDefinition {
 export interface ManifestEntry {
 	id: string
 	tag: string
+	/** Plain text content (for display/search) */
 	text: string
+	/** HTML content when element contains inline styling (strong, em, etc.) */
+	html?: string
 	sourcePath?: string
 	sourceLine?: number
 	sourceSnippet?: string
-	sourceType?: 'static' | 'variable' | 'prop' | 'computed' | 'collection'
+	sourceType?: 'static' | 'variable' | 'prop' | 'computed' | 'collection' | 'image'
 	variableName?: string
 	childCmsIds?: string[]
 	parentComponentId?: string
@@ -42,6 +45,12 @@ export interface ManifestEntry {
 	collectionName?: string
 	/** Entry slug for collection entries (e.g., '3d-tisk') */
 	collectionSlug?: string
+	/** Path to the markdown content file (e.g., 'src/content/blog/my-post.md') */
+	contentPath?: string
+	/** Image source URL (for image entries) */
+	imageSrc?: string
+	/** Image alt text (for image entries) */
+	imageAlt?: string
 }
 
 export interface ComponentInstance {

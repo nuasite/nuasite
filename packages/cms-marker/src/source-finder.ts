@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import type { ManifestEntry } from './types'
 
 export interface SourceLocation {
 	file: string
@@ -351,9 +352,10 @@ async function searchForPropInParents(dir: string, textContent: string): Promise
 }
 
 /**
- * Extract complete tag snippet including content and indentation
+ * Extract complete tag snippet including content and indentation.
+ * Exported for use in html-processor to populate sourceSnippet.
  */
-function extractCompleteTagSnippet(lines: string[], startLine: number, tag: string): string {
+export function extractCompleteTagSnippet(lines: string[], startLine: number, tag: string): string {
 	const snippetLines: string[] = []
 	let depth = 0
 	let foundClosing = false
@@ -388,6 +390,68 @@ function extractCompleteTagSnippet(lines: string[], startLine: number, tag: stri
 	}
 
 	return snippetLines.join('\n')
+}
+
+/**
+ * Extract innerHTML from a complete tag snippet.
+ * Given `<p class="foo">content here</p>`, returns `content here`.
+ *
+ * @param snippet - The complete tag snippet from source
+ * @param tag - The tag name (e.g., 'p', 'h1')
+ * @returns The innerHTML portion, or undefined if can't extract
+ */
+export function extractInnerHtmlFromSnippet(snippet: string, tag: string): string | undefined {
+	// Match opening tag (with any attributes) and extract content until closing tag
+	// Handle both single-line and multi-line cases
+	const openTagPattern = new RegExp(`<${tag}(?:\\s[^>]*)?>`, 'i')
+	const closeTagPattern = new RegExp(`</${tag}>`, 'i')
+
+	const openMatch = snippet.match(openTagPattern)
+	if (!openMatch) return undefined
+
+	const openTagEnd = openMatch.index! + openMatch[0].length
+	const closeMatch = snippet.match(closeTagPattern)
+	if (!closeMatch) return undefined
+
+	const closeTagStart = closeMatch.index!
+
+	// Extract content between opening and closing tags
+	if (closeTagStart > openTagEnd) {
+		return snippet.substring(openTagEnd, closeTagStart)
+	}
+
+	return undefined
+}
+
+/**
+ * Read source file and extract the innerHTML at the specified line.
+ *
+ * @param sourceFile - Path to source file (relative to cwd)
+ * @param sourceLine - 1-indexed line number
+ * @param tag - The tag name
+ * @returns The innerHTML from source, or undefined if can't extract
+ */
+export async function extractSourceInnerHtml(
+	sourceFile: string,
+	sourceLine: number,
+	tag: string,
+): Promise<string | undefined> {
+	try {
+		const filePath = path.isAbsolute(sourceFile)
+			? sourceFile
+			: path.join(process.cwd(), sourceFile)
+
+		const content = await fs.readFile(filePath, 'utf-8')
+		const lines = content.split('\n')
+
+		// Extract the complete tag snippet
+		const snippet = extractCompleteTagSnippet(lines, sourceLine - 1, tag)
+
+		// Extract innerHTML from the snippet
+		return extractInnerHtmlFromSnippet(snippet, tag)
+	} catch {
+		return undefined
+	}
 }
 
 /**
@@ -669,8 +733,10 @@ export async function findMarkdownSourceLocation(
 					let value = match[2]?.trim() || ''
 
 					// Handle quoted strings
-					if ((value.startsWith('"') && value.endsWith('"')) ||
-						(value.startsWith("'") && value.endsWith("'"))) {
+					if (
+						(value.startsWith('"') && value.endsWith('"'))
+						|| (value.startsWith("'") && value.endsWith("'"))
+					) {
 						value = value.slice(1, -1)
 					}
 
@@ -742,8 +808,10 @@ export async function parseMarkdownContent(
 					let value = match[2]?.trim() || ''
 
 					// Handle quoted strings
-					if ((value.startsWith('"') && value.endsWith('"')) ||
-						(value.startsWith("'") && value.endsWith("'"))) {
+					if (
+						(value.startsWith('"') && value.endsWith('"'))
+						|| (value.startsWith("'") && value.endsWith("'"))
+					) {
 						value = value.slice(1, -1)
 					}
 
@@ -791,3 +859,43 @@ function stripMarkdownSyntax(text: string): string {
 		.trim()
 }
 
+/**
+ * Enhance manifest entries with actual source snippets from source files.
+ * This reads the source files and extracts the innerHTML at the specified locations.
+ *
+ * @param entries - Manifest entries to enhance
+ * @returns Enhanced entries with sourceSnippet populated
+ */
+export async function enhanceManifestWithSourceSnippets(
+	entries: Record<string, ManifestEntry>,
+): Promise<Record<string, ManifestEntry>> {
+	const enhanced: Record<string, ManifestEntry> = {}
+
+	// Process entries in parallel for better performance
+	const entryPromises = Object.entries(entries).map(async ([id, entry]) => {
+		// Skip if already has sourceSnippet or missing source info
+		if (entry.sourceSnippet || !entry.sourcePath || !entry.sourceLine || !entry.tag) {
+			return [id, entry] as const
+		}
+
+		// Extract the actual source innerHTML
+		const sourceSnippet = await extractSourceInnerHtml(
+			entry.sourcePath,
+			entry.sourceLine,
+			entry.tag,
+		)
+
+		if (sourceSnippet) {
+			return [id, { ...entry, sourceSnippet }] as const
+		}
+
+		return [id, entry] as const
+	})
+
+	const results = await Promise.all(entryPromises)
+	for (const [id, entry] of results) {
+		enhanced[id] = entry
+	}
+
+	return enhanced
+}

@@ -1,5 +1,36 @@
 import { parse } from 'node-html-parser'
+import { enhanceManifestWithSourceSnippets } from './source-finder'
 import type { ComponentInstance, ManifestEntry } from './types'
+
+/**
+ * Inline text styling elements that should NOT be marked with CMS IDs.
+ * These elements are text formatting and should be part of their parent's content.
+ * They will be preserved as HTML when editing the parent element.
+ */
+export const INLINE_STYLE_TAGS = [
+	'strong',
+	'b',
+	'em',
+	'i',
+	'u',
+	's',
+	'strike',
+	'del',
+	'ins',
+	'mark',
+	'small',
+	'sub',
+	'sup',
+	'abbr',
+	'cite',
+	'code',
+	'kbd',
+	'samp',
+	'var',
+	'time',
+	'dfn',
+	'q',
+] as const
 
 export interface ProcessHtmlOptions {
 	attributeName: string
@@ -13,12 +44,20 @@ export interface ProcessHtmlOptions {
 	markStyledSpans?: boolean
 	/** When true, only mark elements that have source file attributes (from Astro templates) */
 	skipMarkdownContent?: boolean
+	/**
+	 * When true, skip marking inline text styling elements (strong, b, em, i, etc.).
+	 * These elements will be preserved as part of their parent's HTML content.
+	 * Defaults to true.
+	 */
+	skipInlineStyleTags?: boolean
 	/** Collection info for marking the wrapper element containing markdown content */
 	collectionInfo?: {
 		name: string
 		slug: string
 		/** First line of the markdown body (used to find wrapper element in build mode) */
 		bodyFirstLine?: string
+		/** Path to the markdown file (e.g., 'src/content/blog/my-post.md') */
+		contentPath?: string
 	}
 }
 
@@ -128,6 +167,7 @@ export async function processHtml(
 		excludeComponentDirs = ['src/pages', 'src/layouts', 'src/layout'],
 		markStyledSpans = true,
 		skipMarkdownContent = false,
+		skipInlineStyleTags = true,
 		collectionInfo,
 	} = options
 
@@ -235,6 +275,27 @@ export async function processHtml(
 		})
 	}
 
+	// Image detection pass: mark img elements for CMS image replacement
+	// Store image entries separately to add to manifest later
+	const imageEntries = new Map<string, { src: string; alt: string }>()
+	root.querySelectorAll('img').forEach((node) => {
+		// Skip if already marked
+		if (node.getAttribute(attributeName)) return
+
+		const src = node.getAttribute('src')
+		if (!src) return // Skip images without src
+
+		const id = getNextId()
+		node.setAttribute(attributeName, id)
+		node.setAttribute('data-cms-img', 'true')
+
+		// Store image info for manifest
+		imageEntries.set(id, {
+			src,
+			alt: node.getAttribute('alt') || '',
+		})
+	})
+
 	// Collection wrapper detection pass: find the element that wraps markdown content
 	// Two strategies:
 	// 1. Dev mode: look for elements with data-astro-source-file containing children without it
@@ -274,6 +335,7 @@ export async function processHtml(
 					// Mark this as the collection wrapper using the standard attribute
 					const id = getNextId()
 					node.setAttribute(attributeName, id)
+					node.setAttribute('data-cms-markdown', 'true')
 					collectionWrapperId = id
 					foundWrapper = true
 					// Don't break - we want the deepest wrapper, so we'll overwrite
@@ -333,6 +395,7 @@ export async function processHtml(
 						// Markdown body should have at least 2 block children
 						const id = getNextId()
 						best.node.setAttribute(attributeName, id)
+						best.node.setAttribute('data-cms-markdown', 'true')
 						collectionWrapperId = id
 						foundWrapper = true
 					}
@@ -348,6 +411,23 @@ export async function processHtml(
 		if (excludeTags.includes(tag)) return
 		if (includeTags && !includeTags.includes(tag)) return
 		if (node.getAttribute(attributeName)) return // Already marked
+
+		// Skip inline text styling elements (strong, b, em, i, etc.)
+		// These should be part of their parent's text content, not separately editable
+		// Only apply when includeTags is null (all tags) - if specific tags are listed, respect them
+		if (skipInlineStyleTags && includeTags === null && INLINE_STYLE_TAGS.includes(tag as typeof INLINE_STYLE_TAGS[number])) {
+			return
+		}
+
+		// Skip styled spans (spans with only text styling Tailwind classes)
+		// These are also inline text formatting and should be part of parent content
+		// Only apply when includeTags is null or doesn't include 'span'
+		if (skipInlineStyleTags && (includeTags === null || !includeTags.includes('span')) && tag === 'span') {
+			const classAttr = node.getAttribute('class')
+			if (classAttr && hasOnlyTextStyleClasses(classAttr)) {
+				return
+			}
+		}
 
 		const textContent = (node.innerText ?? '').trim()
 		if (!includeEmptyText && !textContent) return
@@ -447,20 +527,36 @@ export async function processHtml(
 				parent = parent.parentNode
 			}
 
+				// Check if element contains inline style elements (strong, b, em, etc.) or styled spans
+			// If so, store the HTML content for source file updates
+			const inlineStyleSelector = INLINE_STYLE_TAGS.join(', ')
+			const hasInlineStyleElements = node.querySelector(inlineStyleSelector) !== null
+			const hasStyledSpans = node.querySelector('[data-cms-styled]') !== null
+			const htmlContent = (hasInlineStyleElements || hasStyledSpans) ? node.innerHTML : undefined
+
+			// Check if this is an image entry
+			const imageInfo = imageEntries.get(id)
+			const isImage = !!imageInfo
+
 			entries[id] = {
 				id,
 				tag,
-				text: textWithPlaceholders.trim(),
+				text: isImage ? (imageInfo.alt || imageInfo.src) : textWithPlaceholders.trim(),
+				html: htmlContent,
 				sourcePath: sourceLocation?.file || sourcePath,
 				childCmsIds: childCmsIds.length > 0 ? childCmsIds : undefined,
 				sourceLine: sourceLocation?.line,
 				sourceSnippet: undefined,
-				sourceType: isCollectionWrapper ? 'collection' : undefined,
+				sourceType: isImage ? 'image' : (isCollectionWrapper ? 'collection' : undefined),
 				variableName: undefined,
 				parentComponentId,
 				// Add collection info for the wrapper entry
 				collectionName: isCollectionWrapper ? collectionInfo?.name : undefined,
 				collectionSlug: isCollectionWrapper ? collectionInfo?.slug : undefined,
+				contentPath: isCollectionWrapper ? collectionInfo?.contentPath : undefined,
+				// Add image info for image entries
+				imageSrc: imageInfo?.src,
+				imageAlt: imageInfo?.alt,
 			}
 		})
 	}
@@ -472,9 +568,13 @@ export async function processHtml(
 		node.removeAttribute('data-astro-source-line')
 	})
 
+	// Enhance manifest entries with actual source snippets from source files
+	// This allows the CMS to match and replace dynamic content in source files
+	const enhancedEntries = await enhanceManifestWithSourceSnippets(entries)
+
 	return {
 		html: root.toString(),
-		entries,
+		entries: enhancedEntries,
 		components,
 		collectionWrapperId,
 	}

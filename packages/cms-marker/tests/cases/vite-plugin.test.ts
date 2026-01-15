@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { createVitePlugin } from '../../src/vite-plugin'
 import type { ManifestWriter } from '../../src/manifest-writer'
 import type { CmsMarkerOptions } from '../../src/types'
+import { createVitePlugin } from '../../src/vite-plugin'
 
 describe('Vite Plugin', () => {
 	const createMockContext = () => {
