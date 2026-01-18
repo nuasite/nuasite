@@ -1,0 +1,49 @@
+import type { Options as MdxOptions } from '@astrojs/mdx'
+import type { SitemapOptions } from '@astrojs/sitemap'
+import type { CmsMarkerOptions } from '@nuasite/cms-marker'
+import type { PageMarkdownOptions } from '@nuasite/page-markdown'
+
+export type { CmsMarkerOptions } from '@nuasite/cms-marker'
+export type { PageMarkdownOptions } from '@nuasite/page-markdown'
+export type { Options as MdxOptions } from '@astrojs/mdx'
+export type { SitemapOptions } from '@astrojs/sitemap'
+
+export interface NuaIntegrationOptions {
+	/** Enable/disable or configure @nuasite/cms-marker (default: true) */
+	cmsMarker?: boolean | CmsMarkerOptions
+	/** Enable/disable or configure @nuasite/page-markdown (default: true) */
+	pageMarkdown?: boolean | PageMarkdownOptions
+	/** Enable/disable or configure @astrojs/mdx (default: true) */
+	mdx?: boolean | MdxOptions
+	/** Enable/disable or configure @astrojs/sitemap (default: true) */
+	sitemap?: boolean | SitemapOptions
+	/** Enable/disable @tailwindcss/vite plugin (default: true) */
+	tailwindcss?: boolean
+}
+
+export interface ResolvedIntegrationOptions {
+	cmsMarker: CmsMarkerOptions | false
+	pageMarkdown: PageMarkdownOptions | false
+	mdx: MdxOptions | false
+	sitemap: SitemapOptions | false
+	tailwindcss: boolean
+}
+
+/**
+ * Resolves a boolean | Options value to Options | false
+ */
+function resolveOption<T extends object>(value: boolean | T | undefined, defaultOptions: T = {} as T): T | false {
+	if (value === false) return false
+	if (value === true || value === undefined) return defaultOptions
+	return value
+}
+
+export function resolveOptions(options: NuaIntegrationOptions = {}): ResolvedIntegrationOptions {
+	return {
+		cmsMarker: resolveOption(options.cmsMarker),
+		pageMarkdown: resolveOption(options.pageMarkdown),
+		mdx: resolveOption(options.mdx),
+		sitemap: resolveOption(options.sitemap),
+		tailwindcss: options.tailwindcss !== false,
+	}
+}
