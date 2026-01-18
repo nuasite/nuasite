@@ -28,25 +28,6 @@
         "typescript": "catalog:build",
       },
     },
-    "packages/ai-markdown": {
-      "name": "@nuasite/ai-markdown",
-      "version": "0.0.1",
-      "dependencies": {
-        "astro": "catalog:astro",
-        "node-html-parser": "catalog:parsers",
-      },
-      "devDependencies": {
-        "@types/bun": "catalog:build",
-      },
-      "peerDependencies": {
-        "@nuasite/cms-marker": "workspace:*",
-        "typescript": "catalog:build",
-        "vite": "catalog:build",
-      },
-      "optionalPeers": [
-        "@nuasite/cms-marker",
-      ],
-    },
     "packages/cli": {
       "name": "@nuasite/cli",
       "version": "0.0.53",
@@ -112,11 +93,11 @@
         "@astrojs/mdx": "catalog:astro",
         "@astrojs/rss": "catalog:astro",
         "@astrojs/sitemap": "catalog:astro",
-        "@nuasite/ai-markdown": "workspace:*",
         "@nuasite/cli": "workspace:*",
         "@nuasite/cms-marker": "workspace:*",
         "@nuasite/components": "workspace:*",
         "@nuasite/core": "workspace:*",
+        "@nuasite/page-markdown": "workspace:*",
         "@tailwindcss/vite": "catalog:ui",
         "astro": "catalog:astro",
         "flowbite": "catalog:ui",
@@ -124,6 +105,25 @@
         "typescript": "catalog:build",
         "vite": "catalog:build",
       },
+    },
+    "packages/page-markdown": {
+      "name": "@nuasite/page-markdown",
+      "version": "0.0.1",
+      "dependencies": {
+        "astro": "catalog:astro",
+        "node-html-parser": "catalog:parsers",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:build",
+      },
+      "peerDependencies": {
+        "@nuasite/cms-marker": "workspace:*",
+        "typescript": "catalog:build",
+        "vite": "catalog:build",
+      },
+      "optionalPeers": [
+        "@nuasite/cms-marker",
+      ],
     },
     "packages/playground": {
       "name": "playground",
@@ -383,8 +383,6 @@
 
     "@nuasite/agent-summary": ["@nuasite/agent-summary@workspace:packages/agent-summary"],
 
-    "@nuasite/ai-markdown": ["@nuasite/ai-markdown@workspace:packages/ai-markdown"],
-
     "@nuasite/cli": ["@nuasite/cli@workspace:packages/cli"],
 
     "@nuasite/cms-marker": ["@nuasite/cms-marker@workspace:packages/cms-marker"],
@@ -394,6 +392,8 @@
     "@nuasite/core": ["@nuasite/core@workspace:packages/core"],
 
     "@nuasite/nua": ["@nuasite/nua@workspace:packages/nua"],
+
+    "@nuasite/page-markdown": ["@nuasite/page-markdown@workspace:packages/page-markdown"],
 
     "@oslojs/encoding": ["@oslojs/encoding@1.1.0", "", {}, "sha512-70wQhgYmndg4GCPxPPxPGevRKqTIJ2Nh4OkiMWmDAVYsTQ+Ta7Sq+rPevXyXGdzr30/qZBnyOalCszoMxlyldQ=="],
 
@@ -1321,11 +1321,11 @@
 
     "@nuasite/agent-summary/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
 
-    "@nuasite/ai-markdown/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
-
     "@nuasite/cli/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
 
     "@nuasite/cms-marker/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
+
+    "@nuasite/page-markdown/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
 
     "@rollup/pluginutils/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 
@@ -1383,11 +1383,11 @@
 
     "@nuasite/agent-summary/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
 
-    "@nuasite/ai-markdown/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
-
     "@nuasite/cli/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
 
     "@nuasite/cms-marker/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
+
+    "@nuasite/page-markdown/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
 
     "ansi-align/string-width/emoji-regex": ["emoji-regex@8.0.0", "", {}, "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A=="],
 
