@@ -227,7 +227,7 @@ function extractColorsFromCss(content: string): TailwindColor[] {
 /**
  * Extract color classes from an element's class attribute.
  */
-export function extractColorClasses(classAttr: string | null): ColorClasses | undefined {
+export function extractColorClasses(classAttr: string | null | undefined): ColorClasses | undefined {
 	if (!classAttr) return undefined
 
 	const classes = classAttr.split(/\s+/).filter(Boolean)

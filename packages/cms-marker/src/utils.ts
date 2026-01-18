@@ -60,7 +60,7 @@ export function generateManifestContentHash(entries: Record<string, ManifestEntr
 	// Sort keys for deterministic hashing
 	const sortedKeys = Object.keys(entries).sort()
 	const content = sortedKeys.map(key => {
-		const entry = entries[key]
+		const entry = entries[key]!
 		// Hash only content-relevant fields, not generated IDs
 		return `${entry.tag}|${entry.text}|${entry.html || ''}|${entry.sourcePath || ''}`
 	}).join('\n')

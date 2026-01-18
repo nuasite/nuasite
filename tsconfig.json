@@ -6,7 +6,7 @@
 			"path": "./packages/agent-summary"
 		},
 		{
-			"path": "./packages/ai-markdown"
+			"path": "./packages/page-markdown"
 		},
 		{
 			"path": "./packages/cli"

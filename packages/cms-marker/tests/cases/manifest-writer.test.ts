@@ -27,7 +27,7 @@ describe('ManifestWriter', () => {
 				const entries: Record<string, ManifestEntry> = {
 					'cms-0': {
 						id: 'cms-0',
-						file: '/index.html',
+						sourcePath: '/index.html',
 						tag: 'h1',
 						text: 'Hello World',
 					},
@@ -54,7 +54,7 @@ describe('ManifestWriter', () => {
 				const entries: Record<string, ManifestEntry> = {
 					'cms-0': {
 						id: 'cms-0',
-						file: '/about/index.html',
+						sourcePath: '/about/index.html',
 						tag: 'p',
 						text: 'About us',
 					},
@@ -81,7 +81,7 @@ describe('ManifestWriter', () => {
 				const entries: Record<string, ManifestEntry> = {
 					'cms-0': {
 						id: 'cms-0',
-						file: '/index.html',
+						sourcePath: '/index.html',
 						tag: 'h1',
 						text: 'Test',
 					},
@@ -110,7 +110,7 @@ describe('ManifestWriter', () => {
 				const entries: Record<string, ManifestEntry> = {
 					'cms-0': {
 						id: 'cms-0',
-						file: '/blog/post.html',
+						sourcePath: '/blog/post.html',
 						tag: 'div',
 						text: '',
 						sourceType: 'collection',
@@ -160,7 +160,7 @@ describe('ManifestWriter', () => {
 				})
 
 				const entries: Record<string, ManifestEntry> = {
-					'cms-0': { id: 'cms-0', file: '/index.html', tag: 'h1', text: 'Test' },
+					'cms-0': { id: 'cms-0', sourcePath: '/index.html', tag: 'h1', text: 'Test' },
 				}
 				manifestWriter.addPage('/', entries, {})
 				await manifestWriter.finalize()
@@ -192,7 +192,7 @@ describe('ManifestWriter', () => {
 				})
 
 				const entries: Record<string, ManifestEntry> = {
-					'cms-0': { id: 'cms-0', file: '/index.html', tag: 'button', text: 'Click' },
+					'cms-0': { id: 'cms-0', sourcePath: '/index.html', tag: 'button', text: 'Click' },
 				}
 				manifestWriter.addPage('/', entries, {})
 				await manifestWriter.finalize()
@@ -234,7 +234,7 @@ describe('ManifestWriter', () => {
 				await manifestWriter.loadAvailableColors(tempDir)
 
 				const entries: Record<string, ManifestEntry> = {
-					'cms-0': { id: 'cms-0', file: '/index.html', tag: 'h1', text: 'Test' },
+					'cms-0': { id: 'cms-0', sourcePath: '/index.html', tag: 'h1', text: 'Test' },
 				}
 				manifestWriter.addPage('/', entries, {})
 				await manifestWriter.finalize()
@@ -270,7 +270,7 @@ describe('ManifestWriter', () => {
 				manifestWriter.reset()
 
 				const entries: Record<string, ManifestEntry> = {
-					'cms-0': { id: 'cms-0', file: '/index.html', tag: 'h1', text: 'Test' },
+					'cms-0': { id: 'cms-0', sourcePath: '/index.html', tag: 'h1', text: 'Test' },
 				}
 				manifestWriter.addPage('/', entries, {})
 				await manifestWriter.finalize()
@@ -309,11 +309,11 @@ describe('ManifestWriter', () => {
 			const { manifestWriter, cleanup } = await createTestContext()
 			try {
 				manifestWriter.addPage('/', {
-					'cms-0': { id: 'cms-0', file: '/index.html', tag: 'h1', text: 'Home' },
+					'cms-0': { id: 'cms-0', sourcePath: '/index.html', tag: 'h1', text: 'Home' },
 				}, {})
 
 				manifestWriter.addPage('/about', {
-					'cms-1': { id: 'cms-1', file: '/about.html', tag: 'h1', text: 'About' },
+					'cms-1': { id: 'cms-1', sourcePath: '/about.html', tag: 'h1', text: 'About' },
 				}, {})
 
 				// Must finalize to wait for all queued writes to complete
@@ -322,8 +322,8 @@ describe('ManifestWriter', () => {
 				const globalManifest = manifestWriter.getGlobalManifest()
 
 				expect(Object.keys(globalManifest.entries)).toHaveLength(2)
-				expect(globalManifest.entries['cms-0'].text).toBe('Home')
-				expect(globalManifest.entries['cms-1'].text).toBe('About')
+				expect(globalManifest.entries['cms-0']!.text).toBe('Home')
+				expect(globalManifest.entries['cms-1']!.text).toBe('About')
 			} finally {
 				await cleanup()
 			}
@@ -343,21 +343,21 @@ describe('ManifestWriter', () => {
 			const globalManifest = manifestWriter.getGlobalManifest()
 
 			expect(globalManifest.componentDefinitions.Button).toBeDefined()
-			expect(globalManifest.componentDefinitions.Button.name).toBe('Button')
+			expect(globalManifest.componentDefinitions.Button!.name).toBe('Button')
 		})
 
 		test('finalize should return stats', async () => {
 			const { manifestWriter, cleanup } = await createTestContext()
 			try {
 				manifestWriter.addPage('/', {
-					'cms-0': { id: 'cms-0', file: '/index.html', tag: 'h1', text: 'Home' },
-					'cms-1': { id: 'cms-1', file: '/index.html', tag: 'p', text: 'Welcome' },
+					'cms-0': { id: 'cms-0', sourcePath: '/index.html', tag: 'h1', text: 'Home' },
+					'cms-1': { id: 'cms-1', sourcePath: '/index.html', tag: 'p', text: 'Welcome' },
 				}, {
 					'comp-0': { id: 'comp-0', componentName: 'Hero', file: 'src/components/Hero.astro', sourcePath: 'src/pages/index.astro', sourceLine: 5, props: {} },
 				})
 
 				manifestWriter.addPage('/about', {
-					'cms-2': { id: 'cms-2', file: '/about.html', tag: 'h1', text: 'About' },
+					'cms-2': { id: 'cms-2', sourcePath: '/about.html', tag: 'h1', text: 'About' },
 				}, {})
 
 				const stats = await manifestWriter.finalize()
@@ -378,7 +378,7 @@ describe('ManifestWriter', () => {
 				const entries: Record<string, ManifestEntry> = {
 					'cms-0': {
 						id: 'cms-0',
-						file: '/index.html',
+						sourcePath: '/index.html',
 						tag: 'button',
 						text: 'Click me',
 						colorClasses: {

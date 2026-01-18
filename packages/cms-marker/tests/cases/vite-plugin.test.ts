@@ -23,6 +23,7 @@ describe('Vite Plugin', () => {
 				componentDirs: ['src/components'],
 			} as Required<CmsMarkerOptions>,
 			idCounter: { value: 0 },
+			command: 'build' as const,
 		}
 	}
 
@@ -73,23 +74,24 @@ describe('Vite Plugin', () => {
 
 		// Test resolving virtual manifest ID
 		if (typeof manifestPlugin?.resolveId === 'function') {
-			const resolved1 = manifestPlugin.resolveId('virtual:cms-manifest', '', {})
+			const resolveId = manifestPlugin.resolveId as (id: string) => string | undefined
+			const resolved1 = resolveId('virtual:cms-manifest')
 			expect(resolved1).toBe('\0virtual:cms-manifest')
 
-			const resolved2 = manifestPlugin.resolveId('/@cms/manifest', '', {})
+			const resolved2 = resolveId('/@cms/manifest')
 			expect(resolved2).toBe('\0virtual:cms-manifest')
 
-			const resolved3 = manifestPlugin.resolveId('virtual:cms-components', '', {})
+			const resolved3 = resolveId('virtual:cms-components')
 			expect(resolved3).toBe('\0virtual:cms-components')
 
-			const resolved4 = manifestPlugin.resolveId('/@cms/components', '', {})
+			const resolved4 = resolveId('/@cms/components')
 			expect(resolved4).toBe('\0virtual:cms-components')
 		}
 	})
 
 	test('virtual manifest plugin should load manifest data', () => {
 		const mockManifest = {
-			entries: { 'cms-1': { id: 'cms-1', file: 'test.html', tag: 'h1', text: 'Test' } },
+			entries: { 'cms-1': { id: 'cms-1', tag: 'h1', text: 'Test' } },
 			components: {},
 			componentDefinitions: {},
 		}
@@ -103,7 +105,8 @@ describe('Vite Plugin', () => {
 		expect(manifestPlugin?.load).toBeDefined()
 
 		if (typeof manifestPlugin?.load === 'function') {
-			const loaded = manifestPlugin.load('\0virtual:cms-manifest')
+			const load = manifestPlugin.load as (id: string) => string | undefined
+			const loaded = load('\0virtual:cms-manifest')
 			expect(loaded).toContain(JSON.stringify(mockManifest))
 		}
 	})

@@ -17,7 +17,8 @@ describe('Astro Transform Plugin', () => {
 		const plugin = createAstroTransformPlugin()
 
 		if (typeof plugin.transform === 'function') {
-			const result = await plugin.transform('console.log("test")', 'test.ts')
+			const transform = plugin.transform as (code: string, id: string) => Promise<unknown>
+			const result = await transform('console.log("test")', 'test.ts')
 			expect(result).toBeNull()
 		}
 	})
@@ -26,7 +27,8 @@ describe('Astro Transform Plugin', () => {
 		const plugin = createAstroTransformPlugin()
 
 		if (typeof plugin.transform === 'function') {
-			const result = await plugin.transform('content', 'node_modules/test.astro')
+			const transform = plugin.transform as (code: string, id: string) => Promise<unknown>
+			const result = await transform('content', 'node_modules/test.astro')
 			expect(result).toBeNull()
 		}
 	})
@@ -35,8 +37,9 @@ describe('Astro Transform Plugin', () => {
 		const plugin = createAstroTransformPlugin()
 
 		if (typeof plugin.transform === 'function') {
+			const transform = plugin.transform as (code: string, id: string) => Promise<unknown>
 			// Invalid Astro syntax should not crash
-			const result = await plugin.transform('<<invalid>>', 'test.astro')
+			const result = await transform('<<invalid>>', 'test.astro')
 			// Should return null or handle gracefully
 			expect(result === null || typeof result === 'object').toBe(true)
 		}
