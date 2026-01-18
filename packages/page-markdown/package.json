@@ -1,0 +1,48 @@
+{
+	"name": "@nuasite/page-markdown",
+	"description": "Expose pages as .md endpoints for Astro",
+	"files": [
+		"dist/**",
+		"src/**",
+		"README.md",
+		"package.json"
+	],
+	"homepage": "https://github.com/nuasite/nuasite/blob/main/packages/page-markdown/README.md",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nuasite/nuasite.git",
+		"directory": "packages/page-markdown"
+	},
+	"license": "Apache-2.0",
+	"version": "0.0.1",
+	"module": "src/index.ts",
+	"types": "src/index.ts",
+	"type": "module",
+	"dependencies": {
+		"astro": "catalog:astro",
+		"node-html-parser": "catalog:parsers"
+	},
+	"devDependencies": {
+		"@types/bun": "catalog:build"
+	},
+	"peerDependencies": {
+		"typescript": "catalog:build",
+		"vite": "catalog:build",
+		"@nuasite/cms-marker": "workspace:*"
+	},
+	"peerDependenciesMeta": {
+		"@nuasite/cms-marker": {
+			"optional": true
+		}
+	},
+	"scripts": {
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
+	},
+	"keywords": [
+		"markdown",
+		"astro",
+		"nuasite",
+		"withastro",
+		"pages"
+	]
+}
