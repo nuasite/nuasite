@@ -1,6 +1,11 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { CmsManifest, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry } from './types'
+import { parseTailwindConfig } from './tailwind-colors'
+import type { AvailableColors, CmsManifest, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry, ManifestMetadata } from './types'
+import { generateManifestContentHash, generateSourceFileHashes } from './utils'
+
+/** Current manifest schema version */
+const MANIFEST_VERSION = '1.0'
 
 /**
  * Manages streaming manifest writes during build.
@@ -16,6 +21,7 @@ export class ManifestWriter {
 	private outDir: string = ''
 	private manifestFile: string
 	private componentDefinitions: Record<string, ComponentDefinition>
+	private availableColors: AvailableColors | undefined
 	private writeQueue: Promise<void> = Promise.resolve()
 
 	constructor(manifestFile: string, componentDefinitions: Record<string, ComponentDefinition> = {}) {
@@ -42,6 +48,22 @@ export class ManifestWriter {
 	setComponentDefinitions(definitions: Record<string, ComponentDefinition>): void {
 		this.componentDefinitions = definitions
 		this.globalManifest.componentDefinitions = definitions
+	}
+
+	/**
+	 * Load available Tailwind colors from the project's CSS config
+	 */
+	async loadAvailableColors(projectRoot: string = process.cwd()): Promise<void> {
+		this.availableColors = await parseTailwindConfig(projectRoot)
+		this.globalManifest.availableColors = this.availableColors
+	}
+
+	/**
+	 * Set available colors directly (for testing or custom colors)
+	 */
+	setAvailableColors(colors: AvailableColors): void {
+		this.availableColors = colors
+		this.globalManifest.availableColors = colors
 	}
 
 	/**
@@ -100,13 +122,25 @@ export class ManifestWriter {
 
 		await fs.mkdir(manifestDir, { recursive: true })
 
+		// Generate metadata for this page manifest
+		const metadata: ManifestMetadata = {
+			version: MANIFEST_VERSION,
+			generatedAt: new Date().toISOString(),
+			generatedBy: 'astro-cms-marker',
+			contentHash: generateManifestContentHash(entries),
+			sourceFileHashes: generateSourceFileHashes(entries),
+		}
+
 		const pageManifest: {
+			metadata: ManifestMetadata
 			page: string
 			entries: Record<string, ManifestEntry>
 			components: Record<string, ComponentInstance>
 			componentDefinitions: Record<string, ComponentDefinition>
 			collection?: CollectionEntry
+			availableColors?: AvailableColors
 		} = {
+			metadata,
 			page: pagePath,
 			entries,
 			components,
@@ -115,6 +149,10 @@ export class ManifestWriter {
 
 		if (collection) {
 			pageManifest.collection = collection
+		}
+
+		if (this.availableColors) {
+			pageManifest.availableColors = this.availableColors
 		}
 
 		await fs.writeFile(manifestPath, JSON.stringify(pageManifest, null, 2), 'utf-8')
@@ -176,7 +214,15 @@ export class ManifestWriter {
 			components: {},
 			componentDefinitions: this.componentDefinitions,
 			collections: {},
+			availableColors: this.availableColors,
 		}
 		this.writeQueue = Promise.resolve()
+	}
+
+	/**
+	 * Get available colors (for use in dev middleware)
+	 */
+	getAvailableColors(): AvailableColors | undefined {
+		return this.availableColors
 	}
 }

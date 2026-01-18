@@ -1,6 +1,8 @@
 import { parse } from 'node-html-parser'
 import { enhanceManifestWithSourceSnippets } from './source-finder'
-import type { ComponentInstance, ManifestEntry } from './types'
+import { extractColorClasses } from './tailwind-colors'
+import type { ComponentInstance, ManifestEntry, SourceContext } from './types'
+import { generateStableId } from './utils'
 
 /**
  * Inline text styling elements that should NOT be marked with CMS IDs.
@@ -527,7 +529,10 @@ export async function processHtml(
 				parent = parent.parentNode
 			}
 
-				// Check if element contains inline style elements (strong, b, em, etc.) or styled spans
+			// Extract source context for resilient matching
+			const sourceContext = extractSourceContext(node, attributeName)
+
+			// Check if element contains inline style elements (strong, b, em, etc.) or styled spans
 			// If so, store the HTML content for source file updates
 			const inlineStyleSelector = INLINE_STYLE_TAGS.join(', ')
 			const hasInlineStyleElements = node.querySelector(inlineStyleSelector) !== null
@@ -538,12 +543,22 @@ export async function processHtml(
 			const imageInfo = imageEntries.get(id)
 			const isImage = !!imageInfo
 
+			const entryText = isImage ? (imageInfo.alt || imageInfo.src) : textWithPlaceholders.trim()
+			const entrySourcePath = sourceLocation?.file || sourcePath
+
+			// Generate stable ID based on content and context
+			const stableId = generateStableId(tag, entryText, entrySourcePath, sourceContext)
+
+			// Extract color classes for buttons and other elements
+			const classAttr = node.getAttribute('class')
+			const colorClasses = extractColorClasses(classAttr)
+
 			entries[id] = {
 				id,
 				tag,
-				text: isImage ? (imageInfo.alt || imageInfo.src) : textWithPlaceholders.trim(),
+				text: entryText,
 				html: htmlContent,
-				sourcePath: sourceLocation?.file || sourcePath,
+				sourcePath: entrySourcePath,
 				childCmsIds: childCmsIds.length > 0 ? childCmsIds : undefined,
 				sourceLine: sourceLocation?.line,
 				sourceSnippet: undefined,
@@ -557,6 +572,11 @@ export async function processHtml(
 				// Add image info for image entries
 				imageSrc: imageInfo?.src,
 				imageAlt: imageInfo?.alt,
+				// Robustness fields
+				stableId,
+				sourceContext,
+				// Color classes for buttons/styled elements
+				colorClasses,
 			}
 		})
 	}
@@ -596,4 +616,58 @@ function extractComponentName(sourceFile: string): string {
  */
 export function cleanText(text: string): string {
 	return text.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+/**
+ * Extract source context for an element to enable resilient matching.
+ * This captures information about the element's position in the DOM
+ * that can be used as fallback when exact matching fails.
+ */
+function extractSourceContext(node: any, attributeName: string): SourceContext | undefined {
+	const parent = node.parentNode
+	if (!parent) return undefined
+
+	const siblings = parent.childNodes?.filter((child: any) => {
+		// Only consider element nodes, not text nodes
+		return child.nodeType === 1 && child.tagName
+	}) || []
+
+	const siblingIndex = siblings.indexOf(node)
+
+	// Get preceding sibling's text (first 30 chars)
+	let precedingText: string | undefined
+	if (siblingIndex > 0) {
+		const prevSibling = siblings[siblingIndex - 1]
+		const prevText = (prevSibling?.innerText || '').trim()
+		if (prevText) {
+			precedingText = prevText.substring(0, 30)
+		}
+	}
+
+	// Get following sibling's text (first 30 chars)
+	let followingText: string | undefined
+	if (siblingIndex < siblings.length - 1) {
+		const nextSibling = siblings[siblingIndex + 1]
+		const nextText = (nextSibling?.innerText || '').trim()
+		if (nextText) {
+			followingText = nextText.substring(0, 30)
+		}
+	}
+
+	// Get parent info
+	const parentTag = parent.tagName?.toLowerCase?.()
+	const parentClasses = parent.getAttribute?.('class') || undefined
+
+	// Only return context if we have meaningful data
+	if (!precedingText && !followingText && !parentTag) {
+		return undefined
+	}
+
+	return {
+		precedingText,
+		followingText,
+		parentTag,
+		siblingIndex: siblingIndex >= 0 ? siblingIndex : undefined,
+		parentClasses,
+	}
 }

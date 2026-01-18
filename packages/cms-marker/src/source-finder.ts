@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { ManifestEntry } from './types'
+import { generateSourceHash } from './utils'
 
 export interface SourceLocation {
 	file: string
@@ -886,7 +887,9 @@ export async function enhanceManifestWithSourceSnippets(
 		)
 
 		if (sourceSnippet) {
-			return [id, { ...entry, sourceSnippet }] as const
+			// Generate hash of source snippet for conflict detection
+			const sourceHash = generateSourceHash(sourceSnippet)
+			return [id, { ...entry, sourceSnippet, sourceHash }] as const
 		}
 
 		return [id, entry] as const

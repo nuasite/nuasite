@@ -18,12 +18,12 @@ ctaLink: /contact/
 
 ### Advantages
 
-* Rapid prototyping on scaled samples – verify functionality and design before series production.
-* Material flexibility – working with various materials, including environmentally friendly variants.
-* Scaled models for presentation – displays, POS materials, and packaging for design approval.
-* Dimensional and functional testing – finding the most efficient solutions before production.
-* Small batch production or auxiliary assembly materials – ideal for testing individual solutions.
-* No shape limitations – our technology enables creation of complex shapes that are difficult to achieve with other methods.
+- Rapid prototyping on scaled samples – verify functionality and design before series production.
+- Material flexibility – working with various materials, including environmentally friendly variants.
+- Scaled models for presentation – displays, POS materials, and packaging for design approval.
+- Dimensional and functional testing – finding the most efficient solutions before production.
+- Small batch production or auxiliary assembly materials – ideal for testing individual solutions.
+- No shape limitations – our technology enables creation of complex shapes that are difficult to achieve with other methods.
 
 ### Technology That Saves Time and Costs
 

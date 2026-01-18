@@ -900,6 +900,132 @@ describe('processHtml', () => {
 	})
 })
 
+describe('color class extraction', () => {
+	test('should extract color classes from elements with bg color', async () => {
+		const html = '<button class="px-4 py-2 bg-blue-500 text-white rounded">Click me</button>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		const buttonEntry = Object.values(result.entries).find(e => e.tag === 'button')
+		expect(buttonEntry).toBeDefined()
+		expect(buttonEntry?.colorClasses).toBeDefined()
+		expect(buttonEntry?.colorClasses?.bg).toBe('bg-blue-500')
+		expect(buttonEntry?.colorClasses?.text).toBe('text-white')
+	})
+
+	test('should extract hover color classes', async () => {
+		const html = '<button class="bg-blue-500 hover:bg-blue-600 text-white hover:text-gray-100">Hover me</button>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		const buttonEntry = Object.values(result.entries).find(e => e.tag === 'button')
+		expect(buttonEntry).toBeDefined()
+		expect(buttonEntry?.colorClasses?.bg).toBe('bg-blue-500')
+		expect(buttonEntry?.colorClasses?.hoverBg).toBe('hover:bg-blue-600')
+		expect(buttonEntry?.colorClasses?.text).toBe('text-white')
+		expect(buttonEntry?.colorClasses?.hoverText).toBe('hover:text-gray-100')
+	})
+
+	test('should extract border color classes', async () => {
+		const html = '<div class="border border-gray-300 bg-white">Content</div>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		const divEntry = Object.values(result.entries).find(e => e.tag === 'div')
+		expect(divEntry).toBeDefined()
+		expect(divEntry?.colorClasses?.border).toBe('border-gray-300')
+		expect(divEntry?.colorClasses?.bg).toBe('bg-white')
+	})
+
+	test('should include all color classes in allColorClasses array', async () => {
+		const html = '<button class="bg-blue-500 text-white border-blue-600 hover:bg-blue-600">Button</button>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		const buttonEntry = Object.values(result.entries).find(e => e.tag === 'button')
+		expect(buttonEntry).toBeDefined()
+		expect(buttonEntry?.colorClasses?.allColorClasses).toContain('bg-blue-500')
+		expect(buttonEntry?.colorClasses?.allColorClasses).toContain('text-white')
+		expect(buttonEntry?.colorClasses?.allColorClasses).toContain('border-blue-600')
+		expect(buttonEntry?.colorClasses?.allColorClasses).toContain('hover:bg-blue-600')
+	})
+
+	test('should not include colorClasses for elements without color classes', async () => {
+		const html = '<p class="text-lg font-bold">Text without colors</p>'
+		let counter = 0
+		const getNextId = () => `cms-${counter++}`
+
+		const result = await processHtml(
+			html,
+			'test.html',
+			{
+				attributeName: 'data-cms-id',
+				includeTags: null,
+				excludeTags: [],
+				includeEmptyText: false,
+				generateManifest: true,
+			},
+			getNextId,
+		)
+
+		const pEntry = Object.values(result.entries).find(e => e.tag === 'p')
+		expect(pEntry).toBeDefined()
+		expect(pEntry?.colorClasses).toBeUndefined()
+	})
+})
+
 describe('cleanText', () => {
 	test('should normalize whitespace', () => {
 		expect(cleanText('  hello   world  ')).toBe('hello world')

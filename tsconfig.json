@@ -6,7 +6,13 @@
 			"path": "./packages/agent-summary"
 		},
 		{
+			"path": "./packages/ai-markdown"
+		},
+		{
 			"path": "./packages/cli"
+		},
+		{
+			"path": "./packages/cms-marker"
 		},
 		{
 			"path": "./packages/components"
