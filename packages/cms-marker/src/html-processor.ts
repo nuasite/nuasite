@@ -451,7 +451,7 @@ export async function processHtml(
 
 		if (sourceFile && sourceLine) {
 			const lineNum = parseInt(sourceLine.split(':')[0] ?? '1', 10)
-			if (!isNaN(lineNum)) {
+			if (!Number.isNaN(lineNum)) {
 				sourceLocationMap.set(id, { file: sourceFile, line: lineNum })
 			}
 			// Only remove source attributes if this is NOT a component root

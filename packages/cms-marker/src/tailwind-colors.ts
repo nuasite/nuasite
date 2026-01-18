@@ -146,7 +146,7 @@ function extractColorsFromCss(content: string): TailwindColor[] {
 
 	// Find @theme blocks
 	const themeBlockPattern = /@theme\s*\{([^}]+)\}/gs
-	let themeMatch
+	let themeMatch: RegExpExecArray | null
 
 	while ((themeMatch = themeBlockPattern.exec(content)) !== null) {
 		const themeContent = themeMatch[1]
@@ -155,7 +155,7 @@ function extractColorsFromCss(content: string): TailwindColor[] {
 		// Find all --color-* definitions
 		// Pattern: --color-{name}-{shade}: value; or --color-{name}: value;
 		const colorVarPattern = /--color-([a-z]+)(?:-(\d+))?:/gi
-		let colorMatch
+		let colorMatch: RegExpExecArray | null
 
 		while ((colorMatch = colorVarPattern.exec(themeContent)) !== null) {
 			const colorName = colorMatch[1]?.toLowerCase()
@@ -181,14 +181,14 @@ function extractColorsFromCss(content: string): TailwindColor[] {
 	// Also check for inline @theme definitions (Tailwind v4 can be inline too)
 	// Pattern: @theme inline { ... }
 	const inlineThemePattern = /@theme\s+inline\s*\{([^}]+)\}/gs
-	let inlineMatch
+	let inlineMatch: RegExpExecArray | null
 
 	while ((inlineMatch = inlineThemePattern.exec(content)) !== null) {
 		const themeContent = inlineMatch[1]
 		if (!themeContent) continue
 
 		const colorVarPattern = /--color-([a-z]+)(?:-(\d+))?:/gi
-		let colorMatch
+		let colorMatch: RegExpExecArray | null
 
 		while ((colorMatch = colorVarPattern.exec(themeContent)) !== null) {
 			const colorName = colorMatch[1]?.toLowerCase()

@@ -13,7 +13,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const props = await registry.extractProps(content)
 
 		expect(props).toHaveLength(3)
@@ -40,7 +40,7 @@ type Props = {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const props = await registry.extractProps(content)
 
 		expect(props).toHaveLength(2)
@@ -67,7 +67,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const props = await registry.extractProps(content)
 
 		expect(props).toHaveLength(2)
@@ -91,7 +91,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const props = await registry.extractProps(content)
 
 		expect(props).toHaveLength(2)
@@ -113,7 +113,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const props = await registry.extractProps(content)
 
 		expect(props).toHaveLength(3)
@@ -138,7 +138,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const props = await registry.extractProps(content)
 
 		expect(props).toHaveLength(3)
@@ -165,7 +165,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const props = await registry.extractProps(content)
 
 		expect(props).toHaveLength(2)
@@ -185,7 +185,7 @@ interface Props {}
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const props = await registry.extractProps(content)
 
 		expect(props).toHaveLength(0)

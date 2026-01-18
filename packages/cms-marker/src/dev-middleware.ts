@@ -90,14 +90,14 @@ export function createDevMiddleware(
 		const requestUrl = req.url || 'unknown'
 
 		// Intercept response chunks
-		res.write = function(chunk: any, ...args: any[]) {
+		res.write = ((chunk: any, ...args: any[]) => {
 			if (chunk) {
 				chunks.push(Buffer.from(chunk))
 			}
 			return true
-		} as any
+		}) as any
 
-		res.end = function(chunk: any, ...args: any[]) {
+		res.end = ((chunk: any, ...args: any[]) => {
 			if (chunk) {
 				chunks.push(Buffer.from(chunk))
 			}
@@ -143,7 +143,7 @@ export function createDevMiddleware(
 				return res.end(Buffer.concat(chunks), ...args)
 			}
 			return res.end(...args)
-		} as any
+		}) as any
 
 		next()
 	})

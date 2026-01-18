@@ -339,8 +339,8 @@ export function parseComponentUsage(
 		'g',
 	)
 
-	let lineIndex = 0
-	let charIndex = 0
+	const lineIndex = 0
+	const charIndex = 0
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i]

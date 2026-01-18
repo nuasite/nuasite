@@ -93,12 +93,12 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 		const originalEnd = res.end
 		const chunks: Buffer[] = []
 
-		res.write = function (chunk: unknown) {
+		res.write = ((chunk: unknown) => {
 			if (chunk) chunks.push(Buffer.from(chunk as Buffer))
 			return true
-		} as typeof res.write
+		}) as typeof res.write
 
-		res.end = function (chunk?: unknown, ...args: unknown[]) {
+		res.end = ((chunk?: unknown, ...args: unknown[]) => {
 			if (chunk) chunks.push(Buffer.from(chunk as Buffer))
 
 			const contentType = res.getHeader('content-type')
@@ -116,7 +116,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 			return chunks.length > 0
 				? res.end(Buffer.concat(chunks), ...(args as []))
 				: res.end(...(args as []))
-		} as typeof res.end
+		}) as typeof res.end
 
 		next()
 	})

@@ -13,7 +13,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('default')
@@ -28,7 +28,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('default')
@@ -43,7 +43,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('default')
@@ -58,7 +58,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('header')
@@ -76,7 +76,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('default')
@@ -93,7 +93,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('default')
@@ -110,7 +110,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('header')
@@ -129,7 +129,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('default')
@@ -146,7 +146,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('default')
@@ -165,7 +165,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('default')
@@ -181,7 +181,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('active')
@@ -198,7 +198,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-ignore - accessing private method for testing
+		// @ts-expect-error - accessing private method for testing
 		const slots = registry.extractSlots(content)
 
 		expect(slots).toContain('default')

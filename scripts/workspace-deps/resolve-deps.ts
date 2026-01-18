@@ -161,7 +161,7 @@ const unresolved = rewriteManifest(pkgFile, versions, catalogs)
 
 // fail-fast if any workspace or catalog remains
 const after = fs.readFileSync(pkgFile, 'utf8')
-if (/\"workspace:/.test(after) || /"catalog:/.test(after) || unresolved.length) {
+if (/"workspace:/.test(after) || /"catalog:/.test(after) || unresolved.length) {
 	console.error(`[workspace-deps] FAILED in ${path.basename(pkgDir)} | root=${repoRoot} | versions=${versions.size} | catalogs=${catalogs.size}`)
 	if (unresolved.length) console.error(`unresolved: ${unresolved.join(', ')}`)
 	process.exit(1)

@@ -165,7 +165,7 @@ describe('Workspace Dependencies Resolution', () => {
 				},
 			})
 
-			expect(/\"workspace:/.test(content)).toBe(true)
+			expect(/"workspace:/.test(content)).toBe(true)
 		})
 
 		test('should detect remaining catalog: references', () => {
@@ -186,7 +186,7 @@ describe('Workspace Dependencies Resolution', () => {
 				},
 			})
 
-			expect(/\"workspace:/.test(content)).toBe(false)
+			expect(/"workspace:/.test(content)).toBe(false)
 			expect(/"catalog:/.test(content)).toBe(false)
 		})
 	})
