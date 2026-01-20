@@ -140,7 +140,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 				res.end(content)
 				return
 			} catch (error) {
-				console.error('[page-markdown] Error generating llms.txt:', error)
+				console.error('[llm-enhancements] Error generating llms.txt:', error)
 			}
 
 			return next()
@@ -167,7 +167,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 				res.end(markdown)
 				return
 			} catch (error) {
-				console.error('[page-markdown] Error generating llm.md:', error)
+				console.error('[llm-enhancements] Error generating llm.md:', error)
 			}
 
 			return next()
@@ -195,7 +195,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 				return
 			}
 		} catch (error) {
-			console.error('[page-markdown] Error generating markdown:', error)
+			console.error('[llm-enhancements] Error generating markdown:', error)
 		}
 
 		return next()

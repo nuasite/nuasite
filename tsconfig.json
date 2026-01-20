@@ -6,7 +6,7 @@
 			"path": "./packages/agent-summary"
 		},
 		{
-			"path": "./packages/page-markdown"
+			"path": "./packages/llm-enhancements"
 		},
 		{
 			"path": "./packages/cli"
