@@ -1,4 +1,4 @@
-import { parse, type HTMLElement, type Node, NodeType } from 'node-html-parser'
+import { type HTMLElement, type Node, NodeType, parse } from 'node-html-parser'
 
 /** Elements to exclude from markdown conversion */
 const EXCLUDED_TAGS = new Set([

@@ -1,6 +1,6 @@
+import type { AstroIntegrationLogger } from 'astro'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { AstroIntegrationLogger } from 'astro'
 import { getCollectionContent } from './cms-marker'
 import { htmlToMarkdown } from './html-to-markdown'
 import { createCollectionOutput, createStaticOutput, generateMarkdown } from './markdown-generator'

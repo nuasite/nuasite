@@ -3,10 +3,10 @@ import type { SitemapOptions } from '@astrojs/sitemap'
 import type { CmsMarkerOptions } from '@nuasite/cms-marker'
 import type { PageMarkdownOptions } from '@nuasite/page-markdown'
 
-export type { CmsMarkerOptions } from '@nuasite/cms-marker'
-export type { PageMarkdownOptions } from '@nuasite/page-markdown'
 export type { Options as MdxOptions } from '@astrojs/mdx'
 export type { SitemapOptions } from '@astrojs/sitemap'
+export type { CmsMarkerOptions } from '@nuasite/cms-marker'
+export type { PageMarkdownOptions } from '@nuasite/page-markdown'
 
 export interface NuaIntegrationOptions {
 	/** Enable/disable or configure @nuasite/cms-marker (default: true) */

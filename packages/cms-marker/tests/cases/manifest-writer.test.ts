@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
-import path from 'node:path'
 import os from 'node:os'
+import path from 'node:path'
 import { ManifestWriter } from '../../src/manifest-writer'
-import type { ManifestEntry, ComponentInstance, CollectionEntry } from '../../src/types'
+import type { CollectionEntry, ComponentInstance, ManifestEntry } from '../../src/types'
 
 async function createTestContext() {
 	const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'manifest-writer-test-'))
@@ -19,7 +19,6 @@ async function createTestContext() {
 }
 
 describe('ManifestWriter', () => {
-
 	describe('page manifests', () => {
 		test('should write page manifest for index page', async () => {
 			const { tempDir, manifestWriter, cleanup } = await createTestContext()
@@ -353,7 +352,14 @@ describe('ManifestWriter', () => {
 					'cms-0': { id: 'cms-0', sourcePath: '/index.html', tag: 'h1', text: 'Home' },
 					'cms-1': { id: 'cms-1', sourcePath: '/index.html', tag: 'p', text: 'Welcome' },
 				}, {
-					'comp-0': { id: 'comp-0', componentName: 'Hero', file: 'src/components/Hero.astro', sourcePath: 'src/pages/index.astro', sourceLine: 5, props: {} },
+					'comp-0': {
+						id: 'comp-0',
+						componentName: 'Hero',
+						file: 'src/components/Hero.astro',
+						sourcePath: 'src/pages/index.astro',
+						sourceLine: 5,
+						props: {},
+					},
 				})
 
 				manifestWriter.addPage('/about', {

@@ -242,7 +242,7 @@ export function extractColorClasses(classAttr: string | null | undefined): Color
 				allColorClasses.push(cls)
 				// Assign to appropriate field
 				if (!(key in colorClasses)) {
-					(colorClasses as any)[key] = cls
+					;(colorClasses as any)[key] = cls
 				}
 				break
 			}

@@ -148,19 +148,19 @@ When converting static pages, the integration:
 
 ### Supported Elements
 
-| HTML | Markdown |
-| --- | --- |
-| `<h1>` - `<h6>` | `#` - `######` |
-| `<p>` | Paragraph |
-| `<strong>`, `<b>` | `**bold**` |
-| `<em>`, `<i>` | `*italic*` |
-| `<code>` | `` `code` `` |
-| `<pre><code>` | Code blocks |
-| `<a>` | `[text](url)` |
-| `<img>` | `![alt](src)` |
-| `<ul>`, `<ol>`, `<li>` | Lists |
-| `<blockquote>` | `> quote` |
-| `<table>` | Markdown tables |
+| HTML                   | Markdown        |
+| ---------------------- | --------------- |
+| `<h1>` - `<h6>`        | `#` - `######`  |
+| `<p>`                  | Paragraph       |
+| `<strong>`, `<b>`      | `**bold**`      |
+| `<em>`, `<i>`          | `*italic*`      |
+| `<code>`               | `` `code` ``    |
+| `<pre><code>`          | Code blocks     |
+| `<a>`                  | `[text](url)`   |
+| `<img>`                | `![alt](src)`   |
+| `<ul>`, `<ol>`, `<li>` | Lists           |
+| `<blockquote>`         | `> quote`       |
+| `<table>`              | Markdown tables |
 
 ## Integration with @nuasite/cms-marker
 

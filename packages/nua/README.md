@@ -37,7 +37,7 @@ import nua from '@nuasite/nua/integration'
 import { defineConfig } from 'astro/config'
 
 export default defineConfig({
-  integrations: [nua()],
+	integrations: [nua()],
 })
 ```
 
@@ -50,15 +50,15 @@ Each sub-integration can be disabled or customized:
 
 ```js
 export default defineConfig({
-  integrations: [
-    nua({
-      tailwindcss: true,        // Enable/disable Tailwind CSS (default: true)
-      mdx: true,                // Enable/disable MDX support (default: true)
-      sitemap: true,            // Enable/disable sitemap generation (default: true)
-      cmsMarker: true,          // Enable/disable CMS markers (default: true)
-      pageMarkdown: true,       // Enable/disable page markdown output (default: true)
-    }),
-  ],
+	integrations: [
+		nua({
+			tailwindcss: true, // Enable/disable Tailwind CSS (default: true)
+			mdx: true, // Enable/disable MDX support (default: true)
+			sitemap: true, // Enable/disable sitemap generation (default: true)
+			cmsMarker: true, // Enable/disable CMS markers (default: true)
+			pageMarkdown: true, // Enable/disable page markdown output (default: true)
+		}),
+	],
 })
 ```
 
@@ -66,7 +66,7 @@ Pass `false` to disable a feature, or pass an options object to customize it:
 
 ```js
 nua({
-  sitemap: { filter: (page) => !page.includes('/draft/') },
-  mdx: { remarkPlugins: [myRemarkPlugin] },
+	sitemap: { filter: (page) => !page.includes('/draft/') },
+	mdx: { remarkPlugins: [myRemarkPlugin] },
 })
 ```
