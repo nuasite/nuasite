@@ -63,3 +63,7 @@ bun test packages/agent-summary/tests/cases/unit/utils.test.ts
 ```
 
 `src/agent-summary-integration.ts` contains the integration entry point, while `src/utils.ts` focuses on parsing HTML, detecting redirects, and keeping `AGENTS.md` synchronized.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues and pull requests.

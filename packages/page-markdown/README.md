@@ -194,6 +194,6 @@ interface MarkdownOutput {
 }
 ```
 
-## License
+## Contributing
 
-Apache-2.0
+Contributions are welcome! Please feel free to submit issues and pull requests.

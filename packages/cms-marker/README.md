@@ -231,10 +231,6 @@ bun test
 
 See `src/tests/` for all test cases.
 
-## License
-
-MIT
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
