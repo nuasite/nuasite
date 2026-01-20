@@ -39,7 +39,7 @@
 		"@astrojs/mdx": "catalog:astro",
 		"@astrojs/rss": "catalog:astro",
 		"@astrojs/sitemap": "catalog:astro",
-		"@nuasite/page-markdown": "workspace:*",
+		"@nuasite/llm-enhancements": "workspace:*",
 		"@nuasite/cli": "workspace:*",
 		"@nuasite/cms-marker": "workspace:*",
 		"@nuasite/components": "workspace:*",

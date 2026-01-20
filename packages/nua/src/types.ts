@@ -1,17 +1,17 @@
 import type { Options as MdxOptions } from '@astrojs/mdx'
 import type { SitemapOptions } from '@astrojs/sitemap'
 import type { CmsMarkerOptions } from '@nuasite/cms-marker'
-import type { PageMarkdownOptions } from '@nuasite/page-markdown'
+import type { PageMarkdownOptions } from '../../llm-enhancements/src'
 
 export type { Options as MdxOptions } from '@astrojs/mdx'
 export type { SitemapOptions } from '@astrojs/sitemap'
 export type { CmsMarkerOptions } from '@nuasite/cms-marker'
-export type { PageMarkdownOptions } from '@nuasite/page-markdown'
+export type { PageMarkdownOptions } from '../../llm-enhancements/src'
 
 export interface NuaIntegrationOptions {
 	/** Enable/disable or configure @nuasite/cms-marker (default: true) */
 	cmsMarker?: boolean | CmsMarkerOptions
-	/** Enable/disable or configure @nuasite/page-markdown (default: true) */
+	/** Enable/disable or configure @nuasite/llm-enhancements (default: true) */
 	pageMarkdown?: boolean | PageMarkdownOptions
 	/** Enable/disable or configure @astrojs/mdx (default: true) */
 	mdx?: boolean | MdxOptions

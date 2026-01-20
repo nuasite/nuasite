@@ -15,7 +15,7 @@ hosted service.
 | [`@nuasite/cms-marker`](/packages/cms-marker)                                         | An Astro integration that automatically marks HTML elements with unique identifiers and generates a manifest mapping content to source files and line numbers. |
 | [`@nuasite/components`](/packages/components)                                         | Reusable Astro components (currently the Nua Site form widget) with TypeScript-friendly props.                                                                 |
 | [`@nuasite/agent-summary`](/packages/agent-summary)                                   | Astro integration that produces `AGENTS.md`, a machine-readable catalog of every generated page.                                                               |
-| [`@nuasite/page-markdown`](/packages/page-markdown)                                   | Astro integration that exposes pages as `.md` endpoints in dev and generates markdown files during build.                                                      |
+| [`@nuasite/llm-enhancements`](/packages/page-markdown)                                   | Astro integration that exposes pages as `.md` endpoints in dev and generates markdown files during build.                                                      |
 | [`packages/playground`](https://github.com/nuasite/nua/tree/main/packages/playground) | Example Astro project used to manually test the packages in this repo.                                                                                         |
 
 ## Getting started

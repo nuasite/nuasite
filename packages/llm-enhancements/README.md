@@ -1,4 +1,4 @@
-# @nuasite/page-markdown
+# @nuasite/llm-enhancements
 
 An Astro integration that exposes pages as `.md` endpoints. During development, any page can be accessed as markdown by appending `.md` to its URL. In production builds, corresponding `.md` files are generated alongside your HTML output.
 
@@ -16,8 +16,8 @@ An Astro integration that exposes pages as `.md` endpoints. During development, 
 ## Installation
 
 ```bash
-bun add -D @nuasite/page-markdown
-# or: npm install -D @nuasite/page-markdown
+bun add -D @nuasite/llm-enhancements
+# or: npm install -D @nuasite/llm-enhancements
 ```
 
 ## Usage
@@ -25,7 +25,7 @@ bun add -D @nuasite/page-markdown
 Add the integration to your `astro.config.mjs`:
 
 ```js
-import pageMarkdown from '@nuasite/page-markdown'
+import pageMarkdown from '@nuasite/llm-enhancements'
 import { defineConfig } from 'astro/config'
 
 export default defineConfig({
@@ -329,7 +329,7 @@ When used alongside `@nuasite/cms-marker`, the integration can access content co
 
 ```js
 import cmsMarker from '@nuasite/cms-marker'
-import pageMarkdown from '@nuasite/page-markdown'
+import pageMarkdown from '@nuasite/llm-enhancements'
 import { defineConfig } from 'astro/config'
 
 export default defineConfig({

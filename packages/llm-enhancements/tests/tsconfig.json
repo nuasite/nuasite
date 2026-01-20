@@ -1,0 +1,13 @@
+{
+	"extends": "../tsconfig.settings.json",
+	"compilerOptions": {
+		"outDir": "../dist/types/tests",
+		"noEmit": true
+	},
+	"include": [
+		"./**/*.ts"
+	],
+	"references": [
+		{ "path": "../src" }
+	]
+}

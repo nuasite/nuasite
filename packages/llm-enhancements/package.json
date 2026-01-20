@@ -1,5 +1,5 @@
 {
-	"name": "@nuasite/page-markdown",
+	"name": "@nuasite/llm-enhancements",
 	"description": "Expose pages as .md endpoints for Astro",
 	"files": [
 		"dist/**",

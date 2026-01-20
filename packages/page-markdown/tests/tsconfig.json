@@ -1,13 +1,1 @@
-{
-	"extends": "../tsconfig.settings.json",
-	"compilerOptions": {
-		"outDir": "../dist/types/tests",
-		"noEmit": true
-	},
-	"include": [
-		"./**/*.ts"
-	],
-	"references": [
-		{ "path": "../src" }
-	]
-}
+../../llm-enhancements/dist/types/tests../../llm-enhancements/tests/**/*.ts

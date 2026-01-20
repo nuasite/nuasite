@@ -44,7 +44,7 @@ This single line gives you:
 - MDX support via `@astrojs/mdx`
 - Sitemap generation via `@astrojs/sitemap`
 - CMS markers via `@nuasite/cms-marker`
-- Page markdown output via `@nuasite/page-markdown`
+- Page markdown output via `@nuasite/llm-enhancements`
 - Sensible defaults: `site: 'http://localhost:4321'`, `vite.build.sourcemap: true`
 
 ### Configuration options

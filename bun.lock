@@ -17,7 +17,7 @@
     },
     "packages/agent-summary": {
       "name": "@nuasite/agent-summary",
-      "version": "0.0.53",
+      "version": "0.0.57",
       "dependencies": {
         "astro": "catalog:astro",
       },
@@ -30,7 +30,7 @@
     },
     "packages/cli": {
       "name": "@nuasite/cli",
-      "version": "0.0.53",
+      "version": "0.0.57",
       "bin": {
         "nua": "src/index.ts",
       },
@@ -48,7 +48,7 @@
     },
     "packages/cms-marker": {
       "name": "@nuasite/cms-marker",
-      "version": "0.0.53",
+      "version": "0.0.57",
       "dependencies": {
         "@astrojs/compiler": "catalog:astro",
         "astro": "catalog:astro",
@@ -64,14 +64,14 @@
     },
     "packages/components": {
       "name": "@nuasite/components",
-      "version": "0.0.53",
+      "version": "0.0.57",
       "peerDependencies": {
         "typescript": "catalog:build",
       },
     },
     "packages/core": {
       "name": "@nuasite/core",
-      "version": "0.0.53",
+      "version": "0.0.57",
       "devDependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -85,30 +85,9 @@
         "@astrojs/sitemap": "*",
       },
     },
-    "packages/nua": {
-      "name": "@nuasite/nua",
-      "version": "0.0.53",
-      "dependencies": {
-        "@astrojs/check": "catalog:astro",
-        "@astrojs/mdx": "catalog:astro",
-        "@astrojs/rss": "catalog:astro",
-        "@astrojs/sitemap": "catalog:astro",
-        "@nuasite/cli": "workspace:*",
-        "@nuasite/cms-marker": "workspace:*",
-        "@nuasite/components": "workspace:*",
-        "@nuasite/core": "workspace:*",
-        "@nuasite/page-markdown": "workspace:*",
-        "@tailwindcss/vite": "catalog:ui",
-        "astro": "catalog:astro",
-        "flowbite": "catalog:ui",
-        "tailwindcss": "catalog:ui",
-        "typescript": "catalog:build",
-        "vite": "catalog:build",
-      },
-    },
-    "packages/page-markdown": {
-      "name": "@nuasite/page-markdown",
-      "version": "0.0.1",
+    "packages/llm-enhancements": {
+      "name": "@nuasite/llm-enhancements",
+      "version": "0.0.57",
       "dependencies": {
         "astro": "catalog:astro",
         "node-html-parser": "catalog:parsers",
@@ -125,9 +104,30 @@
         "@nuasite/cms-marker",
       ],
     },
+    "packages/nua": {
+      "name": "@nuasite/nua",
+      "version": "0.0.57",
+      "dependencies": {
+        "@astrojs/check": "catalog:astro",
+        "@astrojs/mdx": "catalog:astro",
+        "@astrojs/rss": "catalog:astro",
+        "@astrojs/sitemap": "catalog:astro",
+        "@nuasite/cli": "workspace:*",
+        "@nuasite/cms-marker": "workspace:*",
+        "@nuasite/components": "workspace:*",
+        "@nuasite/core": "workspace:*",
+        "@nuasite/llm-enhancements": "workspace:*",
+        "@tailwindcss/vite": "catalog:ui",
+        "astro": "catalog:astro",
+        "flowbite": "catalog:ui",
+        "tailwindcss": "catalog:ui",
+        "typescript": "catalog:build",
+        "vite": "catalog:build",
+      },
+    },
     "packages/playground": {
       "name": "playground",
-      "version": "0.0.53",
+      "version": "0.0.57",
       "dependencies": {
         "@nuasite/nua": "workspace:*",
       },
@@ -391,9 +391,9 @@
 
     "@nuasite/core": ["@nuasite/core@workspace:packages/core"],
 
-    "@nuasite/nua": ["@nuasite/nua@workspace:packages/nua"],
+    "@nuasite/llm-enhancements": ["@nuasite/llm-enhancements@workspace:packages/llm-enhancements"],
 
-    "@nuasite/page-markdown": ["@nuasite/page-markdown@workspace:packages/page-markdown"],
+    "@nuasite/nua": ["@nuasite/nua@workspace:packages/nua"],
 
     "@oslojs/encoding": ["@oslojs/encoding@1.1.0", "", {}, "sha512-70wQhgYmndg4GCPxPPxPGevRKqTIJ2Nh4OkiMWmDAVYsTQ+Ta7Sq+rPevXyXGdzr30/qZBnyOalCszoMxlyldQ=="],
 
@@ -1325,7 +1325,7 @@
 
     "@nuasite/cms-marker/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
 
-    "@nuasite/page-markdown/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
+    "@nuasite/llm-enhancements/@types/bun": ["@types/bun@1.3.6", "", { "dependencies": { "bun-types": "1.3.6" } }, "sha512-uWCv6FO/8LcpREhenN1d1b6fcspAB+cefwD7uti8C8VffIv0Um08TKMn98FynpTiU38+y2dUO55T11NgDt8VAA=="],
 
     "@rollup/pluginutils/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 
@@ -1387,7 +1387,7 @@
 
     "@nuasite/cms-marker/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
 
-    "@nuasite/page-markdown/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
+    "@nuasite/llm-enhancements/@types/bun/bun-types": ["bun-types@1.3.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-OlFwHcnNV99r//9v5IIOgQ9Uk37gZqrNMCcqEaExdkVq3Avwqok1bJFmvGMCkCE0FqzdY8VMOZpfpR3lwI+CsQ=="],
 
     "ansi-align/string-width/emoji-regex": ["emoji-regex@8.0.0", "", {}, "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A=="],
 
