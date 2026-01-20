@@ -21,4 +21,4 @@ export default function pageMarkdown(options: PageMarkdownOptions = {}): AstroIn
 	}
 }
 
-export type { MarkdownOutput, PageMarkdownOptions } from './types'
+export type { LlmEndpointOptions, MarkdownOutput, PageMarkdownOptions } from './types'

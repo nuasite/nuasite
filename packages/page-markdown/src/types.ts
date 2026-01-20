@@ -5,6 +5,17 @@ export interface PageMarkdownOptions {
 	includeStaticPages?: boolean
 	/** Whether to include frontmatter in output (default: true) */
 	includeFrontmatter?: boolean
+	/** Enable /.well-known/llm.md endpoint (default: true) */
+	llmEndpoint?: boolean | LlmEndpointOptions
+}
+
+export interface LlmEndpointOptions {
+	/** Site name override */
+	siteName?: string
+	/** Site description override */
+	description?: string
+	/** Additional content to append */
+	additionalContent?: string
 }
 
 export interface MarkdownOutput {
@@ -20,12 +31,15 @@ export interface ResolvedOptions {
 	contentDir: string
 	includeStaticPages: boolean
 	includeFrontmatter: boolean
+	llmEndpoint: false | LlmEndpointOptions
 }
 
 export function resolveOptions(options: PageMarkdownOptions = {}): ResolvedOptions {
+	const llmEndpoint = options.llmEndpoint ?? true
 	return {
 		contentDir: options.contentDir ?? 'src/content',
 		includeStaticPages: options.includeStaticPages ?? true,
 		includeFrontmatter: options.includeFrontmatter ?? true,
+		llmEndpoint: llmEndpoint === false ? false : llmEndpoint === true ? {} : llmEndpoint,
 	}
 }

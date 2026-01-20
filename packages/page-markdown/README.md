@@ -10,6 +10,7 @@ An Astro integration that exposes pages as `.md` endpoints. During development, 
 - **HTML to Markdown**: Converts static pages to clean markdown
 - **Alternate Links**: Injects `<link rel="alternate" type="text/markdown">` into HTML
 - **Frontmatter**: Includes metadata like title, description, and source path
+- **LLM Discovery**: Auto-generated `/.well-known/llm.md` endpoint for LLM-friendly site discovery
 
 ## Installation
 
@@ -33,6 +34,7 @@ export default defineConfig({
 			contentDir: 'src/content',
 			includeStaticPages: true,
 			includeFrontmatter: true,
+			llmEndpoint: true, // or configure with options
 		}),
 	],
 })
@@ -116,6 +118,47 @@ The integration automatically injects a `<link>` tag into HTML pages pointing to
 </head>
 ```
 
+### LLM Discovery Endpoint
+
+The integration generates a `/.well-known/llm.md` endpoint that provides LLM-friendly site discovery information:
+
+```
+http://localhost:4321/.well-known/llm.md
+```
+
+This endpoint includes:
+- Site title and description (extracted from homepage metadata)
+- List of all available markdown endpoints
+- Usage instructions for accessing markdown versions
+
+Example output:
+
+```md
+---
+generatedAt: 2024-01-15T10:30:00.000Z
+---
+
+# My Site
+
+Welcome to my site.
+
+## Markdown Endpoints
+
+This site exposes page content as markdown at `.md` URLs.
+
+### Pages
+
+- [/index.md](./index.md) - My Site
+- [/about.md](./about.md) - About Us
+- [/blog/hello.md](./blog/hello.md) - Hello World
+
+## Usage
+
+Append `.md` to any page URL to get the markdown version:
+- `/about` → `/about.md`
+- `/blog/hello` → `/blog/hello.md`
+```
+
 ## Configuration Options
 
 ### `contentDir`
@@ -135,6 +178,40 @@ The integration automatically injects a `<link>` tag into HTML pages pointing to
 - **Type**: `boolean`
 - **Default**: `true`
 - Whether to include YAML frontmatter in the output.
+
+### `llmEndpoint`
+
+- **Type**: `boolean | LlmEndpointOptions`
+- **Default**: `true`
+- Enable or configure the `/.well-known/llm.md` endpoint.
+
+When set to `true`, the endpoint is enabled with default settings. You can also pass an options object:
+
+```js
+pageMarkdown({
+	llmEndpoint: {
+		siteName: 'My Custom Site Name',
+		description: 'A custom description for my site',
+		additionalContent: '## Contact\n\nReach us at hello@example.com',
+	},
+})
+```
+
+#### `LlmEndpointOptions`
+
+| Option              | Type     | Description                              |
+| ------------------- | -------- | ---------------------------------------- |
+| `siteName`          | `string` | Override the site name in llm.md         |
+| `description`       | `string` | Override the site description            |
+| `additionalContent` | `string` | Additional markdown content to append    |
+
+Set to `false` to disable the endpoint entirely:
+
+```js
+pageMarkdown({
+	llmEndpoint: false,
+})
+```
 
 ## HTML to Markdown Conversion
 

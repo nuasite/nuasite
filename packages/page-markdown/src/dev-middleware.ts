@@ -1,8 +1,9 @@
 import type { ViteDevServer } from 'vite'
 import { getCollectionContent } from './cms-marker'
 import { htmlToMarkdown } from './html-to-markdown'
+import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
 import { createCollectionOutput, createStaticOutput, generateMarkdown } from './markdown-generator'
-import { injectMarkdownLink, mdUrlToPagePath, normalizePath } from './paths'
+import { injectMarkdownLink, LLM_ENDPOINT_PATH, mdUrlToPagePath, normalizePath } from './paths'
 import type { ResolvedOptions } from './types'
 
 const ASSET_PATTERN = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/
@@ -51,9 +52,85 @@ async function generateMarkdownForPath(
 }
 
 /**
+ * Discover all pages and their metadata for the LLM endpoint
+ */
+async function discoverPages(host: string, options: ResolvedOptions): Promise<{ pages: PageEntry[]; siteMetadata: SiteMetadata }> {
+	const pages: PageEntry[] = []
+	let siteMetadata: SiteMetadata = {}
+
+	// Fetch the sitemap or root to discover pages
+	// First try to get homepage metadata
+	try {
+		const homeResponse = await fetch(`http://${host}/`, {
+			headers: { Accept: 'text/html' },
+		})
+		if (homeResponse.ok) {
+			const html = await homeResponse.text()
+			const { metadata } = htmlToMarkdown(html)
+			siteMetadata = {
+				title: metadata.title,
+				description: metadata.description,
+			}
+		}
+	} catch {
+		// Ignore errors
+	}
+
+	// Try to get pages from Astro's dev server manifest via __astro_dev_toolbar__
+	// For now, we'll discover pages by checking common routes and the content directory
+	// In dev mode, we just report what we can discover
+
+	// Check if homepage exists
+	try {
+		const content = await getCollectionContent('/', options.contentDir)
+		if (content) {
+			pages.push({ pathname: '/', title: content.frontmatter.title as string | undefined, type: 'collection' })
+		} else if (options.includeStaticPages) {
+			const response = await fetch(`http://${host}/`, { headers: { Accept: 'text/html' } })
+			if (response.ok) {
+				const html = await response.text()
+				const { metadata } = htmlToMarkdown(html)
+				pages.push({ pathname: '/', title: metadata.title, type: 'static' })
+			}
+		}
+	} catch {
+		// Ignore
+	}
+
+	return { pages, siteMetadata }
+}
+
+/**
  * Create dev server middleware to handle markdown requests
  */
 export function createDevMiddleware(server: ViteDevServer, options: ResolvedOptions) {
+	// Serve /.well-known/llm.md endpoint
+	const llmEndpointOptions = options.llmEndpoint
+	if (llmEndpointOptions !== false) {
+		server.middlewares.use(async (req, res, next) => {
+			const url = req.url || ''
+
+			if (url !== LLM_ENDPOINT_PATH) {
+				return next()
+			}
+
+			try {
+				const host = req.headers.host || 'localhost:4321'
+				const { pages, siteMetadata } = await discoverPages(host, options)
+				const markdown = generateLlmMarkdown(pages, siteMetadata, llmEndpointOptions)
+
+				res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+				res.setHeader('Access-Control-Allow-Origin', '*')
+				res.end(markdown)
+				return
+			} catch (error) {
+				console.error('[page-markdown] Error generating llm.md:', error)
+			}
+
+			return next()
+		})
+	}
+
 	// Serve .md endpoints
 	server.middlewares.use(async (req, res, next) => {
 		const url = req.url || ''

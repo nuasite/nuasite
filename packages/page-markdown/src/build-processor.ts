@@ -3,8 +3,9 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getCollectionContent } from './cms-marker'
 import { htmlToMarkdown } from './html-to-markdown'
+import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
 import { createCollectionOutput, createStaticOutput, generateMarkdown } from './markdown-generator'
-import { getHtmlPath, getMdOutputPath, injectMarkdownLink, normalizePath } from './paths'
+import { getHtmlPath, getLlmOutputPath, getMdOutputPath, injectMarkdownLink, normalizePath } from './paths'
 import type { ResolvedOptions } from './types'
 
 interface PageInfo {
@@ -23,6 +24,8 @@ export async function processBuildOutput(
 	const distDir = dir.pathname
 	let collectionCount = 0
 	let staticCount = 0
+	const pageEntries: PageEntry[] = []
+	let siteMetadata: SiteMetadata = {}
 
 	for (const page of pages) {
 		const pagePath = normalizePath(page.pathname === '' ? '/' : `/${page.pathname}`)
@@ -43,6 +46,11 @@ export async function processBuildOutput(
 
 				await writeMarkdownFile(mdPath, markdown)
 				await injectLinkIntoHtml(htmlPath, pagePath)
+				pageEntries.push({
+					pathname: pagePath,
+					title: extractTitle(content.frontmatter.title),
+					type: 'collection',
+				})
 				collectionCount++
 				continue
 			}
@@ -64,6 +72,20 @@ export async function processBuildOutput(
 
 			await writeMarkdownFile(mdPath, markdown)
 			await injectLinkIntoHtml(htmlPath, pagePath)
+			pageEntries.push({
+				pathname: pagePath,
+				title: metadata.title,
+				type: 'static',
+			})
+
+			// Extract site metadata from homepage
+			if (pagePath === '/') {
+				siteMetadata = {
+					title: metadata.title,
+					description: metadata.description,
+				}
+			}
+
 			staticCount++
 		} catch (error) {
 			logger.warn(`Failed to process ${pagePath}: ${error}`)
@@ -73,6 +95,18 @@ export async function processBuildOutput(
 	const total = collectionCount + staticCount
 	if (total > 0) {
 		logger.info(`Generated ${total} .md files (${collectionCount} collection, ${staticCount} static)`)
+	}
+
+	// Generate llm.md if enabled
+	if (options.llmEndpoint !== false) {
+		try {
+			const llmContent = generateLlmMarkdown(pageEntries, siteMetadata, options.llmEndpoint)
+			const llmPath = getLlmOutputPath(distDir)
+			await writeMarkdownFile(llmPath, llmContent)
+			logger.info('Generated /.well-known/llm.md')
+		} catch (error) {
+			logger.warn(`Failed to generate llm.md: ${error}`)
+		}
 	}
 }
 
@@ -97,4 +131,11 @@ async function fileExists(filePath: string): Promise<boolean> {
 async function writeMarkdownFile(filePath: string, content: string): Promise<void> {
 	await fs.mkdir(path.dirname(filePath), { recursive: true })
 	await fs.writeFile(filePath, content, 'utf-8')
+}
+
+function extractTitle(title: unknown): string | undefined {
+	if (typeof title === 'string') {
+		return title
+	}
+	return undefined
 }

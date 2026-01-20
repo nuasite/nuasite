@@ -1,5 +1,8 @@
 import path from 'node:path'
 
+/** Well-known path for LLM discovery endpoint */
+export const LLM_ENDPOINT_PATH = '/.well-known/llm.md'
+
 /**
  * Normalize a URL path by removing query strings, hashes, and trailing slashes
  */
@@ -51,6 +54,13 @@ export function getHtmlPath(distDir: string, pagePath: string): string {
 		return path.join(distDir, 'index.html')
 	}
 	return path.join(distDir, pagePath.slice(1), 'index.html')
+}
+
+/**
+ * Get the output path for llm.md in dist
+ */
+export function getLlmOutputPath(distDir: string): string {
+	return path.join(distDir, '.well-known', 'llm.md')
 }
 
 /**
