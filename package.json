@@ -2,7 +2,7 @@
 	"name": "@nuasite/oss",
 	"type": "module",
 	"private": true,
-	"version": "0.0.57",
+	"version": "0.0.58",
 	"scripts": {
 		"build": "bun run ts:build && bun run --filter './packages/*' build",
 		"clean": "bun run clean:generated && bun run clean:dependencies",

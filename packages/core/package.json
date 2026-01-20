@@ -1,6 +1,6 @@
 {
 	"name": "@nuasite/core",
-	"version": "0.0.57",
+	"version": "0.0.58",
 	"license": "Apache-2.0",
 	"files": [
 		"dist/**",
