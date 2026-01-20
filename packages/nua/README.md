@@ -29,44 +29,66 @@ same toolchain will execute locally.
 
 ## Usage
 
-Add the unified Astro integration to your `astro.config.mjs`:
+Use the nua config wrapper for the simplest setup:
 
-```js
-// astro.config.mjs
-import nua from '@nuasite/nua/integration'
-import { defineConfig } from 'astro/config'
+```ts
+// astro.config.ts
+import { defineConfig } from '@nuasite/nua/config'
 
-export default defineConfig({
-	integrations: [nua()],
-})
+export default defineConfig()
 ```
 
-This single integration enables Tailwind CSS, MDX, sitemap generation,
-CMS markers, and page markdown output—all pre-configured.
+This single line gives you:
+
+- Tailwind CSS 4 via `@tailwindcss/vite`
+- MDX support via `@astrojs/mdx`
+- Sitemap generation via `@astrojs/sitemap`
+- CMS markers via `@nuasite/cms-marker`
+- Page markdown output via `@nuasite/page-markdown`
+- Sensible defaults: `site: 'http://localhost:4321'`, `vite.build.sourcemap: true`
 
 ### Configuration options
 
-Each sub-integration can be disabled or customized:
+Pass standard Astro config options, plus a `nua` key for integration settings:
 
-```js
+```ts
+import { defineConfig } from '@nuasite/nua/config'
+
 export default defineConfig({
-	integrations: [
-		nua({
-			tailwindcss: true, // Enable/disable Tailwind CSS (default: true)
-			mdx: true, // Enable/disable MDX support (default: true)
-			sitemap: true, // Enable/disable sitemap generation (default: true)
-			cmsMarker: true, // Enable/disable CMS markers (default: true)
-			pageMarkdown: true, // Enable/disable page markdown output (default: true)
-		}),
-	],
+	site: 'https://example.com',
+	nua: {
+		tailwindcss: true, // Enable/disable Tailwind CSS (default: true)
+		mdx: true, // Enable/disable MDX support (default: true)
+		sitemap: true, // Enable/disable sitemap generation (default: true)
+		cmsMarker: true, // Enable/disable CMS markers (default: true)
+		pageMarkdown: true, // Enable/disable page markdown output (default: true)
+	},
 })
 ```
 
 Pass `false` to disable a feature, or pass an options object to customize it:
 
-```js
-nua({
-	sitemap: { filter: (page) => !page.includes('/draft/') },
-	mdx: { remarkPlugins: [myRemarkPlugin] },
+```ts
+import { defineConfig } from '@nuasite/nua/config'
+
+export default defineConfig({
+	nua: {
+		sitemap: { filter: (page) => !page.includes('/draft/') },
+		mdx: { remarkPlugins: [myRemarkPlugin] },
+	},
+})
+```
+
+### Using the integration directly
+
+If you prefer more control, import the integration separately:
+
+```ts
+// astro.config.ts
+import nua from '@nuasite/nua/integration'
+import { defineConfig } from 'astro/config'
+
+export default defineConfig({
+	integrations: [nua()],
 })
 ```
