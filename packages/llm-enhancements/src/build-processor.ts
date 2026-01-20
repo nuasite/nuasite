@@ -54,6 +54,7 @@ export async function processBuildOutput(
 					url: pagePath,
 					type: 'collection',
 					sourcePath: content.file,
+					baseUrl,
 				}, options.includeFrontmatter)
 
 				await writeMarkdownFile(mdPath, markdown)
@@ -80,6 +81,7 @@ export async function processBuildOutput(
 			const markdown = generateMarkdown(output, {
 				url: pagePath,
 				type: 'static',
+				baseUrl,
 			}, options.includeFrontmatter)
 
 			await writeMarkdownFile(mdPath, markdown)

@@ -17,6 +17,7 @@ async function generateMarkdownForPath(
 	pagePath: string,
 	host: string,
 	options: ResolvedOptions,
+	baseUrl: string,
 ): Promise<string | null> {
 	// Try collection page first
 	const content = await getCollectionContent(pagePath, options.contentDir)
@@ -26,6 +27,7 @@ async function generateMarkdownForPath(
 			url: pagePath,
 			type: 'collection',
 			sourcePath: content.file,
+			baseUrl,
 		}, options.includeFrontmatter)
 	}
 
@@ -50,6 +52,7 @@ async function generateMarkdownForPath(
 	return generateMarkdown(output, {
 		url: pagePath,
 		type: 'static',
+		baseUrl,
 	}, options.includeFrontmatter)
 }
 
@@ -183,7 +186,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 
 		try {
 			const host = req.headers.host || 'localhost:4321'
-			const markdown = await generateMarkdownForPath(pagePath, host, options)
+			const markdown = await generateMarkdownForPath(pagePath, host, options, baseUrl)
 
 			if (markdown) {
 				res.setHeader('Content-Type', 'text/markdown; charset=utf-8')

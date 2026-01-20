@@ -62,6 +62,8 @@ export interface GenerateOptions {
 	type: 'collection' | 'static'
 	/** Path to source file (for collections) */
 	sourcePath?: string
+	/** Base URL for absolute URL generation (e.g., https://example.com) */
+	baseUrl?: string
 }
 
 /**
@@ -77,9 +79,11 @@ export function generateMarkdown(
 	}
 
 	// Build frontmatter with metadata
+	// Use absolute URL if baseUrl is provided, otherwise use relative path
+	const absoluteUrl = options.baseUrl ? `${options.baseUrl}${options.url}` : options.url
 	const frontmatter: Record<string, unknown> = {
 		...output.frontmatter,
-		url: options.url,
+		url: absoluteUrl,
 		type: options.type,
 		generatedAt: new Date().toISOString(),
 	}
