@@ -10,6 +10,7 @@ export interface PageEntry {
 export interface SiteMetadata {
 	title?: string
 	description?: string
+	baseUrl?: string
 }
 
 /**
@@ -22,6 +23,7 @@ export function generateLlmMarkdown(
 ): string {
 	const siteName = options.siteName ?? siteMetadata.title ?? 'Site'
 	const description = options.description ?? siteMetadata.description
+	const baseUrl = options.baseUrl ?? siteMetadata.baseUrl ?? ''
 
 	const lines: string[] = []
 
@@ -47,10 +49,6 @@ export function generateLlmMarkdown(
 	lines.push('This site exposes page content as markdown at `.md` URLs.')
 	lines.push('')
 
-	// Separate collection and static pages
-	const collectionPages = pages.filter((p) => p.type === 'collection')
-	const staticPages = pages.filter((p) => p.type === 'static')
-
 	// Pages section
 	if (pages.length > 0) {
 		lines.push('### Pages')
@@ -60,8 +58,7 @@ export function generateLlmMarkdown(
 		const sortedPages = [...pages].sort((a, b) => a.pathname.localeCompare(b.pathname))
 		for (const page of sortedPages) {
 			const mdUrl = getMarkdownUrl(page.pathname)
-			const label = page.title ?? page.pathname
-			lines.push(`- [${mdUrl}](.${mdUrl})${page.title ? ` - ${page.title}` : ''}`)
+			lines.push(`- [${baseUrl}${mdUrl}](${baseUrl}${mdUrl})${page.title ? ` - ${page.title}` : ''}`)
 		}
 		lines.push('')
 	}
@@ -70,8 +67,8 @@ export function generateLlmMarkdown(
 	lines.push('## Usage')
 	lines.push('')
 	lines.push('Append `.md` to any page URL to get the markdown version:')
-	lines.push('- `/about` → `/about.md`')
-	lines.push('- `/blog/hello` → `/blog/hello.md`')
+	lines.push(`- \`${baseUrl}/about\` → \`${baseUrl}/about.md\``)
+	lines.push(`- \`${baseUrl}/blog/hello\` → \`${baseUrl}/blog/hello.md\``)
 
 	// Additional content
 	if (options.additionalContent) {

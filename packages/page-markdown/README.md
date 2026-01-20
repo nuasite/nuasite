@@ -11,6 +11,7 @@ An Astro integration that exposes pages as `.md` endpoints. During development, 
 - **Alternate Links**: Injects `<link rel="alternate" type="text/markdown">` into HTML
 - **Frontmatter**: Includes metadata like title, description, and source path
 - **LLM Discovery**: Auto-generated `/.well-known/llm.md` endpoint for LLM-friendly site discovery
+- **llms.txt**: Auto-generated `/llms.txt` following the [llms.txt convention](https://llmstxt.org/) for crawler/LLM guidance
 
 ## Installation
 
@@ -35,6 +36,7 @@ export default defineConfig({
 			includeStaticPages: true,
 			includeFrontmatter: true,
 			llmEndpoint: true, // or configure with options
+			llmsTxt: true, // or configure with options
 		}),
 	],
 })
@@ -120,6 +122,8 @@ The integration automatically injects a `<link>` tag into HTML pages pointing to
 
 ### LLM Discovery Endpoint
 
+> **Note**: The `/.well-known/llm.md` and `/llms.txt` endpoints require a `site` to be configured in your `astro.config.mjs` to generate valid absolute URLs. If no site is configured, these endpoints will be skipped with a warning.
+
 The integration generates a `/.well-known/llm.md` endpoint that provides LLM-friendly site discovery information:
 
 ```
@@ -148,15 +152,54 @@ This site exposes page content as markdown at `.md` URLs.
 
 ### Pages
 
-- [/index.md](./index.md) - My Site
-- [/about.md](./about.md) - About Us
-- [/blog/hello.md](./blog/hello.md) - Hello World
+- [https://example.com/index.md](https://example.com/index.md) - My Site
+- [https://example.com/about.md](https://example.com/about.md) - About Us
+- [https://example.com/blog/hello.md](https://example.com/blog/hello.md) - Hello World
 
 ## Usage
 
 Append `.md` to any page URL to get the markdown version:
-- `/about` → `/about.md`
-- `/blog/hello` → `/blog/hello.md`
+- `https://example.com/about` → `https://example.com/about.md`
+- `https://example.com/blog/hello` → `https://example.com/blog/hello.md`
+```
+
+### llms.txt Endpoint
+
+The integration also generates a `/llms.txt` file following the [llms.txt convention](https://llmstxt.org/). This provides a standardized way to communicate site structure to LLMs and crawlers:
+
+```
+http://localhost:4321/llms.txt
+```
+
+Example output:
+
+```txt
+# My Site
+
+> Welcome to my site.
+
+This site provides markdown versions of all pages for LLM consumption.
+
+## LLM Discovery
+
+- [LLM Discovery Endpoint](https://example.com/.well-known/llm.md): Full site map with all available markdown endpoints
+
+## Markdown Endpoints
+
+All pages are available as markdown by appending `.md` to the URL.
+
+### Content
+
+- [My Blog Post](https://example.com/blog/hello.md): /blog/hello
+
+### Pages
+
+- [My Site](https://example.com/index.md): /
+- [About Us](https://example.com/about.md): /about
+
+## Permissions
+
+LLMs and crawlers are welcome to access markdown endpoints.
 ```
 
 ## Configuration Options
@@ -203,6 +246,7 @@ pageMarkdown({
 | ------------------- | -------- | ---------------------------------------- |
 | `siteName`          | `string` | Override the site name in llm.md         |
 | `description`       | `string` | Override the site description            |
+| `baseUrl`           | `string` | Override base URL (defaults to Astro's `site`) |
 | `additionalContent` | `string` | Additional markdown content to append    |
 
 Set to `false` to disable the endpoint entirely:
@@ -210,6 +254,46 @@ Set to `false` to disable the endpoint entirely:
 ```js
 pageMarkdown({
 	llmEndpoint: false,
+})
+```
+
+### `llmsTxt`
+
+- **Type**: `boolean | LlmsTxtOptions`
+- **Default**: `true`
+- Enable or configure the `/llms.txt` endpoint.
+
+When set to `true`, the endpoint is enabled with default settings. URLs are generated using the `site` value from your Astro config. You can also pass an options object:
+
+```js
+pageMarkdown({
+	llmsTxt: {
+		siteName: 'My Custom Site Name',
+		description: 'A custom description for my site',
+		baseUrl: 'https://example.com', // Override Astro's site config
+		allowCrawling: true,
+		instructions: 'Please be respectful of rate limits.',
+		additionalContent: '## Contact\n\nReach us at hello@example.com',
+	},
+})
+```
+
+#### `LlmsTxtOptions`
+
+| Option              | Type      | Description                                     |
+| ------------------- | --------- | ----------------------------------------------- |
+| `siteName`          | `string`  | Override the site name in llms.txt              |
+| `description`       | `string`  | Override the site description                   |
+| `baseUrl`           | `string`  | Override base URL (defaults to Astro's `site`)  |
+| `allowCrawling`     | `boolean` | Whether crawling is allowed (default: true)     |
+| `instructions`      | `string`  | Custom instructions for LLMs                    |
+| `additionalContent` | `string`  | Additional content to append                    |
+
+Set to `false` to disable the endpoint entirely:
+
+```js
+pageMarkdown({
+	llmsTxt: false,
 })
 ```
 

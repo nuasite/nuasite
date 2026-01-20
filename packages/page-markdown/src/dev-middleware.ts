@@ -1,9 +1,11 @@
+import type { AstroConfig } from 'astro'
 import type { ViteDevServer } from 'vite'
 import { getCollectionContent } from './cms-marker'
 import { htmlToMarkdown } from './html-to-markdown'
 import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
+import { generateLlmsTxt } from './llms-txt-endpoint'
 import { createCollectionOutput, createStaticOutput, generateMarkdown } from './markdown-generator'
-import { injectMarkdownLink, LLM_ENDPOINT_PATH, mdUrlToPagePath, normalizePath } from './paths'
+import { injectMarkdownLink, LLM_ENDPOINT_PATH, LLMS_TXT_PATH, mdUrlToPagePath, normalizePath } from './paths'
 import type { ResolvedOptions } from './types'
 
 const ASSET_PATTERN = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json)$/
@@ -101,12 +103,50 @@ async function discoverPages(host: string, options: ResolvedOptions): Promise<{ 
 }
 
 /**
+ * Get base URL from Astro config, removing trailing slash
+ */
+function getBaseUrl(config: AstroConfig): string {
+	const site = config.site
+	if (!site) return ''
+	return site.endsWith('/') ? site.slice(0, -1) : site
+}
+
+/**
  * Create dev server middleware to handle markdown requests
  */
-export function createDevMiddleware(server: ViteDevServer, options: ResolvedOptions) {
-	// Serve /.well-known/llm.md endpoint
+export function createDevMiddleware(server: ViteDevServer, options: ResolvedOptions, config: AstroConfig) {
+	const baseUrl = getBaseUrl(config)
+
+	// Serve /llms.txt endpoint (only if site is configured)
+	const llmsTxtOptions = options.llmsTxt
+	if (llmsTxtOptions !== false && baseUrl) {
+		server.middlewares.use(async (req, res, next) => {
+			const url = req.url || ''
+
+			if (url !== LLMS_TXT_PATH) {
+				return next()
+			}
+
+			try {
+				const host = req.headers.host || 'localhost:4321'
+				const { pages, siteMetadata } = await discoverPages(host, options)
+				const content = generateLlmsTxt(pages, { ...siteMetadata, baseUrl }, llmsTxtOptions)
+
+				res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+				res.setHeader('Access-Control-Allow-Origin', '*')
+				res.end(content)
+				return
+			} catch (error) {
+				console.error('[page-markdown] Error generating llms.txt:', error)
+			}
+
+			return next()
+		})
+	}
+
+	// Serve /.well-known/llm.md endpoint (only if site is configured)
 	const llmEndpointOptions = options.llmEndpoint
-	if (llmEndpointOptions !== false) {
+	if (llmEndpointOptions !== false && baseUrl) {
 		server.middlewares.use(async (req, res, next) => {
 			const url = req.url || ''
 
@@ -117,7 +157,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 			try {
 				const host = req.headers.host || 'localhost:4321'
 				const { pages, siteMetadata } = await discoverPages(host, options)
-				const markdown = generateLlmMarkdown(pages, siteMetadata, llmEndpointOptions)
+				const markdown = generateLlmMarkdown(pages, { ...siteMetadata, baseUrl }, llmEndpointOptions)
 
 				res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
 				res.setHeader('Access-Control-Allow-Origin', '*')

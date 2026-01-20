@@ -1,15 +1,25 @@
-import type { AstroIntegrationLogger } from 'astro'
+import type { AstroConfig, AstroIntegrationLogger } from 'astro'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getCollectionContent } from './cms-marker'
 import { htmlToMarkdown } from './html-to-markdown'
 import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
+import { generateLlmsTxt } from './llms-txt-endpoint'
 import { createCollectionOutput, createStaticOutput, generateMarkdown } from './markdown-generator'
-import { getHtmlPath, getLlmOutputPath, getMdOutputPath, injectMarkdownLink, normalizePath } from './paths'
+import { getHtmlPath, getLlmOutputPath, getLlmsTxtOutputPath, getMdOutputPath, injectMarkdownLink, normalizePath } from './paths'
 import type { ResolvedOptions } from './types'
 
 interface PageInfo {
 	pathname: string
+}
+
+/**
+ * Get base URL from Astro config, removing trailing slash
+ */
+function getBaseUrl(config: AstroConfig): string {
+	const site = config.site
+	if (!site) return ''
+	return site.endsWith('/') ? site.slice(0, -1) : site
 }
 
 /**
@@ -20,7 +30,9 @@ export async function processBuildOutput(
 	pages: PageInfo[],
 	options: ResolvedOptions,
 	logger: AstroIntegrationLogger,
+	config: AstroConfig,
 ) {
+	const baseUrl = getBaseUrl(config)
 	const distDir = dir.pathname
 	let collectionCount = 0
 	let staticCount = 0
@@ -99,13 +111,33 @@ export async function processBuildOutput(
 
 	// Generate llm.md if enabled
 	if (options.llmEndpoint !== false) {
-		try {
-			const llmContent = generateLlmMarkdown(pageEntries, siteMetadata, options.llmEndpoint)
-			const llmPath = getLlmOutputPath(distDir)
-			await writeMarkdownFile(llmPath, llmContent)
-			logger.info('Generated /.well-known/llm.md')
-		} catch (error) {
-			logger.warn(`Failed to generate llm.md: ${error}`)
+		if (!baseUrl) {
+			logger.warn('Skipping /.well-known/llm.md generation: no `site` configured in astro.config')
+		} else {
+			try {
+				const llmContent = generateLlmMarkdown(pageEntries, { ...siteMetadata, baseUrl }, options.llmEndpoint)
+				const llmPath = getLlmOutputPath(distDir)
+				await writeMarkdownFile(llmPath, llmContent)
+				logger.info('Generated /.well-known/llm.md')
+			} catch (error) {
+				logger.warn(`Failed to generate llm.md: ${error}`)
+			}
+		}
+	}
+
+	// Generate llms.txt if enabled
+	if (options.llmsTxt !== false) {
+		if (!baseUrl) {
+			logger.warn('Skipping /llms.txt generation: no `site` configured in astro.config')
+		} else {
+			try {
+				const llmsTxtContent = generateLlmsTxt(pageEntries, { ...siteMetadata, baseUrl }, options.llmsTxt)
+				const llmsTxtPath = getLlmsTxtOutputPath(distDir)
+				await writeMarkdownFile(llmsTxtPath, llmsTxtContent)
+				logger.info('Generated /llms.txt')
+			} catch (error) {
+				logger.warn(`Failed to generate llms.txt: ${error}`)
+			}
 		}
 	}
 }
