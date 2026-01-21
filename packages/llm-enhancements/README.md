@@ -131,6 +131,7 @@ http://localhost:4321/.well-known/llm.md
 ```
 
 This endpoint includes:
+
 - Site title and description (extracted from homepage metadata)
 - List of all available markdown endpoints
 - Usage instructions for accessing markdown versions
@@ -159,6 +160,7 @@ This site exposes page content as markdown at `.md` URLs.
 ## Usage
 
 Append `.md` to any page URL to get the markdown version:
+
 - `https://example.com/about` → `https://example.com/about.md`
 - `https://example.com/blog/hello` → `https://example.com/blog/hello.md`
 ```
@@ -242,12 +244,12 @@ pageMarkdown({
 
 #### `LlmEndpointOptions`
 
-| Option              | Type     | Description                              |
-| ------------------- | -------- | ---------------------------------------- |
-| `siteName`          | `string` | Override the site name in llm.md         |
-| `description`       | `string` | Override the site description            |
+| Option              | Type     | Description                                    |
+| ------------------- | -------- | ---------------------------------------------- |
+| `siteName`          | `string` | Override the site name in llm.md               |
+| `description`       | `string` | Override the site description                  |
 | `baseUrl`           | `string` | Override base URL (defaults to Astro's `site`) |
-| `additionalContent` | `string` | Additional markdown content to append    |
+| `additionalContent` | `string` | Additional markdown content to append          |
 
 Set to `false` to disable the endpoint entirely:
 
@@ -280,14 +282,14 @@ pageMarkdown({
 
 #### `LlmsTxtOptions`
 
-| Option              | Type      | Description                                     |
-| ------------------- | --------- | ----------------------------------------------- |
-| `siteName`          | `string`  | Override the site name in llms.txt              |
-| `description`       | `string`  | Override the site description                   |
-| `baseUrl`           | `string`  | Override base URL (defaults to Astro's `site`)  |
-| `allowCrawling`     | `boolean` | Whether crawling is allowed (default: true)     |
-| `instructions`      | `string`  | Custom instructions for LLMs                    |
-| `additionalContent` | `string`  | Additional content to append                    |
+| Option              | Type      | Description                                    |
+| ------------------- | --------- | ---------------------------------------------- |
+| `siteName`          | `string`  | Override the site name in llms.txt             |
+| `description`       | `string`  | Override the site description                  |
+| `baseUrl`           | `string`  | Override base URL (defaults to Astro's `site`) |
+| `allowCrawling`     | `boolean` | Whether crawling is allowed (default: true)    |
+| `instructions`      | `string`  | Custom instructions for LLMs                   |
+| `additionalContent` | `string`  | Additional content to append                   |
 
 Set to `false` to disable the endpoint entirely:
 

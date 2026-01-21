@@ -1,9 +1,9 @@
 import mdx from '@astrojs/mdx'
 import sitemap from '@astrojs/sitemap'
 import cmsMarker from '@nuasite/cms-marker'
-import pageMarkdown from '../../llm-enhancements/src'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroIntegration } from 'astro'
+import pageMarkdown from '../../llm-enhancements/src'
 import { type NuaIntegrationOptions, resolveOptions } from './types'
 
 export default function nua(options: NuaIntegrationOptions = {}): AstroIntegration {

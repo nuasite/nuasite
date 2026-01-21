@@ -71,13 +71,15 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 
 				updateConfig({
 					vite: {
-						plugins: [createVitePlugin(pluginContext)],
+						// biome-ignore lint/suspicious/noExplicitAny: Vite version mismatch between standalone vite and Astro's bundled vite
+						plugins: [createVitePlugin(pluginContext) as any],
 					},
 				})
 			},
 
 			'astro:server:setup': ({ server, logger }) => {
-				createDevMiddleware(server, config, manifestWriter, componentDefinitions, idCounter)
+				// biome-ignore lint/suspicious/noExplicitAny: Vite version mismatch between standalone vite and Astro's bundled vite
+				createDevMiddleware(server as any, config, manifestWriter, componentDefinitions, idCounter)
 				logger.info('Dev middleware initialized')
 			},
 

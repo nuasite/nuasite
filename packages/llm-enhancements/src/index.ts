@@ -15,7 +15,8 @@ export default function pageMarkdown(options: PageMarkdownOptions = {}): AstroIn
 			},
 
 			'astro:server:setup': ({ server, logger }) => {
-				createDevMiddleware(server, resolvedOptions, config)
+				// Cast needed due to Astro's bundled Vite types differing from root vite
+				createDevMiddleware(server as unknown as Parameters<typeof createDevMiddleware>[0], resolvedOptions, config)
 				logger.info('Markdown endpoints enabled')
 			},
 

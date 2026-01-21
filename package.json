@@ -37,11 +37,11 @@
 		},
 		"catalogs": {
 			"build": {
-				"@actions/core": "^1.11.1",
-				"@biomejs/biome": "^2.3.1",
+				"@actions/core": "^2.0.2",
+				"@biomejs/biome": "^2.3.11",
 				"@types/bun": "latest",
 				"@types/js-yaml": "^4.0.9",
-				"dprint": "^0.50.2",
+				"dprint": "^0.51.1",
 				"js-yaml": "^4.1.0",
 				"json5": "^2.2.3",
 				"typescript": "^5",
