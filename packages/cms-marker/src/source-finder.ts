@@ -995,6 +995,7 @@ function stripMarkdownSyntax(text: string): string {
 /**
  * Enhance manifest entries with actual source snippets from source files.
  * This reads the source files and extracts the innerHTML at the specified locations.
+ * For images, it finds the correct line containing the src attribute.
  *
  * @param entries - Manifest entries to enhance
  * @returns Enhanced entries with sourceSnippet populated
@@ -1006,6 +1007,22 @@ export async function enhanceManifestWithSourceSnippets(
 
 	// Process entries in parallel for better performance
 	const entryPromises = Object.entries(entries).map(async ([id, entry]) => {
+		// Handle image entries specially - find the line with src attribute
+		if (entry.sourceType === 'image' && entry.imageSrc) {
+			const imageLocation = await findImageSourceLocation(entry.imageSrc)
+			if (imageLocation) {
+				const sourceHash = generateSourceHash(imageLocation.snippet || entry.imageSrc)
+				return [id, {
+					...entry,
+					sourcePath: imageLocation.file,
+					sourceLine: imageLocation.line,
+					sourceSnippet: imageLocation.snippet,
+					sourceHash,
+				}] as const
+			}
+			return [id, entry] as const
+		}
+
 		// Skip if already has sourceSnippet or missing source info
 		if (entry.sourceSnippet || !entry.sourcePath || !entry.sourceLine || !entry.tag) {
 			return [id, entry] as const
