@@ -151,8 +151,8 @@ describe('ManifestWriter', () => {
 			try {
 				manifestWriter.setAvailableColors({
 					colors: [
-						{ name: 'primary', shades: ['500', '600', '700'], isCustom: true },
-						{ name: 'blue', shades: ['50', '100', '500', '900'], isCustom: false },
+						{ name: 'primary', values: { '500': '#3b82f6', '600': '#2563eb', '700': '#1d4ed8' }, isCustom: true },
+						{ name: 'blue', values: { '50': '#eff6ff', '100': '#dbeafe', '500': '#3b82f6', '900': '#1e3a8a' }, isCustom: false },
 					],
 					defaultColors: ['blue'],
 					customColors: ['primary'],
@@ -164,8 +164,9 @@ describe('ManifestWriter', () => {
 				manifestWriter.addPage('/', entries, {})
 				await manifestWriter.finalize()
 
-				const manifestPath = path.join(tempDir, 'index.json')
-				const content = await fs.readFile(manifestPath, 'utf-8')
+				// Available colors are in the global manifest, not per-page
+				const globalManifestPath = path.join(tempDir, 'cms-manifest.json')
+				const content = await fs.readFile(globalManifestPath, 'utf-8')
 				const manifest = JSON.parse(content)
 
 				expect(manifest.availableColors).toBeDefined()
@@ -177,14 +178,14 @@ describe('ManifestWriter', () => {
 			}
 		})
 
-		test('should include available colors in page manifest', async () => {
+		test('should include available colors in global manifest', async () => {
 			const { tempDir, manifestWriter, cleanup } = await createTestContext()
 			try {
 				manifestWriter.setAvailableColors({
 					colors: [
-						{ name: 'white', shades: [], isCustom: false },
-						{ name: 'black', shades: [], isCustom: false },
-						{ name: 'red', shades: ['50', '500', '900'], isCustom: false },
+						{ name: 'white', values: { '': '#ffffff' }, isCustom: false },
+						{ name: 'black', values: { '': '#000000' }, isCustom: false },
+						{ name: 'red', values: { '50': '#fef2f2', '500': '#ef4444', '900': '#7f1d1d' }, isCustom: false },
 					],
 					defaultColors: ['white', 'black', 'red'],
 					customColors: [],
@@ -196,14 +197,16 @@ describe('ManifestWriter', () => {
 				manifestWriter.addPage('/', entries, {})
 				await manifestWriter.finalize()
 
-				const manifestPath = path.join(tempDir, 'index.json')
-				const content = await fs.readFile(manifestPath, 'utf-8')
+				// Available colors are in the global manifest
+				const globalManifestPath = path.join(tempDir, 'cms-manifest.json')
+				const content = await fs.readFile(globalManifestPath, 'utf-8')
 				const manifest = JSON.parse(content)
 
 				expect(manifest.availableColors).toBeDefined()
 				const redColor = manifest.availableColors.colors.find((c: any) => c.name === 'red')
 				expect(redColor).toBeDefined()
-				expect(redColor.shades).toContain('500')
+				expect(Object.keys(redColor.values)).toContain('500')
+				expect(redColor.values['500']).toBe('#ef4444')
 			} finally {
 				await cleanup()
 			}
@@ -238,8 +241,9 @@ describe('ManifestWriter', () => {
 				manifestWriter.addPage('/', entries, {})
 				await manifestWriter.finalize()
 
-				const manifestPath = path.join(tempDir, 'index.json')
-				const content = await fs.readFile(manifestPath, 'utf-8')
+				// Available colors are in the global manifest
+				const globalManifestPath = path.join(tempDir, 'cms-manifest.json')
+				const content = await fs.readFile(globalManifestPath, 'utf-8')
 				const manifest = JSON.parse(content)
 
 				expect(manifest.availableColors).toBeDefined()
@@ -249,9 +253,10 @@ describe('ManifestWriter', () => {
 				const primaryColor = manifest.availableColors.colors.find((c: any) => c.name === 'primary')
 				expect(primaryColor).toBeDefined()
 				expect(primaryColor.isCustom).toBe(true)
-				expect(primaryColor.shades).toContain('50')
-				expect(primaryColor.shades).toContain('500')
-				expect(primaryColor.shades).toContain('900')
+				expect(Object.keys(primaryColor.values)).toContain('50')
+				expect(Object.keys(primaryColor.values)).toContain('500')
+				expect(Object.keys(primaryColor.values)).toContain('900')
+				expect(primaryColor.values['500']).toBe('#3b82f6')
 			} finally {
 				await cleanup()
 			}
@@ -261,7 +266,7 @@ describe('ManifestWriter', () => {
 			const { tempDir, manifestWriter, cleanup } = await createTestContext()
 			try {
 				manifestWriter.setAvailableColors({
-					colors: [{ name: 'custom', shades: ['500'], isCustom: true }],
+					colors: [{ name: 'custom', values: { '500': '#abc123' }, isCustom: true }],
 					defaultColors: [],
 					customColors: ['custom'],
 				})
@@ -274,8 +279,9 @@ describe('ManifestWriter', () => {
 				manifestWriter.addPage('/', entries, {})
 				await manifestWriter.finalize()
 
-				const manifestPath = path.join(tempDir, 'index.json')
-				const content = await fs.readFile(manifestPath, 'utf-8')
+				// Available colors are in the global manifest
+				const globalManifestPath = path.join(tempDir, 'cms-manifest.json')
+				const content = await fs.readFile(globalManifestPath, 'utf-8')
 				const manifest = JSON.parse(content)
 
 				// Available colors should be preserved after reset
@@ -292,7 +298,7 @@ describe('ManifestWriter', () => {
 			expect(manifestWriter.getAvailableColors()).toBeUndefined()
 
 			manifestWriter.setAvailableColors({
-				colors: [{ name: 'test', shades: ['100'], isCustom: true }],
+				colors: [{ name: 'test', values: { '100': '#abc123' }, isCustom: true }],
 				defaultColors: [],
 				customColors: ['test'],
 			})
