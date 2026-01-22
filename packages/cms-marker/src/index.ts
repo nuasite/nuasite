@@ -71,14 +71,12 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 
 				updateConfig({
 					vite: {
-						// biome-ignore lint/suspicious/noExplicitAny: Vite version mismatch between standalone vite and Astro's bundled vite
 						plugins: [createVitePlugin(pluginContext) as any],
 					},
 				})
 			},
 
 			'astro:server:setup': ({ server, logger }) => {
-				// biome-ignore lint/suspicious/noExplicitAny: Vite version mismatch between standalone vite and Astro's bundled vite
 				createDevMiddleware(server as any, config, manifestWriter, componentDefinitions, idCounter)
 				logger.info('Dev middleware initialized')
 			},
@@ -92,7 +90,8 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 	}
 }
 
-// Re-export types for consumers
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
-export type { CollectionInfo, MarkdownContent } from './source-finder'
-export type { CmsManifest, CmsMarkerOptions, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry } from './types'
+
+// Re-export types for consumers
+export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
+export type * from './types'
