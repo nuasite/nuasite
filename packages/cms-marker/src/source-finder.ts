@@ -89,6 +89,136 @@ export async function findSourceLocation(
 }
 
 /**
+ * Find source file and line number for an image by its src attribute
+ */
+export async function findImageSourceLocation(
+	imageSrc: string,
+): Promise<SourceLocation | undefined> {
+	const srcDir = path.join(process.cwd(), 'src')
+
+	try {
+		const searchDirs = [
+			path.join(srcDir, 'pages'),
+			path.join(srcDir, 'components'),
+			path.join(srcDir, 'layouts'),
+		]
+
+		for (const dir of searchDirs) {
+			try {
+				const result = await searchDirectoryForImage(dir, imageSrc)
+				if (result) {
+					return result
+				}
+			} catch {
+				// Directory doesn't exist, continue
+			}
+		}
+	} catch {
+		// Search failed
+	}
+
+	return undefined
+}
+
+/**
+ * Recursively search directory for image with matching src
+ */
+async function searchDirectoryForImage(
+	dir: string,
+	imageSrc: string,
+): Promise<SourceLocation | undefined> {
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry.name)
+
+			if (entry.isDirectory()) {
+				const result = await searchDirectoryForImage(fullPath, imageSrc)
+				if (result) return result
+			} else if (entry.isFile() && (entry.name.endsWith('.astro') || entry.name.endsWith('.tsx') || entry.name.endsWith('.jsx'))) {
+				const result = await searchFileForImage(fullPath, imageSrc)
+				if (result) return result
+			}
+		}
+	} catch {
+		// Error reading directory
+	}
+
+	return undefined
+}
+
+/**
+ * Search a single file for an image with matching src
+ */
+async function searchFileForImage(
+	filePath: string,
+	imageSrc: string,
+): Promise<SourceLocation | undefined> {
+	try {
+		const content = await fs.readFile(filePath, 'utf-8')
+		const lines = content.split('\n')
+
+		// Search for src="imageSrc" or src='imageSrc'
+		const srcPatterns = [
+			`src="${imageSrc}"`,
+			`src='${imageSrc}'`,
+		]
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i]
+			if (!line) continue
+
+			for (const pattern of srcPatterns) {
+				if (line.includes(pattern)) {
+					// Found the image, extract the full <img> tag as snippet
+					const snippet = extractImageSnippet(lines, i)
+
+					return {
+						file: path.relative(process.cwd(), filePath),
+						line: i + 1,
+						snippet,
+						type: 'static',
+					}
+				}
+			}
+		}
+	} catch {
+		// Error reading file
+	}
+
+	return undefined
+}
+
+/**
+ * Extract the full <img> tag snippet from source lines
+ */
+function extractImageSnippet(lines: string[], startLine: number): string {
+	const snippetLines: string[] = []
+	let foundClosing = false
+
+	for (let i = startLine; i < Math.min(startLine + 10, lines.length); i++) {
+		const line = lines[i]
+		if (!line) continue
+
+		snippetLines.push(line)
+
+		// Check if this line contains the closing of the img tag
+		// img tags can be self-closing /> or just >
+		if (line.includes('/>') || (line.includes('<img') && line.includes('>'))) {
+			foundClosing = true
+			break
+		}
+	}
+
+	if (!foundClosing && snippetLines.length > 1) {
+		return snippetLines[0]!
+	}
+
+	return snippetLines.join('\n')
+}
+
+/**
  * Recursively search directory for matching content
  */
 async function searchDirectory(

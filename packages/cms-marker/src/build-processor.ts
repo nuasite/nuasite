@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
-import { findCollectionSource, findMarkdownSourceLocation, findSourceLocation, parseMarkdownContent } from './source-finder'
+import { findCollectionSource, findImageSourceLocation, findMarkdownSourceLocation, findSourceLocation, parseMarkdownContent } from './source-finder'
 import type { CmsMarkerOptions, CollectionEntry } from './types'
 
 // Concurrency limit for parallel processing
@@ -113,6 +113,18 @@ async function processFile(
 	for (const entry of Object.values(result.entries)) {
 		// Skip entries that already have source info from component detection
 		if (entry.sourcePath && !entry.sourcePath.endsWith('.html')) {
+			continue
+		}
+
+		// Handle image entries specially - search by image src
+		if (entry.sourceType === 'image' && entry.imageSrc) {
+			const imageSource = await findImageSourceLocation(entry.imageSrc)
+			if (imageSource) {
+				entry.sourcePath = imageSource.file
+				entry.sourceLine = imageSource.line
+				entry.sourceSnippet = imageSource.snippet
+				entry.sourceType = 'image'
+			}
 			continue
 		}
 

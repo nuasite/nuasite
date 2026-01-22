@@ -1,7 +1,7 @@
 import type { ViteDevServer } from 'vite'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
-import { findCollectionSource, parseMarkdownContent } from './source-finder'
+import { findCollectionSource, findImageSourceLocation, parseMarkdownContent } from './source-finder'
 import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition } from './types'
 
 /**
@@ -212,7 +212,20 @@ async function processHtmlForDev(
 	}
 
 	// In dev mode, we use the source info from Astro compiler attributes
-	// which is already extracted by html-processor, so no need to call findSourceLocation
+	// which is already extracted by html-processor
+	// However, images may not have source info if their ancestors don't have it
+	// In that case, fall back to searching for the image src
+	for (const entry of Object.values(result.entries)) {
+		if (entry.sourceType === 'image' && entry.imageSrc && !entry.sourcePath) {
+			const imageSource = await findImageSourceLocation(entry.imageSrc)
+			if (imageSource) {
+				entry.sourcePath = imageSource.file
+				entry.sourceLine = imageSource.line
+				entry.sourceSnippet = imageSource.snippet
+			}
+		}
+	}
+
 	return {
 		html: result.html,
 		entries: result.entries,

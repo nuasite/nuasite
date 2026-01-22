@@ -279,7 +279,7 @@ export async function processHtml(
 
 	// Image detection pass: mark img elements for CMS image replacement
 	// Store image entries separately to add to manifest later
-	const imageEntries = new Map<string, { src: string; alt: string }>()
+	const imageEntries = new Map<string, { src: string; alt: string; sourceFile?: string; sourceLine?: number }>()
 	root.querySelectorAll('img').forEach((node) => {
 		// Skip if already marked
 		if (node.getAttribute(attributeName)) return
@@ -291,10 +291,31 @@ export async function processHtml(
 		node.setAttribute(attributeName, id)
 		node.setAttribute('data-cms-img', 'true')
 
+		// Try to get source location from the image itself or ancestors
+		let sourceFile: string | undefined
+		let sourceLine: number | undefined
+		let current: any = node
+		while (current && !sourceFile) {
+			const file = current.getAttribute?.('data-astro-source-file')
+			const line = current.getAttribute?.('data-astro-source-loc') || current.getAttribute?.('data-astro-source-line')
+			if (file) {
+				sourceFile = file
+				if (line) {
+					const lineNum = parseInt(line.split(':')[0] ?? '1', 10)
+					if (!Number.isNaN(lineNum)) {
+						sourceLine = lineNum
+					}
+				}
+			}
+			current = current.parentNode
+		}
+
 		// Store image info for manifest
 		imageEntries.set(id, {
 			src,
 			alt: node.getAttribute('alt') || '',
+			sourceFile,
+			sourceLine,
 		})
 	})
 
@@ -544,7 +565,8 @@ export async function processHtml(
 			const isImage = !!imageInfo
 
 			const entryText = isImage ? (imageInfo.alt || imageInfo.src) : textWithPlaceholders.trim()
-			const entrySourcePath = sourceLocation?.file || sourcePath
+			// For images, use the source file we captured from ancestors if not in sourceLocationMap
+			const entrySourcePath = sourceLocation?.file || imageInfo?.sourceFile || sourcePath
 
 			// Generate stable ID based on content and context
 			const stableId = generateStableId(tag, entryText, entrySourcePath, sourceContext)
@@ -560,7 +582,7 @@ export async function processHtml(
 				html: htmlContent,
 				sourcePath: entrySourcePath,
 				childCmsIds: childCmsIds.length > 0 ? childCmsIds : undefined,
-				sourceLine: sourceLocation?.line,
+				sourceLine: sourceLocation?.line ?? imageInfo?.sourceLine,
 				sourceSnippet: undefined,
 				sourceType: isImage ? 'image' : (isCollectionWrapper ? 'collection' : undefined),
 				variableName: undefined,
