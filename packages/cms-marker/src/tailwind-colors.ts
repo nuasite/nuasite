@@ -336,3 +336,33 @@ export function buildColorClass(
 	}
 	return `${prefix}-${colorName}`
 }
+
+/**
+ * Generate a hidden HTML string containing all color classes for Tailwind safelist.
+ * This ensures Tailwind includes all color utility classes during build,
+ * even if they're only used dynamically via the CMS color editor.
+ *
+ * @param availableColors - The available colors from Tailwind config
+ * @returns HTML string with a hidden div containing all color classes
+ */
+export function generateColorSafelistHtml(availableColors: AvailableColors): string {
+	const classes: string[] = []
+
+	for (const color of availableColors.colors) {
+		if (color.shades.length === 0) {
+			// Special colors without shades (white, black, transparent, etc.)
+			if (color.name !== 'transparent' && color.name !== 'current' && color.name !== 'inherit') {
+				classes.push(`bg-${color.name}`)
+				classes.push(`text-${color.name}`)
+			}
+		} else {
+			// Colors with shades
+			for (const shade of color.shades) {
+				classes.push(`bg-${color.name}-${shade}`)
+				classes.push(`text-${color.name}-${shade}`)
+			}
+		}
+	}
+
+	return `<div aria-hidden="true" class="!hidden ${classes.join(' ')}"></div>`
+}

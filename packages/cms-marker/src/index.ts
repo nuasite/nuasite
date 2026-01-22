@@ -47,6 +47,9 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 				idCounter.value = 0
 				manifestWriter.reset()
 
+				// Load available colors from Tailwind config
+				await manifestWriter.loadAvailableColors()
+
 				// Scan for component definitions
 				if (markComponents) {
 					const registry = new ComponentRegistry(componentDirs)

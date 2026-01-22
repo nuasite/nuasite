@@ -27,7 +27,7 @@ export function createDevMiddleware(
 	componentDefinitions: Record<string, ComponentDefinition>,
 	idCounter: { value: number },
 ) {
-	// Serve global CMS manifest (component definitions and settings)
+	// Serve global CMS manifest (component definitions, available colors, and settings)
 	server.middlewares.use((req, res, next) => {
 		if (req.url === '/cms-manifest.json') {
 			res.setHeader('Content-Type', 'application/json')
@@ -35,6 +35,7 @@ export function createDevMiddleware(
 			res.end(JSON.stringify(
 				{
 					componentDefinitions,
+					availableColors: manifestWriter.getAvailableColors(),
 				},
 				null,
 				2,

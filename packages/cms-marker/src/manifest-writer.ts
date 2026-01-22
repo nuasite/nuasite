@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { parseTailwindConfig } from './tailwind-colors'
+import { generateColorSafelistHtml, parseTailwindConfig } from './tailwind-colors'
 import type { AvailableColors, CmsManifest, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry, ManifestMetadata } from './types'
 import { generateManifestContentHash, generateSourceFileHashes } from './utils'
 
@@ -55,6 +55,8 @@ export class ManifestWriter {
 	 */
 	async loadAvailableColors(projectRoot: string = process.cwd()): Promise<void> {
 		this.availableColors = await parseTailwindConfig(projectRoot)
+		// Generate safelist HTML for Tailwind to detect all color classes
+		this.availableColors.colorSafelistHtml = generateColorSafelistHtml(this.availableColors)
 		this.globalManifest.availableColors = this.availableColors
 	}
 
@@ -138,7 +140,6 @@ export class ManifestWriter {
 			components: Record<string, ComponentInstance>
 			componentDefinitions: Record<string, ComponentDefinition>
 			collection?: CollectionEntry
-			availableColors?: AvailableColors
 		} = {
 			metadata,
 			page: pagePath,
@@ -149,10 +150,6 @@ export class ManifestWriter {
 
 		if (collection) {
 			pageManifest.collection = collection
-		}
-
-		if (this.availableColors) {
-			pageManifest.availableColors = this.availableColors
 		}
 
 		await fs.writeFile(manifestPath, JSON.stringify(pageManifest, null, 2), 'utf-8')
@@ -166,11 +163,17 @@ export class ManifestWriter {
 		// Wait for all queued writes to complete
 		await this.writeQueue
 
-		// Write global manifest with settings (component definitions only, not entries)
+		// Write global manifest with settings (component definitions and available colors)
 		if (this.outDir) {
 			const globalManifestPath = path.join(this.outDir, this.manifestFile)
-			const globalSettings = {
+			const globalSettings: {
+				componentDefinitions: Record<string, ComponentDefinition>
+				availableColors?: AvailableColors
+			} = {
 				componentDefinitions: this.componentDefinitions,
+			}
+			if (this.availableColors) {
+				globalSettings.availableColors = this.availableColors
 			}
 			await fs.writeFile(
 				globalManifestPath,

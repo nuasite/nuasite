@@ -103,6 +103,8 @@ export interface AvailableColors {
 	defaultColors: string[]
 	/** Custom/theme color names */
 	customColors: string[]
+	/** Hidden HTML containing all color classes for Tailwind safelist */
+	colorSafelistHtml?: string
 }
 
 export interface ManifestEntry {
