@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { generateColorSafelistHtml, parseTailwindConfig } from './tailwind-colors'
+import { parseTailwindConfig } from './tailwind-colors'
 import type { AvailableColors, CmsManifest, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry, ManifestMetadata } from './types'
 import { generateManifestContentHash, generateSourceFileHashes } from './utils'
 
@@ -55,8 +55,6 @@ export class ManifestWriter {
 	 */
 	async loadAvailableColors(projectRoot: string = process.cwd()): Promise<void> {
 		this.availableColors = await parseTailwindConfig(projectRoot)
-		// Generate safelist HTML for Tailwind to detect all color classes
-		this.availableColors.colorSafelistHtml = generateColorSafelistHtml(this.availableColors)
 		this.globalManifest.availableColors = this.availableColors
 	}
 

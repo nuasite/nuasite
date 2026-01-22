@@ -69,12 +69,12 @@ export interface ContentConstraints {
 	allowedTags?: string[]
 }
 
-/** Represents a single Tailwind color with its shades */
+/** Represents a single Tailwind color with its shades and values */
 export interface TailwindColor {
 	/** Color name (e.g., 'red', 'blue', 'primary') */
 	name: string
-	/** Available shades (e.g., ['50', '100', '200', ..., '900', '950']) */
-	shades: string[]
+	/** Map of shade to CSS color value (e.g., { '500': '#ef4444', '600': '#dc2626' }) */
+	values: Record<string, string>
 	/** Whether this is a custom/theme color vs default Tailwind */
 	isCustom?: boolean
 }
@@ -103,8 +103,6 @@ export interface AvailableColors {
 	defaultColors: string[]
 	/** Custom/theme color names */
 	customColors: string[]
-	/** Hidden HTML containing all color classes for Tailwind safelist */
-	colorSafelistHtml?: string
 }
 
 export interface ManifestEntry {
