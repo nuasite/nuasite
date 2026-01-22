@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { AvailableColors, ColorClasses, TailwindColor } from './types'
+import type { AvailableColors, AvailableTextStyles, ColorClasses, TailwindColor, TextStyleValue } from './types'
 
 /**
  * Default Tailwind CSS v4 color names.
@@ -146,6 +146,58 @@ const SPECIAL_COLOR_VALUES: Record<string, string> = {
 }
 
 /**
+ * Default Tailwind v4 font weight values.
+ */
+const DEFAULT_FONT_WEIGHTS: TextStyleValue[] = [
+	{ class: 'font-thin', label: 'Thin', css: { fontWeight: '100' } },
+	{ class: 'font-extralight', label: 'Extra Light', css: { fontWeight: '200' } },
+	{ class: 'font-light', label: 'Light', css: { fontWeight: '300' } },
+	{ class: 'font-normal', label: 'Normal', css: { fontWeight: '400' } },
+	{ class: 'font-medium', label: 'Medium', css: { fontWeight: '500' } },
+	{ class: 'font-semibold', label: 'Semibold', css: { fontWeight: '600' } },
+	{ class: 'font-bold', label: 'Bold', css: { fontWeight: '700' } },
+	{ class: 'font-extrabold', label: 'Extra Bold', css: { fontWeight: '800' } },
+	{ class: 'font-black', label: 'Black', css: { fontWeight: '900' } },
+]
+
+/**
+ * Default Tailwind v4 font size values.
+ */
+const DEFAULT_FONT_SIZES: TextStyleValue[] = [
+	{ class: 'text-xs', label: 'XS', css: { fontSize: '0.75rem', lineHeight: '1rem' } },
+	{ class: 'text-sm', label: 'SM', css: { fontSize: '0.875rem', lineHeight: '1.25rem' } },
+	{ class: 'text-base', label: 'Base', css: { fontSize: '1rem', lineHeight: '1.5rem' } },
+	{ class: 'text-lg', label: 'LG', css: { fontSize: '1.125rem', lineHeight: '1.75rem' } },
+	{ class: 'text-xl', label: 'XL', css: { fontSize: '1.25rem', lineHeight: '1.75rem' } },
+	{ class: 'text-2xl', label: '2XL', css: { fontSize: '1.5rem', lineHeight: '2rem' } },
+	{ class: 'text-3xl', label: '3XL', css: { fontSize: '1.875rem', lineHeight: '2.25rem' } },
+	{ class: 'text-4xl', label: '4XL', css: { fontSize: '2.25rem', lineHeight: '2.5rem' } },
+	{ class: 'text-5xl', label: '5XL', css: { fontSize: '3rem', lineHeight: '1' } },
+	{ class: 'text-6xl', label: '6XL', css: { fontSize: '3.75rem', lineHeight: '1' } },
+	{ class: 'text-7xl', label: '7XL', css: { fontSize: '4.5rem', lineHeight: '1' } },
+	{ class: 'text-8xl', label: '8XL', css: { fontSize: '6rem', lineHeight: '1' } },
+	{ class: 'text-9xl', label: '9XL', css: { fontSize: '8rem', lineHeight: '1' } },
+]
+
+/**
+ * Default text decoration values.
+ */
+const DEFAULT_TEXT_DECORATIONS: TextStyleValue[] = [
+	{ class: 'no-underline', label: 'None', css: { textDecoration: 'none' } },
+	{ class: 'underline', label: 'Underline', css: { textDecoration: 'underline' } },
+	{ class: 'overline', label: 'Overline', css: { textDecoration: 'overline' } },
+	{ class: 'line-through', label: 'Strikethrough', css: { textDecoration: 'line-through' } },
+]
+
+/**
+ * Default font style values.
+ */
+const DEFAULT_FONT_STYLES: TextStyleValue[] = [
+	{ class: 'not-italic', label: 'Normal', css: { fontStyle: 'normal' } },
+	{ class: 'italic', label: 'Italic', css: { fontStyle: 'italic' } },
+]
+
+/**
  * Build a regex pattern for matching color classes.
  */
 function buildColorPattern(prefix: string): RegExp {
@@ -267,6 +319,141 @@ function extractColorsFromCss(content: string): TailwindColor[] {
 	}
 
 	return result
+}
+
+/**
+ * Parse Tailwind v4 CSS config to extract available text styles.
+ */
+export async function parseTextStyles(projectRoot: string = process.cwd()): Promise<AvailableTextStyles> {
+	// Tailwind v4 CSS files to search
+	const cssFiles = [
+		'src/styles/global.css',
+		'src/styles/tailwind.css',
+		'src/styles/app.css',
+		'src/app.css',
+		'src/global.css',
+		'src/index.css',
+		'app/globals.css',
+		'styles/globals.css',
+	]
+
+	let customTextStyles: Partial<AvailableTextStyles> = {}
+
+	for (const cssFile of cssFiles) {
+		const fullPath = path.join(projectRoot, cssFile)
+		try {
+			const content = await fs.readFile(fullPath, 'utf-8')
+			customTextStyles = extractTextStylesFromCss(content)
+			// If we found any custom styles, use this file
+			if (Object.values(customTextStyles).some(arr => arr && arr.length > 0)) {
+				break
+			}
+		} catch {
+			// File doesn't exist, continue
+		}
+	}
+
+	// Merge custom styles with defaults (custom overrides default)
+	return {
+		fontWeight: mergeTextStyles(DEFAULT_FONT_WEIGHTS, customTextStyles.fontWeight),
+		fontSize: mergeTextStyles(DEFAULT_FONT_SIZES, customTextStyles.fontSize),
+		textDecoration: mergeTextStyles(DEFAULT_TEXT_DECORATIONS, customTextStyles.textDecoration),
+		fontStyle: mergeTextStyles(DEFAULT_FONT_STYLES, customTextStyles.fontStyle),
+	}
+}
+
+/**
+ * Merge custom text styles with defaults.
+ * Custom styles with matching class names override defaults.
+ */
+function mergeTextStyles(defaults: TextStyleValue[], custom?: TextStyleValue[]): TextStyleValue[] {
+	if (!custom || custom.length === 0) {
+		return defaults
+	}
+
+	const customByClass = new Map(custom.map(s => [s.class, s]))
+	const result: TextStyleValue[] = []
+
+	// Update defaults with custom overrides
+	for (const def of defaults) {
+		const customStyle = customByClass.get(def.class)
+		if (customStyle) {
+			result.push(customStyle)
+			customByClass.delete(def.class)
+		} else {
+			result.push(def)
+		}
+	}
+
+	// Add any remaining custom styles that weren't overrides
+	for (const style of customByClass.values()) {
+		result.push(style)
+	}
+
+	return result
+}
+
+/**
+ * Extract custom text styles from Tailwind v4 CSS @theme block.
+ */
+function extractTextStylesFromCss(content: string): Partial<AvailableTextStyles> {
+	const fontWeights: TextStyleValue[] = []
+	const fontSizes: TextStyleValue[] = []
+
+	// Find @theme blocks (including inline)
+	const themeBlockPattern = /@theme(?:\s+inline)?\s*\{([^}]+)\}/gs
+	let themeMatch: RegExpExecArray | null
+
+	while ((themeMatch = themeBlockPattern.exec(content)) !== null) {
+		const themeContent = themeMatch[1]
+		if (!themeContent) continue
+
+		// Extract font-weight overrides: --font-weight-{name}: value;
+		const fontWeightPattern = /--font-weight-([a-z]+):\s*([^;]+);/gi
+		let weightMatch: RegExpExecArray | null
+		while ((weightMatch = fontWeightPattern.exec(themeContent)) !== null) {
+			const name = weightMatch[1]?.toLowerCase()
+			const value = weightMatch[2]?.trim()
+			if (!name || !value) continue
+
+			fontWeights.push({
+				class: `font-${name}`,
+				label: name.charAt(0).toUpperCase() + name.slice(1),
+				css: { fontWeight: value },
+			})
+		}
+
+		// Extract font-size overrides: --font-size-{name}: value;
+		// Also look for corresponding line-height: --line-height-{name}: value;
+		const fontSizePattern = /--font-size-([a-z0-9]+):\s*([^;]+);/gi
+		let sizeMatch: RegExpExecArray | null
+		while ((sizeMatch = fontSizePattern.exec(themeContent)) !== null) {
+			const name = sizeMatch[1]?.toLowerCase()
+			const value = sizeMatch[2]?.trim()
+			if (!name || !value) continue
+
+			// Try to find matching line-height
+			const lineHeightPattern = new RegExp(`--line-height-${name}:\\s*([^;]+);`, 'i')
+			const lineHeightMatch = themeContent.match(lineHeightPattern)
+			const lineHeight = lineHeightMatch?.[1]?.trim()
+
+			const css: Record<string, string> = { fontSize: value }
+			if (lineHeight) {
+				css.lineHeight = lineHeight
+			}
+
+			fontSizes.push({
+				class: `text-${name}`,
+				label: name.toUpperCase(),
+				css,
+			})
+		}
+	}
+
+	return {
+		fontWeight: fontWeights.length > 0 ? fontWeights : undefined,
+		fontSize: fontSizes.length > 0 ? fontSizes : undefined,
+	}
 }
 
 /**

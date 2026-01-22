@@ -105,6 +105,28 @@ export interface AvailableColors {
 	customColors: string[]
 }
 
+/** Text style value with class name and CSS properties */
+export interface TextStyleValue {
+	/** Tailwind class name (e.g., 'font-bold', 'text-xl') */
+	class: string
+	/** Display label for UI */
+	label: string
+	/** CSS properties to apply (e.g., { fontWeight: '700' }) */
+	css: Record<string, string>
+}
+
+/** Available text styles from Tailwind config */
+export interface AvailableTextStyles {
+	/** Font weight options (font-normal, font-bold, etc.) */
+	fontWeight: TextStyleValue[]
+	/** Font size options (text-xs, text-sm, text-base, etc.) */
+	fontSize: TextStyleValue[]
+	/** Text decoration options (underline, line-through, etc.) */
+	textDecoration: TextStyleValue[]
+	/** Font style options (italic, not-italic) */
+	fontStyle: TextStyleValue[]
+}
+
 export interface ManifestEntry {
 	id: string
 	tag: string
@@ -201,4 +223,6 @@ export interface CmsManifest {
 	collections?: Record<string, CollectionEntry>
 	/** Available Tailwind colors from the project's config */
 	availableColors?: AvailableColors
+	/** Available text styles from the project's Tailwind config */
+	availableTextStyles?: AvailableTextStyles
 }

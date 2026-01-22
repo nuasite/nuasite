@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { parseTailwindConfig } from './tailwind-colors'
-import type { AvailableColors, CmsManifest, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry, ManifestMetadata } from './types'
+import { parseTailwindConfig, parseTextStyles } from './tailwind-colors'
+import type { AvailableColors, AvailableTextStyles, CmsManifest, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry, ManifestMetadata } from './types'
 import { generateManifestContentHash, generateSourceFileHashes } from './utils'
 
 /** Current manifest schema version */
@@ -22,6 +22,7 @@ export class ManifestWriter {
 	private manifestFile: string
 	private componentDefinitions: Record<string, ComponentDefinition>
 	private availableColors: AvailableColors | undefined
+	private availableTextStyles: AvailableTextStyles | undefined
 	private writeQueue: Promise<void> = Promise.resolve()
 
 	constructor(manifestFile: string, componentDefinitions: Record<string, ComponentDefinition> = {}) {
@@ -51,11 +52,13 @@ export class ManifestWriter {
 	}
 
 	/**
-	 * Load available Tailwind colors from the project's CSS config
+	 * Load available Tailwind colors and text styles from the project's CSS config
 	 */
 	async loadAvailableColors(projectRoot: string = process.cwd()): Promise<void> {
 		this.availableColors = await parseTailwindConfig(projectRoot)
+		this.availableTextStyles = await parseTextStyles(projectRoot)
 		this.globalManifest.availableColors = this.availableColors
+		this.globalManifest.availableTextStyles = this.availableTextStyles
 	}
 
 	/**
@@ -64,6 +67,14 @@ export class ManifestWriter {
 	setAvailableColors(colors: AvailableColors): void {
 		this.availableColors = colors
 		this.globalManifest.availableColors = colors
+	}
+
+	/**
+	 * Set available text styles directly (for testing or custom styles)
+	 */
+	setAvailableTextStyles(textStyles: AvailableTextStyles): void {
+		this.availableTextStyles = textStyles
+		this.globalManifest.availableTextStyles = textStyles
 	}
 
 	/**
@@ -161,17 +172,21 @@ export class ManifestWriter {
 		// Wait for all queued writes to complete
 		await this.writeQueue
 
-		// Write global manifest with settings (component definitions and available colors)
+		// Write global manifest with settings (component definitions, colors, and text styles)
 		if (this.outDir) {
 			const globalManifestPath = path.join(this.outDir, this.manifestFile)
 			const globalSettings: {
 				componentDefinitions: Record<string, ComponentDefinition>
 				availableColors?: AvailableColors
+				availableTextStyles?: AvailableTextStyles
 			} = {
 				componentDefinitions: this.componentDefinitions,
 			}
 			if (this.availableColors) {
 				globalSettings.availableColors = this.availableColors
+			}
+			if (this.availableTextStyles) {
+				globalSettings.availableTextStyles = this.availableTextStyles
 			}
 			await fs.writeFile(
 				globalManifestPath,
@@ -216,6 +231,7 @@ export class ManifestWriter {
 			componentDefinitions: this.componentDefinitions,
 			collections: {},
 			availableColors: this.availableColors,
+			availableTextStyles: this.availableTextStyles,
 		}
 		this.writeQueue = Promise.resolve()
 	}
@@ -225,5 +241,12 @@ export class ManifestWriter {
 	 */
 	getAvailableColors(): AvailableColors | undefined {
 		return this.availableColors
+	}
+
+	/**
+	 * Get available text styles (for use in dev middleware)
+	 */
+	getAvailableTextStyles(): AvailableTextStyles | undefined {
+		return this.availableTextStyles
 	}
 }
