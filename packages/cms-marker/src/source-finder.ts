@@ -351,11 +351,13 @@ async function searchAstroFile(
 				? bestMatch.definitionLine
 				: bestMatch.line
 
-			// Get the complete source snippet (multi-line for static, single line for variables)
+			// Get the source snippet - innerHTML for static content, definition line for variables
 			let snippet: string
 			if (bestMatch.type === 'static') {
-				// For static content, extract the complete tag content with indentation
-				snippet = extractCompleteTagSnippet(lines, editableLine - 1, tag)
+				// For static content, extract only the innerHTML (not the wrapper element)
+				// This ensures that when replacing, we only replace the content, not the element structure
+				const completeSnippet = extractCompleteTagSnippet(lines, editableLine - 1, tag)
+				snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
 			} else {
 				// For variables/props, just the definition line with indentation
 				snippet = lines[editableLine - 1] || ''

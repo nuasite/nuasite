@@ -423,4 +423,70 @@ import Header from '../components/Header.astro';
 		expect(result?.line).toBe(3)
 		expect(result?.type).toBe('static')
 	})
+
+	test('snippet should contain only innerHTML, not the complete element with tags', async () => {
+		await fs.writeFile(
+			path.join(testDir, 'src/components/Heading.astro'),
+			`---
+---
+<h2 class="text-4xl font-bold text-center">Hello World</h2>
+`,
+		)
+
+		const result = await findSourceLocation('Hello World', 'h2')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Heading.astro')
+		expect(result?.line).toBe(3)
+		expect(result?.type).toBe('static')
+		// Snippet should be just the innerHTML, not the complete element
+		// This ensures CMS updates only replace the content, not the element structure
+		expect(result?.snippet).toBe('Hello World')
+		expect(result?.snippet).not.toContain('<h2')
+		expect(result?.snippet).not.toContain('class=')
+	})
+
+	test('snippet should contain innerHTML for multi-line elements', async () => {
+		await fs.writeFile(
+			path.join(testDir, 'src/components/Para.astro'),
+			`---
+---
+<p class="text-lg leading-relaxed">
+  This is multi-line
+  paragraph content
+</p>
+`,
+		)
+
+		const result = await findSourceLocation('This is multi-line paragraph content', 'p')
+
+		expect(result).toBeDefined()
+		expect(result?.type).toBe('static')
+		// Snippet should contain the innerHTML (may include whitespace)
+		expect(result?.snippet).toContain('This is multi-line')
+		expect(result?.snippet).toContain('paragraph content')
+		// Should NOT contain the element tags or attributes
+		expect(result?.snippet).not.toContain('<p')
+		expect(result?.snippet).not.toContain('class=')
+	})
+
+	test('snippet should contain innerHTML with nested inline elements', async () => {
+		await fs.writeFile(
+			path.join(testDir, 'src/components/Styled.astro'),
+			`---
+---
+<p class="text-base">Text with <strong>bold</strong> and <em>italic</em></p>
+`,
+		)
+
+		const result = await findSourceLocation('Text with bold and italic', 'p')
+
+		expect(result).toBeDefined()
+		expect(result?.type).toBe('static')
+		// Snippet should preserve inline HTML elements
+		expect(result?.snippet).toBe('Text with <strong>bold</strong> and <em>italic</em>')
+		// Should NOT contain the wrapper element
+		expect(result?.snippet).not.toContain('<p')
+		expect(result?.snippet).not.toContain('class=')
+	})
 })
