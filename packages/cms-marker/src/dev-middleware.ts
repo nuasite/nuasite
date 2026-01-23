@@ -35,19 +35,21 @@ export function createDevMiddleware(
 	componentDefinitions: Record<string, ComponentDefinition>,
 	idCounter: { value: number },
 ) {
-	// Serve global CMS manifest (component definitions, available colors, and settings)
+	// Serve global CMS manifest (component definitions, available colors, collection definitions, and settings)
 	server.middlewares.use((req, res, next) => {
 		if (req.url === '/cms-manifest.json') {
 			res.setHeader('Content-Type', 'application/json')
 			res.setHeader('Access-Control-Allow-Origin', '*')
-			res.end(JSON.stringify(
-				{
-					componentDefinitions,
-					availableColors: manifestWriter.getAvailableColors(),
-				},
-				null,
-				2,
-			))
+			const manifest: Record<string, unknown> = {
+				componentDefinitions,
+				availableColors: manifestWriter.getAvailableColors(),
+				availableTextStyles: manifestWriter.getAvailableTextStyles(),
+			}
+			const collectionDefs = manifestWriter.getCollectionDefinitions()
+			if (Object.keys(collectionDefs).length > 0) {
+				manifest.collectionDefinitions = collectionDefs
+			}
+			res.end(JSON.stringify(manifest, null, 2))
 			return
 		}
 		next()

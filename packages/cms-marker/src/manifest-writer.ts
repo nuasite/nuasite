@@ -6,6 +6,7 @@ import type {
 	AvailableColors,
 	AvailableTextStyles,
 	CmsManifest,
+	CollectionDefinition,
 	CollectionEntry,
 	ComponentDefinition,
 	ComponentInstance,
@@ -31,6 +32,7 @@ export class ManifestWriter {
 	private outDir: string = ''
 	private manifestFile: string
 	private componentDefinitions: Record<string, ComponentDefinition>
+	private collectionDefinitions: Record<string, CollectionDefinition> = {}
 	private availableColors: AvailableColors | undefined
 	private availableTextStyles: AvailableTextStyles | undefined
 	private writeQueue: Promise<void> = Promise.resolve()
@@ -43,6 +45,7 @@ export class ManifestWriter {
 			components: {},
 			componentDefinitions,
 			collections: {},
+			collectionDefinitions: {},
 		}
 	}
 
@@ -85,6 +88,21 @@ export class ManifestWriter {
 	setAvailableTextStyles(textStyles: AvailableTextStyles): void {
 		this.availableTextStyles = textStyles
 		this.globalManifest.availableTextStyles = textStyles
+	}
+
+	/**
+	 * Set collection definitions (inferred schemas for content collections)
+	 */
+	setCollectionDefinitions(definitions: Record<string, CollectionDefinition>): void {
+		this.collectionDefinitions = definitions
+		this.globalManifest.collectionDefinitions = definitions
+	}
+
+	/**
+	 * Get collection definitions
+	 */
+	getCollectionDefinitions(): Record<string, CollectionDefinition> {
+		return this.collectionDefinitions
 	}
 
 	/**
@@ -182,15 +200,19 @@ export class ManifestWriter {
 		// Wait for all queued writes to complete
 		await this.writeQueue
 
-		// Write global manifest with settings (component definitions, colors, and text styles)
+		// Write global manifest with settings (component definitions, colors, text styles, and collection definitions)
 		if (this.outDir) {
 			const globalManifestPath = path.join(this.outDir, this.manifestFile)
 			const globalSettings: {
 				componentDefinitions: Record<string, ComponentDefinition>
+				collectionDefinitions?: Record<string, CollectionDefinition>
 				availableColors?: AvailableColors
 				availableTextStyles?: AvailableTextStyles
 			} = {
 				componentDefinitions: this.componentDefinitions,
+			}
+			if (Object.keys(this.collectionDefinitions).length > 0) {
+				globalSettings.collectionDefinitions = this.collectionDefinitions
 			}
 			if (this.availableColors) {
 				globalSettings.availableColors = this.availableColors
@@ -240,6 +262,7 @@ export class ManifestWriter {
 			components: {},
 			componentDefinitions: this.componentDefinitions,
 			collections: {},
+			collectionDefinitions: this.collectionDefinitions,
 			availableColors: this.availableColors,
 			availableTextStyles: this.availableTextStyles,
 		}

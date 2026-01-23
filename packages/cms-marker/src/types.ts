@@ -195,6 +195,58 @@ export interface CollectionEntry {
 	wrapperId?: string
 }
 
+/** Field types for collection schema inference */
+export type FieldType =
+	| 'text'
+	| 'textarea'
+	| 'date'
+	| 'boolean'
+	| 'number'
+	| 'image'
+	| 'url'
+	| 'select'
+	| 'array'
+	| 'object'
+	| 'reference'
+
+/** Definition of a single field in a collection's schema */
+export interface FieldDefinition {
+	/** Field name as it appears in frontmatter */
+	name: string
+	/** Inferred or specified field type */
+	type: FieldType
+	/** Whether the field is required (present in all entries) */
+	required: boolean
+	/** Default value for the field */
+	defaultValue?: unknown
+	/** Options for 'select' type fields */
+	options?: string[]
+	/** Item type for 'array' fields */
+	itemType?: FieldType
+	/** Nested fields for 'object' type */
+	fields?: FieldDefinition[]
+	/** Sample values seen across entries */
+	examples?: unknown[]
+}
+
+/** Definition of a content collection with inferred schema */
+export interface CollectionDefinition {
+	/** Collection identifier (directory name) */
+	name: string
+	/** Human-readable label for the collection */
+	label: string
+	/** Path to the collection directory */
+	path: string
+	/** Number of entries in the collection */
+	entryCount: number
+	/** Inferred field definitions */
+	fields: FieldDefinition[]
+	/** Whether the collection has draft support */
+	supportsDraft?: boolean
+	/** File extension used by entries */
+	fileExtension: 'md' | 'mdx'
+}
+
 /** Manifest metadata for versioning and conflict detection */
 export interface ManifestMetadata {
 	/** Manifest schema version */
@@ -219,6 +271,8 @@ export interface CmsManifest {
 	componentDefinitions: Record<string, ComponentDefinition>
 	/** Content collection entries indexed by "collectionName/slug" */
 	collections?: Record<string, CollectionEntry>
+	/** Collection definitions with inferred schemas */
+	collectionDefinitions?: Record<string, CollectionDefinition>
 	/** Available Tailwind colors from the project's config */
 	availableColors?: AvailableColors
 	/** Available text styles from the project's Tailwind config */

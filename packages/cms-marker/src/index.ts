@@ -1,5 +1,6 @@
 import type { AstroIntegration } from 'astro'
 import { processBuildOutput } from './build-processor'
+import { scanCollections } from './collection-scanner'
 import { ComponentRegistry } from './component-registry'
 import { resetProjectRoot } from './config'
 import { createDevMiddleware } from './dev-middleware'
@@ -67,6 +68,15 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 					}
 				}
 
+				// Scan content collections for schema inference
+				const collectionDefinitions = await scanCollections(contentDir)
+				manifestWriter.setCollectionDefinitions(collectionDefinitions)
+
+				const collectionCount = Object.keys(collectionDefinitions).length
+				if (collectionCount > 0) {
+					logger.info(`Found ${collectionCount} content collection(s)`)
+				}
+
 				// Create Vite plugin context
 				const pluginContext = {
 					manifestWriter,
@@ -110,6 +120,8 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 
 // Re-export config functions for testing
 export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
+// Re-export collection scanner
+export { scanCollections } from './collection-scanner'
 // Re-export types for consumers
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
