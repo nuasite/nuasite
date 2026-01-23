@@ -1,7 +1,17 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { getProjectRoot } from './config'
 import { parseTailwindConfig, parseTextStyles } from './tailwind-colors'
-import type { AvailableColors, AvailableTextStyles, CmsManifest, CollectionEntry, ComponentDefinition, ComponentInstance, ManifestEntry, ManifestMetadata } from './types'
+import type {
+	AvailableColors,
+	AvailableTextStyles,
+	CmsManifest,
+	CollectionEntry,
+	ComponentDefinition,
+	ComponentInstance,
+	ManifestEntry,
+	ManifestMetadata,
+} from './types'
 import { generateManifestContentHash, generateSourceFileHashes } from './utils'
 
 /** Current manifest schema version */
@@ -54,7 +64,7 @@ export class ManifestWriter {
 	/**
 	 * Load available Tailwind colors and text styles from the project's CSS config
 	 */
-	async loadAvailableColors(projectRoot: string = process.cwd()): Promise<void> {
+	async loadAvailableColors(projectRoot: string = getProjectRoot()): Promise<void> {
 		this.availableColors = await parseTailwindConfig(projectRoot)
 		this.availableTextStyles = await parseTextStyles(projectRoot)
 		this.globalManifest.availableColors = this.availableColors

@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { getProjectRoot } from './config'
+import { getErrorCollector } from './error-collector'
 import type { ComponentDefinition, ComponentProp } from './types'
 
 /**

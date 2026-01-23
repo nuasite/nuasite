@@ -1,7 +1,9 @@
 import type { AstroIntegration } from 'astro'
 import { processBuildOutput } from './build-processor'
 import { ComponentRegistry } from './component-registry'
+import { resetProjectRoot } from './config'
 import { createDevMiddleware } from './dev-middleware'
+import { getErrorCollector, resetErrorCollector } from './error-collector'
 import { ManifestWriter } from './manifest-writer'
 import type { CmsMarkerOptions, ComponentDefinition } from './types'
 import { createVitePlugin } from './vite-plugin'
@@ -46,6 +48,8 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 				// Reset state for new build/dev session
 				idCounter.value = 0
 				manifestWriter.reset()
+				resetErrorCollector()
+				resetProjectRoot()
 
 				// Load available colors from Tailwind config
 				await manifestWriter.loadAvailableColors()
@@ -72,15 +76,16 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 					command,
 				}
 
+				// VitePluginLike is compatible with both Astro's bundled Vite and root Vite
 				updateConfig({
 					vite: {
-						plugins: [createVitePlugin(pluginContext) as any],
+						plugins: createVitePlugin(pluginContext) as any,
 					},
 				})
 			},
 
 			'astro:server:setup': ({ server, logger }) => {
-				createDevMiddleware(server as any, config, manifestWriter, componentDefinitions, idCounter)
+				createDevMiddleware(server, config, manifestWriter, componentDefinitions, idCounter)
 				logger.info('Dev middleware initialized')
 			},
 
@@ -88,13 +93,24 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 				if (generateManifest) {
 					await processBuildOutput(dir, config, manifestWriter, idCounter, logger)
 				}
+
+				// Report any warnings collected during processing
+				const errorCollector = getErrorCollector()
+				if (errorCollector.hasWarnings()) {
+					const warnings = errorCollector.getWarnings()
+					logger.warn(`${warnings.length} warning(s) during processing:`)
+					for (const { context, message } of warnings) {
+						logger.warn(`  - ${context}: ${message}`)
+					}
+				}
 			},
 		},
 	}
 }
 
-export { findCollectionSource, parseMarkdownContent } from './source-finder'
-
+// Re-export config functions for testing
+export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
 // Re-export types for consumers
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
+export { findCollectionSource, parseMarkdownContent } from './source-finder'
 export type * from './types'
