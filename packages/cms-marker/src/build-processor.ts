@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
-import { findCollectionSource, findImageSourceLocation, findMarkdownSourceLocation, findSourceLocation, parseMarkdownContent } from './source-finder'
+import { clearSourceFinderCache, findCollectionSource, findImageSourceLocation, findMarkdownSourceLocation, findSourceLocation, initializeSearchIndex, parseMarkdownContent } from './source-finder'
 import type { CmsMarkerOptions, CollectionEntry } from './types'
 
 // Concurrency limit for parallel processing
@@ -110,22 +110,23 @@ async function processFile(
 		}
 	}
 
-	for (const entry of Object.values(result.entries)) {
+	// Process entries in parallel for better performance
+	const entryLookups = Object.values(result.entries).map(async (entry) => {
 		// Skip entries that already have source info from component detection
 		if (entry.sourcePath && !entry.sourcePath.endsWith('.html')) {
-			continue
+			return
 		}
 
 		// Handle image entries specially - search by image src
-		if (entry.sourceType === 'image' && entry.imageSrc) {
-			const imageSource = await findImageSourceLocation(entry.imageSrc)
+		if (entry.sourceType === 'image' && entry.imageMetadata?.src) {
+			const imageSource = await findImageSourceLocation(entry.imageMetadata.src)
 			if (imageSource) {
 				entry.sourcePath = imageSource.file
 				entry.sourceLine = imageSource.line
 				entry.sourceSnippet = imageSource.snippet
 				entry.sourceType = 'image'
 			}
-			continue
+			return
 		}
 
 		// Try to find source in collection markdown frontmatter first
@@ -139,7 +140,7 @@ async function processFile(
 				entry.variableName = mdSource.variableName
 				entry.collectionName = mdSource.collectionName
 				entry.collectionSlug = mdSource.collectionSlug
-				continue
+				return
 			}
 		}
 
@@ -152,7 +153,9 @@ async function processFile(
 			entry.sourceType = sourceLocation.type
 			entry.variableName = sourceLocation.variableName
 		}
-	}
+	})
+
+	await Promise.all(entryLookups)
 
 	// Add to manifest writer (handles per-page manifest writes)
 	manifestWriter.addPage(pagePath, result.entries, result.components, collectionEntry)
@@ -163,8 +166,15 @@ async function processFile(
 	return Object.keys(result.entries).length
 }
 
+/** Result of batch processing with error aggregation */
+interface BatchProcessingResult {
+	totalEntries: number
+	errors: Array<{ file: string; error: Error }>
+}
+
 /**
- * Process HTML files in parallel with concurrency limit
+ * Process HTML files in parallel with concurrency limit and error aggregation.
+ * Unlike Promise.all, this continues processing even if some files fail.
  */
 async function processFilesInBatches(
 	files: string[],
@@ -172,23 +182,37 @@ async function processFilesInBatches(
 	config: Required<CmsMarkerOptions>,
 	manifestWriter: ManifestWriter,
 	idCounter: { value: number },
-): Promise<number> {
+): Promise<BatchProcessingResult> {
 	let totalEntries = 0
+	const errors: Array<{ file: string; error: Error }> = []
 
 	// Process files in batches of MAX_CONCURRENT
 	for (let i = 0; i < files.length; i += MAX_CONCURRENT) {
 		const batch = files.slice(i, i + MAX_CONCURRENT)
-		const results = await Promise.all(
-			batch.map(file => processFile(file, outDir, config, manifestWriter, idCounter)),
+		const results = await Promise.allSettled(
+			batch.map(file =>
+				processFile(file, outDir, config, manifestWriter, idCounter)
+					.then(count => ({ file, count }))
+					.catch(err => Promise.reject({ file, error: err }))
+			),
 		)
-		totalEntries += results.reduce((sum, count) => sum + count, 0)
+
+		for (const result of results) {
+			if (result.status === 'fulfilled') {
+				totalEntries += result.value.count
+			} else {
+				const { file, error } = result.reason as { file: string; error: Error }
+				errors.push({ file, error })
+			}
+		}
 	}
 
-	return totalEntries
+	return { totalEntries, errors }
 }
 
 /**
- * Process build output - processes all HTML files in parallel
+ * Process build output - processes all HTML files in parallel.
+ * Uses error aggregation to continue processing even if some files fail.
  */
 export async function processBuildOutput(
 	dir: URL,
@@ -200,6 +224,9 @@ export async function processBuildOutput(
 	const outDir = fileURLToPath(dir)
 	manifestWriter.setOutDir(outDir)
 
+	// Clear caches from previous builds and initialize search index
+	clearSourceFinderCache()
+
 	const htmlFiles = await findHtmlFiles(outDir)
 
 	if (htmlFiles.length === 0) {
@@ -209,17 +236,36 @@ export async function processBuildOutput(
 
 	const startTime = Date.now()
 
-	// Process all files in parallel batches
-	await processFilesInBatches(htmlFiles, outDir, config, manifestWriter, idCounter)
+	// Pre-build search index for fast source lookups (single pass through all source files)
+	await initializeSearchIndex()
+
+	// Process all files in parallel batches with error aggregation
+	const { totalEntries, errors } = await processFilesInBatches(htmlFiles, outDir, config, manifestWriter, idCounter)
+
+	// Report any errors that occurred during processing
+	if (errors.length > 0) {
+		const errorLog = logger?.error?.bind(logger) ?? console.error.bind(console)
+		errorLog(`[astro-cms-marker] ${errors.length} file(s) failed to process:`)
+		for (const { file, error } of errors) {
+			const relPath = path.relative(outDir, file)
+			errorLog(`  - ${relPath}: ${error.message}`)
+		}
+	}
 
 	// Finalize manifest (writes global manifest and waits for all per-page writes)
 	const stats = await manifestWriter.finalize()
 
 	const duration = Date.now() - startTime
-	const msg = `Processed ${stats.totalPages} pages with ${stats.totalEntries} entries and ${stats.totalComponents} components in ${duration}ms`
+	const successCount = htmlFiles.length - errors.length
+	const msg =
+		`Processed ${successCount}/${htmlFiles.length} pages with ${stats.totalEntries} entries and ${stats.totalComponents} components in ${duration}ms`
 
 	if (logger) {
-		logger.info(msg)
+		if (errors.length > 0) {
+			logger.warn(msg)
+		} else {
+			logger.info(msg)
+		}
 	} else {
 		console.log(`[astro-cms-marker] ${msg}`)
 	}

@@ -1,11 +1,443 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
 import { parse as parseAstro } from '@astrojs/compiler'
-import type { Node as AstroNode, ElementNode, ComponentNode, TextNode, ExpressionNode, AttributeNode } from '@astrojs/compiler/types'
+import type { ComponentNode, ElementNode, Node as AstroNode, TextNode } from '@astrojs/compiler/types'
 import { parse as parseBabel } from '@babel/parser'
 import type * as t from '@babel/types'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { getProjectRoot } from './config'
+import { getErrorCollector } from './error-collector'
 import type { ManifestEntry } from './types'
 import { generateSourceHash } from './utils'
+
+// ============================================================================
+// File Parsing Cache - Avoid re-parsing the same files
+// ============================================================================
+
+interface CachedParsedFile {
+	content: string
+	lines: string[]
+	ast: AstroNode
+	frontmatterContent: string | null
+	frontmatterStartLine: number
+	variableDefinitions: VariableDefinition[]
+}
+
+/** Cache for parsed Astro files - cleared between builds */
+const parsedFileCache = new Map<string, CachedParsedFile>()
+
+/** Cache for directory listings - cleared between builds */
+const directoryCache = new Map<string, string[]>()
+
+/** Cache for markdown file contents - cleared between builds */
+const markdownFileCache = new Map<string, { content: string; lines: string[] }>()
+
+/** Pre-built search index for fast lookups */
+interface SearchIndexEntry {
+	file: string
+	line: number
+	snippet: string
+	type: 'static' | 'variable' | 'prop' | 'computed'
+	variableName?: string
+	definitionLine?: number
+	normalizedText: string
+	tag: string
+}
+
+interface ImageIndexEntry {
+	file: string
+	line: number
+	snippet: string
+	src: string
+}
+
+/** Search indexes built once per build */
+let textSearchIndex: SearchIndexEntry[] = []
+let imageSearchIndex: ImageIndexEntry[] = []
+let searchIndexInitialized = false
+
+/**
+ * Clear all caches - call at start of each build
+ */
+export function clearSourceFinderCache(): void {
+	parsedFileCache.clear()
+	directoryCache.clear()
+	markdownFileCache.clear()
+	textSearchIndex = []
+	imageSearchIndex = []
+	searchIndexInitialized = false
+}
+
+/**
+ * Initialize search index by pre-scanning all source files.
+ * This is much faster than searching per-entry.
+ */
+export async function initializeSearchIndex(): Promise<void> {
+	if (searchIndexInitialized) return
+
+	const srcDir = path.join(getProjectRoot(), 'src')
+	const searchDirs = [
+		path.join(srcDir, 'components'),
+		path.join(srcDir, 'pages'),
+		path.join(srcDir, 'layouts'),
+	]
+
+	// Collect all Astro files first
+	const allFiles: string[] = []
+	for (const dir of searchDirs) {
+		try {
+			const files = await collectAstroFiles(dir)
+			allFiles.push(...files)
+		} catch {
+			// Directory doesn't exist
+		}
+	}
+
+	// Parse all files in parallel and build indexes
+	await Promise.all(allFiles.map(async (filePath) => {
+		try {
+			const cached = await getCachedParsedFile(filePath)
+			if (!cached) return
+
+			const relFile = path.relative(getProjectRoot(), filePath)
+
+			// Index all text content from this file
+			indexFileContent(cached, relFile)
+
+			// Index all images from this file
+			indexFileImages(cached, relFile)
+		} catch {
+			// Skip files that fail to parse
+		}
+	}))
+
+	searchIndexInitialized = true
+}
+
+/**
+ * Collect all .astro files in a directory recursively
+ */
+async function collectAstroFiles(dir: string): Promise<string[]> {
+	const cached = directoryCache.get(dir)
+	if (cached) return cached
+
+	const results: string[] = []
+
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+
+		await Promise.all(entries.map(async (entry) => {
+			const fullPath = path.join(dir, entry.name)
+			if (entry.isDirectory()) {
+				const subFiles = await collectAstroFiles(fullPath)
+				results.push(...subFiles)
+			} else if (entry.isFile() && (entry.name.endsWith('.astro') || entry.name.endsWith('.tsx') || entry.name.endsWith('.jsx'))) {
+				results.push(fullPath)
+			}
+		}))
+	} catch {
+		// Directory doesn't exist
+	}
+
+	directoryCache.set(dir, results)
+	return results
+}
+
+/**
+ * Get a cached parsed file, parsing it if not cached
+ */
+async function getCachedParsedFile(filePath: string): Promise<CachedParsedFile | null> {
+	const cached = parsedFileCache.get(filePath)
+	if (cached) return cached
+
+	try {
+		const content = await fs.readFile(filePath, 'utf-8')
+		const lines = content.split('\n')
+
+		// Only parse .astro files with AST
+		if (!filePath.endsWith('.astro')) {
+			// For tsx/jsx, just cache content/lines for regex search
+			const entry: CachedParsedFile = {
+				content,
+				lines,
+				ast: { type: 'root', children: [] } as unknown as AstroNode,
+				frontmatterContent: null,
+				frontmatterStartLine: 0,
+				variableDefinitions: [],
+			}
+			parsedFileCache.set(filePath, entry)
+			return entry
+		}
+
+		const { ast, frontmatterContent, frontmatterStartLine } = await parseAstroFile(content)
+
+		let variableDefinitions: VariableDefinition[] = []
+		if (frontmatterContent) {
+			const frontmatterAst = parseFrontmatter(frontmatterContent, filePath)
+			if (frontmatterAst) {
+				variableDefinitions = extractVariableDefinitions(frontmatterAst, frontmatterStartLine)
+			}
+		}
+
+		const entry: CachedParsedFile = {
+			content,
+			lines,
+			ast,
+			frontmatterContent,
+			frontmatterStartLine,
+			variableDefinitions,
+		}
+
+		parsedFileCache.set(filePath, entry)
+		return entry
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Index all searchable text content from a parsed file
+ */
+function indexFileContent(cached: CachedParsedFile, relFile: string): void {
+	// Walk AST and collect all text elements
+	function visit(node: AstroNode) {
+		if ((node.type === 'element' || node.type === 'component')) {
+			const elemNode = node as ElementNode | ComponentNode
+			const tag = elemNode.name.toLowerCase()
+			const textContent = getTextContent(elemNode)
+			const normalizedText = normalizeText(textContent)
+			const line = elemNode.position?.start.line ?? 0
+
+			if (normalizedText && normalizedText.length >= 2) {
+				// Check for variable references
+				const exprInfo = hasExpressionChild(elemNode)
+				if (exprInfo.found && exprInfo.varNames.length > 0) {
+					for (const varName of exprInfo.varNames) {
+						for (const def of cached.variableDefinitions) {
+							if (def.name === varName || (def.parentName && def.name === varName)) {
+								const normalizedDef = normalizeText(def.value)
+								const completeSnippet = extractCompleteTagSnippet(cached.lines, line - 1, tag)
+								const snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
+
+								textSearchIndex.push({
+									file: relFile,
+									line: def.line,
+									snippet: cached.lines[def.line - 1] || '',
+									type: 'variable',
+									variableName: def.parentName ? `${def.parentName}.${def.name}` : def.name,
+									definitionLine: def.line,
+									normalizedText: normalizedDef,
+									tag,
+								})
+							}
+						}
+					}
+				}
+
+				// Index static text content
+				const completeSnippet = extractCompleteTagSnippet(cached.lines, line - 1, tag)
+				const snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
+
+				textSearchIndex.push({
+					file: relFile,
+					line,
+					snippet,
+					type: 'static',
+					normalizedText,
+					tag,
+				})
+			}
+
+			// Also index component props
+			if (node.type === 'component') {
+				for (const attr of elemNode.attributes) {
+					if (attr.type === 'attribute' && attr.kind === 'quoted' && attr.value) {
+						const normalizedValue = normalizeText(attr.value)
+						if (normalizedValue && normalizedValue.length >= 2) {
+							textSearchIndex.push({
+								file: relFile,
+								line: attr.position?.start.line ?? line,
+								snippet: cached.lines[(attr.position?.start.line ?? line) - 1] || '',
+								type: 'prop',
+								variableName: attr.name,
+								normalizedText: normalizedValue,
+								tag,
+							})
+						}
+					}
+				}
+			}
+		}
+
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				visit(child)
+			}
+		}
+	}
+
+	visit(cached.ast)
+}
+
+/**
+ * Index all images from a parsed file
+ */
+function indexFileImages(cached: CachedParsedFile, relFile: string): void {
+	// For Astro files, use AST
+	if (relFile.endsWith('.astro')) {
+		function visit(node: AstroNode) {
+			if (node.type === 'element') {
+				const elemNode = node as ElementNode
+				if (elemNode.name.toLowerCase() === 'img') {
+					for (const attr of elemNode.attributes) {
+						if (attr.type === 'attribute' && attr.name === 'src' && attr.value) {
+							const srcLine = attr.position?.start.line ?? elemNode.position?.start.line ?? 0
+							const snippet = extractImageSnippet(cached.lines, srcLine - 1)
+							imageSearchIndex.push({
+								file: relFile,
+								line: srcLine,
+								snippet,
+								src: attr.value,
+							})
+						}
+					}
+				}
+			}
+
+			if ('children' in node && Array.isArray(node.children)) {
+				for (const child of node.children) {
+					visit(child)
+				}
+			}
+		}
+		visit(cached.ast)
+	} else {
+		// For tsx/jsx, use regex
+		const srcPatterns = [/src="([^"]+)"/g, /src='([^']+)'/g]
+		for (let i = 0; i < cached.lines.length; i++) {
+			const line = cached.lines[i]
+			if (!line) continue
+
+			for (const pattern of srcPatterns) {
+				pattern.lastIndex = 0
+				let match
+				while ((match = pattern.exec(line)) !== null) {
+					const snippet = extractImageSnippet(cached.lines, i)
+					imageSearchIndex.push({
+						file: relFile,
+						line: i + 1,
+						snippet,
+						src: match[1]!,
+					})
+				}
+			}
+		}
+	}
+}
+
+/**
+ * Fast text lookup using pre-built index
+ */
+function findInTextIndex(textContent: string, tag: string): SourceLocation | undefined {
+	const normalizedSearch = normalizeText(textContent)
+	const tagLower = tag.toLowerCase()
+
+	// First try exact match with same tag
+	for (const entry of textSearchIndex) {
+		if (entry.tag === tagLower && entry.normalizedText === normalizedSearch) {
+			return {
+				file: entry.file,
+				line: entry.line,
+				snippet: entry.snippet,
+				type: entry.type,
+				variableName: entry.variableName,
+				definitionLine: entry.definitionLine,
+			}
+		}
+	}
+
+	// Then try partial match for longer text
+	if (normalizedSearch.length > 10) {
+		const textPreview = normalizedSearch.slice(0, Math.min(30, normalizedSearch.length))
+		for (const entry of textSearchIndex) {
+			if (entry.tag === tagLower && entry.normalizedText.includes(textPreview)) {
+				return {
+					file: entry.file,
+					line: entry.line,
+					snippet: entry.snippet,
+					type: entry.type,
+					variableName: entry.variableName,
+					definitionLine: entry.definitionLine,
+				}
+			}
+		}
+	}
+
+	// Try any tag match
+	for (const entry of textSearchIndex) {
+		if (entry.normalizedText === normalizedSearch) {
+			return {
+				file: entry.file,
+				line: entry.line,
+				snippet: entry.snippet,
+				type: entry.type,
+				variableName: entry.variableName,
+				definitionLine: entry.definitionLine,
+			}
+		}
+	}
+
+	return undefined
+}
+
+/**
+ * Fast image lookup using pre-built index
+ */
+function findInImageIndex(imageSrc: string): SourceLocation | undefined {
+	for (const entry of imageSearchIndex) {
+		if (entry.src === imageSrc) {
+			return {
+				file: entry.file,
+				line: entry.line,
+				snippet: entry.snippet,
+				type: 'static',
+			}
+		}
+	}
+	return undefined
+}
+
+// Helper for indexing - get text content from node
+function getTextContent(node: AstroNode): string {
+	if (node.type === 'text') {
+		return (node as TextNode).value
+	}
+	if ('children' in node && Array.isArray(node.children)) {
+		return node.children.map(getTextContent).join('')
+	}
+	return ''
+}
+
+// Helper for indexing - check for expression children
+function hasExpressionChild(node: AstroNode): { found: boolean; varNames: string[] } {
+	const varNames: string[] = []
+	if (node.type === 'expression') {
+		const exprText = getTextContent(node)
+		const match = exprText.match(/^\s*(\w+)(?:\.(\w+))?\s*$/)
+		if (match) {
+			varNames.push(match[2] ?? match[1]!)
+		}
+		return { found: true, varNames }
+	}
+	if ('children' in node && Array.isArray(node.children)) {
+		for (const child of node.children) {
+			const result = hasExpressionChild(child)
+			if (result.found) {
+				varNames.push(...result.varNames)
+			}
+		}
+	}
+	return { found: varNames.length > 0, varNames }
+}
 
 export interface SourceLocation {
 	file: string
@@ -84,15 +516,24 @@ async function parseAstroFile(content: string): Promise<ParsedAstroFile> {
 
 /**
  * Parse frontmatter JavaScript/TypeScript with Babel
+ * @param content - The frontmatter content to parse
+ * @param filePath - Optional file path for error reporting
  */
-function parseFrontmatter(content: string): t.File | null {
+function parseFrontmatter(content: string, filePath?: string): t.File | null {
 	try {
 		return parseBabel(content, {
 			sourceType: 'module',
 			plugins: ['typescript'],
 			errorRecovery: true,
 		})
-	} catch {
+	} catch (error) {
+		// Record parse errors for aggregated reporting
+		if (filePath) {
+			getErrorCollector().addWarning(
+				`Frontmatter parse: ${filePath}`,
+				error instanceof Error ? error.message : String(error),
+			)
+		}
 		return null
 	}
 }
@@ -167,7 +608,7 @@ function extractVariableDefinitions(ast: t.File, frontmatterStartLine: number): 
 
 		// Recursively visit child nodes
 		for (const key of Object.keys(node)) {
-			const value = (node as Record<string, unknown>)[key]
+			const value = (node as unknown as Record<string, unknown>)[key]
 			if (value && typeof value === 'object') {
 				if (Array.isArray(value)) {
 					for (const item of value) {
@@ -292,8 +733,7 @@ function findElementWithText(
 							}
 						}
 					}
-				}
-				// For longer search text, check if content contains a significant portion
+				} // For longer search text, check if content contains a significant portion
 				else if (normalizedSearch.length > 10) {
 					const textPreview = normalizedSearch.slice(0, Math.min(30, normalizedSearch.length))
 					if (normalizedContent.includes(textPreview)) {
@@ -307,8 +747,7 @@ function findElementWithText(
 								type: 'static',
 							}
 						}
-					}
-					// Try matching first few words for very long text
+					} // Try matching first few words for very long text
 					else if (normalizedSearch.length > 20) {
 						const firstWords = normalizedSearch.split(' ').slice(0, 3).join(' ')
 						if (firstWords && normalizedContent.includes(firstWords)) {
@@ -449,13 +888,20 @@ function findImageElement(
 }
 
 /**
- * Find source file and line number for text content
+ * Find source file and line number for text content.
+ * Uses pre-built search index for fast lookups.
  */
 export async function findSourceLocation(
 	textContent: string,
 	tag: string,
 ): Promise<SourceLocation | undefined> {
-	const srcDir = path.join(process.cwd(), 'src')
+	// Use index if available (much faster)
+	if (searchIndexInitialized) {
+		return findInTextIndex(textContent, tag)
+	}
+
+	// Fallback to slow search if index not initialized
+	const srcDir = path.join(getProjectRoot(), 'src')
 
 	try {
 		const searchDirs = [
@@ -494,12 +940,19 @@ export async function findSourceLocation(
 }
 
 /**
- * Find source file and line number for an image by its src attribute
+ * Find source file and line number for an image by its src attribute.
+ * Uses pre-built search index for fast lookups.
  */
 export async function findImageSourceLocation(
 	imageSrc: string,
 ): Promise<SourceLocation | undefined> {
-	const srcDir = path.join(process.cwd(), 'src')
+	// Use index if available (much faster)
+	if (searchIndexInitialized) {
+		return findInImageIndex(imageSrc)
+	}
+
+	// Fallback to slow search if index not initialized
+	const srcDir = path.join(getProjectRoot(), 'src')
 
 	try {
 		const searchDirs = [
@@ -554,33 +1007,31 @@ async function searchDirectoryForImage(
 }
 
 /**
- * Search a single file for an image with matching src
- * Uses AST parsing for Astro files, regex for TSX/JSX
+ * Search a single file for an image with matching src.
+ * Uses caching for better performance.
  */
 async function searchFileForImage(
 	filePath: string,
 	imageSrc: string,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const content = await fs.readFile(filePath, 'utf-8')
-		const lines = content.split('\n')
+		// Use cached parsed file
+		const cached = await getCachedParsedFile(filePath)
+		if (!cached) return undefined
+
+		const { lines, ast } = cached
 
 		// Use AST parsing for Astro files
 		if (filePath.endsWith('.astro')) {
-			try {
-				const { ast } = await parseAstroFile(content)
-				const imageMatch = findImageElement(ast, imageSrc, lines)
+			const imageMatch = findImageElement(ast, imageSrc, lines)
 
-				if (imageMatch) {
-					return {
-						file: path.relative(process.cwd(), filePath),
-						line: imageMatch.line,
-						snippet: imageMatch.snippet,
-						type: 'static',
-					}
+			if (imageMatch) {
+				return {
+					file: path.relative(getProjectRoot(), filePath),
+					line: imageMatch.line,
+					snippet: imageMatch.snippet,
+					type: 'static',
 				}
-			} catch {
-				// Fall back to regex if AST parsing fails
 			}
 		}
 
@@ -600,7 +1051,7 @@ async function searchFileForImage(
 					const snippet = extractImageSnippet(lines, i)
 
 					return {
-						file: path.relative(process.cwd(), filePath),
+						file: path.relative(getProjectRoot(), filePath),
 						line: i + 1,
 						snippet,
 						type: 'static',
@@ -673,7 +1124,8 @@ async function searchDirectory(
 }
 
 /**
- * Search a single Astro file for matching content using AST parsing
+ * Search a single Astro file for matching content using AST parsing.
+ * Uses caching for better performance.
  */
 async function searchAstroFile(
 	filePath: string,
@@ -681,20 +1133,11 @@ async function searchAstroFile(
 	tag: string,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const content = await fs.readFile(filePath, 'utf-8')
-		const lines = content.split('\n')
+		// Use cached parsed file
+		const cached = await getCachedParsedFile(filePath)
+		if (!cached) return undefined
 
-		// Parse the Astro file
-		const { ast, frontmatterContent, frontmatterStartLine } = await parseAstroFile(content)
-
-		// Extract variable definitions from frontmatter using Babel
-		let variableDefinitions: VariableDefinition[] = []
-		if (frontmatterContent) {
-			const frontmatterAst = parseFrontmatter(frontmatterContent)
-			if (frontmatterAst) {
-				variableDefinitions = extractVariableDefinitions(frontmatterAst, frontmatterStartLine)
-			}
-		}
+		const { lines, ast, variableDefinitions } = cached
 
 		// Find matching element in template AST
 		const match = findElementWithText(ast, tag, textContent, variableDefinitions)
@@ -717,7 +1160,7 @@ async function searchAstroFile(
 			}
 
 			return {
-				file: path.relative(process.cwd(), filePath),
+				file: path.relative(getProjectRoot(), filePath),
 				line: editableLine,
 				snippet,
 				type: match.type,
@@ -733,7 +1176,8 @@ async function searchAstroFile(
 }
 
 /**
- * Search for prop values passed to components using AST parsing
+ * Search for prop values passed to components using AST parsing.
+ * Uses caching for better performance.
  */
 async function searchForPropInParents(dir: string, textContent: string): Promise<SourceLocation | undefined> {
 	const entries = await fs.readdir(dir, { withFileTypes: true })
@@ -746,11 +1190,11 @@ async function searchForPropInParents(dir: string, textContent: string): Promise
 			if (result) return result
 		} else if (entry.isFile() && entry.name.endsWith('.astro')) {
 			try {
-				const content = await fs.readFile(fullPath, 'utf-8')
-				const lines = content.split('\n')
+				// Use cached parsed file
+				const cached = await getCachedParsedFile(fullPath)
+				if (!cached) continue
 
-				// Parse the Astro file
-				const { ast } = await parseAstroFile(content)
+				const { lines, ast } = cached
 
 				// Find component props matching our text
 				const propMatch = findComponentProp(ast, textContent)
@@ -782,7 +1226,7 @@ async function searchForPropInParents(dir: string, textContent: string): Promise
 					}
 
 					return {
-						file: path.relative(process.cwd(), fullPath),
+						file: path.relative(getProjectRoot(), fullPath),
 						line: propMatch.line,
 						snippet: snippetLines.join('\n'),
 						type: 'prop',
@@ -911,7 +1355,7 @@ export async function extractSourceInnerHtml(
 	try {
 		const filePath = path.isAbsolute(sourceFile)
 			? sourceFile
-			: path.join(process.cwd(), sourceFile)
+			: path.join(getProjectRoot(), sourceFile)
 
 		const content = await fs.readFile(filePath, 'utf-8')
 		const lines = content.split('\n')
@@ -961,7 +1405,7 @@ export async function findCollectionSource(
 		return undefined
 	}
 
-	const contentPath = path.join(process.cwd(), contentDir)
+	const contentPath = path.join(getProjectRoot(), contentDir)
 
 	try {
 		// Check if content directory exists
@@ -998,7 +1442,7 @@ export async function findCollectionSource(
 		return {
 			name: collectionName,
 			slug,
-			file: path.relative(process.cwd(), mdFile),
+			file: path.relative(getProjectRoot(), mdFile),
 		}
 	}
 
@@ -1062,6 +1506,24 @@ async function findMarkdownFile(collectionPath: string, slug: string): Promise<s
 }
 
 /**
+ * Get cached markdown file content
+ */
+async function getCachedMarkdownFile(filePath: string): Promise<{ content: string; lines: string[] } | null> {
+	const cached = markdownFileCache.get(filePath)
+	if (cached) return cached
+
+	try {
+		const content = await fs.readFile(filePath, 'utf-8')
+		const lines = content.split('\n')
+		const entry = { content, lines }
+		markdownFileCache.set(filePath, entry)
+		return entry
+	} catch {
+		return null
+	}
+}
+
+/**
  * Find text content in a markdown file and return source location
  * Only matches frontmatter fields, not body content (body is handled separately as a whole)
  * @param textContent - The text content to search for
@@ -1073,9 +1535,11 @@ export async function findMarkdownSourceLocation(
 	collectionInfo: CollectionInfo,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const filePath = path.join(process.cwd(), collectionInfo.file)
-		const content = await fs.readFile(filePath, 'utf-8')
-		const lines = content.split('\n')
+		const filePath = path.join(getProjectRoot(), collectionInfo.file)
+		const cached = await getCachedMarkdownFile(filePath)
+		if (!cached) return undefined
+
+		const { lines } = cached
 		const normalizedSearch = normalizeText(textContent)
 
 		// Parse frontmatter
@@ -1139,7 +1603,8 @@ export async function findMarkdownSourceLocation(
 }
 
 /**
- * Parse markdown file and extract frontmatter fields and full body content
+ * Parse markdown file and extract frontmatter fields and full body content.
+ * Uses caching for better performance.
  * @param collectionInfo - Collection information (name, slug, file path)
  * @returns Parsed markdown content with frontmatter and body
  */
@@ -1147,9 +1612,11 @@ export async function parseMarkdownContent(
 	collectionInfo: CollectionInfo,
 ): Promise<MarkdownContent | undefined> {
 	try {
-		const filePath = path.join(process.cwd(), collectionInfo.file)
-		const content = await fs.readFile(filePath, 'utf-8')
-		const lines = content.split('\n')
+		const filePath = path.join(getProjectRoot(), collectionInfo.file)
+		const cached = await getCachedMarkdownFile(filePath)
+		if (!cached) return undefined
+
+		const { lines } = cached
 
 		// Parse frontmatter
 		let frontmatterStart = -1
@@ -1249,10 +1716,10 @@ export async function enhanceManifestWithSourceSnippets(
 	// Process entries in parallel for better performance
 	const entryPromises = Object.entries(entries).map(async ([id, entry]) => {
 		// Handle image entries specially - find the line with src attribute
-		if (entry.sourceType === 'image' && entry.imageSrc) {
-			const imageLocation = await findImageSourceLocation(entry.imageSrc)
+		if (entry.sourceType === 'image' && entry.imageMetadata?.src) {
+			const imageLocation = await findImageSourceLocation(entry.imageMetadata.src)
 			if (imageLocation) {
-				const sourceHash = generateSourceHash(imageLocation.snippet || entry.imageSrc)
+				const sourceHash = generateSourceHash(imageLocation.snippet || entry.imageMetadata.src)
 				return [id, {
 					...entry,
 					sourcePath: imageLocation.file,
