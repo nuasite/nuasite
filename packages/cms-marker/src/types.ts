@@ -91,6 +91,8 @@ export interface ColorClasses {
 	hoverBg?: string
 	/** Hover text color class (e.g., 'hover:text-gray-100') */
 	hoverText?: string
+	/** Hover border color class (e.g., 'hover:border-blue-700') */
+	hoverBorder?: string
 	/** All color-related classes as found in the element */
 	allColorClasses?: string[]
 }

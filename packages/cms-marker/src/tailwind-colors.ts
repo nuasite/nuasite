@@ -413,6 +413,7 @@ const COLOR_CLASS_PATTERNS = {
 	border: buildColorPattern('border'),
 	hoverBg: buildColorPattern('hover:bg'),
 	hoverText: buildColorPattern('hover:text'),
+	hoverBorder: buildColorPattern('hover:border'),
 }
 
 /**

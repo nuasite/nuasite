@@ -46,14 +46,22 @@ describe('tailwind-colors', () => {
 			expect(result?.hoverText).toBe('hover:text-gray-100')
 		})
 
+		test('extracts hover border color class', () => {
+			const result = extractColorClasses('border-gray-300 hover:border-blue-500')
+			expect(result).toBeDefined()
+			expect(result?.border).toBe('border-gray-300')
+			expect(result?.hoverBorder).toBe('hover:border-blue-500')
+		})
+
 		test('extracts all color classes', () => {
-			const result = extractColorClasses('bg-blue-500 text-white border-blue-600 hover:bg-blue-600 hover:text-gray-100')
+			const result = extractColorClasses('bg-blue-500 text-white border-blue-600 hover:bg-blue-600 hover:text-gray-100 hover:border-blue-700')
 			expect(result).toBeDefined()
 			expect(result?.allColorClasses).toContain('bg-blue-500')
 			expect(result?.allColorClasses).toContain('text-white')
 			expect(result?.allColorClasses).toContain('border-blue-600')
 			expect(result?.allColorClasses).toContain('hover:bg-blue-600')
 			expect(result?.allColorClasses).toContain('hover:text-gray-100')
+			expect(result?.allColorClasses).toContain('hover:border-blue-700')
 		})
 
 		test('returns undefined when no color classes', () => {
@@ -99,6 +107,7 @@ describe('tailwind-colors', () => {
 		test('identifies hover color classes', () => {
 			expect(isColorClass('hover:bg-blue-600')).toBe(true)
 			expect(isColorClass('hover:text-white')).toBe(true)
+			expect(isColorClass('hover:border-gray-400')).toBe(true)
 		})
 
 		test('rejects non-color classes', () => {
@@ -128,6 +137,10 @@ describe('tailwind-colors', () => {
 
 		test('returns correct type for hoverText', () => {
 			expect(getColorType('hover:text-gray-100')).toBe('hoverText')
+		})
+
+		test('returns correct type for hoverBorder', () => {
+			expect(getColorType('hover:border-blue-700')).toBe('hoverBorder')
 		})
 
 		test('returns undefined for non-color class', () => {
@@ -186,6 +199,16 @@ describe('tailwind-colors', () => {
 			})
 		})
 
+		test('parses hover border color', () => {
+			const result = parseColorClass('hover:border-indigo-600')
+			expect(result).toEqual({
+				prefix: 'hover:border',
+				colorName: 'indigo',
+				shade: '600',
+				isHover: true,
+			})
+		})
+
 		test('returns undefined for non-color class', () => {
 			expect(parseColorClass('px-4')).toBeUndefined()
 			expect(parseColorClass('rounded-lg')).toBeUndefined()
@@ -208,6 +231,10 @@ describe('tailwind-colors', () => {
 		test('builds border color', () => {
 			expect(buildColorClass('border', 'gray', '300')).toBe('border-gray-300')
 		})
+
+		test('builds hover border color', () => {
+			expect(buildColorClass('hover:border', 'purple', '500')).toBe('hover:border-purple-500')
+		})
 	})
 
 	describe('replaceColorClass', () => {
@@ -224,6 +251,11 @@ describe('tailwind-colors', () => {
 		test('replaces hover color class', () => {
 			const result = replaceColorClass('bg-blue-500 hover:bg-blue-600', 'hover:bg-blue-600', 'hover:bg-red-600')
 			expect(result).toBe('bg-blue-500 hover:bg-red-600')
+		})
+
+		test('replaces hover border color class', () => {
+			const result = replaceColorClass('border-gray-300 hover:border-gray-400', 'hover:border-gray-400', 'hover:border-blue-500')
+			expect(result).toBe('border-gray-300 hover:border-blue-500')
 		})
 
 		test('preserves other classes', () => {
