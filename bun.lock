@@ -17,7 +17,7 @@
     },
     "packages/agent-summary": {
       "name": "@nuasite/agent-summary",
-      "version": "0.0.59",
+      "version": "0.0.65",
       "dependencies": {
         "astro": "catalog:astro",
       },
@@ -30,7 +30,7 @@
     },
     "packages/cli": {
       "name": "@nuasite/cli",
-      "version": "0.0.59",
+      "version": "0.0.65",
       "bin": {
         "nua": "src/index.ts",
       },
@@ -48,9 +48,10 @@
     },
     "packages/cms-marker": {
       "name": "@nuasite/cms-marker",
-      "version": "0.0.59",
+      "version": "0.0.65",
       "dependencies": {
         "@astrojs/compiler": "catalog:astro",
+        "@babel/parser": "catalog:parsers",
         "astro": "catalog:astro",
         "node-html-parser": "catalog:parsers",
       },
@@ -64,14 +65,14 @@
     },
     "packages/components": {
       "name": "@nuasite/components",
-      "version": "0.0.59",
+      "version": "0.0.65",
       "peerDependencies": {
         "typescript": "catalog:build",
       },
     },
     "packages/core": {
       "name": "@nuasite/core",
-      "version": "0.0.59",
+      "version": "0.0.65",
       "devDependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -87,7 +88,7 @@
     },
     "packages/llm-enhancements": {
       "name": "@nuasite/llm-enhancements",
-      "version": "0.0.59",
+      "version": "0.0.65",
       "dependencies": {
         "astro": "catalog:astro",
         "node-html-parser": "catalog:parsers",
@@ -106,7 +107,7 @@
     },
     "packages/nua": {
       "name": "@nuasite/nua",
-      "version": "0.0.59",
+      "version": "0.0.65",
       "dependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -127,14 +128,11 @@
     },
     "packages/playground": {
       "name": "playground",
-      "version": "0.0.59",
+      "version": "0.0.65",
       "dependencies": {
         "@nuasite/nua": "workspace:*",
       },
     },
-  },
-  "catalog": {
-    "@types/bun": "latest",
   },
   "catalogs": {
     "astro": {
@@ -157,6 +155,7 @@
       "vite": "^6",
     },
     "parsers": {
+      "@babel/parser": "^7.24.0",
       "node-html-parser": "^6.1.13",
       "stacktracey": "2.1.8",
     },

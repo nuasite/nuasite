@@ -20,6 +20,7 @@
 	"type": "module",
 	"dependencies": {
 		"@astrojs/compiler": "catalog:astro",
+		"@babel/parser": "catalog:parsers",
 		"astro": "catalog:astro",
 		"node-html-parser": "catalog:parsers"
 	},

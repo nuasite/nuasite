@@ -32,9 +32,6 @@
 		"packages": [
 			"packages/*"
 		],
-		"catalog": {
-			"@types/bun": "latest"
-		},
 		"catalogs": {
 			"build": {
 				"@actions/core": "^2.0.2",
@@ -56,6 +53,7 @@
 				"astro": "^5.16.6"
 			},
 			"parsers": {
+				"@babel/parser": "^7.24.0",
 				"node-html-parser": "^6.1.13",
 				"stacktracey": "2.1.8"
 			},

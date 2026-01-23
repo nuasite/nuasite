@@ -1,5 +1,9 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { parse as parseAstro } from '@astrojs/compiler'
+import type { Node as AstroNode, ElementNode, ComponentNode, TextNode, ExpressionNode, AttributeNode } from '@astrojs/compiler/types'
+import { parse as parseBabel } from '@babel/parser'
+import type * as t from '@babel/types'
 import type { ManifestEntry } from './types'
 import { generateSourceHash } from './utils'
 
@@ -41,6 +45,407 @@ export interface MarkdownContent {
 	collectionName: string
 	/** Collection slug */
 	collectionSlug: string
+}
+
+// ============================================================================
+// AST Parsing Utilities
+// ============================================================================
+
+interface ParsedAstroFile {
+	ast: AstroNode
+	frontmatterContent: string | null
+	frontmatterStartLine: number
+}
+
+/**
+ * Parse an Astro file and return both template AST and frontmatter content
+ */
+async function parseAstroFile(content: string): Promise<ParsedAstroFile> {
+	const result = await parseAstro(content, { position: true })
+
+	// Find frontmatter node
+	let frontmatterContent: string | null = null
+	let frontmatterStartLine = 0
+
+	for (const child of result.ast.children) {
+		if (child.type === 'frontmatter') {
+			frontmatterContent = child.value
+			frontmatterStartLine = child.position?.start.line ?? 1
+			break
+		}
+	}
+
+	return {
+		ast: result.ast,
+		frontmatterContent,
+		frontmatterStartLine,
+	}
+}
+
+/**
+ * Parse frontmatter JavaScript/TypeScript with Babel
+ */
+function parseFrontmatter(content: string): t.File | null {
+	try {
+		return parseBabel(content, {
+			sourceType: 'module',
+			plugins: ['typescript'],
+			errorRecovery: true,
+		})
+	} catch {
+		return null
+	}
+}
+
+interface VariableDefinition {
+	name: string
+	value: string
+	line: number
+	/** For object properties, the parent variable name */
+	parentName?: string
+}
+
+/**
+ * Extract variable definitions from Babel AST
+ * Finds const/let/var declarations with string literal values
+ *
+ * Note: Babel parses the frontmatter content (without --- delimiters) starting at line 1.
+ * frontmatterStartLine is the actual file line where the content begins (after first ---).
+ * So we convert: file_line = (babel_line - 1) + frontmatterStartLine
+ */
+function extractVariableDefinitions(ast: t.File, frontmatterStartLine: number): VariableDefinition[] {
+	const definitions: VariableDefinition[] = []
+
+	function getStringValue(node: t.Node): string | null {
+		if (node.type === 'StringLiteral') {
+			return node.value
+		}
+		if (node.type === 'TemplateLiteral' && node.quasis.length === 1 && node.expressions.length === 0) {
+			return node.quasis[0]?.value.cooked ?? null
+		}
+		return null
+	}
+
+	function babelLineToFileLine(babelLine: number): number {
+		// Babel's line 1 = frontmatterStartLine in the actual file
+		return (babelLine - 1) + frontmatterStartLine
+	}
+
+	function visitNode(node: t.Node) {
+		if (node.type === 'VariableDeclaration') {
+			for (const decl of node.declarations) {
+				if (decl.id.type === 'Identifier' && decl.init) {
+					const varName = decl.id.name
+					const line = babelLineToFileLine(decl.loc?.start.line ?? 1)
+
+					// Simple string value
+					const stringValue = getStringValue(decl.init)
+					if (stringValue !== null) {
+						definitions.push({ name: varName, value: stringValue, line })
+					}
+
+					// Object expression - extract properties
+					if (decl.init.type === 'ObjectExpression') {
+						for (const prop of decl.init.properties) {
+							if (prop.type === 'ObjectProperty' && prop.key.type === 'Identifier' && prop.value) {
+								const propValue = getStringValue(prop.value)
+								if (propValue !== null) {
+									const propLine = babelLineToFileLine(prop.loc?.start.line ?? 1)
+									definitions.push({
+										name: prop.key.name,
+										value: propValue,
+										line: propLine,
+										parentName: varName,
+									})
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Recursively visit child nodes
+		for (const key of Object.keys(node)) {
+			const value = (node as Record<string, unknown>)[key]
+			if (value && typeof value === 'object') {
+				if (Array.isArray(value)) {
+					for (const item of value) {
+						if (item && typeof item === 'object' && 'type' in item) {
+							visitNode(item as t.Node)
+						}
+					}
+				} else if ('type' in value) {
+					visitNode(value as t.Node)
+				}
+			}
+		}
+	}
+
+	visitNode(ast.program)
+	return definitions
+}
+
+interface TemplateMatch {
+	line: number
+	type: 'static' | 'variable' | 'computed'
+	variableName?: string
+	/** For variables, the definition line in frontmatter */
+	definitionLine?: number
+}
+
+/**
+ * Walk the Astro AST to find elements matching a tag with specific text content
+ */
+function findElementWithText(
+	ast: AstroNode,
+	tag: string,
+	searchText: string,
+	variableDefinitions: VariableDefinition[],
+): TemplateMatch | null {
+	const normalizedSearch = normalizeText(searchText)
+	const tagLower = tag.toLowerCase()
+	let bestMatch: TemplateMatch | null = null
+	let bestScore = 0
+
+	function getTextContent(node: AstroNode): string {
+		if (node.type === 'text') {
+			return (node as TextNode).value
+		}
+		if ('children' in node && Array.isArray(node.children)) {
+			return node.children.map(getTextContent).join('')
+		}
+		return ''
+	}
+
+	function hasExpressionChild(node: AstroNode): { found: boolean; varNames: string[] } {
+		const varNames: string[] = []
+		if (node.type === 'expression') {
+			// Try to extract variable name from expression
+			// The expression node children contain the text representation
+			const exprText = getTextContent(node)
+			// Extract variable names like {foo} or {foo.bar}
+			const match = exprText.match(/^\s*(\w+)(?:\.(\w+))?\s*$/)
+			if (match) {
+				varNames.push(match[2] ?? match[1]!)
+			}
+			return { found: true, varNames }
+		}
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				const result = hasExpressionChild(child)
+				if (result.found) {
+					varNames.push(...result.varNames)
+				}
+			}
+		}
+		return { found: varNames.length > 0, varNames }
+	}
+
+	function visit(node: AstroNode) {
+		// Check if this is an element or component matching our tag
+		if ((node.type === 'element' || node.type === 'component') && node.name.toLowerCase() === tagLower) {
+			const elemNode = node as ElementNode | ComponentNode
+			const textContent = getTextContent(elemNode)
+			const normalizedContent = normalizeText(textContent)
+			const line = elemNode.position?.start.line ?? 0
+
+			// Check for expression (variable reference)
+			const exprInfo = hasExpressionChild(elemNode)
+			if (exprInfo.found && exprInfo.varNames.length > 0) {
+				// Look for matching variable definition
+				for (const varName of exprInfo.varNames) {
+					for (const def of variableDefinitions) {
+						if (def.name === varName || (def.parentName && def.name === varName)) {
+							const normalizedDef = normalizeText(def.value)
+							if (normalizedDef === normalizedSearch) {
+								// Found a variable match - this is highest priority
+								if (bestScore < 100) {
+									bestScore = 100
+									bestMatch = {
+										line,
+										type: 'variable',
+										variableName: def.parentName ? `${def.parentName}.${def.name}` : def.name,
+										definitionLine: def.line,
+									}
+								}
+								return
+							}
+						}
+					}
+				}
+			}
+
+			// Check for direct text match (static content)
+			// Only match if there's meaningful text content (not just variable names/expressions)
+			if (normalizedContent && normalizedContent.length >= 2 && normalizedSearch.length > 0) {
+				// For short search text (<= 10 chars), require exact match
+				if (normalizedSearch.length <= 10) {
+					if (normalizedContent.includes(normalizedSearch)) {
+						const score = 80
+						if (score > bestScore) {
+							bestScore = score
+							const actualLine = findTextLine(elemNode, normalizedSearch)
+							bestMatch = {
+								line: actualLine ?? line,
+								type: 'static',
+							}
+						}
+					}
+				}
+				// For longer search text, check if content contains a significant portion
+				else if (normalizedSearch.length > 10) {
+					const textPreview = normalizedSearch.slice(0, Math.min(30, normalizedSearch.length))
+					if (normalizedContent.includes(textPreview)) {
+						const matchLength = Math.min(normalizedSearch.length, normalizedContent.length)
+						const score = 50 + (matchLength / normalizedSearch.length) * 40
+						if (score > bestScore) {
+							bestScore = score
+							const actualLine = findTextLine(elemNode, textPreview)
+							bestMatch = {
+								line: actualLine ?? line,
+								type: 'static',
+							}
+						}
+					}
+					// Try matching first few words for very long text
+					else if (normalizedSearch.length > 20) {
+						const firstWords = normalizedSearch.split(' ').slice(0, 3).join(' ')
+						if (firstWords && normalizedContent.includes(firstWords)) {
+							const score = 40
+							if (score > bestScore) {
+								bestScore = score
+								const actualLine = findTextLine(elemNode, firstWords)
+								bestMatch = {
+									line: actualLine ?? line,
+									type: 'static',
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Recursively visit children
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				visit(child)
+			}
+		}
+	}
+
+	function findTextLine(node: AstroNode, searchText: string): number | null {
+		if (node.type === 'text') {
+			const textNode = node as TextNode
+			if (normalizeText(textNode.value).includes(searchText)) {
+				return textNode.position?.start.line ?? null
+			}
+		}
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				const line = findTextLine(child, searchText)
+				if (line !== null) return line
+			}
+		}
+		return null
+	}
+
+	visit(ast)
+	return bestMatch
+}
+
+interface ComponentPropMatch {
+	line: number
+	propName: string
+	propValue: string
+}
+
+/**
+ * Walk the Astro AST to find component props with specific text value
+ */
+function findComponentProp(
+	ast: AstroNode,
+	searchText: string,
+): ComponentPropMatch | null {
+	const normalizedSearch = normalizeText(searchText)
+
+	function visit(node: AstroNode): ComponentPropMatch | null {
+		// Check component nodes (PascalCase names)
+		if (node.type === 'component') {
+			const compNode = node as ComponentNode
+			for (const attr of compNode.attributes) {
+				if (attr.type === 'attribute' && attr.kind === 'quoted') {
+					const normalizedValue = normalizeText(attr.value)
+					if (normalizedValue === normalizedSearch) {
+						return {
+							line: attr.position?.start.line ?? compNode.position?.start.line ?? 0,
+							propName: attr.name,
+							propValue: attr.value,
+						}
+					}
+				}
+			}
+		}
+
+		// Recursively visit children
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				const result = visit(child)
+				if (result) return result
+			}
+		}
+
+		return null
+	}
+
+	return visit(ast)
+}
+
+interface ImageMatch {
+	line: number
+	src: string
+	snippet: string
+}
+
+/**
+ * Walk the Astro AST to find img elements with specific src
+ */
+function findImageElement(
+	ast: AstroNode,
+	imageSrc: string,
+	lines: string[],
+): ImageMatch | null {
+	function visit(node: AstroNode): ImageMatch | null {
+		if (node.type === 'element') {
+			const elemNode = node as ElementNode
+			if (elemNode.name.toLowerCase() === 'img') {
+				for (const attr of elemNode.attributes) {
+					if (attr.type === 'attribute' && attr.name === 'src' && attr.value === imageSrc) {
+						const srcLine = attr.position?.start.line ?? elemNode.position?.start.line ?? 0
+						const snippet = extractImageSnippet(lines, srcLine - 1)
+						return {
+							line: srcLine,
+							src: imageSrc,
+							snippet,
+						}
+					}
+				}
+			}
+		}
+
+		// Recursively visit children
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				const result = visit(child)
+				if (result) return result
+			}
+		}
+
+		return null
+	}
+
+	return visit(ast)
 }
 
 /**
@@ -150,6 +555,7 @@ async function searchDirectoryForImage(
 
 /**
  * Search a single file for an image with matching src
+ * Uses AST parsing for Astro files, regex for TSX/JSX
  */
 async function searchFileForImage(
 	filePath: string,
@@ -159,7 +565,26 @@ async function searchFileForImage(
 		const content = await fs.readFile(filePath, 'utf-8')
 		const lines = content.split('\n')
 
-		// Search for src="imageSrc" or src='imageSrc'
+		// Use AST parsing for Astro files
+		if (filePath.endsWith('.astro')) {
+			try {
+				const { ast } = await parseAstroFile(content)
+				const imageMatch = findImageElement(ast, imageSrc, lines)
+
+				if (imageMatch) {
+					return {
+						file: path.relative(process.cwd(), filePath),
+						line: imageMatch.line,
+						snippet: imageMatch.snippet,
+						type: 'static',
+					}
+				}
+			} catch {
+				// Fall back to regex if AST parsing fails
+			}
+		}
+
+		// Regex fallback for TSX/JSX files or if AST parsing failed
 		const srcPatterns = [
 			`src="${imageSrc}"`,
 			`src='${imageSrc}'`,
@@ -248,7 +673,7 @@ async function searchDirectory(
 }
 
 /**
- * Search a single Astro file for matching content
+ * Search a single Astro file for matching content using AST parsing
  */
 async function searchAstroFile(
 	filePath: string,
@@ -259,103 +684,31 @@ async function searchAstroFile(
 		const content = await fs.readFile(filePath, 'utf-8')
 		const lines = content.split('\n')
 
-		const cleanText = normalizeText(textContent)
-		const textPreview = cleanText.slice(0, Math.min(30, cleanText.length))
+		// Parse the Astro file
+		const { ast, frontmatterContent, frontmatterStartLine } = await parseAstroFile(content)
 
-		// Extract variable references from frontmatter
-		const variableRefs = extractVariableReferences(content, cleanText)
-
-		// Collect all potential matches with scores and metadata
-		const matches: Array<{
-			line: number
-			score: number
-			type: 'static' | 'variable' | 'prop' | 'computed'
-			variableName?: string
-			definitionLine?: number
-		}> = []
-
-		// Search for tag usage with matching text or variable
-		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i]?.trim().toLowerCase()
-
-			// Look for opening tag
-			if (line?.includes(`<${tag.toLowerCase()}`) && !line.startsWith(`</${tag.toLowerCase()}`)) {
-				// Collect content from this line and next few lines
-				const section = collectSection(lines, i, 5)
-				const sectionText = section.toLowerCase()
-				const sectionTextOnly = stripHtmlTags(section).toLowerCase()
-
-				let score = 0
-				let matched = false
-
-				// Check for variable reference match (highest priority)
-				if (variableRefs.length > 0) {
-					for (const varRef of variableRefs) {
-						// Check case-insensitively since sectionText is lowercased
-						if (sectionText.includes(`{`) && sectionText.includes(varRef.name.toLowerCase())) {
-							score = 100
-							matched = true
-							// Store match metadata - this is the USAGE line, we need DEFINITION line
-							matches.push({
-								line: i + 1,
-								score,
-								type: 'variable',
-								variableName: varRef.name,
-								definitionLine: varRef.definitionLine,
-							})
-							break
-						}
-					}
-				}
-
-				// Check for direct text match (static content)
-				if (!matched && cleanText.length > 10 && sectionTextOnly.includes(textPreview)) {
-					// Score based on how much of the text matches
-					const matchLength = Math.min(cleanText.length, sectionTextOnly.length)
-					score = 50 + (matchLength / cleanText.length) * 40
-					matched = true
-					// Find the actual line containing the text
-					const actualLine = findLineContainingText(lines, i, 5, textPreview)
-					matches.push({ line: actualLine, score, type: 'static' })
-				}
-
-				// Check for short exact text match (static content)
-				if (!matched && cleanText.length > 0 && cleanText.length <= 10 && sectionTextOnly.includes(cleanText)) {
-					score = 80
-					matched = true
-					// Find the actual line containing the text
-					const actualLine = findLineContainingText(lines, i, 5, cleanText)
-					matches.push({ line: actualLine, score, type: 'static' })
-				}
-
-				// Try matching first few words for longer text (static content)
-				if (!matched && cleanText.length > 20) {
-					const firstWords = cleanText.split(' ').slice(0, 3).join(' ')
-					if (firstWords && sectionTextOnly.includes(firstWords)) {
-						score = 40
-						matched = true
-						// Find the actual line containing the text
-						const actualLine = findLineContainingText(lines, i, 5, firstWords)
-						matches.push({ line: actualLine, score, type: 'static' })
-					}
-				}
+		// Extract variable definitions from frontmatter using Babel
+		let variableDefinitions: VariableDefinition[] = []
+		if (frontmatterContent) {
+			const frontmatterAst = parseFrontmatter(frontmatterContent)
+			if (frontmatterAst) {
+				variableDefinitions = extractVariableDefinitions(frontmatterAst, frontmatterStartLine)
 			}
 		}
 
-		// Return the best match (highest score)
-		if (matches.length > 0) {
-			const bestMatch = matches.reduce((best, current) => current.score > best.score ? current : best)
+		// Find matching element in template AST
+		const match = findElementWithText(ast, tag, textContent, variableDefinitions)
 
+		if (match) {
 			// Determine the editable line (definition for variables, usage for static)
-			const editableLine = bestMatch.type === 'variable' && bestMatch.definitionLine
-				? bestMatch.definitionLine
-				: bestMatch.line
+			const editableLine = match.type === 'variable' && match.definitionLine
+				? match.definitionLine
+				: match.line
 
 			// Get the source snippet - innerHTML for static content, definition line for variables
 			let snippet: string
-			if (bestMatch.type === 'static') {
+			if (match.type === 'static') {
 				// For static content, extract only the innerHTML (not the wrapper element)
-				// This ensures that when replacing, we only replace the content, not the element structure
 				const completeSnippet = extractCompleteTagSnippet(lines, editableLine - 1, tag)
 				snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
 			} else {
@@ -367,24 +720,23 @@ async function searchAstroFile(
 				file: path.relative(process.cwd(), filePath),
 				line: editableLine,
 				snippet,
-				type: bestMatch.type,
-				variableName: bestMatch.variableName,
-				definitionLine: bestMatch.type === 'variable' ? bestMatch.definitionLine : undefined,
+				type: match.type,
+				variableName: match.variableName,
+				definitionLine: match.type === 'variable' ? match.definitionLine : undefined,
 			}
 		}
 	} catch {
-		// Error reading file
+		// Error reading/parsing file
 	}
 
 	return undefined
 }
 
 /**
- * Search for prop values passed to components
+ * Search for prop values passed to components using AST parsing
  */
 async function searchForPropInParents(dir: string, textContent: string): Promise<SourceLocation | undefined> {
 	const entries = await fs.readdir(dir, { withFileTypes: true })
-	const cleanText = normalizeText(textContent)
 
 	for (const entry of entries) {
 		const fullPath = path.join(dir, entry.name)
@@ -393,90 +745,52 @@ async function searchForPropInParents(dir: string, textContent: string): Promise
 			const result = await searchForPropInParents(fullPath, textContent)
 			if (result) return result
 		} else if (entry.isFile() && entry.name.endsWith('.astro')) {
-			const content = await fs.readFile(fullPath, 'utf-8')
-			const lines = content.split('\n')
+			try {
+				const content = await fs.readFile(fullPath, 'utf-8')
+				const lines = content.split('\n')
 
-			// Look for component tags with prop values matching our text
-			for (let i = 0; i < lines.length; i++) {
-				const line = lines[i]
+				// Parse the Astro file
+				const { ast } = await parseAstroFile(content)
 
-				// Match component usage like <ComponentName propName="value" />
-				const componentMatch = line?.match(/<([A-Z]\w+)/)
-				if (!componentMatch) continue
+				// Find component props matching our text
+				const propMatch = findComponentProp(ast, textContent)
 
-				// Collect only the opening tag (until first > or />), not nested content
-				let openingTag = ''
-				let endLine = i
-				for (let j = i; j < Math.min(i + 10, lines.length); j++) {
-					openingTag += ' ' + lines[j]
-					endLine = j
+				if (propMatch) {
+					// Extract component snippet for context
+					const componentStart = propMatch.line - 1
+					const snippetLines: string[] = []
+					let depth = 0
 
-					// Stop at the end of opening tag (either /> or >)
-					if (lines[j]?.includes('/>')) {
-						// Self-closing tag
-						break
-					} else if (lines[j]?.includes('>')) {
-						// Opening tag ends here, don't include nested content
-						// Truncate to just the opening tag part
-						const tagEndIndex = openingTag.indexOf('>')
-						if (tagEndIndex !== -1) {
-							openingTag = openingTag.substring(0, tagEndIndex + 1)
+					for (let i = componentStart; i < Math.min(componentStart + 10, lines.length); i++) {
+						const line = lines[i]
+						if (!line) continue
+						snippetLines.push(line)
+
+						// Check for self-closing or end of opening tag
+						if (line.includes('/>')) {
+							break
 						}
-						break
-					}
-				}
-
-				// Extract all prop values from the opening tag only
-				const propMatches = openingTag.matchAll(/(\w+)=["']([^"']+)["']/g)
-				for (const match of propMatches) {
-					const propName = match[1]
-					const propValue = match[2]
-
-					if (!propValue) {
-						continue
-					}
-
-					const normalizedValue = normalizeText(propValue)
-
-					if (normalizedValue === cleanText) {
-						// Find which line actually contains this prop
-						let propLine = i
-
-						for (let k = i; k <= endLine; k++) {
-							const line = lines[k]
-							if (!line) {
-								continue
-							}
-
-							if (propName && line.includes(propName) && line.includes(propValue)) {
-								propLine = k
+						if (line.includes('>') && !line.includes('/>')) {
+							// Count opening tags
+							const opens = (line.match(/<[A-Z]/g) || []).length
+							const closes = (line.match(/\/>/g) || []).length
+							depth += opens - closes
+							if (depth <= 0 || (i > componentStart && line.includes('>'))) {
 								break
 							}
 						}
+					}
 
-						// Extract complete component tag starting from where the component tag opens
-						const componentSnippetLines: string[] = []
-						for (let k = i; k <= endLine; k++) {
-							const line = lines[k]
-							if (!line) {
-								continue
-							}
-
-							componentSnippetLines.push(line)
-						}
-
-						const propSnippet = componentSnippetLines.join('\n')
-
-						// Found the prop being passed with our text value
-						return {
-							file: path.relative(process.cwd(), fullPath),
-							line: propLine + 1,
-							snippet: propSnippet,
-							type: 'prop',
-							variableName: propName,
-						}
+					return {
+						file: path.relative(process.cwd(), fullPath),
+						line: propMatch.line,
+						snippet: snippetLines.join('\n'),
+						type: 'prop',
+						variableName: propMatch.propName,
 					}
 				}
+			} catch {
+				// Error parsing file, continue
 			}
 		}
 	}
@@ -487,14 +801,38 @@ async function searchForPropInParents(dir: string, textContent: string): Promise
 /**
  * Extract complete tag snippet including content and indentation.
  * Exported for use in html-processor to populate sourceSnippet.
+ *
+ * When startLine points to a line inside the element (e.g., the text content line),
+ * this function searches backwards to find the opening tag first.
  */
 export function extractCompleteTagSnippet(lines: string[], startLine: number, tag: string): string {
+	// Pattern to match opening tag - either followed by whitespace/>, or at end of line (multi-line tag)
+	const openTagPattern = new RegExp(`<${tag}(?:[\\s>]|$)`, 'gi')
+
+	// Check if the start line contains the opening tag
+	let actualStartLine = startLine
+	const startLineContent = lines[startLine] || ''
+	if (!openTagPattern.test(startLineContent)) {
+		// Search backwards to find the opening tag
+		for (let i = startLine - 1; i >= Math.max(0, startLine - 20); i--) {
+			const line = lines[i]
+			if (!line) continue
+
+			// Reset regex lastIndex for fresh test
+			openTagPattern.lastIndex = 0
+			if (openTagPattern.test(line)) {
+				actualStartLine = i
+				break
+			}
+		}
+	}
+
 	const snippetLines: string[] = []
 	let depth = 0
 	let foundClosing = false
 
 	// Start from the opening tag line
-	for (let i = startLine; i < Math.min(startLine + 20, lines.length); i++) {
+	for (let i = actualStartLine; i < Math.min(actualStartLine + 30, lines.length); i++) {
 		const line = lines[i]
 
 		if (!line) {
@@ -504,7 +842,8 @@ export function extractCompleteTagSnippet(lines: string[], startLine: number, ta
 		snippetLines.push(line)
 
 		// Count opening and closing tags
-		const openTags = (line.match(new RegExp(`<${tag}[\\s>]`, 'gi')) || []).length
+		// Opening tag can be followed by whitespace, >, or end of line (multi-line tag)
+		const openTags = (line.match(new RegExp(`<${tag}(?:[\\s>]|$)`, 'gi')) || []).length
 		const selfClosing = (line.match(new RegExp(`<${tag}[^>]*/>`, 'gi')) || []).length
 		const closeTags = (line.match(new RegExp(`</${tag}>`, 'gi')) || []).length
 
@@ -585,104 +924,6 @@ export async function extractSourceInnerHtml(
 	} catch {
 		return undefined
 	}
-}
-
-/**
- * Extract variable references from frontmatter
- */
-function extractVariableReferences(content: string, targetText: string): VariableReference[] {
-	const refs: VariableReference[] = []
-	const frontmatterEnd = content.indexOf('---', 3)
-
-	if (frontmatterEnd <= 0) return refs
-
-	const frontmatter = content.substring(0, frontmatterEnd)
-	const lines = frontmatter.split('\n')
-
-	for (const line of lines) {
-		const trimmed = line.trim()
-
-		// Match quoted text (handling escaped quotes)
-		// Try single quotes with escaped quotes
-		let quotedMatch = trimmed.match(/'((?:[^'\\]|\\.)*)'/)
-		if (!quotedMatch) {
-			// Try double quotes with escaped quotes
-			quotedMatch = trimmed.match(/"((?:[^"\\]|\\.)*)"/)
-		}
-		if (!quotedMatch) {
-			// Try backticks (template literals) - but only if no ${} interpolation
-			const backtickMatch = trimmed.match(/`([^`]*)`/)
-			if (backtickMatch && !backtickMatch[1]?.includes('${')) {
-				quotedMatch = backtickMatch
-			}
-		}
-		if (!quotedMatch?.[1]) continue
-
-		const value = normalizeText(quotedMatch[1])
-		const normalizedTarget = normalizeText(targetText)
-
-		if (value !== normalizedTarget) continue
-
-		// Try to extract variable name and line number
-		const lineNumber = lines.indexOf(line) + 1
-
-		// Pattern 1: Object property "key: 'value'"
-		const propMatch = trimmed.match(/(\w+)\s*:\s*['"`]/)
-		if (propMatch?.[1]) {
-			refs.push({
-				name: propMatch[1],
-				pattern: `{.*${propMatch[1]}`,
-				definitionLine: lineNumber,
-			})
-			continue
-		}
-
-		// Pattern 2: Variable declaration "const name = 'value'"
-		const varMatch = trimmed.match(/(?:const|let|var)\s+(\w+)(?:\s*:\s*\w+)?\s*=/)
-		if (varMatch?.[1]) {
-			refs.push({
-				name: varMatch[1],
-				pattern: `{${varMatch[1]}}`,
-				definitionLine: lineNumber,
-			})
-		}
-	}
-
-	return refs
-}
-
-/**
- * Collect text from multiple lines
- */
-function collectSection(lines: string[], startLine: number, numLines: number): string {
-	let text = ''
-	for (let i = startLine; i < Math.min(startLine + numLines, lines.length); i++) {
-		text += ' ' + lines[i]?.trim().replace(/\s+/g, ' ')
-	}
-	return text
-}
-
-/**
- * Find the actual line containing the matched text within a section
- * Returns 1-indexed line number
- */
-function findLineContainingText(lines: string[], startLine: number, numLines: number, searchText: string): number {
-	const normalizedSearch = searchText.toLowerCase()
-	for (let i = startLine; i < Math.min(startLine + numLines, lines.length); i++) {
-		const lineText = stripHtmlTags(lines[i] || '').toLowerCase()
-		if (lineText.includes(normalizedSearch)) {
-			return i + 1 // Return 1-indexed line number
-		}
-	}
-	// If not found on a specific line, return the opening tag line
-	return startLine + 1
-}
-
-/**
- * Strip HTML tags from text
- */
-function stripHtmlTags(text: string): string {
-	return text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 /**
