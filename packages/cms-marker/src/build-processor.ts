@@ -4,7 +4,15 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
-import { clearSourceFinderCache, findCollectionSource, findImageSourceLocation, findMarkdownSourceLocation, findSourceLocation, initializeSearchIndex, parseMarkdownContent } from './source-finder'
+import {
+	clearSourceFinderCache,
+	findCollectionSource,
+	findImageSourceLocation,
+	findMarkdownSourceLocation,
+	findSourceLocation,
+	initializeSearchIndex,
+	parseMarkdownContent,
+} from './source-finder'
 import type { CmsMarkerOptions, CollectionEntry } from './types'
 
 // Concurrency limit for parallel processing

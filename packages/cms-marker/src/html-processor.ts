@@ -416,7 +416,8 @@ export async function processHtml(
 							// Markdown typically renders to multiple block elements (p, h2, h3, ul, ol, etc.)
 							const blockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre', 'table', 'hr']
 							const blockChildCount = node.childNodes.filter(
-								(child): child is HTMLNode => child.nodeType === 1 && 'tagName' in child && blockTags.includes((child as HTMLNode).tagName?.toLowerCase?.() ?? ''),
+								(child): child is HTMLNode =>
+									child.nodeType === 1 && 'tagName' in child && blockTags.includes((child as HTMLNode).tagName?.toLowerCase?.() ?? ''),
 							).length
 
 							candidates.push({ node, blockChildCount })

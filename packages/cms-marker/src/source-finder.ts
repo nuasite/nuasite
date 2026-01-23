@@ -319,7 +319,7 @@ function indexFileImages(cached: CachedParsedFile, relFile: string): void {
 
 			for (const pattern of srcPatterns) {
 				pattern.lastIndex = 0
-				let match
+				let match: RegExpExecArray | null
 				while ((match = pattern.exec(line)) !== null) {
 					const snippet = extractImageSnippet(cached.lines, i)
 					imageSearchIndex.push({
