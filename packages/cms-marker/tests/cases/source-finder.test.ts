@@ -470,6 +470,36 @@ import Header from '../components/Header.astro';
 		expect(result?.snippet).not.toContain('class=')
 	})
 
+	test('snippet should contain innerHTML when opening tag is on separate lines (multi-line attributes)', async () => {
+		// This tests the case where <a> tag has attributes on multiple lines
+		// and the text content is on yet another line
+		await fs.writeFile(
+			path.join(testDir, 'src/components/Link.astro'),
+			`---
+---
+<a
+  href="/about"
+  class="inline-block backdrop-blur-lg bg-white/30"
+>
+  Read more about us
+</a>
+`,
+		)
+
+		const result = await findSourceLocation('Read more about us', 'a')
+
+		expect(result).toBeDefined()
+		expect(result?.type).toBe('static')
+		// Snippet should contain only the innerHTML, not the opening tag or attributes
+		expect(result?.snippet).toContain('Read more about us')
+		// Should NOT contain the element tags or attributes
+		expect(result?.snippet).not.toContain('<a')
+		expect(result?.snippet).not.toContain('href=')
+		expect(result?.snippet).not.toContain('class=')
+		// Should NOT contain the closing tag
+		expect(result?.snippet).not.toContain('</a>')
+	})
+
 	test('snippet should contain innerHTML with nested inline elements', async () => {
 		await fs.writeFile(
 			path.join(testDir, 'src/components/Styled.astro'),
