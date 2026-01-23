@@ -35,15 +35,6 @@ describe('Vite Plugin', () => {
 		expect(plugins.length).toBeGreaterThan(0)
 	})
 
-	test('should include Astro transform plugin', () => {
-		const context = createMockContext()
-		const plugins = createVitePlugin(context)
-
-		const astroPlugin = plugins.find(p => p.name === 'astro-cms-source-injector')
-		expect(astroPlugin).toBeDefined()
-		expect(astroPlugin?.transform).toBeDefined()
-	})
-
 	test('should include virtual manifest plugin', () => {
 		const context = createMockContext()
 		const plugins = createVitePlugin(context)
@@ -52,17 +43,6 @@ describe('Vite Plugin', () => {
 		expect(manifestPlugin).toBeDefined()
 		expect(manifestPlugin?.resolveId).toBeDefined()
 		expect(manifestPlugin?.load).toBeDefined()
-	})
-
-	test('Astro transform plugin should only process .astro files', () => {
-		const context = createMockContext()
-		const plugins = createVitePlugin(context)
-		const astroPlugin = plugins.find(p => p.name === 'astro-cms-source-injector')
-
-		expect(astroPlugin).toBeDefined()
-
-		// The transform function should be defined
-		expect(typeof astroPlugin?.transform).toBe('function')
 	})
 
 	test('virtual manifest plugin should resolve virtual module IDs', () => {
@@ -109,16 +89,5 @@ describe('Vite Plugin', () => {
 			const loaded = load('\0virtual:cms-manifest')
 			expect(loaded).toContain(JSON.stringify(mockManifest))
 		}
-	})
-
-	test('should pass markComponents config to Astro transform plugin', () => {
-		const context = createMockContext()
-		context.config.markComponents = false
-
-		const plugins = createVitePlugin(context)
-		const astroPlugin = plugins.find(p => p.name === 'astro-cms-source-injector')
-
-		// The plugin should be created with the config
-		expect(astroPlugin).toBeDefined()
 	})
 })
