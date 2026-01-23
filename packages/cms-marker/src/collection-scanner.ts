@@ -41,7 +41,7 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
 	for (const line of lines) {
 		// Check for array item (starts with "- ")
 		const arrayMatch = line.match(/^(\s*)- (.*)$/)
-		if (arrayMatch && isInArray) {
+		if (arrayMatch && isInArray && arrayMatch[2] !== undefined) {
 			const value = parseYamlValue(arrayMatch[2].trim())
 			currentArrayItems.push(value)
 			continue
@@ -49,7 +49,7 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
 
 		// Check for key-value pair
 		const kvMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$/)
-		if (kvMatch) {
+		if (kvMatch && kvMatch[1] && kvMatch[2] !== undefined) {
 			// Save previous array if any
 			if (isInArray && currentKey) {
 				frontmatter[currentKey] = currentArrayItems
