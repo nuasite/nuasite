@@ -2,13 +2,16 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findImageSourceLocation, findSourceLocation } from '../../src/source-finder'
+import { clearSourceFinderCache, findImageSourceLocation, findSourceLocation } from '../../src/source-finder'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const testDir = path.join(__dirname, '__test-fixtures__')
 
 describe('findSourceLocation', () => {
 	beforeEach(async () => {
+		// Clear caches from previous tests
+		clearSourceFinderCache()
+
 		await fs.mkdir(testDir, { recursive: true })
 		await fs.mkdir(path.join(testDir, 'src/components'), { recursive: true })
 		await fs.mkdir(path.join(testDir, 'src/pages'), { recursive: true })
@@ -523,6 +526,9 @@ import Header from '../components/Header.astro';
 
 describe('findImageSourceLocation', () => {
 	beforeEach(async () => {
+		// Clear caches from previous tests
+		clearSourceFinderCache()
+
 		await fs.mkdir(testDir, { recursive: true })
 		await fs.mkdir(path.join(testDir, 'src/components'), { recursive: true })
 		await fs.mkdir(path.join(testDir, 'src/pages'), { recursive: true })
