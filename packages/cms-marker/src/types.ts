@@ -147,10 +147,6 @@ export interface ManifestEntry {
 	collectionSlug?: string
 	/** Path to the markdown content file (e.g., 'src/content/blog/my-post.md') */
 	contentPath?: string
-	/** Image source URL (for image entries) - deprecated, use imageMetadata */
-	imageSrc?: string
-	/** Image alt text (for image entries) - deprecated, use imageMetadata */
-	imageAlt?: string
 
 	// === Robustness fields ===
 

@@ -1,8 +1,16 @@
-import type { ViteDevServer } from 'vite'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import { findCollectionSource, findImageSourceLocation, parseMarkdownContent } from './source-finder'
 import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition } from './types'
+
+/** Minimal ViteDevServer interface to avoid version conflicts between Astro's bundled Vite and root Vite */
+interface ViteDevServerLike {
+	middlewares: {
+		use: (middleware: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void
+	}
+	transformIndexHtml: (url: string, html: string) => Promise<string>
+}
 
 /**
  * Get the normalized page path from a URL
@@ -21,7 +29,7 @@ function normalizePagePath(url: string): string {
 }
 
 export function createDevMiddleware(
-	server: ViteDevServer,
+	server: ViteDevServerLike,
 	config: Required<CmsMarkerOptions>,
 	manifestWriter: ManifestWriter,
 	componentDefinitions: Record<string, ComponentDefinition>,
@@ -217,8 +225,8 @@ async function processHtmlForDev(
 	// However, images may not have source info if their ancestors don't have it
 	// In that case, fall back to searching for the image src
 	for (const entry of Object.values(result.entries)) {
-		if (entry.sourceType === 'image' && entry.imageSrc && !entry.sourcePath) {
-			const imageSource = await findImageSourceLocation(entry.imageSrc)
+		if (entry.sourceType === 'image' && entry.imageMetadata?.src && !entry.sourcePath) {
+			const imageSource = await findImageSourceLocation(entry.imageMetadata.src)
 			if (imageSource) {
 				entry.sourcePath = imageSource.file
 				entry.sourceLine = imageSource.line

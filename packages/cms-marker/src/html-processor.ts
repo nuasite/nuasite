@@ -1,8 +1,11 @@
-import { parse } from 'node-html-parser'
+import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import { enhanceManifestWithSourceSnippets } from './source-finder'
 import { extractColorClasses } from './tailwind-colors'
-import type { ComponentInstance, ManifestEntry, SourceContext } from './types'
+import type { ComponentInstance, ImageMetadata, ManifestEntry, SourceContext } from './types'
 import { generateStableId } from './utils'
+
+/** Type for parsed HTML element nodes from node-html-parser */
+type HTMLNode = ParsedHTMLElement
 
 /**
  * Inline text styling elements that should NOT be marked with CMS IDs.
@@ -187,7 +190,7 @@ export async function processHtml(
 	const entries: Record<string, ManifestEntry> = {}
 	const components: Record<string, ComponentInstance> = {}
 	const sourceLocationMap = new Map<string, { file: string; line: number }>()
-	const markedComponentRoots = new Set<any>()
+	const markedComponentRoots = new Set<HTMLNode>()
 	let collectionWrapperId: string | undefined
 
 	// First pass: detect and mark component root elements
@@ -222,15 +225,15 @@ export async function processHtml(
 
 			// Check if any ancestor is already marked as a component root from the same file
 			// (we only want to mark the outermost element from each component)
-			let parent = node.parentNode
+			let parent = node.parentNode as HTMLNode | null
 			let ancestorFromSameComponent = false
 			while (parent) {
-				const parentSource = (parent as any).getAttribute?.('data-astro-source-file')
+				const parentSource = parent.getAttribute?.('data-astro-source-file')
 				if (parentSource === sourceFile) {
 					ancestorFromSameComponent = true
 					break
 				}
-				parent = parent.parentNode
+				parent = parent.parentNode as HTMLNode | null
 			}
 
 			if (ancestorFromSameComponent) return
@@ -279,7 +282,12 @@ export async function processHtml(
 
 	// Image detection pass: mark img elements for CMS image replacement
 	// Store image entries separately to add to manifest later
-	const imageEntries = new Map<string, { src: string; alt: string; sourceFile?: string; sourceLine?: number }>()
+	interface ImageEntry {
+		metadata: ImageMetadata
+		sourceFile?: string
+		sourceLine?: number
+	}
+	const imageEntries = new Map<string, ImageEntry>()
 	root.querySelectorAll('img').forEach((node) => {
 		// Skip if already marked
 		if (node.getAttribute(attributeName)) return
@@ -294,7 +302,7 @@ export async function processHtml(
 		// Try to get source location from the image itself or ancestors
 		let sourceFile: string | undefined
 		let sourceLine: number | undefined
-		let current: any = node
+		let current: HTMLNode | null = node
 		while (current && !sourceFile) {
 			const file = current.getAttribute?.('data-astro-source-file')
 			const line = current.getAttribute?.('data-astro-source-loc') || current.getAttribute?.('data-astro-source-line')
@@ -307,13 +315,20 @@ export async function processHtml(
 					}
 				}
 			}
-			current = current.parentNode
+			current = current.parentNode as HTMLNode | null
+		}
+
+		// Build image metadata
+		const metadata: ImageMetadata = {
+			src,
+			alt: node.getAttribute('alt') || '',
+			srcSet: node.getAttribute('srcset') || undefined,
+			sizes: node.getAttribute('sizes') || undefined,
 		}
 
 		// Store image info for manifest
 		imageEntries.set(id, {
-			src,
-			alt: node.getAttribute('alt') || '',
+			metadata,
 			sourceFile,
 			sourceLine,
 		})
@@ -335,23 +350,23 @@ export async function processHtml(
 			// Check if this element has any direct child elements without source file attribute
 			// These would be markdown-rendered elements
 			const childElements = node.childNodes.filter(
-				(child: any) => child.nodeType === 1 && child.tagName,
+				(child): child is HTMLNode => child.nodeType === 1 && 'tagName' in child,
 			)
 			const hasMarkdownChildren = childElements.some(
-				(child: any) => !child.getAttribute?.('data-astro-source-file'),
+				(child) => !child.getAttribute?.('data-astro-source-file'),
 			)
 
 			if (hasMarkdownChildren) {
 				// Check if any ancestor already has been marked as a collection wrapper
 				// We want the innermost wrapper
-				let parent = node.parentNode
+				let parent = node.parentNode as HTMLNode | null
 				let hasAncestorWrapper = false
 				while (parent) {
-					if ((parent as any).getAttribute?.(attributeName)?.startsWith('cms-collection-')) {
+					if (parent.getAttribute?.(attributeName)?.startsWith('cms-collection-')) {
 						hasAncestorWrapper = true
 						break
 					}
-					parent = parent.parentNode
+					parent = parent.parentNode as HTMLNode | null
 				}
 
 				if (!hasAncestorWrapper) {
@@ -382,7 +397,7 @@ export async function processHtml(
 
 			if (bodyStart.length > 10) {
 				// Store all candidates that match the body start
-				const candidates: Array<{ node: any; blockChildCount: number }> = []
+				const candidates: Array<{ node: HTMLNode; blockChildCount: number }> = []
 
 				for (const node of allElements) {
 					const tag = node.tagName?.toLowerCase?.() ?? ''
@@ -391,8 +406,8 @@ export async function processHtml(
 
 					// Check if this element's first text content starts with the markdown body
 					const firstChild = node.childNodes.find(
-						(child: any) => child.nodeType === 1 && child.tagName,
-					) as any
+						(child): child is HTMLNode => child.nodeType === 1 && 'tagName' in child,
+					)
 
 					if (firstChild) {
 						const firstChildText = (firstChild.innerText || '').trim().substring(0, 80)
@@ -401,7 +416,7 @@ export async function processHtml(
 							// Markdown typically renders to multiple block elements (p, h2, h3, ul, ol, etc.)
 							const blockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre', 'table', 'hr']
 							const blockChildCount = node.childNodes.filter(
-								(child: any) => child.nodeType === 1 && blockTags.includes(child.tagName?.toLowerCase?.()),
+								(child): child is HTMLNode => child.nodeType === 1 && 'tagName' in child && blockTags.includes((child as HTMLNode).tagName?.toLowerCase?.() ?? ''),
 							).length
 
 							candidates.push({ node, blockChildCount })
@@ -495,11 +510,14 @@ export async function processHtml(
 
 			// Get child CMS elements
 			const childCmsElements = node.querySelectorAll(`[${attributeName}]`)
-			const childCmsIds = Array.from(childCmsElements).map((child: any) => child.getAttribute(attributeName))
+			const childCmsIds = Array.from(childCmsElements)
+				.map((child) => child.getAttribute(attributeName))
+				.filter((id): id is string => id !== null)
 
 			// Build text with placeholders for child CMS elements
 			// Recursively process child nodes to handle nested CMS elements correctly
-			const buildTextWithPlaceholders = (nodes: any[]): string => {
+			type ChildNode = { nodeType: number; text?: string; childNodes?: ChildNode[]; getAttribute?: (name: string) => string | null }
+			const buildTextWithPlaceholders = (nodes: ChildNode[]): string => {
 				let text = ''
 				for (const child of nodes) {
 					if (child.nodeType === 3) {
@@ -507,21 +525,21 @@ export async function processHtml(
 						text += child.text || ''
 					} else if (child.nodeType === 1) {
 						// Element node
-						const directCmsId = (child as any).getAttribute?.(attributeName)
+						const directCmsId = child.getAttribute?.(attributeName)
 
 						if (directCmsId) {
 							// Child has a direct CMS ID - use placeholder
 							text += `{{cms:${directCmsId}}}`
 						} else {
 							// Child doesn't have a CMS ID - recursively process its children
-							text += buildTextWithPlaceholders(child.childNodes || [])
+							text += buildTextWithPlaceholders((child.childNodes || []) as ChildNode[])
 						}
 					}
 				}
 				return text
 			}
 
-			const textWithPlaceholders = buildTextWithPlaceholders(node.childNodes || [])
+			const textWithPlaceholders = buildTextWithPlaceholders((node.childNodes || []) as ChildNode[])
 
 			// Get direct text content (without placeholders)
 			const directText = textWithPlaceholders.replace(/\{\{cms:[^}]+\}\}/g, '').trim()
@@ -540,14 +558,14 @@ export async function processHtml(
 
 			// Find parent component if any
 			let parentComponentId: string | undefined
-			let parent = node.parentNode
+			let parent = node.parentNode as HTMLNode | null
 			while (parent) {
-				const parentCompId = (parent as any).getAttribute?.('data-cms-component-id')
+				const parentCompId = parent.getAttribute?.('data-cms-component-id')
 				if (parentCompId) {
 					parentComponentId = parentCompId
 					break
 				}
-				parent = parent.parentNode
+				parent = parent.parentNode as HTMLNode | null
 			}
 
 			// Extract source context for resilient matching
@@ -564,7 +582,7 @@ export async function processHtml(
 			const imageInfo = imageEntries.get(id)
 			const isImage = !!imageInfo
 
-			const entryText = isImage ? (imageInfo.alt || imageInfo.src) : textWithPlaceholders.trim()
+			const entryText = isImage ? (imageInfo.metadata.alt || imageInfo.metadata.src) : textWithPlaceholders.trim()
 			// For images, use the source file we captured from ancestors if not in sourceLocationMap
 			const entrySourcePath = sourceLocation?.file || imageInfo?.sourceFile || sourcePath
 
@@ -591,12 +609,11 @@ export async function processHtml(
 				collectionName: isCollectionWrapper ? collectionInfo?.name : undefined,
 				collectionSlug: isCollectionWrapper ? collectionInfo?.slug : undefined,
 				contentPath: isCollectionWrapper ? collectionInfo?.contentPath : undefined,
-				// Add image info for image entries
-				imageSrc: imageInfo?.src,
-				imageAlt: imageInfo?.alt,
 				// Robustness fields
 				stableId,
 				sourceContext,
+				// Image metadata for image entries
+				imageMetadata: imageInfo?.metadata,
 				// Color classes for buttons/styled elements
 				colorClasses,
 			}
@@ -604,7 +621,7 @@ export async function processHtml(
 	}
 
 	// Clean up any remaining source attributes from component-marked elements
-	markedComponentRoots.forEach((node: any) => {
+	markedComponentRoots.forEach((node) => {
 		node.removeAttribute('data-astro-source-file')
 		node.removeAttribute('data-astro-source-loc')
 		node.removeAttribute('data-astro-source-line')
@@ -645,13 +662,13 @@ export function cleanText(text: string): string {
  * This captures information about the element's position in the DOM
  * that can be used as fallback when exact matching fails.
  */
-function extractSourceContext(node: any, attributeName: string): SourceContext | undefined {
-	const parent = node.parentNode
+function extractSourceContext(node: HTMLNode, attributeName: string): SourceContext | undefined {
+	const parent = node.parentNode as HTMLNode | null
 	if (!parent) return undefined
 
-	const siblings = parent.childNodes?.filter((child: any) => {
+	const siblings = parent.childNodes?.filter((child): child is HTMLNode => {
 		// Only consider element nodes, not text nodes
-		return child.nodeType === 1 && child.tagName
+		return child.nodeType === 1 && 'tagName' in child
 	}) || []
 
 	const siblingIndex = siblings.indexOf(node)
