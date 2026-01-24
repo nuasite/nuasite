@@ -280,61 +280,10 @@ export async function processHtml(
 		})
 	}
 
-	// Image detection pass: mark img elements for CMS image replacement
-	// Store image entries separately to add to manifest later
-	interface ImageEntry {
-		metadata: ImageMetadata
-		sourceFile?: string
-		sourceLine?: number
-	}
-	const imageEntries = new Map<string, ImageEntry>()
-	root.querySelectorAll('img').forEach((node) => {
-		// Skip if already marked
-		if (node.getAttribute(attributeName)) return
-
-		const src = node.getAttribute('src')
-		if (!src) return // Skip images without src
-
-		const id = getNextId()
-		node.setAttribute(attributeName, id)
-		node.setAttribute('data-cms-img', 'true')
-
-		// Try to get source location from the image itself or ancestors
-		let sourceFile: string | undefined
-		let sourceLine: number | undefined
-		let current: HTMLNode | null = node
-		while (current && !sourceFile) {
-			const file = current.getAttribute?.('data-astro-source-file')
-			const line = current.getAttribute?.('data-astro-source-loc') || current.getAttribute?.('data-astro-source-line')
-			if (file) {
-				sourceFile = file
-				if (line) {
-					const lineNum = parseInt(line.split(':')[0] ?? '1', 10)
-					if (!Number.isNaN(lineNum)) {
-						sourceLine = lineNum
-					}
-				}
-			}
-			current = current.parentNode as HTMLNode | null
-		}
-
-		// Build image metadata
-		const metadata: ImageMetadata = {
-			src,
-			alt: node.getAttribute('alt') || '',
-			srcSet: node.getAttribute('srcset') || undefined,
-			sizes: node.getAttribute('sizes') || undefined,
-		}
-
-		// Store image info for manifest
-		imageEntries.set(id, {
-			metadata,
-			sourceFile,
-			sourceLine,
-		})
-	})
-
 	// Collection wrapper detection pass: find the element that wraps markdown content
+	// This needs to run BEFORE image marking so we can skip images inside markdown
+	let markdownWrapperNode: HTMLNode | null = null
+
 	// Two strategies:
 	// 1. Dev mode: look for elements with data-astro-source-file containing children without it
 	// 2. Build mode: find element whose first child content matches the start of markdown body
@@ -375,6 +324,7 @@ export async function processHtml(
 					node.setAttribute(attributeName, id)
 					node.setAttribute('data-cms-markdown', 'true')
 					collectionWrapperId = id
+					markdownWrapperNode = node
 					foundWrapper = true
 					// Don't break - we want the deepest wrapper, so we'll overwrite
 				}
@@ -436,12 +386,82 @@ export async function processHtml(
 						best.node.setAttribute(attributeName, id)
 						best.node.setAttribute('data-cms-markdown', 'true')
 						collectionWrapperId = id
+						markdownWrapperNode = best.node
 						foundWrapper = true
 					}
 				}
 			}
 		}
 	}
+
+	// Helper function to check if a node is inside the markdown wrapper
+	const isInsideMarkdownWrapper = (node: HTMLNode): boolean => {
+		if (!markdownWrapperNode) return false
+		let current = node.parentNode as HTMLNode | null
+		while (current) {
+			if (current === markdownWrapperNode) return true
+			current = current.parentNode as HTMLNode | null
+		}
+		return false
+	}
+
+	// Image detection pass: mark img elements for CMS image replacement
+	// Store image entries separately to add to manifest later
+	// NOTE: Skip images inside markdown wrapper - they are edited via the markdown editor
+	interface ImageEntry {
+		metadata: ImageMetadata
+		sourceFile?: string
+		sourceLine?: number
+	}
+	const imageEntries = new Map<string, ImageEntry>()
+	root.querySelectorAll('img').forEach((node) => {
+		// Skip if already marked
+		if (node.getAttribute(attributeName)) return
+
+		// Skip images inside markdown wrapper - they are edited via the markdown editor
+		if (isInsideMarkdownWrapper(node)) return
+
+		const src = node.getAttribute('src')
+		if (!src) return // Skip images without src
+
+		const id = getNextId()
+		node.setAttribute(attributeName, id)
+		node.setAttribute('data-cms-img', 'true')
+
+		// Try to get source location from the image itself or ancestors
+		let sourceFile: string | undefined
+		let sourceLine: number | undefined
+		let current: HTMLNode | null = node
+		while (current && !sourceFile) {
+			const file = current.getAttribute?.('data-astro-source-file')
+			const line = current.getAttribute?.('data-astro-source-loc') || current.getAttribute?.('data-astro-source-line')
+			if (file) {
+				sourceFile = file
+				if (line) {
+					const lineNum = parseInt(line.split(':')[0] ?? '1', 10)
+					if (!Number.isNaN(lineNum)) {
+						sourceLine = lineNum
+					}
+				}
+			}
+			current = current.parentNode as HTMLNode | null
+		}
+
+		// Build image metadata
+		const metadata: ImageMetadata = {
+			src,
+			alt: node.getAttribute('alt') || '',
+			srcSet: node.getAttribute('srcset') || undefined,
+			sizes: node.getAttribute('sizes') || undefined,
+		}
+
+		// Store image info for manifest
+		imageEntries.set(id, {
+			metadata,
+			sourceFile,
+			sourceLine,
+		})
+	})
 
 	// Third pass: assign IDs to all qualifying text elements and extract source locations
 	root.querySelectorAll('*').forEach((node) => {
@@ -450,6 +470,9 @@ export async function processHtml(
 		if (excludeTags.includes(tag)) return
 		if (includeTags && !includeTags.includes(tag)) return
 		if (node.getAttribute(attributeName)) return // Already marked
+
+		// Skip elements inside markdown wrapper - they are edited via the markdown editor
+		if (isInsideMarkdownWrapper(node)) return
 
 		// Skip inline text styling elements (strong, b, em, i, etc.)
 		// These should be part of their parent's text content, not separately editable
