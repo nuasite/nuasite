@@ -14,7 +14,7 @@
 		"directory": "packages/cms-marker"
 	},
 	"license": "Apache-2.0",
-	"version": "0.0.70",
+	"version": "0.0.71",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
 	"type": "module",
