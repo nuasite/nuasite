@@ -1,7 +1,6 @@
 import { parse as parseAstro } from '@astrojs/compiler'
 import type { ComponentNode, ElementNode, Node as AstroNode, TextNode } from '@astrojs/compiler/types'
 import { parse as parseBabel } from '@babel/parser'
-import type * as t from '@babel/types'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
@@ -514,18 +513,30 @@ async function parseAstroFile(content: string): Promise<ParsedAstroFile> {
 	}
 }
 
+/** Minimal Babel AST node type for our usage */
+interface BabelNode {
+	type: string
+	[key: string]: unknown
+}
+
+/** Minimal Babel File type */
+interface BabelFile {
+	type: 'File'
+	program: BabelNode & { body: BabelNode[] }
+}
+
 /**
  * Parse frontmatter JavaScript/TypeScript with Babel
  * @param content - The frontmatter content to parse
  * @param filePath - Optional file path for error reporting
  */
-function parseFrontmatter(content: string, filePath?: string): t.File | null {
+function parseFrontmatter(content: string, filePath?: string): BabelFile | null {
 	try {
 		return parseBabel(content, {
 			sourceType: 'module',
 			plugins: ['typescript'],
 			errorRecovery: true,
-		})
+		}) as unknown as BabelFile
 	} catch (error) {
 		// Record parse errors for aggregated reporting
 		if (filePath) {
@@ -554,15 +565,19 @@ interface VariableDefinition {
  * frontmatterStartLine is the actual file line where the content begins (after first ---).
  * So we convert: file_line = (babel_line - 1) + frontmatterStartLine
  */
-function extractVariableDefinitions(ast: t.File, frontmatterStartLine: number): VariableDefinition[] {
+function extractVariableDefinitions(ast: BabelFile, frontmatterStartLine: number): VariableDefinition[] {
 	const definitions: VariableDefinition[] = []
 
-	function getStringValue(node: t.Node): string | null {
+	function getStringValue(node: BabelNode): string | null {
 		if (node.type === 'StringLiteral') {
-			return node.value
+			return node.value as string
 		}
-		if (node.type === 'TemplateLiteral' && node.quasis.length === 1 && node.expressions.length === 0) {
-			return node.quasis[0]?.value.cooked ?? null
+		if (node.type === 'TemplateLiteral') {
+			const quasis = node.quasis as Array<{ value: { cooked: string | null } }> | undefined
+			const expressions = node.expressions as unknown[] | undefined
+			if (quasis?.length === 1 && expressions?.length === 0) {
+				return quasis[0]?.value.cooked ?? null
+			}
 		}
 		return null
 	}
@@ -572,28 +587,36 @@ function extractVariableDefinitions(ast: t.File, frontmatterStartLine: number): 
 		return (babelLine - 1) + frontmatterStartLine
 	}
 
-	function visitNode(node: t.Node) {
+	function visitNode(node: BabelNode) {
 		if (node.type === 'VariableDeclaration') {
-			for (const decl of node.declarations) {
-				if (decl.id.type === 'Identifier' && decl.init) {
-					const varName = decl.id.name
-					const line = babelLineToFileLine(decl.loc?.start.line ?? 1)
+			const declarations = node.declarations as BabelNode[] | undefined
+			for (const decl of declarations ?? []) {
+				const id = decl.id as BabelNode | undefined
+				const init = decl.init as BabelNode | undefined
+				if (id?.type === 'Identifier' && init) {
+					const varName = id.name as string
+					const loc = decl.loc as { start: { line: number } } | undefined
+					const line = babelLineToFileLine(loc?.start.line ?? 1)
 
 					// Simple string value
-					const stringValue = getStringValue(decl.init)
+					const stringValue = getStringValue(init)
 					if (stringValue !== null) {
 						definitions.push({ name: varName, value: stringValue, line })
 					}
 
 					// Object expression - extract properties
-					if (decl.init.type === 'ObjectExpression') {
-						for (const prop of decl.init.properties) {
-							if (prop.type === 'ObjectProperty' && prop.key.type === 'Identifier' && prop.value) {
-								const propValue = getStringValue(prop.value)
+					if (init.type === 'ObjectExpression') {
+						const properties = init.properties as BabelNode[] | undefined
+						for (const prop of properties ?? []) {
+							const key = prop.key as BabelNode | undefined
+							const value = prop.value as BabelNode | undefined
+							if (prop.type === 'ObjectProperty' && key?.type === 'Identifier' && value) {
+								const propValue = getStringValue(value)
 								if (propValue !== null) {
-									const propLine = babelLineToFileLine(prop.loc?.start.line ?? 1)
+									const propLoc = prop.loc as { start: { line: number } } | undefined
+									const propLine = babelLineToFileLine(propLoc?.start.line ?? 1)
 									definitions.push({
-										name: prop.key.name,
+										name: key.name as string,
 										value: propValue,
 										line: propLine,
 										parentName: varName,
@@ -608,16 +631,16 @@ function extractVariableDefinitions(ast: t.File, frontmatterStartLine: number): 
 
 		// Recursively visit child nodes
 		for (const key of Object.keys(node)) {
-			const value = (node as unknown as Record<string, unknown>)[key]
+			const value = node[key]
 			if (value && typeof value === 'object') {
 				if (Array.isArray(value)) {
 					for (const item of value) {
 						if (item && typeof item === 'object' && 'type' in item) {
-							visitNode(item as t.Node)
+							visitNode(item as BabelNode)
 						}
 					}
 				} else if ('type' in value) {
-					visitNode(value as t.Node)
+					visitNode(value as BabelNode)
 				}
 			}
 		}
