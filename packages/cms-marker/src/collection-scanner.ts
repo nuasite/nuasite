@@ -49,7 +49,7 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
 
 		// Check for key-value pair
 		const kvMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$/)
-		if (kvMatch && kvMatch[1] && kvMatch[2] !== undefined) {
+		if (kvMatch?.[1] && kvMatch[2] !== undefined) {
 			// Save previous array if any
 			if (isInArray && currentKey) {
 				frontmatter[currentKey] = currentArrayItems
@@ -100,7 +100,7 @@ function parseYamlValue(value: string): unknown {
 
 	// Handle numbers
 	const num = Number(value)
-	if (!isNaN(num) && value !== '') return num
+	if (!Number.isNaN(num) && value !== '') return num
 
 	return value
 }
@@ -136,7 +136,10 @@ function inferFieldType(value: unknown, key: string): FieldType {
 		}
 
 		// Check for image paths
-		if (IMAGE_EXTENSIONS.test(value) || key.toLowerCase().includes('image') || key.toLowerCase().includes('thumbnail') || key.toLowerCase().includes('cover')) {
+		if (
+			IMAGE_EXTENSIONS.test(value) || key.toLowerCase().includes('image') || key.toLowerCase().includes('thumbnail')
+			|| key.toLowerCase().includes('cover')
+		) {
 			return 'image'
 		}
 
@@ -225,7 +228,7 @@ function mergeFieldObservations(observations: FieldObservation[]): FieldDefiniti
 /**
  * Scan a single collection directory and infer its schema
  */
-async function scanCollection(collectionPath: string, collectionName: string): Promise<CollectionDefinition | null> {
+async function scanCollection(collectionPath: string, collectionName: string, contentDir: string): Promise<CollectionDefinition | null> {
 	try {
 		const entries = await fs.readdir(collectionPath, { withFileTypes: true })
 		const markdownFiles = entries.filter(e => e.isFile() && (e.name.endsWith('.md') || e.name.endsWith('.mdx')))
@@ -283,7 +286,7 @@ async function scanCollection(collectionPath: string, collectionName: string): P
 		return {
 			name: collectionName,
 			label,
-			path: collectionPath,
+			path: path.join(contentDir, collectionName),
 			entryCount: markdownFiles.length,
 			fields,
 			supportsDraft: hasDraft,
@@ -310,7 +313,7 @@ export async function scanCollections(contentDir: string = 'src/content'): Promi
 			.filter(entry => entry.isDirectory() && !entry.name.startsWith('_') && !entry.name.startsWith('.'))
 			.map(async entry => {
 				const collectionPath = path.join(fullContentDir, entry.name)
-				const definition = await scanCollection(collectionPath, entry.name)
+				const definition = await scanCollection(collectionPath, entry.name, contentDir)
 				if (definition) {
 					collections[entry.name] = definition
 				}
