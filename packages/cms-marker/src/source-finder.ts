@@ -12,6 +12,16 @@ import { generateSourceHash } from './utils'
 // File Parsing Cache - Avoid re-parsing the same files
 // ============================================================================
 
+/** Import information from frontmatter */
+interface ImportInfo {
+	/** Local name of the imported binding */
+	localName: string
+	/** Original exported name (or 'default' for default imports) */
+	importedName: string
+	/** The import source path (e.g., './config', '../data/nav') */
+	source: string
+}
+
 interface CachedParsedFile {
 	content: string
 	lines: string[]
@@ -19,6 +29,11 @@ interface CachedParsedFile {
 	frontmatterContent: string | null
 	frontmatterStartLine: number
 	variableDefinitions: VariableDefinition[]
+	/** Mapping of local variable names to prop names from Astro.props destructuring
+	 *  e.g., { navItems: 'items' } for `const { items: navItems } = Astro.props` */
+	propAliases: Map<string, string>
+	/** Import information from frontmatter */
+	imports: ImportInfo[]
 }
 
 /** Cache for parsed Astro files - cleared between builds */
@@ -162,6 +177,8 @@ async function getCachedParsedFile(filePath: string): Promise<CachedParsedFile |
 				frontmatterContent: null,
 				frontmatterStartLine: 0,
 				variableDefinitions: [],
+				propAliases: new Map(),
+				imports: [],
 			}
 			parsedFileCache.set(filePath, entry)
 			return entry
@@ -170,10 +187,14 @@ async function getCachedParsedFile(filePath: string): Promise<CachedParsedFile |
 		const { ast, frontmatterContent, frontmatterStartLine } = await parseAstroFile(content)
 
 		let variableDefinitions: VariableDefinition[] = []
+		let propAliases = new Map<string, string>()
+		let imports: ImportInfo[] = []
 		if (frontmatterContent) {
 			const frontmatterAst = parseFrontmatter(frontmatterContent, filePath)
 			if (frontmatterAst) {
 				variableDefinitions = extractVariableDefinitions(frontmatterAst, frontmatterStartLine)
+				propAliases = extractPropAliases(frontmatterAst)
+				imports = extractImports(frontmatterAst)
 			}
 		}
 
@@ -184,6 +205,8 @@ async function getCachedParsedFile(filePath: string): Promise<CachedParsedFile |
 			frontmatterContent,
 			frontmatterStartLine,
 			variableDefinitions,
+			propAliases,
+			imports,
 		}
 
 		parsedFileCache.set(filePath, entry)
@@ -210,9 +233,15 @@ function indexFileContent(cached: CachedParsedFile, relFile: string): void {
 				// Check for variable references
 				const exprInfo = hasExpressionChild(elemNode)
 				if (exprInfo.found && exprInfo.varNames.length > 0) {
-					for (const varName of exprInfo.varNames) {
+					for (const exprPath of exprInfo.varNames) {
 						for (const def of cached.variableDefinitions) {
-							if (def.name === varName || (def.parentName && def.name === varName)) {
+							// Build the full definition path for comparison
+							// For array indices (numeric names), use bracket notation
+							const defPath = buildDefinitionPath(def)
+							// Check if the expression path matches the definition path
+							// e.g., 'config.nav.title' matches def with parentName='config.nav', name='title'
+							// or 'items[0]' matches def with parentName='items', name='0'
+							if (defPath === exprPath) {
 								const normalizedDef = normalizeText(def.value)
 								const completeSnippet = extractCompleteTagSnippet(cached.lines, line - 1, tag)
 								const snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
@@ -222,7 +251,7 @@ function indexFileContent(cached: CachedParsedFile, relFile: string): void {
 									line: def.line,
 									snippet: cached.lines[def.line - 1] || '',
 									type: 'variable',
-									variableName: def.parentName ? `${def.parentName}.${def.name}` : def.name,
+									variableName: defPath,
 									definitionLine: def.line,
 									normalizedText: normalizedDef,
 									tag,
@@ -416,14 +445,45 @@ function getTextContent(node: AstroNode): string {
 	return ''
 }
 
+/**
+ * Parse an expression path and extract the full path for variable lookup.
+ * Handles patterns like: varName, obj.prop, items[0], config.nav.title, links[0].text
+ * @returns The full expression path or null if not a simple variable reference
+ */
+function parseExpressionPath(exprText: string): string | null {
+	// Match patterns like: varName, obj.prop, items[0], config.nav.title, links[0].text
+	// Pattern breakdown: word characters, dots, and bracket notation with numbers
+	const match = exprText.match(/^\s*([\w]+(?:\.[\w]+|\[\d+\])*(?:\.[\w]+)?)\s*$/)
+	if (match) {
+		return match[1]!
+	}
+	return null
+}
+
+/**
+ * Build the full path for a variable definition.
+ * For array indices (numeric names), uses bracket notation: items[0]
+ * For object properties, uses dot notation: config.nav.title
+ */
+function buildDefinitionPath(def: VariableDefinition): string {
+	if (!def.parentName) {
+		return def.name
+	}
+	// Check if the name is a numeric index (for arrays)
+	if (/^\d+$/.test(def.name)) {
+		return `${def.parentName}[${def.name}]`
+	}
+	return `${def.parentName}.${def.name}`
+}
+
 // Helper for indexing - check for expression children
 function hasExpressionChild(node: AstroNode): { found: boolean; varNames: string[] } {
 	const varNames: string[] = []
 	if (node.type === 'expression') {
 		const exprText = getTextContent(node)
-		const match = exprText.match(/^\s*(\w+)(?:\.(\w+))?\s*$/)
-		if (match) {
-			varNames.push(match[2] ?? match[1]!)
+		const fullPath = parseExpressionPath(exprText)
+		if (fullPath) {
+			varNames.push(fullPath)
 		}
 		return { found: true, varNames }
 	}
@@ -587,6 +647,105 @@ function extractVariableDefinitions(ast: BabelFile, frontmatterStartLine: number
 		return (babelLine - 1) + frontmatterStartLine
 	}
 
+	/**
+	 * Recursively extract properties from an object expression
+	 * @param objNode - The ObjectExpression node
+	 * @param parentPath - The full path to this object (e.g., 'config' or 'config.nav')
+	 */
+	function extractObjectProperties(objNode: BabelNode, parentPath: string): void {
+		const properties = objNode.properties as BabelNode[] | undefined
+		for (const prop of properties ?? []) {
+			if (prop.type !== 'ObjectProperty') continue
+			const key = prop.key as BabelNode | undefined
+			const value = prop.value as BabelNode | undefined
+			if (!key || key.type !== 'Identifier' || !value) continue
+
+			const propName = key.name as string
+			const fullPath = `${parentPath}.${propName}`
+			const propLoc = prop.loc as { start: { line: number } } | undefined
+			const propLine = babelLineToFileLine(propLoc?.start.line ?? 1)
+
+			const stringValue = getStringValue(value)
+			if (stringValue !== null) {
+				definitions.push({
+					name: propName,
+					value: stringValue,
+					line: propLine,
+					parentName: parentPath,
+				})
+			}
+
+			// Recurse for nested objects
+			if (value.type === 'ObjectExpression') {
+				extractObjectProperties(value, fullPath)
+			}
+
+			// Handle arrays within objects
+			if (value.type === 'ArrayExpression') {
+				extractArrayElements(value, fullPath, propLine)
+			}
+		}
+	}
+
+	/**
+	 * Extract elements from an array expression
+	 * @param arrNode - The ArrayExpression node
+	 * @param parentPath - The full path to this array (e.g., 'items' or 'config.items')
+	 * @param defaultLine - Fallback line if element has no location
+	 */
+	function extractArrayElements(arrNode: BabelNode, parentPath: string, defaultLine: number): void {
+		const elements = arrNode.elements as BabelNode[] | undefined
+		for (let i = 0; i < (elements?.length ?? 0); i++) {
+			const elem = elements![i]
+			if (!elem) continue
+
+			const elemLoc = elem.loc as { start: { line: number } } | undefined
+			const elemLine = babelLineToFileLine(elemLoc?.start.line ?? defaultLine)
+			const indexPath = `${parentPath}[${i}]`
+
+			// Handle string values in array
+			const elemValue = getStringValue(elem)
+			if (elemValue !== null) {
+				definitions.push({
+					name: String(i),
+					value: elemValue,
+					line: elemLine,
+					parentName: parentPath,
+				})
+			}
+
+			// Handle array of objects: [{ text: 'Home' }]
+			if (elem.type === 'ObjectExpression') {
+				const objProperties = elem.properties as BabelNode[] | undefined
+				for (const prop of objProperties ?? []) {
+					if (prop.type !== 'ObjectProperty') continue
+					const key = prop.key as BabelNode | undefined
+					const value = prop.value as BabelNode | undefined
+					if (!key || key.type !== 'Identifier' || !value) continue
+
+					const propName = key.name as string
+					const propLoc = prop.loc as { start: { line: number } } | undefined
+					const propLine = babelLineToFileLine(propLoc?.start.line ?? elemLine)
+
+					const stringValue = getStringValue(value)
+					if (stringValue !== null) {
+						definitions.push({
+							name: propName,
+							value: stringValue,
+							line: propLine,
+							parentName: indexPath,
+						})
+					}
+
+					// Recurse for nested objects within array elements
+					if (value.type === 'ObjectExpression') {
+						extractObjectProperties(value, `${indexPath}.${propName}`)
+					}
+				}
+			}
+		}
+	}
+
 	function visitNode(node: BabelNode) {
 		if (node.type === 'VariableDeclaration') {
 			const declarations = node.declarations as BabelNode[] | undefined
@@ -604,26 +763,14 @@ function extractVariableDefinitions(ast: BabelFile, frontmatterStartLine: number
 						definitions.push({ name: varName, value: stringValue, line })
 					}
 
-					// Object expression - extract properties
+					// Object expression - extract properties recursively
 					if (init.type === 'ObjectExpression') {
-						const properties = init.properties as BabelNode[] | undefined
-						for (const prop of properties ?? []) {
-							const key = prop.key as BabelNode | undefined
-							const value = prop.value as BabelNode | undefined
-							if (prop.type === 'ObjectProperty' && key?.type === 'Identifier' && value) {
-								const propValue = getStringValue(value)
-								if (propValue !== null) {
-									const propLoc = prop.loc as { start: { line: number } } | undefined
-									const propLine = babelLineToFileLine(propLoc?.start.line ?? 1)
-									definitions.push({
-										name: key.name as string,
-										value: propValue,
-										line: propLine,
-										parentName: varName,
-									})
-								}
-							}
-						}
+						extractObjectProperties(init, varName)
+					}
+
+					// Array expression - extract elements
+					if (init.type === 'ArrayExpression') {
+						extractArrayElements(init, varName, line)
 					}
 				}
 			}
@@ -650,27 +797,418 @@ function extractVariableDefinitions(ast: BabelFile, frontmatterStartLine: number
 	return definitions
 }
 
+/**
+ * Extract prop aliases from Astro.props destructuring patterns.
+ * Returns a Map of local variable name -> prop name.
+ * Examples:
+ *   const { title } = Astro.props         -> Map { 'title' => 'title' }
+ *   const { items: navItems } = Astro.props -> Map { 'navItems' => 'items' }
+ */
+function extractPropAliases(ast: BabelFile): Map<string, string> {
+	const propAliases = new Map<string, string>()
+
+	function visitNode(node: BabelNode) {
+		if (node.type === 'VariableDeclaration') {
+			const declarations = node.declarations as BabelNode[] | undefined
+			for (const decl of declarations ?? []) {
+				const id = decl.id as BabelNode | undefined
+				const init = decl.init as BabelNode | undefined
+
+				// Check for destructuring from Astro.props
+				// Pattern: const { x, y } = Astro.props;
+				if (id?.type === 'ObjectPattern' && init?.type === 'MemberExpression') {
+					const object = init.object as BabelNode | undefined
+					const property = init.property as BabelNode | undefined
+
+					if (
+						object?.type === 'Identifier'
+						&& (object.name as string) === 'Astro'
+						&& property?.type === 'Identifier'
+						&& (property.name as string) === 'props'
+					) {
+						// Extract property names from the destructuring pattern
+						const properties = id.properties as BabelNode[] | undefined
+						for (const prop of properties ?? []) {
+							if (prop.type === 'ObjectProperty') {
+								const key = prop.key as BabelNode | undefined
+								const value = prop.value as BabelNode | undefined
+
+								if (key?.type === 'Identifier') {
+									const propName = key.name as string
+									// Check for renaming: { items: navItems }
+									// key is the prop name (items), value is the local name (navItems)
+									if (value?.type === 'Identifier') {
+										const localName = value.name as string
+										propAliases.set(localName, propName)
+									} else if (value?.type === 'AssignmentPattern') {
+										// Handle default values: { items: navItems = [] } or { items = [] }
+										const left = value.left as BabelNode | undefined
+										if (left?.type === 'Identifier') {
+											propAliases.set(left.name as string, propName)
+										}
+									} else {
+										// Simple case: { items } - key and value are the same
+										propAliases.set(propName, propName)
+									}
+								}
+							} else if (prop.type === 'RestElement') {
+								// Handle rest pattern: const { x, ...rest } = Astro.props;
+								const argument = prop.argument as BabelNode | undefined
+								if (argument?.type === 'Identifier') {
+									// Rest element captures all remaining props
+									propAliases.set(argument.name as string, '...')
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Recursively visit child nodes
+		for (const key of Object.keys(node)) {
+			const value = node[key]
+			if (value && typeof value === 'object') {
+				if (Array.isArray(value)) {
+					for (const item of value) {
+						if (item && typeof item === 'object' && 'type' in item) {
+							visitNode(item as BabelNode)
+						}
+					}
+				} else if ('type' in value) {
+					visitNode(value as BabelNode)
+				}
+			}
+		}
+	}
+
+	visitNode(ast.program)
+	return propAliases
+}
+
+/**
+ * Extract import information from Babel AST.
+ * Handles:
+ *   import { foo } from './file'           -> { localName: 'foo', importedName: 'foo', source: './file' }
+ *   import { foo as bar } from './file'    -> { localName: 'bar', importedName: 'foo', source: './file' }
+ *   import foo from './file'               -> { localName: 'foo', importedName: 'default', source: './file' }
+ *   import * as foo from './file'          -> { localName: 'foo', importedName: '*', source: './file' }
+ */
+function extractImports(ast: BabelFile): ImportInfo[] {
+	const imports: ImportInfo[] = []
+
+	for (const node of ast.program.body) {
+		if (node.type === 'ImportDeclaration') {
+			const source = (node.source as BabelNode)?.value as string
+			if (!source) continue
+
+			const specifiers = node.specifiers as BabelNode[] | undefined
+			for (const spec of specifiers ?? []) {
+				if (spec.type === 'ImportSpecifier') {
+					// Named import: import { foo } from './file' or import { foo as bar } from './file'
+					const imported = spec.imported as BabelNode | undefined
+					const local = spec.local as BabelNode | undefined
+					if (imported?.type === 'Identifier' && local?.type === 'Identifier') {
+						imports.push({
+							localName: local.name as string,
+							importedName: imported.name as string,
+							source,
+						})
+					}
+				} else if (spec.type === 'ImportDefaultSpecifier') {
+					// Default import: import foo from './file'
+					const local = spec.local as BabelNode | undefined
+					if (local?.type === 'Identifier') {
+						imports.push({
+							localName: local.name as string,
+							importedName: 'default',
+							source,
+						})
+					}
+				} else if (spec.type === 'ImportNamespaceSpecifier') {
+					// Namespace import: import * as foo from './file'
+					const local = spec.local as BabelNode | undefined
+					if (local?.type === 'Identifier') {
+						imports.push({
+							localName: local.name as string,
+							importedName: '*',
+							source,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return imports
+}
+
+/**
+ * Resolve an import source path to an absolute file path.
+ * Handles relative paths and tries common extensions.
+ */
+async function resolveImportPath(source: string, fromFile: string): Promise<string | null> {
+	// Only handle relative imports
+	if (!source.startsWith('.')) {
+		return null
+	}
+
+	const fromDir = path.dirname(fromFile)
+	const basePath = path.resolve(fromDir, source)
+
+	// Try different extensions
+	const extensions = ['.ts', '.js', '.astro', '.tsx', '.jsx', '']
+	for (const ext of extensions) {
+		const fullPath = basePath + ext
+		try {
+			await fs.access(fullPath)
+			return fullPath
+		} catch {
+			// File doesn't exist with this extension
+		}
+	}
+
+	// Try index files
+	for (const ext of ['.ts', '.js', '.tsx', '.jsx']) {
+		const indexPath = path.join(basePath, `index${ext}`)
+		try {
+			await fs.access(indexPath)
+			return indexPath
+		} catch {
+			// File doesn't exist
+		}
+	}
+
+	return null
+}
+
+/**
+ * Parse a TypeScript/JavaScript file and extract exported variable definitions.
+ */
+async function getExportedDefinitions(filePath: string): Promise<VariableDefinition[]> {
+	try {
+		const content = await fs.readFile(filePath, 'utf-8')
+		const ast = parseBabel(content, {
+			sourceType: 'module',
+			plugins: ['typescript'],
+			errorRecovery: true,
+		}) as unknown as BabelFile
+
+		const definitions: VariableDefinition[] = []
+		const lines = content.split('\n')
+
+		function getStringValue(node: BabelNode): string | null {
+			if (node.type === 'StringLiteral') {
+				return node.value as string
+			}
+			if (node.type === 'TemplateLiteral') {
+				const quasis = node.quasis as Array<{ value: { cooked: string | null } }> | undefined
+				const expressions = node.expressions as unknown[] | undefined
+				if (quasis?.length === 1 && expressions?.length === 0) {
+					return quasis[0]?.value.cooked ?? null
+				}
+			}
+			return null
+		}
+
+		function extractObjectProperties(objNode: BabelNode, parentPath: string, line: number): void {
+			const properties = objNode.properties as BabelNode[] | undefined
+			for (const prop of properties ?? []) {
+				if (prop.type !== 'ObjectProperty') continue
+				const key = prop.key as BabelNode | undefined
+				const value = prop.value as BabelNode | undefined
+				if (!key || key.type !== 'Identifier' || !value) continue
+
+				const propName = key.name as string
+				const fullPath = `${parentPath}.${propName}`
+				const propLoc = prop.loc as { start: { line: number } } | undefined
+				const propLine = propLoc?.start.line ?? line
+
+				const stringValue = getStringValue(value)
+				if (stringValue !== null) {
+					definitions.push({
+						name: propName,
+						value: stringValue,
+						line: propLine,
+						parentName: parentPath,
+					})
+				}
+
+				if (value.type === 'ObjectExpression') {
+					extractObjectProperties(value, fullPath, propLine)
+				}
+
+				if (value.type === 'ArrayExpression') {
+					extractArrayElements(value, fullPath, propLine)
+				}
+			}
+		}
+
+		function extractArrayElements(arrNode: BabelNode, parentPath: string, defaultLine: number): void {
+			const elements = arrNode.elements as BabelNode[] | undefined
+			for (let i = 0; i < (elements?.length ?? 0); i++) {
+				const elem = elements![i]
+				if (!elem) continue
+
+				const elemLoc = elem.loc as { start: { line: number } } | undefined
+				const elemLine = elemLoc?.start.line ?? defaultLine
+				const indexPath = `${parentPath}[${i}]`
+
+				const elemValue = getStringValue(elem)
+				if (elemValue !== null) {
+					definitions.push({
+						name: String(i),
+						value: elemValue,
+						line: elemLine,
+						parentName: parentPath,
+					})
+				}
+
+				if (elem.type === 'ObjectExpression') {
+					const objProperties = elem.properties as BabelNode[] | undefined
+					for (const prop of objProperties ?? []) {
+						if (prop.type !== 'ObjectProperty') continue
+						const key = prop.key as BabelNode | undefined
+						const value = prop.value as BabelNode | undefined
+						if (!key || key.type !== 'Identifier' || !value) continue
+
+						const propName = key.name as string
+						const propLoc = prop.loc as { start: { line: number } } | undefined
+						const propLine = propLoc?.start.line ?? elemLine
+
+						const stringValue = getStringValue(value)
+						if (stringValue !== null) {
+							definitions.push({
+								name: propName,
+								value: stringValue,
+								line: propLine,
+								parentName: indexPath,
+							})
+						}
+
+						if (value.type === 'ObjectExpression') {
+							extractObjectProperties(value, `${indexPath}.${propName}`, propLine)
+						}
+					}
+				}
+			}
+		}
+
+		for (const node of ast.program.body) {
+			// Handle: export const foo = 'value'
+			if (node.type === 'ExportNamedDeclaration') {
+				const declaration = node.declaration as BabelNode | undefined
+				if (declaration?.type === 'VariableDeclaration') {
+					const declarations = declaration.declarations as BabelNode[] | undefined
+					for (const decl of declarations ?? []) {
+						const id = decl.id as BabelNode | undefined
+						const init = decl.init as BabelNode | undefined
+						if (id?.type === 'Identifier' && init) {
+							const varName = id.name as string
+							const loc = decl.loc as { start: { line: number } } | undefined
+							const line = loc?.start.line ?? 1
+
+							const stringValue = getStringValue(init)
+							if (stringValue !== null) {
+								definitions.push({ name: varName, value: stringValue, line })
+							}
+
+							if (init.type === 'ObjectExpression') {
+								extractObjectProperties(init, varName, line)
+							}
+
+							if (init.type === 'ArrayExpression') {
+								extractArrayElements(init, varName, line)
+							}
+						}
+					}
+				}
+			}
+
+			// Handle: const foo = 'value'; export { foo }
+			// First collect all variable declarations
+			if (node.type === 'VariableDeclaration') {
+				const declarations = node.declarations as BabelNode[] | undefined
+				for (const decl of declarations ?? []) {
+					const id = decl.id as BabelNode | undefined
+					const init = decl.init as BabelNode | undefined
+					if (id?.type === 'Identifier' && init) {
+						const varName = id.name as string
+						const loc = decl.loc as { start: { line: number } } | undefined
+						const line = loc?.start.line ?? 1
+
+						const stringValue = getStringValue(init)
+						if (stringValue !== null) {
+							definitions.push({ name: varName, value: stringValue, line })
+						}
+
+						if (init.type === 'ObjectExpression') {
+							extractObjectProperties(init, varName, line)
+						}
+
+						if (init.type === 'ArrayExpression') {
+							extractArrayElements(init, varName, line)
+						}
+					}
+				}
+			}
+		}
+
+		return definitions
+	} catch {
+		return []
+	}
+}
+
 interface TemplateMatch {
 	line: number
 	type: 'static' | 'variable' | 'computed'
 	variableName?: string
 	/** For variables, the definition line in frontmatter */
 	definitionLine?: number
+	/** If true, the expression uses a variable from props that needs cross-file tracking */
+	usesProp?: boolean
+	/** The prop name if usesProp is true */
+	propName?: string
+	/** The full expression path if usesProp is true (e.g., 'items[0]') */
+	expressionPath?: string
+	/** If true, the expression uses a variable from an import */
+	usesImport?: boolean
+	/** The import info if usesImport is true */
+	importInfo?: ImportInfo
+}
+
+/** Result type for findElementWithText - returns best match and all prop/import candidates */
+interface FindElementResult {
+	/** The best match found (local variables or static content) */
+	bestMatch: TemplateMatch | null
+	/** All prop-based matches for the tag (need cross-file verification) */
+	propCandidates: TemplateMatch[]
+	/** All import-based matches for the tag (need cross-file verification) */
+	importCandidates: TemplateMatch[]
 }
 
 /**
- * Walk the Astro AST to find elements matching a tag with specific text content
+ * Walk the Astro AST to find elements matching a tag with specific text content.
+ * Returns the best match (local variables or static content) AND all prop/import candidates
+ * that need cross-file verification for multiple same-tag elements.
+ * @param propAliases - Map of local variable names to prop names from Astro.props (for cross-file tracking)
+ * @param imports - Import information from frontmatter (for cross-file tracking)
  */
 function findElementWithText(
 	ast: AstroNode,
 	tag: string,
 	searchText: string,
 	variableDefinitions: VariableDefinition[],
-): TemplateMatch | null {
+	propAliases: Map<string, string> = new Map(),
+	imports: ImportInfo[] = [],
+): FindElementResult {
 	const normalizedSearch = normalizeText(searchText)
 	const tagLower = tag.toLowerCase()
 	let bestMatch: TemplateMatch | null = null
 	let bestScore = 0
+	const propCandidates: TemplateMatch[] = []
+	const importCandidates: TemplateMatch[] = []
 
 	function getTextContent(node: AstroNode): string {
 		if (node.type === 'text') {
@@ -688,10 +1226,10 @@ function findElementWithText(
 			// Try to extract variable name from expression
 			// The expression node children contain the text representation
 			const exprText = getTextContent(node)
-			// Extract variable names like {foo} or {foo.bar}
-			const match = exprText.match(/^\s*(\w+)(?:\.(\w+))?\s*$/)
-			if (match) {
-				varNames.push(match[2] ?? match[1]!)
+			// Extract variable paths like {foo}, {foo.bar}, {items[0]}, {config.nav.title}, {links[0].text}
+			const fullPath = parseExpressionPath(exprText)
+			if (fullPath) {
+				varNames.push(fullPath)
 			}
 			return { found: true, varNames }
 		}
@@ -706,6 +1244,15 @@ function findElementWithText(
 		return { found: varNames.length > 0, varNames }
 	}
 
+	/**
+	 * Extract the base variable name from an expression path.
+	 * e.g., 'items[0]' -> 'items', 'config.nav.title' -> 'config'
+	 */
+	function getBaseVarName(exprPath: string): string {
+		const match = exprPath.match(/^(\w+)/)
+		return match?.[1] ?? exprPath
+	}
+
 	function visit(node: AstroNode) {
 		// Check if this is an element or component matching our tag
 		if ((node.type === 'element' || node.type === 'component') && node.name.toLowerCase() === tagLower) {
@@ -718,9 +1265,15 @@ function findElementWithText(
 			const exprInfo = hasExpressionChild(elemNode)
 			if (exprInfo.found && exprInfo.varNames.length > 0) {
 				// Look for matching variable definition
-				for (const varName of exprInfo.varNames) {
+				for (const exprPath of exprInfo.varNames) {
+					let foundInLocal = false
+
 					for (const def of variableDefinitions) {
-						if (def.name === varName || (def.parentName && def.name === varName)) {
+						// Build the full definition path for comparison
+						const defPath = buildDefinitionPath(def)
+						// Check if the expression path matches the definition path
+						if (defPath === exprPath) {
+							foundInLocal = true
 							const normalizedDef = normalizeText(def.value)
 							if (normalizedDef === normalizedSearch) {
 								// Found a variable match - this is highest priority
@@ -729,11 +1282,43 @@ function findElementWithText(
 									bestMatch = {
 										line,
 										type: 'variable',
-										variableName: def.parentName ? `${def.parentName}.${def.name}` : def.name,
+										variableName: defPath,
 										definitionLine: def.line,
 									}
 								}
 								return
+							}
+						}
+					}
+
+					// If not found in local definitions, check if it's from props or imports
+					if (!foundInLocal) {
+						const baseVar = getBaseVarName(exprPath)
+
+						// Check props first
+						const actualPropName = propAliases.get(baseVar)
+						if (actualPropName) {
+							// This expression uses a prop - collect as candidate for cross-file verification
+							// (don't set bestMatch yet - we need to verify each candidate)
+							propCandidates.push({
+								line,
+								type: 'variable',
+								usesProp: true,
+								propName: actualPropName, // Use the actual prop name, not the local alias
+								expressionPath: exprPath,
+							})
+						} else {
+							// Check if it's from an import
+							const importInfo = imports.find((imp) => imp.localName === baseVar)
+							if (importInfo) {
+								// This expression uses an import - collect as candidate for cross-file verification
+								importCandidates.push({
+									line,
+									type: 'variable',
+									usesImport: true,
+									importInfo,
+									expressionPath: exprPath,
+								})
 							}
 						}
 					}
@@ -814,7 +1399,7 @@ function findElementWithText(
 	}
 
 	visit(ast)
-	return bestMatch
+	return { bestMatch, propCandidates, importCandidates }
 }
 
 interface ComponentPropMatch {
@@ -862,6 +1447,297 @@ function findComponentProp(
 	}
 
 	return visit(ast)
+}
+
+interface ExpressionPropMatch {
+	componentName: string
+	propName: string
+	/** The expression text (e.g., 'navItems' from items={navItems}) */
+	expressionText: string
+	line: number
+}
+
+interface SpreadPropMatch {
+	componentName: string
+	/** The variable name being spread (e.g., 'cardProps' from {...cardProps}) */
+	spreadVarName: string
+	line: number
+}
+
+/**
+ * Walk the Astro AST to find component usages with expression props.
+ * Looks for patterns like: <Nav items={navItems} />
+ * @param ast - The Astro AST
+ * @param componentName - The component name to search for (e.g., 'Nav')
+ * @param propName - The prop name to find (e.g., 'items')
+ */
+function findExpressionProp(
+	ast: AstroNode,
+	componentName: string,
+	propName: string,
+): ExpressionPropMatch | null {
+	function visit(node: AstroNode): ExpressionPropMatch | null {
+		// Check component nodes matching the name
+		if (node.type === 'component') {
+			const compNode = node as ComponentNode
+			if (compNode.name === componentName) {
+				for (const attr of compNode.attributes) {
+					// Check for expression attributes: items={navItems}
+					if (attr.type === 'attribute' && attr.name === propName && attr.kind === 'expression') {
+						// The value contains the expression text
+						const exprText = attr.value?.trim() || ''
+						if (exprText) {
+							return {
+								componentName,
+								propName,
+								expressionText: exprText,
+								line: attr.position?.start.line ?? compNode.position?.start.line ?? 0,
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Recursively visit children
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				const result = visit(child)
+				if (result) return result
+			}
+		}
+
+		return null
+	}
+
+	return visit(ast)
+}
+
+/**
+ * Walk the Astro AST to find component usages with spread props.
+ * Looks for patterns like: <Card {...cardProps} />
+ * @param ast - The Astro AST
+ * @param componentName - The component name to search for (e.g., 'Card')
+ */
+function findSpreadProp(
+	ast: AstroNode,
+	componentName: string,
+): SpreadPropMatch | null {
+	function visit(node: AstroNode): SpreadPropMatch | null {
+		// Check component nodes matching the name
+		if (node.type === 'component') {
+			const compNode = node as ComponentNode
+			if (compNode.name === componentName) {
+				for (const attr of compNode.attributes) {
+					// Check for spread attributes: {...cardProps}
+					// In Astro AST: type='attribute', kind='spread', name=variable name
+					if (attr.type === 'attribute' && attr.kind === 'spread' && attr.name) {
+						return {
+							componentName,
+							spreadVarName: attr.name,
+							line: attr.position?.start.line ?? compNode.position?.start.line ?? 0,
+						}
+					}
+				}
+			}
+		}
+
+		// Recursively visit children
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				const result = visit(child)
+				if (result) return result
+			}
+		}
+
+		return null
+	}
+
+	return visit(ast)
+}
+
+/**
+ * Search for a component usage with an expression prop across all files.
+ * When we find an expression like {items[0]} in a component where items comes from props,
+ * we search for where that component is used and track the expression prop back.
+ * Supports multi-level prop drilling with a depth limit.
+ *
+ * @param componentFileName - The file name of the component (e.g., 'Nav.astro')
+ * @param propName - The prop name we're looking for (e.g., 'items')
+ * @param expressionPath - The full expression path (e.g., 'items[0]')
+ * @param searchText - The text content we're searching for
+ * @param depth - Current recursion depth (default 0, max 5)
+ * @returns Source location if found
+ */
+async function searchForExpressionProp(
+	componentFileName: string,
+	propName: string,
+	expressionPath: string,
+	searchText: string,
+	depth: number = 0,
+): Promise<SourceLocation | undefined> {
+	// Limit recursion depth to prevent infinite loops
+	if (depth > 5) return undefined
+
+	const srcDir = path.join(getProjectRoot(), 'src')
+	const searchDirs = [
+		path.join(srcDir, 'pages'),
+		path.join(srcDir, 'components'),
+		path.join(srcDir, 'layouts'),
+	]
+
+	// Extract the component name from file name (e.g., 'Nav.astro' -> 'Nav')
+	const componentName = path.basename(componentFileName, '.astro')
+	const normalizedSearch = normalizeText(searchText)
+
+	for (const dir of searchDirs) {
+		try {
+			const result = await searchDirForExpressionProp(
+				dir,
+				componentName,
+				propName,
+				expressionPath,
+				normalizedSearch,
+				searchText,
+				depth,
+			)
+			if (result) return result
+		} catch {
+			// Directory doesn't exist, continue
+		}
+	}
+
+	return undefined
+}
+
+async function searchDirForExpressionProp(
+	dir: string,
+	componentName: string,
+	propName: string,
+	expressionPath: string,
+	normalizedSearch: string,
+	searchText: string,
+	depth: number,
+): Promise<SourceLocation | undefined> {
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry.name)
+
+			if (entry.isDirectory()) {
+				const result = await searchDirForExpressionProp(
+					fullPath,
+					componentName,
+					propName,
+					expressionPath,
+					normalizedSearch,
+					searchText,
+					depth,
+				)
+				if (result) return result
+			} else if (entry.isFile() && entry.name.endsWith('.astro')) {
+				const cached = await getCachedParsedFile(fullPath)
+				if (!cached) continue
+
+				// First, try to find expression prop usage: <Nav items={navItems} />
+				const exprPropMatch = findExpressionProp(cached.ast, componentName, propName)
+
+				if (exprPropMatch) {
+					// The expression text might be a simple variable like 'navItems'
+					const exprText = exprPropMatch.expressionText
+
+					// Build the corresponding path in the parent's variable definitions
+					// e.g., if expressionPath is 'items[0]' and exprText is 'navItems',
+					// we look for 'navItems[0]' in the parent's definitions
+					const parentPath = expressionPath.replace(/^[^.[]+/, exprText)
+
+					// Check if the value is in local variable definitions
+					for (const def of cached.variableDefinitions) {
+						const defPath = buildDefinitionPath(def)
+						if (defPath === parentPath) {
+							const normalizedDef = normalizeText(def.value)
+							if (normalizedDef === normalizedSearch) {
+								return {
+									file: path.relative(getProjectRoot(), fullPath),
+									line: def.line,
+									snippet: cached.lines[def.line - 1] || '',
+									type: 'variable',
+									variableName: defPath,
+									definitionLine: def.line,
+								}
+							}
+						}
+					}
+
+					// Check if exprText is itself from props (multi-level prop drilling)
+					const baseVar = exprText.match(/^(\w+)/)?.[1]
+					if (baseVar && cached.propAliases.has(baseVar)) {
+						const actualPropName = cached.propAliases.get(baseVar)!
+						// Recursively search for where this component is used
+						const result = await searchForExpressionProp(
+							entry.name,
+							actualPropName,
+							parentPath, // Use the path with the parent's variable name
+							searchText,
+							depth + 1,
+						)
+						if (result) return result
+					}
+
+					continue
+				}
+
+				// Second, try to find spread prop usage: <Card {...cardProps} />
+				const spreadMatch = findSpreadProp(cached.ast, componentName)
+
+				if (spreadMatch) {
+					// Find the spread variable's definition
+					const spreadVarName = spreadMatch.spreadVarName
+
+					// The propName we're looking for should be a property of the spread object
+					// e.g., if propName is 'title' and spread is {...cardProps},
+					// we look for cardProps.title in the definitions
+					const spreadPropPath = `${spreadVarName}.${propName}`
+
+					for (const def of cached.variableDefinitions) {
+						const defPath = buildDefinitionPath(def)
+						if (defPath === spreadPropPath) {
+							const normalizedDef = normalizeText(def.value)
+							if (normalizedDef === normalizedSearch) {
+								return {
+									file: path.relative(getProjectRoot(), fullPath),
+									line: def.line,
+									snippet: cached.lines[def.line - 1] || '',
+									type: 'variable',
+									variableName: defPath,
+									definitionLine: def.line,
+								}
+							}
+						}
+					}
+
+					// Check if the spread variable itself comes from props
+					if (cached.propAliases.has(spreadVarName)) {
+						const actualPropName = cached.propAliases.get(spreadVarName)!
+						// For spread from props, we need to search for the full path
+						const result = await searchForExpressionProp(
+							entry.name,
+							actualPropName,
+							expressionPath,
+							searchText,
+							depth + 1,
+						)
+						if (result) return result
+					}
+				}
+			}
+		}
+	} catch {
+		// Error reading directory
+	}
+
+	return undefined
 }
 
 interface ImageMatch {
@@ -1160,20 +2036,28 @@ async function searchAstroFile(
 		const cached = await getCachedParsedFile(filePath)
 		if (!cached) return undefined
 
-		const { lines, ast, variableDefinitions } = cached
+		const { lines, ast, variableDefinitions, propAliases, imports } = cached
 
 		// Find matching element in template AST
-		const match = findElementWithText(ast, tag, textContent, variableDefinitions)
+		const { bestMatch, propCandidates, importCandidates } = findElementWithText(
+			ast,
+			tag,
+			textContent,
+			variableDefinitions,
+			propAliases,
+			imports,
+		)
 
-		if (match) {
+		// First, check if we have a direct match (local variable or static content)
+		if (bestMatch && !bestMatch.usesProp && !bestMatch.usesImport) {
 			// Determine the editable line (definition for variables, usage for static)
-			const editableLine = match.type === 'variable' && match.definitionLine
-				? match.definitionLine
-				: match.line
+			const editableLine = bestMatch.type === 'variable' && bestMatch.definitionLine
+				? bestMatch.definitionLine
+				: bestMatch.line
 
 			// Get the source snippet - innerHTML for static content, definition line for variables
 			let snippet: string
-			if (match.type === 'static') {
+			if (bestMatch.type === 'static') {
 				// For static content, extract only the innerHTML (not the wrapper element)
 				const completeSnippet = extractCompleteTagSnippet(lines, editableLine - 1, tag)
 				snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
@@ -1186,13 +2070,110 @@ async function searchAstroFile(
 				file: path.relative(getProjectRoot(), filePath),
 				line: editableLine,
 				snippet,
-				type: match.type,
-				variableName: match.variableName,
-				definitionLine: match.type === 'variable' ? match.definitionLine : undefined,
+				type: bestMatch.type,
+				variableName: bestMatch.variableName,
+				definitionLine: bestMatch.type === 'variable' ? bestMatch.definitionLine : undefined,
+			}
+		}
+
+		// Try all prop candidates - verify each one to find the correct match
+		// (handles multiple same-tag elements with different prop values)
+		for (const propCandidate of propCandidates) {
+			if (propCandidate.propName && propCandidate.expressionPath) {
+				const componentFileName = path.basename(filePath)
+				const exprPropResult = await searchForExpressionProp(
+					componentFileName,
+					propCandidate.propName,
+					propCandidate.expressionPath,
+					textContent,
+				)
+				if (exprPropResult) {
+					return exprPropResult
+				}
+			}
+		}
+
+		// Try all import candidates - verify each one to find the correct match
+		// (handles multiple same-tag elements with different imported values)
+		for (const importCandidate of importCandidates) {
+			if (importCandidate.importInfo && importCandidate.expressionPath) {
+				const importResult = await searchForImportedValue(
+					filePath,
+					importCandidate.importInfo,
+					importCandidate.expressionPath,
+					textContent,
+				)
+				if (importResult) {
+					return importResult
+				}
 			}
 		}
 	} catch {
 		// Error reading/parsing file
+	}
+
+	return undefined
+}
+
+/**
+ * Search for a value in an imported file.
+ * @param fromFile - The file that contains the import
+ * @param importInfo - Information about the import
+ * @param expressionPath - The full expression path (e.g., 'config.title' or 'navItems[0]')
+ * @param searchText - The text content we're searching for
+ */
+async function searchForImportedValue(
+	fromFile: string,
+	importInfo: ImportInfo,
+	expressionPath: string,
+	searchText: string,
+): Promise<SourceLocation | undefined> {
+	// Resolve the import path to an absolute file path
+	const importedFilePath = await resolveImportPath(importInfo.source, fromFile)
+	if (!importedFilePath) return undefined
+
+	// Get exported definitions from the imported file
+	const exportedDefs = await getExportedDefinitions(importedFilePath)
+	if (exportedDefs.length === 0) return undefined
+
+	const normalizedSearch = normalizeText(searchText)
+
+	// Build the path we're looking for in the imported file
+	// e.g., if expressionPath is 'config.title' and localName is 'config',
+	// and importedName is 'siteConfig', we look for 'siteConfig.title'
+	let targetPath: string
+	if (importInfo.importedName === 'default' || importInfo.importedName === importInfo.localName) {
+		// Direct import: import { config } from './file' or import config from './file'
+		// The expression path uses the local name, which matches the exported name
+		targetPath = expressionPath
+	} else {
+		// Renamed import: import { config as siteConfig } from './file'
+		// Replace the local name with the original exported name
+		targetPath = expressionPath.replace(
+			new RegExp(`^${importInfo.localName}`),
+			importInfo.importedName,
+		)
+	}
+
+	// Search for the target path in the exported definitions
+	for (const def of exportedDefs) {
+		const defPath = buildDefinitionPath(def)
+		if (defPath === targetPath) {
+			const normalizedDef = normalizeText(def.value)
+			if (normalizedDef === normalizedSearch) {
+				const importedFileContent = await fs.readFile(importedFilePath, 'utf-8')
+				const importedLines = importedFileContent.split('\n')
+
+				return {
+					file: path.relative(getProjectRoot(), importedFilePath),
+					line: def.line,
+					snippet: importedLines[def.line - 1] || '',
+					type: 'variable',
+					variableName: defPath,
+					definitionLine: def.line,
+				}
+			}
+		}
 	}
 
 	return undefined
