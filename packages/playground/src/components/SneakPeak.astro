@@ -1,0 +1,21 @@
+---
+interface Props {
+	heading: string
+	subheading: string
+	tagline: string
+}
+
+const { heading, subheading, tagline } = Astro.props
+---
+
+<div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+	<div>
+		<h2 class="text-2xl font-semibold text-white">{heading}</h2>
+		<p class="mt-2 max-w-2xl text-sm text-slate-300">
+			{subheading}
+		</p>
+	</div>
+	<span class="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.4em] text-slate-400">
+		{tagline}
+	</span>
+</div>

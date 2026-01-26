@@ -2,6 +2,8 @@
 import Layout from '../layouts/layout.astro'
 import FormPreview from '../components/FormPreview.astro'
 import ImagePreview from '../components/ImagePreview.astro'
+import UpcomingComponents from '../components/UpcomingComponents.astro'
+import SneakPeak from '../components/SneakPeak.astro'
 
 type StatusKey = 'ready' | 'beta' | 'soon'
 
@@ -307,24 +309,11 @@ const upcomingComponents = [
 
 		<section class="mx-auto max-w-6xl px-6 pb-24">
 			<div class="rounded-3xl border border-slate-800 bg-slate-900/60 px-8 py-10">
-				<div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-					<div>
-						<h2 class="text-2xl font-semibold text-white">Up next</h2>
-						<p class="mt-2 max-w-2xl text-sm text-slate-300">
-							We are shipping focused drops of reusable UI and data flows. Here’s a peek at what’s cooking.
-						</p>
-					</div>
-					<span class="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.4em] text-slate-400">
-						Sneak peek
-					</span>
-				</div>
+				<SneakPeak heading="Up next" subheading="We are shipping focused drops of reusable UI and data flows. Here’s a peek at what’s cooking." tagline="Sneak peek" />
 
 				<div class="mt-8 grid gap-6 md:grid-cols-3">
-					{upcomingComponents.map((component) => (
-						<div class="rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
-							<p class="text-sm font-semibold text-white">{component.name}</p>
-							<p class="mt-2 text-sm text-slate-400">{component.description}</p>
-						</div>
+					{upcomingComponents.map(({ name, description }) => (
+						<UpcomingComponents name={name} description={description} />
 					))}
 				</div>
 			</div>
