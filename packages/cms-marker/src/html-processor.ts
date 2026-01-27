@@ -127,6 +127,33 @@ const TEXT_STYLE_PATTERNS = [
 ]
 
 /**
+ * Get text content from an HTML node, treating <br> elements as whitespace.
+ * This matches the rendered HTML behavior where <br> creates line breaks.
+ */
+function getTextContent(node: HTMLNode): string {
+	const result: string[] = []
+
+	for (const child of node.childNodes) {
+		if (child.nodeType === 3) {
+			// Text node
+			result.push(child.text || '')
+		} else if (child.nodeType === 1) {
+			// Element node
+			const tagName = (child as HTMLNode).tagName?.toLowerCase?.()
+			if (tagName === 'br') {
+				// Treat <br> as whitespace
+				result.push(' ')
+			} else {
+				// Recursively get text from child elements
+				result.push(getTextContent(child as HTMLNode))
+			}
+		}
+	}
+
+	return result.join('')
+}
+
+/**
  * Check if a class is a text styling class
  */
 function isTextStyleClass(className: string): boolean {
@@ -360,7 +387,7 @@ export async function processHtml(
 					)
 
 					if (firstChild) {
-						const firstChildText = (firstChild.innerText || '').trim().substring(0, 80)
+						const firstChildText = getTextContent(firstChild).trim().substring(0, 80)
 						if (firstChildText.includes(bodyStart)) {
 							// Count block-level child elements
 							// Markdown typically renders to multiple block elements (p, h2, h3, ul, ol, etc.)
@@ -491,7 +518,7 @@ export async function processHtml(
 			}
 		}
 
-		const textContent = (node.innerText ?? '').trim()
+		const textContent = getTextContent(node).trim()
 		if (!includeEmptyText && !textContent) return
 
 		// Extract source location from Astro compiler attributes
@@ -701,7 +728,7 @@ function extractSourceContext(node: HTMLNode, attributeName: string): SourceCont
 	let precedingText: string | undefined
 	if (siblingIndex > 0) {
 		const prevSibling = siblings[siblingIndex - 1]
-		const prevText = (prevSibling?.innerText || '').trim()
+		const prevText = prevSibling ? getTextContent(prevSibling).trim() : ''
 		if (prevText) {
 			precedingText = prevText.substring(0, 30)
 		}
@@ -711,7 +738,7 @@ function extractSourceContext(node: HTMLNode, attributeName: string): SourceCont
 	let followingText: string | undefined
 	if (siblingIndex < siblings.length - 1) {
 		const nextSibling = siblings[siblingIndex + 1]
-		const nextText = (nextSibling?.innerText || '').trim()
+		const nextText = nextSibling ? getTextContent(nextSibling).trim() : ''
 		if (nextText) {
 			followingText = nextText.substring(0, 30)
 		}
