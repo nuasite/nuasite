@@ -1,34 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import type { ManifestWriter } from '../../src/manifest-writer'
-import type { CmsMarkerOptions } from '../../src/types'
 import { createVitePlugin } from '../../src/vite-plugin'
+import { createManifestEntry, createMockManifestWriter, createMockViteContext } from '../utils'
 
 describe('Vite Plugin', () => {
-	const createMockContext = () => {
-		const mockManifestWriter: ManifestWriter = {
-			getGlobalManifest: () => ({ entries: {}, components: {}, componentDefinitions: {} }),
-		} as ManifestWriter
-
-		return {
-			manifestWriter: mockManifestWriter,
-			componentDefinitions: {},
-			config: {
-				attributeName: 'data-cms-id',
-				includeTags: null,
-				excludeTags: ['script', 'style'],
-				includeEmptyText: false,
-				generateManifest: true,
-				manifestFile: 'manifest.json',
-				markComponents: true,
-				componentDirs: ['src/components'],
-			} as Required<CmsMarkerOptions>,
-			idCounter: { value: 0 },
-			command: 'build' as const,
-		}
-	}
-
 	test('should return array of plugins', () => {
-		const context = createMockContext()
+		const context = createMockViteContext()
 		const plugins = createVitePlugin(context)
 
 		expect(Array.isArray(plugins)).toBe(true)
@@ -36,7 +12,7 @@ describe('Vite Plugin', () => {
 	})
 
 	test('should include virtual manifest plugin', () => {
-		const context = createMockContext()
+		const context = createMockViteContext()
 		const plugins = createVitePlugin(context)
 
 		const manifestPlugin = plugins.find(p => p.name === 'cms-marker-virtual-manifest')
@@ -46,7 +22,7 @@ describe('Vite Plugin', () => {
 	})
 
 	test('virtual manifest plugin should resolve virtual module IDs', () => {
-		const context = createMockContext()
+		const context = createMockViteContext()
 		const plugins = createVitePlugin(context)
 		const manifestPlugin = plugins.find(p => p.name === 'cms-marker-virtual-manifest')
 
@@ -71,13 +47,18 @@ describe('Vite Plugin', () => {
 
 	test('virtual manifest plugin should load manifest data', () => {
 		const mockManifest = {
-			entries: { 'cms-1': { id: 'cms-1', tag: 'h1', text: 'Test' } },
+			entries: {
+				'cms-1': createManifestEntry({ id: 'cms-1', tag: 'h1', text: 'Test' }),
+			},
 			components: {},
 			componentDefinitions: {},
 		}
 
-		const context = createMockContext()
-		context.manifestWriter.getGlobalManifest = () => mockManifest
+		const context = createMockViteContext({
+			manifestWriter: createMockManifestWriter({
+				getGlobalManifest: () => mockManifest,
+			}),
+		})
 
 		const plugins = createVitePlugin(context)
 		const manifestPlugin = plugins.find(p => p.name === 'cms-marker-virtual-manifest')

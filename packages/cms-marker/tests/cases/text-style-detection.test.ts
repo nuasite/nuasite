@@ -1,130 +1,44 @@
-import { describe, expect, test } from 'bun:test'
-import { processHtml } from '../../src/html-processor'
+import { expect, test } from 'bun:test'
+import { cmsDescribe, expectNotStyled, expectStyled } from '../utils'
 
-describe('Text Style Class Detection', () => {
+cmsDescribe('Text Style Class Detection', { markStyledSpans: true }, (ctx) => {
 	const createTestHtml = (classes: string) => `<p>Hello <span class="${classes}">world</span>!</p>`
 
-	const getOptions = () => ({
-		attributeName: 'data-cms-id',
-		includeTags: null,
-		excludeTags: [],
-		includeEmptyText: false,
-		generateManifest: false,
-		markStyledSpans: true,
-	})
+	// Classes that SHOULD be marked as styled
+	const styledCases = [
+		['text-red-500 font-bold', 'standard Tailwind colors'],
+		['text-brand-primary font-semibold', 'custom color names'],
+		['bg-custom-purple-500', 'custom background colors'],
+		['font-bold italic underline text-red-500', 'only text styling classes'],
+		['underline decoration-wavy decoration-red-500', 'text decoration classes'],
+		['uppercase tracking-wide', 'text transform classes'],
+		['text-lg leading-relaxed', 'font size and line height'],
+	] as const
 
-	let counter = 0
-	const getNextId = () => `cms-${counter++}`
+	// Classes that should NOT be marked as styled (layout classes)
+	const layoutCases = [
+		['text-center', 'text-center'],
+		['text-left font-bold', 'text-left'],
+		['text-justify', 'text-justify'],
+		['text-wrap', 'text-wrap'],
+		['bg-fixed', 'bg-fixed'],
+		['bg-cover', 'bg-cover'],
+		['bg-repeat', 'bg-repeat'],
+		['font-bold text-center', 'mixed styling and layout'],
+		['align-middle', 'align- classes'],
+	] as const
 
-	test('should mark spans with standard Tailwind colors as styled', async () => {
-		counter = 0
-		const html = createTestHtml('text-red-500 font-bold')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).toContain('data-cms-styled="true"')
-	})
+	for (const [classes, description] of styledCases) {
+		test(`marks as styled: ${description}`, async () => {
+			const result = await ctx.process(createTestHtml(classes))
+			expectStyled(result)
+		})
+	}
 
-	test('should mark spans with custom color names as styled', async () => {
-		counter = 0
-		const html = createTestHtml('text-brand-primary font-semibold')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).toContain('data-cms-styled="true"')
-	})
-
-	test('should mark spans with custom background colors as styled', async () => {
-		counter = 0
-		const html = createTestHtml('bg-custom-purple-500')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).toContain('data-cms-styled="true"')
-	})
-
-	test('should NOT mark spans with text-center (layout class)', async () => {
-		counter = 0
-		const html = createTestHtml('text-center')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).not.toContain('data-cms-styled')
-	})
-
-	test('should NOT mark spans with text-left (layout class)', async () => {
-		counter = 0
-		const html = createTestHtml('text-left font-bold')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).not.toContain('data-cms-styled')
-	})
-
-	test('should NOT mark spans with text-justify (layout class)', async () => {
-		counter = 0
-		const html = createTestHtml('text-justify')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).not.toContain('data-cms-styled')
-	})
-
-	test('should NOT mark spans with text-wrap (layout class)', async () => {
-		counter = 0
-		const html = createTestHtml('text-wrap')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).not.toContain('data-cms-styled')
-	})
-
-	test('should NOT mark spans with bg-fixed (layout class)', async () => {
-		counter = 0
-		const html = createTestHtml('bg-fixed')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).not.toContain('data-cms-styled')
-	})
-
-	test('should NOT mark spans with bg-cover (layout class)', async () => {
-		counter = 0
-		const html = createTestHtml('bg-cover')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).not.toContain('data-cms-styled')
-	})
-
-	test('should NOT mark spans with bg-repeat (layout class)', async () => {
-		counter = 0
-		const html = createTestHtml('bg-repeat')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).not.toContain('data-cms-styled')
-	})
-
-	test('should mark spans with only text styling classes', async () => {
-		counter = 0
-		const html = createTestHtml('font-bold italic underline text-red-500')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).toContain('data-cms-styled="true"')
-	})
-
-	test('should NOT mark spans with mixed styling and layout classes', async () => {
-		counter = 0
-		const html = createTestHtml('font-bold text-center')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).not.toContain('data-cms-styled')
-	})
-
-	test('should mark spans with text decoration classes', async () => {
-		counter = 0
-		const html = createTestHtml('underline decoration-wavy decoration-red-500')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).toContain('data-cms-styled="true"')
-	})
-
-	test('should mark spans with text transform classes', async () => {
-		counter = 0
-		const html = createTestHtml('uppercase tracking-wide')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).toContain('data-cms-styled="true"')
-	})
-
-	test('should mark spans with font size and line height', async () => {
-		counter = 0
-		const html = createTestHtml('text-lg leading-relaxed')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).toContain('data-cms-styled="true"')
-	})
-
-	test('should NOT mark spans with align- classes', async () => {
-		counter = 0
-		const html = createTestHtml('align-middle')
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
-		expect(result.html).not.toContain('data-cms-styled')
-	})
+	for (const [classes, description] of layoutCases) {
+		test(`does NOT mark as styled (layout): ${description}`, async () => {
+			const result = await ctx.process(createTestHtml(classes))
+			expectNotStyled(result)
+		})
+	}
 })

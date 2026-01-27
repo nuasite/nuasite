@@ -1,0 +1,223 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`Component Detection Snapshots nested component with text elements: html 1`] = `
+"
+			<div data-cms-component-id="cms-0">
+				<h1 data-cms-id="cms-1">Card Title</h1>
+				<p data-cms-id="cms-2">Card description with <strong>bold</strong> text</p>
+			</div>
+		"
+`;
+
+exports[`Component Detection Snapshots nested component with text elements: entries 1`] = `
+{
+  "cms-1": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-1",
+    "imageMetadata": undefined,
+    "parentComponentId": "cms-0",
+    "sourceContext": {
+      "followingText": "Card description with bold tex",
+      "parentClasses": undefined,
+      "parentTag": "div",
+      "precedingText": undefined,
+      "siblingIndex": 0,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "3676de6c106d",
+    "tag": "h1",
+    "text": "Card Title",
+    "variableName": undefined,
+  },
+  "cms-2": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": "Card description with <strong>bold</strong> text",
+    "id": "cms-2",
+    "imageMetadata": undefined,
+    "parentComponentId": "cms-0",
+    "sourceContext": {
+      "followingText": undefined,
+      "parentClasses": undefined,
+      "parentTag": "div",
+      "precedingText": "Card Title",
+      "siblingIndex": 1,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "6e796f91070c",
+    "tag": "p",
+    "text": "Card description with bold text",
+    "variableName": undefined,
+  },
+}
+`;
+
+exports[`Component Detection Snapshots nested component with text elements: components 1`] = `
+{
+  "cms-0": {
+    "componentName": "Card",
+    "file": "test.html",
+    "id": "cms-0",
+    "props": {},
+    "sourceLine": 1,
+    "sourcePath": "src/components/Card.astro",
+  },
+}
+`;
+
+exports[`Component Detection Snapshots multiple components with various content: html 1`] = `
+"
+			<div data-cms-component-id="cms-0">
+				<h1 data-cms-id="cms-2">Site Header</h1>
+				<nav data-cms-id="cms-3">Navigation</nav>
+			</div>
+			<div data-cms-component-id="cms-1">
+				<h2 data-cms-id="cms-4">Welcome</h2>
+				<p data-cms-id="cms-5">Hero description</p>
+			</div>
+		"
+`;
+
+exports[`Component Detection Snapshots multiple components with various content: entries 1`] = `
+{
+  "cms-2": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-2",
+    "imageMetadata": undefined,
+    "parentComponentId": "cms-0",
+    "sourceContext": {
+      "followingText": "Navigation",
+      "parentClasses": undefined,
+      "parentTag": "div",
+      "precedingText": undefined,
+      "siblingIndex": 0,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "ab91766f3f77",
+    "tag": "h1",
+    "text": "Site Header",
+    "variableName": undefined,
+  },
+  "cms-3": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-3",
+    "imageMetadata": undefined,
+    "parentComponentId": "cms-0",
+    "sourceContext": {
+      "followingText": undefined,
+      "parentClasses": undefined,
+      "parentTag": "div",
+      "precedingText": "Site Header",
+      "siblingIndex": 1,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "5a34242792ee",
+    "tag": "nav",
+    "text": "Navigation",
+    "variableName": undefined,
+  },
+  "cms-4": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-4",
+    "imageMetadata": undefined,
+    "parentComponentId": "cms-1",
+    "sourceContext": {
+      "followingText": "Hero description",
+      "parentClasses": undefined,
+      "parentTag": "div",
+      "precedingText": undefined,
+      "siblingIndex": 0,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "6496307eb87c",
+    "tag": "h2",
+    "text": "Welcome",
+    "variableName": undefined,
+  },
+  "cms-5": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-5",
+    "imageMetadata": undefined,
+    "parentComponentId": "cms-1",
+    "sourceContext": {
+      "followingText": undefined,
+      "parentClasses": undefined,
+      "parentTag": "div",
+      "precedingText": "Welcome",
+      "siblingIndex": 1,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "cca432c86c01",
+    "tag": "p",
+    "text": "Hero description",
+    "variableName": undefined,
+  },
+}
+`;
+
+exports[`Component Detection Snapshots multiple components with various content: components 1`] = `
+{
+  "cms-0": {
+    "componentName": "Header",
+    "file": "test.html",
+    "id": "cms-0",
+    "props": {},
+    "sourceLine": 1,
+    "sourcePath": "src/components/Header.astro",
+  },
+  "cms-1": {
+    "componentName": "Hero",
+    "file": "test.html",
+    "id": "cms-1",
+    "props": {},
+    "sourceLine": 1,
+    "sourcePath": "src/components/Hero.astro",
+  },
+}
+`;

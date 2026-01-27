@@ -1,195 +1,165 @@
-import { describe, expect, test } from 'bun:test'
-import { processHtml } from '../../src/html-processor'
+import { expect, test } from 'bun:test'
+import { cmsDescribe, expectComponentCount, expectNoComponents, html } from '../utils'
 
-describe('Component Detection', () => {
-	let counter = 0
-	const getNextId = () => `cms-${counter++}`
-
-	const getOptions = (overrides = {}) => ({
-		attributeName: 'data-cms-id',
-		includeTags: null,
-		excludeTags: [],
-		includeEmptyText: false,
-		generateManifest: false,
-		markComponents: true,
-		...overrides,
-	})
-
-	test('should mark components from src/components with relative paths', async () => {
-		counter = 0
-		const html = '<div data-astro-source-file="src/components/Welcome.astro"><h1>Welcome</h1></div>'
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
+cmsDescribe('Component Detection', { markComponents: true, generateManifest: true }, (ctx) => {
+	test('marks components from src/components with relative paths', async () => {
+		const result = await ctx.process(html.component('Welcome', '<h1>Welcome</h1>'))
 
 		expect(result.html).toContain('data-cms-component-id')
-		expect(Object.keys(result.components)).toHaveLength(1)
-		const component = Object.values(result.components)[0]
-		expect(component?.componentName).toBe('Welcome')
+		expectComponentCount(result, 1)
+		expect(Object.values(result.components)[0]?.componentName).toBe('Welcome')
 	})
 
-	test('should mark components from custom component directory', async () => {
-		counter = 0
-		const html = '<div data-astro-source-file="src/ui/Button.astro"><button>Click</button></div>'
-		const result = await processHtml(
-			html,
-			'test.html',
-			getOptions({ componentDirs: ['src/ui'] }),
-			getNextId,
-		)
+	test('marks components from custom component directory', async () => {
+		const input = '<div data-astro-source-file="src/ui/Button.astro"><button>Click</button></div>'
+		const result = await ctx.process(input, { componentDirs: ['src/ui'] })
 
 		expect(result.html).toContain('data-cms-component-id')
-		expect(Object.keys(result.components)).toHaveLength(1)
+		expectComponentCount(result, 1)
 	})
 
-	test('should NOT mark components from src/pages (excluded)', async () => {
-		counter = 0
-		const html = '<div data-astro-source-file="src/pages/index.astro"><h1>Home</h1></div>'
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
+	test('does NOT mark components from src/pages (excluded)', async () => {
+		const input = '<div data-astro-source-file="src/pages/index.astro"><h1>Home</h1></div>'
+		const result = await ctx.process(input)
 
 		expect(result.html).not.toContain('data-cms-component-id')
-		expect(Object.keys(result.components)).toHaveLength(0)
+		expectNoComponents(result)
 	})
 
-	test('should NOT mark components from src/layouts (excluded)', async () => {
-		counter = 0
-		const html = '<div data-astro-source-file="src/layouts/Layout.astro"><main></main></div>'
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
+	test('does NOT mark components from src/layouts (excluded)', async () => {
+		const input = '<div data-astro-source-file="src/layouts/Layout.astro"><main></main></div>'
+		const result = await ctx.process(input)
 
 		expect(result.html).not.toContain('data-cms-component-id')
-		expect(Object.keys(result.components)).toHaveLength(0)
+		expectNoComponents(result)
 	})
 
-	test('should NOT mark components from src/layout (excluded - singular)', async () => {
-		counter = 0
-		const html = '<div data-astro-source-file="src/layout/Base.astro"><main></main></div>'
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
+	test('does NOT mark components from src/layout (excluded - singular)', async () => {
+		const input = '<div data-astro-source-file="src/layout/Base.astro"><main></main></div>'
+		const result = await ctx.process(input)
 
 		expect(result.html).not.toContain('data-cms-component-id')
-		expect(Object.keys(result.components)).toHaveLength(0)
+		expectNoComponents(result)
 	})
 
-	test('should mark components with absolute paths', async () => {
-		counter = 0
-		const html = '<div data-astro-source-file="/absolute/path/src/components/Card.astro"><div>Card</div></div>'
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
+	test('marks components with absolute paths', async () => {
+		const input = '<div data-astro-source-file="/absolute/path/src/components/Card.astro"><div>Card</div></div>'
+		const result = await ctx.process(input)
 
 		expect(result.html).toContain('data-cms-component-id')
-		expect(Object.keys(result.components)).toHaveLength(1)
+		expectComponentCount(result, 1)
 	})
 
-	test('should respect custom excludeComponentDirs', async () => {
-		counter = 0
-		const html = '<div data-astro-source-file="src/vendor/External.astro"><div>Vendor</div></div>'
-		const result = await processHtml(
-			html,
-			'test.html',
-			getOptions({ excludeComponentDirs: ['src/vendor'] }),
-			getNextId,
-		)
+	test('respects custom excludeComponentDirs', async () => {
+		const input = '<div data-astro-source-file="src/vendor/External.astro"><div>Vendor</div></div>'
+		const result = await ctx.process(input, { excludeComponentDirs: ['src/vendor'] })
 
 		expect(result.html).not.toContain('data-cms-component-id')
-		expect(Object.keys(result.components)).toHaveLength(0)
+		expectNoComponents(result)
 	})
 
-	test('should handle paths with nested directories', async () => {
-		counter = 0
-		const html = '<div data-astro-source-file="src/components/ui/Button.astro"><button>Click</button></div>'
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
+	test('handles paths with nested directories', async () => {
+		const input = '<div data-astro-source-file="src/components/ui/Button.astro"><button>Click</button></div>'
+		const result = await ctx.process(input)
 
 		expect(result.html).toContain('data-cms-component-id')
-		expect(Object.keys(result.components)).toHaveLength(1)
-		const component = Object.values(result.components)[0]
-		expect(component?.componentName).toBe('Button')
+		expectComponentCount(result, 1)
+		expect(Object.values(result.components)[0]?.componentName).toBe('Button')
 	})
 
-	test('should mark components from any directory when componentDirs is empty and not excluded', async () => {
-		counter = 0
-		const html = '<div data-astro-source-file="src/custom/MyComponent.astro"><div>Custom</div></div>'
-		const result = await processHtml(
-			html,
-			'test.html',
-			getOptions({ componentDirs: [] }),
-			getNextId,
-		)
+	test('marks components from any directory when componentDirs is empty and not excluded', async () => {
+		const input = '<div data-astro-source-file="src/custom/MyComponent.astro"><div>Custom</div></div>'
+		const result = await ctx.process(input, { componentDirs: [] })
 
 		expect(result.html).toContain('data-cms-component-id')
-		expect(Object.keys(result.components)).toHaveLength(1)
+		expectComponentCount(result, 1)
 	})
 
-	test('should only mark outermost component when nested', async () => {
-		counter = 0
-		const html = `
-      <div data-astro-source-file="src/components/Card.astro">
-        <div data-astro-source-file="src/components/Card.astro">
-          <h1>Title</h1>
-        </div>
-      </div>
-    `
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
+	test('only marks outermost component when nested', async () => {
+		const input = `
+			<div data-astro-source-file="src/components/Card.astro">
+				<div data-astro-source-file="src/components/Card.astro">
+					<h1>Title</h1>
+				</div>
+			</div>
+		`
+		const result = await ctx.process(input)
 
-		// Only one component ID should be assigned (the outermost)
 		const componentIds = result.html.match(/data-cms-component-id/g)
 		expect(componentIds?.length).toBe(1)
 	})
 
-	test('should mark multiple different components', async () => {
-		counter = 0
-		const html = `
-      <div data-astro-source-file="src/components/Header.astro"><header>Header</header></div>
-      <div data-astro-source-file="src/components/Footer.astro"><footer>Footer</footer></div>
-    `
-		const result = await processHtml(html, 'test.html', getOptions(), getNextId)
+	test('marks multiple different components', async () => {
+		const input = `
+			${html.component('Header', '<header>Header</header>')}
+			${html.component('Footer', '<footer>Footer</footer>')}
+		`
+		const result = await ctx.process(input)
 
-		expect(Object.keys(result.components)).toHaveLength(2)
-		const componentNames = Object.values(result.components).map(c => c.componentName)
+		expectComponentCount(result, 2)
+		const componentNames = Object.values(result.components).map((c) => c.componentName)
 		expect(componentNames).toContain('Header')
 		expect(componentNames).toContain('Footer')
 	})
 
-	test('should track parentComponentId for text elements inside components', async () => {
-		counter = 0
-		const html = `
-      <div data-astro-source-file="src/components/Card.astro">
-        <h1>Card Title</h1>
-        <p>Card description</p>
-      </div>
-    `
-		const result = await processHtml(
-			html,
-			'test.html',
-			getOptions({ generateManifest: true }),
-			getNextId,
-		)
+	test('tracks parentComponentId for text elements inside components', async () => {
+		const input = html.component('Card', '<h1>Card Title</h1><p>Card description</p>')
+		const result = await ctx.process(input)
 
-		// Get the component ID
 		const componentId = Object.keys(result.components)[0]
 		expect(componentId).toBeDefined()
 
-		// Check that text elements have parentComponentId set
 		const entries = Object.values(result.entries)
 		expect(entries.length).toBeGreaterThan(0)
 
-		// All text elements should have the component as parent
 		for (const entry of entries) {
 			expect(entry.parentComponentId).toBe(componentId)
 		}
 	})
 
-	test('should not set parentComponentId for text elements outside components', async () => {
-		counter = 0
-		const html = '<div><h1>Standalone Title</h1></div>'
-		const result = await processHtml(
-			html,
-			'test.html',
-			getOptions({ generateManifest: true }),
-			getNextId,
-		)
+	test('does not set parentComponentId for text elements outside components', async () => {
+		const input = '<div><h1>Standalone Title</h1></div>'
+		const result = await ctx.process(input)
 
 		const entries = Object.values(result.entries)
 		expect(entries.length).toBeGreaterThan(0)
 
-		// No parent component should be set
 		for (const entry of entries) {
 			expect(entry.parentComponentId).toBeUndefined()
 		}
+	})
+})
+
+cmsDescribe('Component Detection Snapshots', { markComponents: true, generateManifest: true }, (ctx) => {
+	test('nested component with text elements', async () => {
+		const input = `
+			<div data-astro-source-file="src/components/Card.astro">
+				<h1>Card Title</h1>
+				<p>Card description with <strong>bold</strong> text</p>
+			</div>
+		`
+		const result = await ctx.process(input)
+
+		expect(result.html).toMatchSnapshot('html')
+		expect(result.entries).toMatchSnapshot('entries')
+		expect(result.components).toMatchSnapshot('components')
+	})
+
+	test('multiple components with various content', async () => {
+		const input = `
+			<div data-astro-source-file="src/components/Header.astro">
+				<h1>Site Header</h1>
+				<nav>Navigation</nav>
+			</div>
+			<div data-astro-source-file="src/components/Hero.astro">
+				<h2>Welcome</h2>
+				<p>Hero description</p>
+			</div>
+		`
+		const result = await ctx.process(input)
+
+		expect(result.html).toMatchSnapshot('html')
+		expect(result.entries).toMatchSnapshot('entries')
+		expect(result.components).toMatchSnapshot('components')
 	})
 })

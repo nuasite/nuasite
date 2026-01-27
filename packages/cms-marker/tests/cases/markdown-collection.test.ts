@@ -1,31 +1,16 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import fs from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { beforeEach, expect, test } from 'bun:test'
 import { findCollectionSource, findMarkdownSourceLocation, parseMarkdownContent } from '../../src/source-finder'
+import { setupContentCollections, withTempDir } from '../utils'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const testDir = path.join(__dirname, '__test-fixtures-md__')
-
-describe('findCollectionSource', () => {
+withTempDir('findCollectionSource', (getCtx) => {
 	beforeEach(async () => {
-		await fs.mkdir(testDir, { recursive: true })
-		await fs.mkdir(path.join(testDir, 'src/content/services'), { recursive: true })
-		await fs.mkdir(path.join(testDir, 'src/content/blog'), { recursive: true })
-
-		// Change to test directory
-		process.chdir(testDir)
-	})
-
-	afterEach(async () => {
-		// Change back and cleanup
-		process.chdir(path.dirname(testDir))
-		await fs.rm(testDir, { recursive: true, force: true })
+		await setupContentCollections(getCtx(), ['services', 'blog'])
 	})
 
 	test('should find collection source for simple path', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/web-design.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/web-design.md',
 			`---
 title: Web Design Services
 ---
@@ -43,8 +28,9 @@ Content here.
 	})
 
 	test('should find collection source with mdx extension', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/blog/first-post.mdx'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/blog/first-post.mdx',
 			`---
 title: First Post
 ---
@@ -62,8 +48,9 @@ MDX content here.
 	})
 
 	test('should handle paths with leading/trailing slashes', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/seo.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/seo.md',
 			`---
 title: SEO Services
 ---
@@ -95,9 +82,9 @@ title: SEO Services
 	})
 
 	test('should work with custom content directory', async () => {
-		await fs.mkdir(path.join(testDir, 'content/posts'), { recursive: true })
-		await fs.writeFile(
-			path.join(testDir, 'content/posts/hello.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'content/posts/hello.md',
 			`---
 title: Hello
 ---
@@ -113,9 +100,9 @@ title: Hello
 	})
 
 	test('should find index.md files in slug directories', async () => {
-		await fs.mkdir(path.join(testDir, 'src/content/services/enterprise'), { recursive: true })
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/enterprise/index.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/enterprise/index.md',
 			`---
 title: Enterprise Solutions
 ---
@@ -130,24 +117,15 @@ title: Enterprise Solutions
 	})
 })
 
-describe('findMarkdownSourceLocation', () => {
+withTempDir('findMarkdownSourceLocation', (getCtx) => {
 	beforeEach(async () => {
-		await fs.mkdir(testDir, { recursive: true })
-		await fs.mkdir(path.join(testDir, 'src/content/services'), { recursive: true })
-
-		// Change to test directory
-		process.chdir(testDir)
-	})
-
-	afterEach(async () => {
-		// Change back and cleanup
-		process.chdir(path.dirname(testDir))
-		await fs.rm(testDir, { recursive: true, force: true })
+		await setupContentCollections(getCtx(), ['services'])
 	})
 
 	test('should find text in frontmatter title', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/3d-print.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/3d-print.md',
 			`---
 title: 3D Printing Services
 subtitle: Fast and reliable
@@ -175,8 +153,9 @@ Body content.
 	})
 
 	test('should find text in frontmatter subtitle', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/design.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/design.md',
 			`---
 title: Design
 subtitle: Creative solutions for your brand
@@ -198,8 +177,9 @@ subtitle: Creative solutions for your brand
 	})
 
 	test('should handle quoted frontmatter values', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/support.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/support.md',
 			`---
 title: "24/7 Support Services"
 ---
@@ -220,8 +200,9 @@ title: "24/7 Support Services"
 	})
 
 	test('should handle single-quoted frontmatter values', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/api.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/api.md',
 			`---
 title: 'API Integration'
 ---
@@ -241,8 +222,9 @@ title: 'API Integration'
 	})
 
 	test('should return undefined for text in body (body is handled separately)', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/consulting.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/consulting.md',
 			`---
 title: Consulting
 ---
@@ -265,8 +247,9 @@ We provide expert consulting services.
 	})
 
 	test('should return undefined when text not found', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/empty.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/empty.md',
 			`---
 title: Empty
 ---
@@ -287,24 +270,15 @@ Nothing here.
 	})
 })
 
-describe('parseMarkdownContent', () => {
+withTempDir('parseMarkdownContent', (getCtx) => {
 	beforeEach(async () => {
-		await fs.mkdir(testDir, { recursive: true })
-		await fs.mkdir(path.join(testDir, 'src/content/services'), { recursive: true })
-
-		// Change to test directory
-		process.chdir(testDir)
-	})
-
-	afterEach(async () => {
-		// Change back and cleanup
-		process.chdir(path.dirname(testDir))
-		await fs.rm(testDir, { recursive: true, force: true })
+		await setupContentCollections(getCtx(), ['services'])
 	})
 
 	test('should parse frontmatter fields with line numbers', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/web.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/web.md',
 			`---
 title: Web Services
 subtitle: Fast and modern
@@ -330,8 +304,9 @@ Body content here.
 	})
 
 	test('should return full body content as single value', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/full.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/full.md',
 			`---
 title: Full Content
 ---
@@ -364,8 +339,9 @@ This is the second paragraph with **bold** text.
 	})
 
 	test('should return correct body start line', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/lines.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/lines.md',
 			`---
 title: Lines Test
 subtitle: Testing line numbers
@@ -388,8 +364,9 @@ Body starts here.
 	})
 
 	test('should include collection metadata', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/meta.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/meta.md',
 			`---
 title: Meta Test
 ---
@@ -413,8 +390,9 @@ Content.
 	})
 
 	test('should handle quoted frontmatter values', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/quotes.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/quotes.md',
 			`---
 title: "Quoted Title"
 subtitle: 'Single Quoted'
@@ -436,8 +414,9 @@ subtitle: 'Single Quoted'
 	})
 
 	test('should handle empty body', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/empty-body.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/empty-body.md',
 			`---
 title: No Body
 ---
@@ -458,8 +437,9 @@ title: No Body
 	})
 
 	test('should handle file without frontmatter', async () => {
-		await fs.writeFile(
-			path.join(testDir, 'src/content/services/no-front.md'),
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/no-front.md',
 			`Just some content without frontmatter.
 
 More content here.

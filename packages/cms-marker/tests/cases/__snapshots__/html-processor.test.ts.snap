@@ -1,0 +1,239 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`processHtml Snapshots basic document with headings and paragraphs: html 1`] = `
+"
+			<article>
+				<h1 data-cms-id="cms-0">Main Title</h1>
+				<p data-cms-id="cms-1">First paragraph with some text.</p>
+				<h2 data-cms-id="cms-2">Subtitle</h2>
+				<p data-cms-id="cms-3">Second paragraph with <strong>bold</strong> and <em>italic</em> text.</p>
+			</article>
+		"
+`;
+
+exports[`processHtml Snapshots basic document with headings and paragraphs: entries 1`] = `
+{
+  "cms-0": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-0",
+    "imageMetadata": undefined,
+    "parentComponentId": undefined,
+    "sourceContext": {
+      "followingText": "First paragraph with some text",
+      "parentClasses": undefined,
+      "parentTag": "article",
+      "precedingText": undefined,
+      "siblingIndex": 0,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "86956852d05d",
+    "tag": "h1",
+    "text": "Main Title",
+    "variableName": undefined,
+  },
+  "cms-1": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-1",
+    "imageMetadata": undefined,
+    "parentComponentId": undefined,
+    "sourceContext": {
+      "followingText": "Subtitle",
+      "parentClasses": undefined,
+      "parentTag": "article",
+      "precedingText": "Main Title",
+      "siblingIndex": 1,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "f8c6590ff26c",
+    "tag": "p",
+    "text": "First paragraph with some text.",
+    "variableName": undefined,
+  },
+  "cms-2": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-2",
+    "imageMetadata": undefined,
+    "parentComponentId": undefined,
+    "sourceContext": {
+      "followingText": "Second paragraph with bold and",
+      "parentClasses": undefined,
+      "parentTag": "article",
+      "precedingText": "First paragraph with some text",
+      "siblingIndex": 2,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "8b8d8ecd8c95",
+    "tag": "h2",
+    "text": "Subtitle",
+    "variableName": undefined,
+  },
+  "cms-3": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": undefined,
+    "contentPath": undefined,
+    "html": "Second paragraph with <strong>bold</strong> and <em>italic</em> text.",
+    "id": "cms-3",
+    "imageMetadata": undefined,
+    "parentComponentId": undefined,
+    "sourceContext": {
+      "followingText": undefined,
+      "parentClasses": undefined,
+      "parentTag": "article",
+      "precedingText": "Subtitle",
+      "siblingIndex": 3,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "95b6c2334754",
+    "tag": "p",
+    "text": "Second paragraph with bold and italic text.",
+    "variableName": undefined,
+  },
+}
+`;
+
+exports[`processHtml Snapshots elements with color classes: html 1`] = `
+"
+			<div>
+				<button class="bg-blue-500 text-white hover:bg-blue-600 px-4 py-2" data-cms-id="cms-0">Primary</button>
+				<button class="bg-gray-200 text-gray-800 border border-gray-300" data-cms-id="cms-1">Secondary</button>
+				<a class="text-blue-600 hover:text-blue-800 underline" href="#" data-cms-id="cms-2">Link</a>
+			</div>
+		"
+`;
+
+exports[`processHtml Snapshots elements with color classes: entries 1`] = `
+{
+  "cms-0": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": {
+      "allColorClasses": [
+        "bg-blue-500",
+        "text-white",
+        "hover:bg-blue-600",
+      ],
+      "bg": "bg-blue-500",
+      "hoverBg": "hover:bg-blue-600",
+      "text": "text-white",
+    },
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-0",
+    "imageMetadata": undefined,
+    "parentComponentId": undefined,
+    "sourceContext": {
+      "followingText": "Secondary",
+      "parentClasses": undefined,
+      "parentTag": "div",
+      "precedingText": undefined,
+      "siblingIndex": 0,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "e4e636c79e34",
+    "tag": "button",
+    "text": "Primary",
+    "variableName": undefined,
+  },
+  "cms-1": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": {
+      "allColorClasses": [
+        "bg-gray-200",
+        "text-gray-800",
+        "border-gray-300",
+      ],
+      "bg": "bg-gray-200",
+      "border": "border-gray-300",
+      "text": "text-gray-800",
+    },
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-1",
+    "imageMetadata": undefined,
+    "parentComponentId": undefined,
+    "sourceContext": {
+      "followingText": "Link",
+      "parentClasses": undefined,
+      "parentTag": "div",
+      "precedingText": "Primary",
+      "siblingIndex": 1,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "f57a858d8fd1",
+    "tag": "button",
+    "text": "Secondary",
+    "variableName": undefined,
+  },
+  "cms-2": {
+    "childCmsIds": undefined,
+    "collectionName": undefined,
+    "collectionSlug": undefined,
+    "colorClasses": {
+      "allColorClasses": [
+        "text-blue-600",
+        "hover:text-blue-800",
+      ],
+      "hoverText": "hover:text-blue-800",
+      "text": "text-blue-600",
+    },
+    "contentPath": undefined,
+    "html": undefined,
+    "id": "cms-2",
+    "imageMetadata": undefined,
+    "parentComponentId": undefined,
+    "sourceContext": {
+      "followingText": undefined,
+      "parentClasses": undefined,
+      "parentTag": "div",
+      "precedingText": "Secondary",
+      "siblingIndex": 2,
+    },
+    "sourceLine": undefined,
+    "sourcePath": undefined,
+    "sourceSnippet": undefined,
+    "sourceType": undefined,
+    "stableId": "b48abc2614e8",
+    "tag": "a",
+    "text": "Link",
+    "variableName": undefined,
+  },
+}
+`;
