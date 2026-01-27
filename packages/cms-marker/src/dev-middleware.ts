@@ -1,3 +1,4 @@
+import { parse } from 'node-html-parser'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
@@ -237,8 +238,39 @@ async function processHtmlForDev(
 		}
 	}
 
+	// Filter out entries without sourcePath - these can't be edited
+	const idsToRemove: string[] = []
+	for (const [id, entry] of Object.entries(result.entries)) {
+		// Keep collection wrapper entries even without sourcePath (they use contentPath)
+		if (entry.sourceType === 'collection') continue
+		// Remove entries that don't have a resolved sourcePath
+		if (!entry.sourcePath) {
+			idsToRemove.push(id)
+			delete result.entries[id]
+		}
+	}
+
+	// Remove CMS ID attributes from HTML for entries that were filtered out
+	let finalHtml = result.html
+	if (idsToRemove.length > 0) {
+		const root = parse(result.html, {
+			lowerCaseTagName: false,
+			comment: true,
+		})
+		for (const id of idsToRemove) {
+			const element = root.querySelector(`[${config.attributeName}="${id}"]`)
+			if (element) {
+				element.removeAttribute(config.attributeName)
+				// Also remove related CMS attributes
+				element.removeAttribute('data-cms-img')
+				element.removeAttribute('data-cms-markdown')
+			}
+		}
+		finalHtml = root.toString()
+	}
+
 	return {
-		html: result.html,
+		html: finalHtml,
 		entries: result.entries,
 		components: result.components,
 		collection: collectionEntry,
