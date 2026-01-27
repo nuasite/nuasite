@@ -17,11 +17,16 @@ import type {
 // ============================================================================
 
 /**
- * Get text content from an AST node recursively
+ * Get text content from an AST node recursively.
+ * Treats <br> elements as whitespace to match rendered HTML behavior.
  */
 export function getTextContent(node: AstroNode): string {
 	if (node.type === 'text') {
 		return (node as TextNode).value
+	}
+	// Treat <br> elements as whitespace (they create line breaks in rendered HTML)
+	if (node.type === 'element' && (node as ElementNode).name.toLowerCase() === 'br') {
+		return ' '
 	}
 	if ('children' in node && Array.isArray(node.children)) {
 		return node.children.map(getTextContent).join('')

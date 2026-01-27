@@ -520,6 +520,41 @@ import Header from '../components/Header.astro';
 		expect(result?.snippet).not.toContain('<p')
 		expect(result?.snippet).not.toContain('class=')
 	})
+
+	test('should handle br elements in text content', async () => {
+		await fs.writeFile(
+			path.join(testDir, 'src/components/Hero.astro'),
+			`---
+---
+<h1 class="text-4xl">
+  <span class="gradient">Chytrý</span><br>
+  <span class="text-black">fulfillment</span> pro váš růst
+</h1>
+`,
+		)
+
+		// The rendered text would show "Chytrý fulfillment pro váš růst" with space due to br
+		const result = await findSourceLocation('Chytrý fulfillment pro váš růst', 'h1')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Hero.astro')
+		expect(result?.type).toBe('static')
+	})
+
+	test('should handle multiple br elements', async () => {
+		await fs.writeFile(
+			path.join(testDir, 'src/components/Address.astro'),
+			`---
+---
+<p>Line one<br>Line two<br>Line three</p>
+`,
+		)
+
+		const result = await findSourceLocation('Line one Line two Line three', 'p')
+
+		expect(result).toBeDefined()
+		expect(result?.type).toBe('static')
+	})
 })
 
 describe('findImageSourceLocation', () => {

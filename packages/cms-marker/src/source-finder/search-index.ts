@@ -106,9 +106,14 @@ export async function initializeSearchIndex(): Promise<void> {
 // ============================================================================
 
 // Helper for indexing - get text content from node
+// Treats <br> elements as whitespace to match rendered HTML behavior
 function getTextContent(node: AstroNode): string {
 	if (node.type === 'text') {
 		return (node as TextNode).value
+	}
+	// Treat <br> elements as whitespace (they create line breaks in rendered HTML)
+	if (node.type === 'element' && (node as ElementNode).name.toLowerCase() === 'br') {
+		return ' '
 	}
 	if ('children' in node && Array.isArray(node.children)) {
 		return node.children.map(getTextContent).join('')
