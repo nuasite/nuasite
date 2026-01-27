@@ -451,6 +451,22 @@ export async function processHtml(
 		const src = node.getAttribute('src')
 		if (!src) return // Skip images without src
 
+		// When skipMarkdownContent is true (collection pages), only mark images
+		// that have source file attributes (from Astro templates, not markdown)
+		if (skipMarkdownContent) {
+			// Check if the image or any ancestor has source file attribute
+			let hasSourceAttr = false
+			let current: HTMLNode | null = node
+			while (current) {
+				if (current.getAttribute?.('data-astro-source-file')) {
+					hasSourceAttr = true
+					break
+				}
+				current = current.parentNode as HTMLNode | null
+			}
+			if (!hasSourceAttr) return
+		}
+
 		const id = getNextId()
 		node.setAttribute(attributeName, id)
 		node.setAttribute('data-cms-img', 'true')
