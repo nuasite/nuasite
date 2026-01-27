@@ -20,9 +20,10 @@ describe('processHtml', () => {
 			getNextId,
 		)
 
-		expect(result.html).toContain('data-cms-id="cms-0"')
-		expect(result.html).toContain('data-cms-id="cms-1"')
-		expect(result.html).toContain('data-cms-id="cms-2"')
+		// Pure container (div) is not marked, only elements with direct text (h1, p)
+		expect(result.html).toContain('data-cms-id="cms-0"') // h1
+		expect(result.html).toContain('data-cms-id="cms-1"') // p
+		expect(result.html).not.toContain('<div data-cms-id') // div is pure container
 	})
 
 	test('should exclude specified tags', async () => {
@@ -66,7 +67,7 @@ describe('processHtml', () => {
 		)
 
 		const matches = result.html.match(/data-cms-id/g)
-		expect(matches?.length).toBe(2) // div and p with text
+		expect(matches?.length).toBe(1) // only p with text (div is pure container, empty p is skipped)
 	})
 
 	test('should include empty elements when includeEmptyText is true', async () => {
@@ -88,7 +89,7 @@ describe('processHtml', () => {
 		)
 
 		const matches = result.html.match(/data-cms-id/g)
-		expect(matches?.length).toBe(3) // div and both p tags
+		expect(matches?.length).toBe(2) // both p tags (div is pure container)
 	})
 
 	test('should only include specified tags when includeTags is set', async () => {
@@ -204,11 +205,11 @@ describe('processHtml', () => {
 			getNextId,
 		)
 
-		// div should not be in manifest (pure container)
-		// only h1 should be in manifest
+		// div is pure container - not marked at all
+		// only h1 should be marked and in manifest
 		expect(Object.keys(result.entries)).toHaveLength(1)
-		expect(result.entries['cms-1']).toBeDefined()
-		expect(result.entries['cms-0']).toBeUndefined()
+		expect(result.entries['cms-0']).toBeDefined() // h1 gets cms-0 since div is not marked
+		expect(result.html).not.toContain('<div data-cms-id')
 	})
 
 	test('should mark spans with text-only Tailwind classes as styled', async () => {
@@ -388,8 +389,8 @@ describe('processHtml', () => {
 			getNextId,
 		)
 
-		// All elements should be marked
-		expect(result.html).toContain('<div data-cms-id')
+		// Elements with direct text should be marked, pure containers (divs) should not
+		expect(result.html).not.toContain('<div data-cms-id') // divs are pure containers
 		expect(result.html).toContain('<h1 data-cms-id')
 		expect(result.html).toContain('<p data-cms-id')
 	})

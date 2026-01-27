@@ -506,13 +506,23 @@ export async function processHtml(
 		})
 	})
 
-	// Third pass: assign IDs to all qualifying text elements and extract source locations
+	// Third pass: collect candidate text elements (don't mark yet)
+	// We collect candidates first to filter out pure containers before marking
+	interface TextCandidate {
+		node: HTMLNode
+		tag: string
+		sourceFile: string | undefined
+		sourceLine: string | undefined
+	}
+	const textCandidates: TextCandidate[] = []
+	const candidateNodes = new Set<HTMLNode>()
+
 	root.querySelectorAll('*').forEach((node) => {
 		const tag = node.tagName?.toLowerCase?.() ?? ''
 
 		if (excludeTags.includes(tag)) return
 		if (includeTags && !includeTags.includes(tag)) return
-		if (node.getAttribute(attributeName)) return // Already marked
+		if (node.getAttribute(attributeName)) return // Already marked (images, collection wrapper)
 
 		// Skip elements inside markdown wrapper - they are edited via the markdown editor
 		if (isInsideMarkdownWrapper(node)) return
@@ -538,7 +548,6 @@ export async function processHtml(
 		if (!includeEmptyText && !textContent) return
 
 		// Extract source location from Astro compiler attributes
-		// Support both Astro's native attribute (data-astro-source-loc) and our custom one (data-astro-source-line)
 		const sourceFile = node.getAttribute('data-astro-source-file')
 		const sourceLine = node.getAttribute('data-astro-source-loc')
 			|| node.getAttribute('data-astro-source-line')
@@ -549,6 +558,59 @@ export async function processHtml(
 			return
 		}
 
+		textCandidates.push({ node, tag, sourceFile: sourceFile || undefined, sourceLine: sourceLine || undefined })
+		candidateNodes.add(node)
+	})
+
+	// Helper to check if a node has direct text (text not inside candidate descendants)
+	const hasDirectText = (node: HTMLNode): boolean => {
+		// Check for text nodes directly under this element (not inside candidate children)
+		for (const child of node.childNodes) {
+			if (child.nodeType === 3) {
+				// Text node
+				const text = (child.text || '').trim()
+				if (text) return true
+			} else if (child.nodeType === 1) {
+				// Element node - only recurse if it's not a candidate
+				const childEl = child as HTMLNode
+				if (!candidateNodes.has(childEl) && !childEl.getAttribute?.(attributeName)) {
+					if (hasDirectText(childEl)) return true
+				}
+			}
+		}
+		return false
+	}
+
+	// Helper to check if a node has any candidate or already-marked descendants
+	const hasCandidateDescendants = (node: HTMLNode): boolean => {
+		for (const child of node.childNodes) {
+			if (child.nodeType === 1) {
+				const childEl = child as HTMLNode
+				if (candidateNodes.has(childEl) || childEl.getAttribute?.(attributeName)) {
+					return true
+				}
+				if (hasCandidateDescendants(childEl)) return true
+			}
+		}
+		return false
+	}
+
+	// Filter out pure containers (no direct text, only candidate/marked children)
+	// and mark remaining candidates
+	for (const candidate of textCandidates) {
+		const { node, sourceFile, sourceLine } = candidate
+
+		// Check if this is a pure container (no direct text, only has candidate descendants)
+		const directText = hasDirectText(node)
+		const hasDescendants = hasCandidateDescendants(node)
+
+		// Skip pure containers - they have no direct text and all content comes from children
+		if (!directText && hasDescendants) {
+			candidateNodes.delete(node) // Remove from candidates so nested checks stay accurate
+			continue
+		}
+
+		// Mark this element
 		const id = getNextId()
 		node.setAttribute(attributeName, id)
 
@@ -565,9 +627,9 @@ export async function processHtml(
 				node.removeAttribute('data-astro-source-line')
 			}
 		}
-	})
+	}
 
-	// Fourth pass: build manifest entries
+	// Fourth pass: build manifest entries for all marked elements
 	if (generateManifest) {
 		root.querySelectorAll(`[${attributeName}]`).forEach((node) => {
 			const id = node.getAttribute(attributeName)
@@ -608,18 +670,6 @@ export async function processHtml(
 
 			const textWithPlaceholders = buildTextWithPlaceholders((node.childNodes || []) as ChildNode[])
 
-			// Get direct text content (without placeholders)
-			const directText = textWithPlaceholders.replace(/\{\{cms:[^}]+\}\}/g, '').trim()
-
-			// Check if this is the collection wrapper
-			const isCollectionWrapper = id === collectionWrapperId
-
-			// Skip pure container elements (no direct text, only child CMS elements)
-			// BUT always include the collection wrapper
-			if (!directText && childCmsIds.length > 0 && !isCollectionWrapper) {
-				return
-			}
-
 			// Get source location from map (injected by Astro compiler)
 			const sourceLocation = sourceLocationMap.get(id)
 
@@ -648,6 +698,9 @@ export async function processHtml(
 			// Check if this is an image entry
 			const imageInfo = imageEntries.get(id)
 			const isImage = !!imageInfo
+
+			// Check if this is the collection wrapper
+			const isCollectionWrapper = id === collectionWrapperId
 
 			const entryText = isImage ? (imageInfo.metadata.alt || imageInfo.metadata.src) : textWithPlaceholders.trim()
 			// For images, use the source file we captured from ancestors if not in sourceLocationMap
