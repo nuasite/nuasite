@@ -79,6 +79,32 @@ export interface TailwindColor {
 	isCustom?: boolean
 }
 
+/** Opacity classes currently applied to an element */
+export interface OpacityClasses {
+	/** Background opacity class (e.g., 'bg-opacity-90') */
+	bgOpacity?: string
+	/** Text opacity class (e.g., 'text-opacity-50') */
+	textOpacity?: string
+	/** Border opacity class (e.g., 'border-opacity-75') */
+	borderOpacity?: string
+}
+
+/** Gradient color classes currently applied to an element */
+export interface GradientClasses {
+	/** Gradient start color (e.g., 'from-blue-500') */
+	from?: string
+	/** Gradient middle color (e.g., 'via-purple-500') */
+	via?: string
+	/** Gradient end color (e.g., 'to-pink-500') */
+	to?: string
+	/** Hover gradient start color (e.g., 'hover:from-blue-600') */
+	hoverFrom?: string
+	/** Hover gradient middle color (e.g., 'hover:via-purple-600') */
+	hoverVia?: string
+	/** Hover gradient end color (e.g., 'hover:to-pink-600') */
+	hoverTo?: string
+}
+
 /** Color classes currently applied to an element */
 export interface ColorClasses {
 	/** Background color class (e.g., 'bg-blue-500') */
@@ -93,6 +119,10 @@ export interface ColorClasses {
 	hoverText?: string
 	/** Hover border color class (e.g., 'hover:border-blue-700') */
 	hoverBorder?: string
+	/** Gradient color classes */
+	gradient?: GradientClasses
+	/** Opacity classes */
+	opacity?: OpacityClasses
 	/** All color-related classes as found in the element */
 	allColorClasses?: string[]
 }

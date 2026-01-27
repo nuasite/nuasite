@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
-import type { AvailableColors, AvailableTextStyles, ColorClasses, TailwindColor, TextStyleValue } from './types'
+import type { AvailableColors, AvailableTextStyles, ColorClasses, GradientClasses, OpacityClasses, TailwindColor, TextStyleValue } from './types'
 
 /**
  * Default Tailwind CSS v4 color names.
@@ -397,11 +397,35 @@ const DEFAULT_FONT_STYLES: TextStyleValue[] = [
 ]
 
 /**
+ * Non-color utility suffixes that should not be matched as custom colors.
+ * These follow the pattern `prefix-word-number` but are not colors.
+ */
+const NON_COLOR_SUFFIXES = ['opacity'] as const
+
+/**
  * Build a regex pattern for matching color classes.
+ * Matches:
+ * - Default colors with optional shades: bg-blue-500, bg-white
+ * - Custom theme colors with shades: bg-primary-500
+ * - Arbitrary hex values: bg-[#41b883], bg-[#fff]
+ * - Arbitrary rgb/hsl values: bg-[rgb(255,0,0)], bg-[hsl(0,100%,50%)]
+ * Excludes non-color utilities like opacity.
  */
 function buildColorPattern(prefix: string): RegExp {
 	const colorNames = [...DEFAULT_TAILWIND_COLORS, ...SPECIAL_COLORS].join('|')
-	return new RegExp(`^${prefix}-((?:${colorNames})(?:-(\\d+))?|([a-z]+)-(\\d+))$`)
+	const excluded = NON_COLOR_SUFFIXES.join('|')
+	// Arbitrary value patterns for colors
+	const arbitraryHex = '\\[#[0-9a-fA-F]{3,8}\\]'
+	const arbitraryFunc = '\\[(?:rgba?|hsla?)\\([^\\]]+\\)\\]'
+	// Match: prefix-(colorName[-shade]?) OR prefix-(customColor-shade) OR prefix-[arbitrary] but NOT prefix-(excluded-number)
+	return new RegExp(`^${prefix}-((?:${colorNames})(?:-(\\d+))?|(?!(?:${excluded})-)(\\w+)-(\\d+)|${arbitraryHex}|${arbitraryFunc})$`)
+}
+
+/**
+ * Build a regex pattern for matching opacity classes.
+ */
+function buildOpacityPattern(prefix: string): RegExp {
+	return new RegExp(`^${prefix}-opacity-(\\d+)$`)
 }
 
 /**
@@ -414,6 +438,27 @@ const COLOR_CLASS_PATTERNS = {
 	hoverBg: buildColorPattern('hover:bg'),
 	hoverText: buildColorPattern('hover:text'),
 	hoverBorder: buildColorPattern('hover:border'),
+}
+
+/**
+ * Regex patterns to match Tailwind opacity classes.
+ */
+const OPACITY_CLASS_PATTERNS = {
+	bgOpacity: buildOpacityPattern('bg'),
+	textOpacity: buildOpacityPattern('text'),
+	borderOpacity: buildOpacityPattern('border'),
+}
+
+/**
+ * Regex patterns to match Tailwind gradient color classes.
+ */
+const GRADIENT_CLASS_PATTERNS = {
+	from: buildColorPattern('from'),
+	via: buildColorPattern('via'),
+	to: buildColorPattern('to'),
+	hoverFrom: buildColorPattern('hover:from'),
+	hoverVia: buildColorPattern('hover:via'),
+	hoverTo: buildColorPattern('hover:to'),
 }
 
 /**
@@ -664,35 +709,84 @@ export function extractColorClasses(classAttr: string | null | undefined): Color
 
 	const classes = classAttr.split(/\s+/).filter(Boolean)
 	const colorClasses: ColorClasses = {}
+	const opacityClasses: OpacityClasses = {}
+	const gradientClasses: GradientClasses = {}
 	const allColorClasses: string[] = []
 
 	for (const cls of classes) {
+		// Check color patterns
+		let matched = false
 		for (const [key, pattern] of Object.entries(COLOR_CLASS_PATTERNS)) {
 			const match = cls.match(pattern)
 			if (match) {
 				allColorClasses.push(cls)
-				const colorKey = key as keyof Omit<ColorClasses, 'allColorClasses'>
+				const colorKey = key as keyof Omit<ColorClasses, 'allColorClasses' | 'opacity' | 'gradient'>
 				if (!(colorKey in colorClasses)) {
 					colorClasses[colorKey] = cls
 				}
+				matched = true
 				break
+			}
+		}
+
+		// Check gradient patterns if not already matched
+		if (!matched) {
+			for (const [key, pattern] of Object.entries(GRADIENT_CLASS_PATTERNS)) {
+				const match = cls.match(pattern)
+				if (match) {
+					allColorClasses.push(cls)
+					const gradientKey = key as keyof GradientClasses
+					if (!(gradientKey in gradientClasses)) {
+						gradientClasses[gradientKey] = cls
+					}
+					matched = true
+					break
+				}
+			}
+		}
+
+		// Check opacity patterns if not already matched
+		if (!matched) {
+			for (const [key, pattern] of Object.entries(OPACITY_CLASS_PATTERNS)) {
+				const match = cls.match(pattern)
+				if (match) {
+					const opacityKey = key as keyof OpacityClasses
+					if (!(opacityKey in opacityClasses)) {
+						opacityClasses[opacityKey] = cls
+					}
+					break
+				}
 			}
 		}
 	}
 
-	if (allColorClasses.length === 0) {
+	// Add gradient if any found
+	if (Object.keys(gradientClasses).length > 0) {
+		colorClasses.gradient = gradientClasses
+	}
+
+	// Add opacity if any found
+	if (Object.keys(opacityClasses).length > 0) {
+		colorClasses.opacity = opacityClasses
+	}
+
+	if (allColorClasses.length === 0 && !colorClasses.opacity) {
 		return undefined
 	}
 
-	colorClasses.allColorClasses = allColorClasses
+	if (allColorClasses.length > 0) {
+		colorClasses.allColorClasses = allColorClasses
+	}
+
 	return colorClasses
 }
 
 /**
- * Check if a class is a color class.
+ * Check if a class is a color class (including gradient colors).
  */
 export function isColorClass(className: string): boolean {
 	return Object.values(COLOR_CLASS_PATTERNS).some(pattern => pattern.test(className))
+		|| Object.values(GRADIENT_CLASS_PATTERNS).some(pattern => pattern.test(className))
 }
 
 /**
@@ -711,10 +805,15 @@ export function replaceColorClass(
 /**
  * Get the color type from a color class.
  */
-export function getColorType(colorClass: string): keyof ColorClasses | undefined {
+export function getColorType(colorClass: string): keyof ColorClasses | keyof GradientClasses | undefined {
 	for (const [key, pattern] of Object.entries(COLOR_CLASS_PATTERNS)) {
 		if (pattern.test(colorClass)) {
 			return key as keyof ColorClasses
+		}
+	}
+	for (const [key, pattern] of Object.entries(GRADIENT_CLASS_PATTERNS)) {
+		if (pattern.test(colorClass)) {
+			return key as keyof GradientClasses
 		}
 	}
 	return undefined
@@ -728,20 +827,35 @@ export function parseColorClass(colorClass: string): {
 	colorName: string
 	shade?: string
 	isHover: boolean
+	isArbitrary?: boolean
 } | undefined {
 	const isHover = colorClass.startsWith('hover:')
 	const classWithoutHover = isHover ? colorClass.slice(6) : colorClass
 
-	const match = classWithoutHover.match(/^(bg|text|border)-([a-z]+)(?:-(\d+))?$/)
-
-	if (!match) return undefined
-
-	return {
-		prefix: isHover ? `hover:${match[1]}` : match[1]!,
-		colorName: match[2]!,
-		shade: match[3],
-		isHover,
+	// Try matching standard color classes (default colors, custom theme colors, and gradients)
+	const standardMatch = classWithoutHover.match(/^(bg|text|border|from|via|to)-([a-z]+)(?:-(\d+))?$/)
+	if (standardMatch) {
+		return {
+			prefix: isHover ? `hover:${standardMatch[1]}` : standardMatch[1]!,
+			colorName: standardMatch[2]!,
+			shade: standardMatch[3],
+			isHover,
+		}
 	}
+
+	// Try matching arbitrary value classes like bg-[#41b883] or from-[#41b883]
+	const arbitraryMatch = classWithoutHover.match(/^(bg|text|border|from|via|to)-(\[.+\])$/)
+	if (arbitraryMatch) {
+		return {
+			prefix: isHover ? `hover:${arbitraryMatch[1]}` : arbitraryMatch[1]!,
+			colorName: arbitraryMatch[2]!,
+			shade: undefined,
+			isHover,
+			isArbitrary: true,
+		}
+	}
+
+	return undefined
 }
 
 /**
