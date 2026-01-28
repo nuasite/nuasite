@@ -158,5 +158,5 @@ export type {
 	SourceContext,
 	TailwindColor,
 	TextStyleValue,
-	TwitterCardData
+	TwitterCardData,
 } from './types'
