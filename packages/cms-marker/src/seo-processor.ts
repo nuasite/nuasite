@@ -1,5 +1,6 @@
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
-import type { CanonicalUrl, JsonLdEntry, OpenGraphData, PageSeoData, SeoKeywords, SeoMetaTag, SeoTitle, TwitterCardData } from './types'
+import { findSeoSource } from './source-finder/seo-finder'
+import type { CanonicalUrl, JsonLdEntry, OpenGraphData, PageSeoData, RobotsDirective, SeoKeywords, SeoMetaTag, SeoTitle, TwitterCardData } from './types'
 
 /** Type for parsed HTML element nodes from node-html-parser */
 type HTMLNode = ParsedHTMLElement
@@ -9,7 +10,7 @@ export interface ProcessSeoOptions {
 	markTitle?: boolean
 	/** Whether to parse JSON-LD structured data (default: true) */
 	parseJsonLd?: boolean
-	/** Path to source file for source tracking */
+	/** Path to source file for source tracking (fallback) */
 	sourcePath?: string
 }
 
@@ -26,11 +27,11 @@ export interface ProcessSeoResult {
  * Process HTML to extract SEO metadata from the <head> section.
  * Returns structured SEO data with source tracking information.
  */
-export function processSeoFromHtml(
+export async function processSeoFromHtml(
 	html: string,
 	options: ProcessSeoOptions = {},
 	getNextId?: () => string,
-): ProcessSeoResult {
+): Promise<ProcessSeoResult> {
 	const { markTitle = true, parseJsonLd = true, sourcePath } = options
 
 	const root = parse(html, {
@@ -49,7 +50,7 @@ export function processSeoFromHtml(
 	let titleCmsId: string | undefined
 
 	// Extract title
-	const titleResult = extractTitle(root, html, sourcePath, markTitle, getNextId)
+	const titleResult = await extractTitle(root, html, sourcePath, markTitle, getNextId)
 	if (titleResult) {
 		seo.title = titleResult.title
 		titleCmsId = titleResult.cmsId
@@ -57,18 +58,18 @@ export function processSeoFromHtml(
 
 	// Extract meta tags from head
 	if (head) {
-		const metaTags = extractMetaTags(head, html, sourcePath)
+		const metaTags = await extractMetaTags(head, html, sourcePath)
 		categorizeMetaTags(metaTags, seo)
 
 		// Extract canonical URL
-		const canonical = extractCanonical(head, html, sourcePath)
+		const canonical = await extractCanonical(head, html, sourcePath)
 		if (canonical) {
 			seo.canonical = canonical
 		}
 
 		// Extract JSON-LD
 		if (parseJsonLd) {
-			const jsonLdEntries = extractJsonLd(head, html, sourcePath)
+			const jsonLdEntries = await extractJsonLd(head, html, sourcePath)
 			if (jsonLdEntries.length > 0) {
 				seo.jsonLd = jsonLdEntries
 			}
@@ -85,21 +86,24 @@ export function processSeoFromHtml(
 /**
  * Extract the page title from HTML
  */
-function extractTitle(
+async function extractTitle(
 	root: HTMLNode,
 	html: string,
 	sourcePath?: string,
 	markTitle?: boolean,
 	getNextId?: () => string,
-): { title: SeoTitle; cmsId?: string } | undefined {
+): Promise<{ title: SeoTitle; cmsId?: string } | undefined> {
 	const titleElement = root.querySelector('title')
 	if (!titleElement) return undefined
 
 	const content = titleElement.textContent?.trim() || ''
 	if (!content) return undefined
 
-	// Find source location
-	const sourceInfo = findElementSourceLocation(titleElement, html, sourcePath)
+	// Try to find source location in actual source files
+	const sourceLocation = await findSeoSource('title', { content })
+
+	// Fall back to rendered HTML location if source not found
+	const sourceInfo = sourceLocation || findElementSourceLocation(titleElement, html, sourcePath)
 
 	let cmsId: string | undefined
 	if (markTitle && getNextId) {
@@ -120,11 +124,11 @@ function extractTitle(
 /**
  * Extract all meta tags from the head
  */
-function extractMetaTags(
+async function extractMetaTags(
 	head: HTMLNode,
 	html: string,
 	sourcePath?: string,
-): SeoMetaTag[] {
+): Promise<SeoMetaTag[]> {
 	const metaTags: SeoMetaTag[] = []
 	const metas = head.querySelectorAll('meta')
 
@@ -136,7 +140,11 @@ function extractMetaTags(
 		// Skip meta tags without content or without name/property
 		if (!content || (!name && !property)) continue
 
-		const sourceInfo = findElementSourceLocation(meta, html, sourcePath)
+		// Try to find source location in actual source files
+		const sourceLocation = await findSeoSource('meta', { name: name || undefined, property: property || undefined, content })
+
+		// Fall back to rendered HTML location if source not found
+		const sourceInfo = sourceLocation || findElementSourceLocation(meta, html, sourcePath)
 
 		metaTags.push({
 			name: name || undefined,
@@ -150,7 +158,7 @@ function extractMetaTags(
 }
 
 /**
- * Categorize meta tags into description, keywords, Open Graph and Twitter Card
+ * Categorize meta tags into description, keywords, robots, Open Graph and Twitter Card
  */
 function categorizeMetaTags(metaTags: SeoMetaTag[], seo: PageSeoData): void {
 	const openGraph: OpenGraphData = {}
@@ -172,6 +180,16 @@ function categorizeMetaTags(metaTags: SeoMetaTag[], seo: PageSeoData): void {
 				...meta,
 				keywords,
 			} as SeoKeywords
+			continue
+		}
+
+		// Robots
+		if (name === 'robots') {
+			const directives = content.split(',').map(d => d.trim().toLowerCase()).filter(Boolean)
+			seo.robots = {
+				...meta,
+				directives,
+			} as RobotsDirective
 			continue
 		}
 
@@ -238,18 +256,22 @@ function categorizeMetaTags(metaTags: SeoMetaTag[], seo: PageSeoData): void {
 /**
  * Extract canonical URL from head
  */
-function extractCanonical(
+async function extractCanonical(
 	head: HTMLNode,
 	html: string,
 	sourcePath?: string,
-): CanonicalUrl | undefined {
+): Promise<CanonicalUrl | undefined> {
 	const canonical = head.querySelector('link[rel="canonical"]')
 	if (!canonical) return undefined
 
 	const href = canonical.getAttribute('href')
 	if (!href) return undefined
 
-	const sourceInfo = findElementSourceLocation(canonical, html, sourcePath)
+	// Try to find source location in actual source files
+	const sourceLocation = await findSeoSource('canonical', { href })
+
+	// Fall back to rendered HTML location if source not found
+	const sourceInfo = sourceLocation || findElementSourceLocation(canonical, html, sourcePath)
 
 	return {
 		href,
@@ -260,11 +282,11 @@ function extractCanonical(
 /**
  * Extract JSON-LD structured data from script tags
  */
-function extractJsonLd(
+async function extractJsonLd(
 	head: HTMLNode,
 	html: string,
 	sourcePath?: string,
-): JsonLdEntry[] {
+): Promise<JsonLdEntry[]> {
 	const entries: JsonLdEntry[] = []
 
 	// Also check body for JSON-LD scripts (some sites place them there)
@@ -279,7 +301,11 @@ function extractJsonLd(
 			const data = JSON.parse(content)
 			const type = data['@type'] || 'Unknown'
 
-			const sourceInfo = findElementSourceLocation(script, html, sourcePath)
+			// Try to find source location in actual source files
+			const sourceLocation = await findSeoSource('jsonld', { jsonLdType: type })
+
+			// Fall back to rendered HTML location if source not found
+			const sourceInfo = sourceLocation || findElementSourceLocation(script, html, sourcePath)
 
 			entries.push({
 				type,
@@ -287,6 +313,7 @@ function extractJsonLd(
 				...sourceInfo,
 			})
 		} catch {
+			// Skip malformed JSON-LD
 		}
 	}
 
@@ -294,7 +321,8 @@ function extractJsonLd(
 }
 
 /**
- * Find the source location (line number and snippet) for an element in the HTML
+ * Find the source location (line number and snippet) for an element in the rendered HTML.
+ * This is a fallback when the actual source file location cannot be found.
  */
 function findElementSourceLocation(
 	element: HTMLNode,

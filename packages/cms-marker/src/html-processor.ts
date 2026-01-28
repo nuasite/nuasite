@@ -763,7 +763,7 @@ export async function processHtml(
 	// Process SEO elements from the page
 	let seo: PageSeoData | undefined
 	if (seoOptions?.trackSeo !== false) {
-		const seoResult = processSeoFromHtml(
+		const seoResult = await processSeoFromHtml(
 			finalHtml,
 			{
 				markTitle: seoOptions?.markTitle ?? true,

@@ -392,6 +392,14 @@ export interface SeoKeywords extends SeoSourceInfo {
 	keywords: string[]
 }
 
+/** Robots meta directive */
+export interface RobotsDirective extends SeoSourceInfo {
+	/** Raw content value */
+	content: string
+	/** Parsed individual directives (e.g., ['noindex', 'nofollow']) */
+	directives: string[]
+}
+
 /** Complete SEO data for a page */
 export interface PageSeoData {
 	/** Page title */
@@ -402,6 +410,8 @@ export interface PageSeoData {
 	keywords?: SeoKeywords
 	/** Canonical URL */
 	canonical?: CanonicalUrl
+	/** Robots meta directive */
+	robots?: RobotsDirective
 	/** Open Graph metadata */
 	openGraph?: OpenGraphData
 	/** Twitter Card metadata */
