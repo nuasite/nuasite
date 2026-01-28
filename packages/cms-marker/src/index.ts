@@ -120,11 +120,43 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 	}
 }
 
-// Re-export config functions for testing
-export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
 // Re-export collection scanner
 export { scanCollections } from './collection-scanner'
-// Re-export types for consumers
+// Re-export config functions for testing
+export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
+// Re-export types for consumers
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
-export type * from './types'
+export type {
+	AvailableColors,
+	AvailableTextStyles,
+	CanonicalUrl,
+	CmsManifest,
+	CmsMarkerOptions,
+	CollectionDefinition,
+	CollectionEntry,
+	ColorClasses,
+	ComponentDefinition,
+	ComponentInstance,
+	ComponentProp,
+	ContentConstraints,
+	FieldDefinition,
+	FieldType,
+	GradientClasses,
+	ImageMetadata,
+	JsonLdEntry,
+	ManifestEntry,
+	ManifestMetadata,
+	OpacityClasses,
+	OpenGraphData,
+	PageSeoData,
+	SeoKeywords,
+	SeoMetaTag,
+	SeoOptions,
+	SeoSourceInfo,
+	SeoTitle,
+	SourceContext,
+	TailwindColor,
+	TextStyleValue,
+	TwitterCardData
+} from './types'
