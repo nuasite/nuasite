@@ -14,7 +14,7 @@
 		"directory": "packages/agent-summary"
 	},
 	"license": "Apache-2.0",
-	"version": "0.0.81",
+	"version": "0.0.82",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
 	"type": "module",
