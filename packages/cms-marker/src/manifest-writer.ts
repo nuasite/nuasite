@@ -12,6 +12,7 @@ import type {
 	ComponentInstance,
 	ManifestEntry,
 	ManifestMetadata,
+	PageSeoData,
 } from './types'
 import { generateManifestContentHash, generateSourceFileHashes } from './utils'
 
@@ -28,6 +29,7 @@ export class ManifestWriter {
 		entries: Record<string, ManifestEntry>
 		components: Record<string, ComponentInstance>
 		collection?: CollectionEntry
+		seo?: PageSeoData
 	}> = new Map()
 	private outDir: string = ''
 	private manifestFile: string
@@ -126,9 +128,10 @@ export class ManifestWriter {
 		entries: Record<string, ManifestEntry>,
 		components: Record<string, ComponentInstance>,
 		collection?: CollectionEntry,
+		seo?: PageSeoData,
 	): void {
 		// Store in memory
-		this.pageManifests.set(pagePath, { entries, components, collection })
+		this.pageManifests.set(pagePath, { entries, components, collection, seo })
 
 		// Update global manifest
 		Object.assign(this.globalManifest.entries, entries)
@@ -143,7 +146,7 @@ export class ManifestWriter {
 
 		// Queue the write operation (non-blocking)
 		if (this.outDir) {
-			this.writeQueue = this.writeQueue.then(() => this.writePageManifest(pagePath, entries, components, collection))
+			this.writeQueue = this.writeQueue.then(() => this.writePageManifest(pagePath, entries, components, collection, seo))
 		}
 	}
 
@@ -155,6 +158,7 @@ export class ManifestWriter {
 		entries: Record<string, ManifestEntry>,
 		components: Record<string, ComponentInstance>,
 		collection?: CollectionEntry,
+		seo?: PageSeoData,
 	): Promise<void> {
 		const manifestPath = this.getPageManifestPath(pagePath)
 		const manifestDir = path.dirname(manifestPath)
@@ -177,6 +181,7 @@ export class ManifestWriter {
 			components: Record<string, ComponentInstance>
 			componentDefinitions: Record<string, ComponentDefinition>
 			collection?: CollectionEntry
+			seo?: PageSeoData
 		} = {
 			metadata,
 			page: pagePath,
@@ -187,6 +192,10 @@ export class ManifestWriter {
 
 		if (collection) {
 			pageManifest.collection = collection
+		}
+
+		if (seo) {
+			pageManifest.seo = seo
 		}
 
 		await fs.writeFile(manifestPath, JSON.stringify(pageManifest, null, 2), 'utf-8')
@@ -248,6 +257,7 @@ export class ManifestWriter {
 		entries: Record<string, ManifestEntry>
 		components: Record<string, ComponentInstance>
 		collection?: CollectionEntry
+		seo?: PageSeoData
 	} | undefined {
 		return this.pageManifests.get(pagePath)
 	}

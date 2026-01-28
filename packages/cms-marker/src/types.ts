@@ -1,3 +1,13 @@
+/** SEO tracking options */
+export interface SeoOptions {
+	/** Whether to track SEO elements (default: true) */
+	trackSeo?: boolean
+	/** Whether to mark the page title with a CMS ID (default: true) */
+	markTitle?: boolean
+	/** Whether to parse JSON-LD structured data (default: true) */
+	parseJsonLd?: boolean
+}
+
 export interface CmsMarkerOptions {
 	attributeName?: string
 	includeTags?: string[] | null
@@ -9,6 +19,8 @@ export interface CmsMarkerOptions {
 	componentDirs?: string[]
 	/** Directory containing content collections (default: 'src/content') */
 	contentDir?: string
+	/** SEO tracking options */
+	seo?: SeoOptions
 }
 
 export interface ComponentProp {
@@ -307,4 +319,93 @@ export interface CmsManifest {
 	availableColors?: AvailableColors
 	/** Available text styles from the project's Tailwind config */
 	availableTextStyles?: AvailableTextStyles
+}
+
+// === SEO Types ===
+
+/** Source tracking information for SEO elements */
+export interface SeoSourceInfo {
+	/** Path to source file */
+	sourcePath: string
+	/** Line number in source file (1-indexed) */
+	sourceLine: number
+	/** Exact source code snippet for matching/replacement */
+	sourceSnippet: string
+}
+
+/** SEO meta tag with source tracking */
+export interface SeoMetaTag extends SeoSourceInfo {
+	/** Meta tag name attribute (for name-based meta tags) */
+	name?: string
+	/** Meta tag property attribute (for Open Graph/Twitter tags) */
+	property?: string
+	/** Meta tag content value */
+	content: string
+}
+
+/** Open Graph metadata */
+export interface OpenGraphData {
+	title?: SeoMetaTag
+	description?: SeoMetaTag
+	image?: SeoMetaTag
+	url?: SeoMetaTag
+	type?: SeoMetaTag
+	siteName?: SeoMetaTag
+}
+
+/** Twitter Card metadata */
+export interface TwitterCardData {
+	card?: SeoMetaTag
+	title?: SeoMetaTag
+	description?: SeoMetaTag
+	image?: SeoMetaTag
+	site?: SeoMetaTag
+}
+
+/** JSON-LD structured data entry */
+export interface JsonLdEntry extends SeoSourceInfo {
+	/** Schema.org @type value */
+	type: string
+	/** Parsed JSON-LD data */
+	data: Record<string, unknown>
+}
+
+/** Canonical URL link element */
+export interface CanonicalUrl extends SeoSourceInfo {
+	/** The canonical URL href value */
+	href: string
+}
+
+/** Page title element with optional CMS ID */
+export interface SeoTitle extends SeoSourceInfo {
+	/** Title text content */
+	content: string
+	/** CMS ID if title was marked for editing */
+	cmsId?: string
+}
+
+/** Meta keywords with parsed array */
+export interface SeoKeywords extends SeoSourceInfo {
+	/** Raw keywords string */
+	content: string
+	/** Parsed array of individual keywords */
+	keywords: string[]
+}
+
+/** Complete SEO data for a page */
+export interface PageSeoData {
+	/** Page title */
+	title?: SeoTitle
+	/** Meta description */
+	description?: SeoMetaTag
+	/** Meta keywords */
+	keywords?: SeoKeywords
+	/** Canonical URL */
+	canonical?: CanonicalUrl
+	/** Open Graph metadata */
+	openGraph?: OpenGraphData
+	/** Twitter Card metadata */
+	twitterCard?: TwitterCardData
+	/** JSON-LD structured data blocks */
+	jsonLd?: JsonLdEntry[]
 }

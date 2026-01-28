@@ -20,6 +20,7 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 		markComponents = true,
 		componentDirs = ['src/components'],
 		contentDir = 'src/content',
+		seo = { trackSeo: true, markTitle: true, parseJsonLd: true },
 	} = options
 
 	let componentDefinitions: Record<string, ComponentDefinition> = {}
@@ -40,6 +41,7 @@ export default function cmsMarker(options: CmsMarkerOptions = {}): AstroIntegrat
 		markComponents,
 		componentDirs,
 		contentDir,
+		seo,
 	}
 
 	return {

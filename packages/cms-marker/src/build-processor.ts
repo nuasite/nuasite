@@ -97,6 +97,8 @@ async function processFile(
 			collectionInfo: collectionInfo
 				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine, contentPath: collectionInfo.file }
 				: undefined,
+			// Pass SEO options
+			seo: config.seo,
 		},
 		idGenerator,
 	)
@@ -198,7 +200,7 @@ async function processFile(
 	}
 
 	// Add to manifest writer (handles per-page manifest writes)
-	manifestWriter.addPage(pagePath, result.entries, result.components, collectionEntry)
+	manifestWriter.addPage(pagePath, result.entries, result.components, collectionEntry, result.seo)
 
 	// Write transformed HTML back
 	await fs.writeFile(filePath, finalHtml, 'utf-8')

@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import { findCollectionSource, findImageSourceLocation, parseMarkdownContent } from './source-finder'
-import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition } from './types'
+import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition, PageSeoData } from './types'
 
 /** Minimal ViteDevServer interface to avoid version conflicts between Astro's bundled Vite and root Vite */
 interface ViteDevServerLike {
@@ -78,16 +78,16 @@ export function createDevMiddleware(
 			if (pageData) {
 				res.setHeader('Content-Type', 'application/json')
 				res.setHeader('Access-Control-Allow-Origin', '*')
-				res.end(JSON.stringify(
-					{
-						page: pagePath,
-						entries: pageData.entries,
-						components: pageData.components,
-						componentDefinitions,
-					},
-					null,
-					2,
-				))
+				const responseData: Record<string, unknown> = {
+					page: pagePath,
+					entries: pageData.entries,
+					components: pageData.components,
+					componentDefinitions,
+				}
+				if (pageData.seo) {
+					responseData.seo = pageData.seo
+				}
+				res.end(JSON.stringify(responseData, null, 2))
 				return
 			}
 		}
@@ -122,9 +122,9 @@ export function createDevMiddleware(
 
 				// Process HTML asynchronously
 				processHtmlForDev(html, pagePath, config, idCounter)
-					.then(({ html: transformed, entries, components, collection }) => {
+					.then(({ html: transformed, entries, components, collection, seo }) => {
 						// Store in manifest writer
-						manifestWriter.addPage(pagePath, entries, components, collection)
+						manifestWriter.addPage(pagePath, entries, components, collection, seo)
 
 						// Restore original methods and send transformed HTML
 						res.write = originalWrite
@@ -205,6 +205,8 @@ async function processHtmlForDev(
 			collectionInfo: collectionInfo
 				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine, contentPath: collectionInfo.file }
 				: undefined,
+			// Pass SEO options
+			seo: config.seo,
 		},
 		idGenerator,
 	)
@@ -274,5 +276,6 @@ async function processHtmlForDev(
 		entries: result.entries,
 		components: result.components,
 		collection: collectionEntry,
+		seo: result.seo,
 	}
 }

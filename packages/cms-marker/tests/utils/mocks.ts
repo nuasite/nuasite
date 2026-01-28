@@ -75,6 +75,7 @@ export const defaultMockConfig: Required<CmsMarkerOptions> = {
 	markComponents: true,
 	componentDirs: ['src/components'],
 	contentDir: 'src/content',
+	seo: { trackSeo: true, markTitle: true, parseJsonLd: true },
 }
 
 /**

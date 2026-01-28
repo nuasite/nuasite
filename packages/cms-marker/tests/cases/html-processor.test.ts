@@ -484,6 +484,145 @@ describe('cleanText', () => {
 	})
 })
 
+cmsDescribe('SEO integration', { generateManifest: true }, (ctx) => {
+	test('includes SEO data in process result', async () => {
+		const input = `
+			<html>
+			<head>
+				<title>Test Page</title>
+				<meta name="description" content="Test description">
+				<meta property="og:title" content="OG Test">
+			</head>
+			<body><h1>Content</h1></body>
+			</html>
+		`
+		const result = await ctx.process(input, { seo: { trackSeo: true } })
+
+		expect(result.seo).toBeDefined()
+		expect(result.seo?.title?.content).toBe('Test Page')
+		expect(result.seo?.description?.content).toBe('Test description')
+		expect(result.seo?.openGraph?.title?.content).toBe('OG Test')
+	})
+
+	test('title gets CMS ID when markTitle is enabled', async () => {
+		const input = `
+			<html>
+			<head><title>My Title</title></head>
+			<body><h1>Content</h1></body>
+			</html>
+		`
+		const result = await ctx.process(input, { seo: { trackSeo: true, markTitle: true } })
+
+		expect(result.seo?.title?.cmsId).toBeDefined()
+		expect(result.html).toContain(`data-cms-id="${result.seo?.title?.cmsId}"`)
+
+		// Title should also be in entries
+		const titleEntry = result.entries[result.seo?.title?.cmsId || '']
+		expect(titleEntry).toBeDefined()
+		expect(titleEntry?.tag).toBe('title')
+		expect(titleEntry?.text).toBe('My Title')
+	})
+
+	test('SEO disabled via options', async () => {
+		const input = `
+			<html>
+			<head>
+				<title>Test Page</title>
+				<meta name="description" content="Test description">
+			</head>
+			<body><h1>Content</h1></body>
+			</html>
+		`
+		const result = await ctx.process(input, { seo: { trackSeo: false } })
+
+		// SEO data should be undefined when tracking is disabled
+		expect(result.seo).toBeUndefined()
+		// But regular elements in body should still be marked
+		expect(result.html).toContain('data-cms-id')
+		expectMarked(result, 'h1')
+	})
+
+	test('extracts canonical URL', async () => {
+		const input = `
+			<html>
+			<head>
+				<title>Page</title>
+				<link rel="canonical" href="https://example.com/page">
+			</head>
+			<body><h1>Content</h1></body>
+			</html>
+		`
+		const result = await ctx.process(input, { seo: { trackSeo: true } })
+
+		expect(result.seo?.canonical?.href).toBe('https://example.com/page')
+	})
+
+	test('extracts JSON-LD when parseJsonLd is enabled', async () => {
+		const input = `
+			<html>
+			<head>
+				<title>Page</title>
+				<script type="application/ld+json">{"@type": "Organization", "name": "Test Org"}</script>
+			</head>
+			<body><h1>Content</h1></body>
+			</html>
+		`
+		const result = await ctx.process(input, { seo: { trackSeo: true, parseJsonLd: true } })
+
+		expect(result.seo?.jsonLd).toHaveLength(1)
+		expect(result.seo?.jsonLd?.[0]?.type).toBe('Organization')
+		expect(result.seo?.jsonLd?.[0]?.data?.name).toBe('Test Org')
+	})
+
+	test('does not extract JSON-LD when parseJsonLd is disabled', async () => {
+		const input = `
+			<html>
+			<head>
+				<title>Page</title>
+				<script type="application/ld+json">{"@type": "Organization"}</script>
+			</head>
+			<body><h1>Content</h1></body>
+			</html>
+		`
+		const result = await ctx.process(input, { seo: { trackSeo: true, parseJsonLd: false } })
+
+		expect(result.seo?.jsonLd).toBeUndefined()
+	})
+
+	test('extracts Twitter Card metadata', async () => {
+		const input = `
+			<html>
+			<head>
+				<title>Page</title>
+				<meta name="twitter:card" content="summary_large_image">
+				<meta name="twitter:title" content="Twitter Title">
+			</head>
+			<body><h1>Content</h1></body>
+			</html>
+		`
+		const result = await ctx.process(input, { seo: { trackSeo: true } })
+
+		expect(result.seo?.twitterCard?.card?.content).toBe('summary_large_image')
+		expect(result.seo?.twitterCard?.title?.content).toBe('Twitter Title')
+	})
+
+	test('extracts keywords and parses them into array', async () => {
+		const input = `
+			<html>
+			<head>
+				<title>Page</title>
+				<meta name="keywords" content="web, development, astro">
+			</head>
+			<body><h1>Content</h1></body>
+			</html>
+		`
+		const result = await ctx.process(input, { seo: { trackSeo: true } })
+
+		expect(result.seo?.keywords?.content).toBe('web, development, astro')
+		expect(result.seo?.keywords?.keywords).toEqual(['web', 'development', 'astro'])
+	})
+})
+
 cmsDescribe('processHtml Snapshots', { generateManifest: true }, (ctx) => {
 	test('basic document with headings and paragraphs', async () => {
 		const result = await ctx.process(`

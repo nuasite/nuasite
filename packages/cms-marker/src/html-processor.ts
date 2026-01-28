@@ -1,7 +1,8 @@
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
+import { processSeoFromHtml } from './seo-processor'
 import { enhanceManifestWithSourceSnippets } from './source-finder'
 import { extractColorClasses } from './tailwind-colors'
-import type { ComponentInstance, ImageMetadata, ManifestEntry, SourceContext } from './types'
+import type { ComponentInstance, ImageMetadata, ManifestEntry, PageSeoData, SeoOptions, SourceContext } from './types'
 import { generateStableId } from './utils'
 
 /** Type for parsed HTML element nodes from node-html-parser */
@@ -64,6 +65,8 @@ export interface ProcessHtmlOptions {
 		/** Path to the markdown file (e.g., 'src/content/blog/my-post.md') */
 		contentPath?: string
 	}
+	/** SEO tracking options */
+	seo?: SeoOptions
 }
 
 export interface ProcessHtmlResult {
@@ -72,6 +75,8 @@ export interface ProcessHtmlResult {
 	components: Record<string, ComponentInstance>
 	/** ID of the element wrapping collection markdown content */
 	collectionWrapperId?: string
+	/** Extracted SEO data from the page */
+	seo?: PageSeoData
 }
 
 /**
@@ -201,6 +206,7 @@ export async function processHtml(
 		skipMarkdownContent = false,
 		skipInlineStyleTags = true,
 		collectionInfo,
+		seo: seoOptions,
 	} = options
 
 	const root = parse(html, {
@@ -751,11 +757,45 @@ export async function processHtml(
 	// This allows the CMS to match and replace dynamic content in source files
 	const enhancedEntries = await enhanceManifestWithSourceSnippets(entries)
 
+	// Get the current HTML for SEO processing
+	let finalHtml = root.toString()
+
+	// Process SEO elements from the page
+	let seo: PageSeoData | undefined
+	if (seoOptions?.trackSeo !== false) {
+		const seoResult = processSeoFromHtml(
+			finalHtml,
+			{
+				markTitle: seoOptions?.markTitle ?? true,
+				parseJsonLd: seoOptions?.parseJsonLd ?? true,
+				sourcePath,
+			},
+			getNextId,
+		)
+
+		seo = seoResult.seo
+		finalHtml = seoResult.html
+
+		// If title was marked with CMS ID, add it to entries
+		if (seoResult.titleCmsId && seo.title) {
+			enhancedEntries[seoResult.titleCmsId] = {
+				id: seoResult.titleCmsId,
+				tag: 'title',
+				text: seo.title.content,
+				sourcePath: seo.title.sourcePath || sourcePath,
+				sourceLine: seo.title.sourceLine,
+				sourceSnippet: seo.title.sourceSnippet,
+				sourceType: 'static',
+			}
+		}
+	}
+
 	return {
-		html: root.toString(),
+		html: finalHtml,
 		entries: enhancedEntries,
 		components,
 		collectionWrapperId,
+		seo,
 	}
 }
 
