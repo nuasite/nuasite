@@ -525,6 +525,14 @@ export interface ManifestMetadata {
 	sourceFileHashes?: Record<string, string>
 }
 
+/** Page entry for the global manifest */
+export interface PageEntry {
+	/** Page URL pathname (e.g., '/', '/about') */
+	pathname: string
+	/** Page title from SEO data */
+	title?: string
+}
+
 export interface CmsManifest {
 	/** Manifest metadata for versioning and conflict detection */
 	metadata?: ManifestMetadata
@@ -539,6 +547,8 @@ export interface CmsManifest {
 	availableColors?: AvailableColors
 	/** Available text styles from the project's Tailwind config */
 	availableTextStyles?: AvailableTextStyles
+	/** All pages in the site with pathname and title */
+	pages?: PageEntry[]
 }
 
 // === SEO Types ===

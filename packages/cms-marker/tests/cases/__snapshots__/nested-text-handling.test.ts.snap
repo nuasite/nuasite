@@ -1,73 +1,5 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`Nested Text Handling should mark h1 with br elements and mixed span types: marked html 1`] = `
-"<h1 class="text-4xl" data-cms-id="cms-0">
-  <span class="gradient" data-cms-id="cms-1">Chytrý</span><br>
-  <span class="text-black" data-cms-styled="true">fulfillment</span> pro váš růst
-</h1>"
-`;
-
-exports[`Nested Text Handling should mark h1 with br elements and mixed span types: manifest entries 1`] = `
-{
-  "cms-0": {
-    "childCmsIds": [
-      "cms-1",
-    ],
-    "collectionName": undefined,
-    "collectionSlug": undefined,
-    "colorClasses": undefined,
-    "contentPath": undefined,
-    "html": 
-"
-  <span class="gradient" data-cms-id="cms-1">Chytrý</span><br>
-  <span class="text-black" data-cms-styled="true">fulfillment</span> pro váš růst
-"
-,
-    "id": "cms-0",
-    "imageMetadata": undefined,
-    "parentComponentId": undefined,
-    "sourceContext": undefined,
-    "sourceLine": undefined,
-    "sourcePath": undefined,
-    "sourceSnippet": undefined,
-    "sourceType": undefined,
-    "stableId": "319cac27a7de",
-    "tag": "h1",
-    "text": 
-"{{cms:cms-1}}
-  fulfillment pro váš růst"
-,
-    "variableName": undefined,
-  },
-  "cms-1": {
-    "childCmsIds": undefined,
-    "collectionName": undefined,
-    "collectionSlug": undefined,
-    "colorClasses": undefined,
-    "contentPath": undefined,
-    "html": undefined,
-    "id": "cms-1",
-    "imageMetadata": undefined,
-    "parentComponentId": undefined,
-    "sourceContext": {
-      "followingText": undefined,
-      "parentClasses": "text-4xl",
-      "parentTag": "h1",
-      "precedingText": undefined,
-      "siblingIndex": 0,
-    },
-    "sourceLine": undefined,
-    "sourcePath": undefined,
-    "sourceSnippet": undefined,
-    "sourceType": undefined,
-    "stableId": "34422c39da6f",
-    "tag": "span",
-    "text": "Chytrý",
-    "variableName": undefined,
-  },
-}
-`;
-
 exports[`Nested Text Handling h1 with br elements and mixed span types: marked html 1`] = `
 "<h1 class="text-4xl" data-cms-id="cms-0">
   <span class="gradient" data-cms-id="cms-1">Chytrý</span><br>
@@ -78,6 +10,8 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: marked h
 exports[`Nested Text Handling h1 with br elements and mixed span types: manifest entries 1`] = `
 {
   "cms-0": {
+    "ariaAttributes": undefined,
+    "buttonAttributes": undefined,
     "childCmsIds": [
       "cms-1",
     ],
@@ -85,6 +19,8 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
     "collectionSlug": undefined,
     "colorClasses": undefined,
     "contentPath": undefined,
+    "dataAttributes": undefined,
+    "formAttributes": undefined,
     "html": 
 "
   <span class="gradient" data-cms-id="cms-1">Chytrý</span><br>
@@ -92,8 +28,13 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
 "
 ,
     "id": "cms-0",
+    "iframeAttributes": undefined,
     "imageMetadata": undefined,
+    "inputAttributes": undefined,
+    "linkAttributes": undefined,
+    "mediaAttributes": undefined,
     "parentComponentId": undefined,
+    "selectAttributes": undefined,
     "sourceContext": undefined,
     "sourceLine": undefined,
     "sourcePath": undefined,
@@ -105,18 +46,28 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
 "{{cms:cms-1}}
   fulfillment pro váš růst"
 ,
+    "textareaAttributes": undefined,
     "variableName": undefined,
   },
   "cms-1": {
+    "ariaAttributes": undefined,
+    "buttonAttributes": undefined,
     "childCmsIds": undefined,
     "collectionName": undefined,
     "collectionSlug": undefined,
     "colorClasses": undefined,
     "contentPath": undefined,
+    "dataAttributes": undefined,
+    "formAttributes": undefined,
     "html": undefined,
     "id": "cms-1",
+    "iframeAttributes": undefined,
     "imageMetadata": undefined,
+    "inputAttributes": undefined,
+    "linkAttributes": undefined,
+    "mediaAttributes": undefined,
     "parentComponentId": undefined,
+    "selectAttributes": undefined,
     "sourceContext": {
       "followingText": undefined,
       "parentClasses": "text-4xl",
@@ -131,6 +82,7 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
     "stableId": "34422c39da6f",
     "tag": "span",
     "text": "Chytrý",
+    "textareaAttributes": undefined,
     "variableName": undefined,
   },
 }

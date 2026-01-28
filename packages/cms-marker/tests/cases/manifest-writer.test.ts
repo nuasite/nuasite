@@ -334,6 +334,48 @@ describe('ManifestWriter', () => {
 			}
 		})
 
+		test('should include pages with pathname and title in global manifest', async () => {
+			const { tempDir, manifestWriter, cleanup } = await createTestContext()
+			try {
+				// Page without SEO title
+				manifestWriter.addPage('/', {
+					'cms-0': { id: 'cms-0', sourcePath: '/index.html', tag: 'h1', text: 'Home' },
+				}, {})
+
+				// Page with SEO title
+				manifestWriter.addPage('/about', {
+					'cms-1': { id: 'cms-1', sourcePath: '/about.html', tag: 'h1', text: 'About' },
+				}, {}, undefined, {
+					title: { content: 'About Us', sourcePath: 'src/pages/about.astro', sourceLine: 5, sourceSnippet: '<title>About Us</title>' },
+				})
+
+				// Another page with SEO title
+				manifestWriter.addPage('/blog/my-post', {
+					'cms-2': { id: 'cms-2', sourcePath: '/blog/my-post.html', tag: 'article', text: '' },
+				}, {}, undefined, {
+					title: { content: 'My Blog Post', sourcePath: 'src/pages/blog/[slug].astro', sourceLine: 5, sourceSnippet: '<title>My Blog Post</title>' },
+				})
+
+				await manifestWriter.finalize()
+
+				const globalManifestPath = path.join(tempDir, 'cms-manifest.json')
+				const content = await fs.readFile(globalManifestPath, 'utf-8')
+				const manifest = JSON.parse(content)
+
+				// Check pages array is included and sorted by pathname
+				expect(manifest.pages).toBeDefined()
+				expect(Array.isArray(manifest.pages)).toBe(true)
+				expect(manifest.pages).toHaveLength(3)
+
+				// Check each page entry
+				expect(manifest.pages[0]).toEqual({ pathname: '/' })
+				expect(manifest.pages[1]).toEqual({ pathname: '/about', title: 'About Us' })
+				expect(manifest.pages[2]).toEqual({ pathname: '/blog/my-post', title: 'My Blog Post' })
+			} finally {
+				await cleanup()
+			}
+		})
+
 		test('should include component definitions in global manifest', () => {
 			const manifestWriter = new ManifestWriter('cms-manifest.json')
 

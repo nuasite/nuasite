@@ -12,6 +12,7 @@ import type {
 	ComponentInstance,
 	ManifestEntry,
 	ManifestMetadata,
+	PageEntry,
 	PageSeoData,
 } from './types'
 import { generateManifestContentHash, generateSourceFileHashes } from './utils'
@@ -209,7 +210,18 @@ export class ManifestWriter {
 		// Wait for all queued writes to complete
 		await this.writeQueue
 
-		// Write global manifest with settings (component definitions, colors, text styles, and collection definitions)
+		// Build pages array with pathname and title, sorted by pathname
+		const pages: PageEntry[] = Array.from(this.pageManifests.entries())
+			.map(([pathname, data]) => {
+				const entry: PageEntry = { pathname }
+				if (data.seo?.title?.content) {
+					entry.title = data.seo.title.content
+				}
+				return entry
+			})
+			.sort((a, b) => a.pathname.localeCompare(b.pathname))
+
+		// Write global manifest with settings (component definitions, colors, text styles, collection definitions, and pages)
 		if (this.outDir) {
 			const globalManifestPath = path.join(this.outDir, this.manifestFile)
 			const globalSettings: {
@@ -217,8 +229,10 @@ export class ManifestWriter {
 				collectionDefinitions?: Record<string, CollectionDefinition>
 				availableColors?: AvailableColors
 				availableTextStyles?: AvailableTextStyles
+				pages: PageEntry[]
 			} = {
 				componentDefinitions: this.componentDefinitions,
+				pages,
 			}
 			if (Object.keys(this.collectionDefinitions).length > 0) {
 				globalSettings.collectionDefinitions = this.collectionDefinitions

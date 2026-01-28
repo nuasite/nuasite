@@ -157,6 +157,7 @@ export type {
 	MediaAttributes,
 	OpacityClasses,
 	OpenGraphData,
+	PageEntry,
 	PageSeoData,
 	SelectAttributes,
 	SeoKeywords,
