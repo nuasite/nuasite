@@ -1,9 +1,18 @@
-import fs from 'node:fs/promises'
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
+import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
 import { findSourceLocation } from './source-finder/source-lookup'
-import type { CanonicalUrl, JsonLdEntry, OpenGraphData, PageSeoData, RobotsDirective, SeoKeywords, SeoMetaTag, SeoTitle, TwitterCardData } from './types'
+import type {
+	CanonicalUrl,
+	JsonLdEntry,
+	OpenGraphData,
+	PageSeoData,
+	SeoKeywords,
+	SeoMetaTag,
+	SeoTitle,
+	TwitterCardData,
+} from './types'
 
 /** Type for parsed HTML element nodes from node-html-parser */
 type HTMLNode = ParsedHTMLElement
@@ -23,7 +32,7 @@ export interface ProcessSeoResult {
 	/** The modified HTML with title CMS ID if markTitle is enabled */
 	html: string
 	/** The CMS ID assigned to the title element */
-	titleCmsId?: string
+	titleId?: string
 }
 
 /**
@@ -50,29 +59,29 @@ export async function processSeoFromHtml(
 
 	const head = root.querySelector('head')
 	const seo: PageSeoData = {}
-	let titleCmsId: string | undefined
+	let titleId: string | undefined
 
 	// Extract title
 	const titleResult = await extractTitle(root, html, sourcePath, markTitle, getNextId)
 	if (titleResult) {
 		seo.title = titleResult.title
-		titleCmsId = titleResult.cmsId
+		titleId = titleResult.id
 	}
 
 	// Extract meta tags from head
 	if (head) {
-		const metaTags = await extractMetaTags(head, html, sourcePath)
+		const metaTags = await extractMetaTags(head, html, sourcePath, getNextId)
 		categorizeMetaTags(metaTags, seo)
 
 		// Extract canonical URL
-		const canonical = await extractCanonical(head, html, sourcePath)
+		const canonical = await extractCanonical(head, html, sourcePath, getNextId)
 		if (canonical) {
 			seo.canonical = canonical
 		}
 
 		// Extract JSON-LD
 		if (parseJsonLd) {
-			const jsonLdEntries = await extractJsonLd(head, html, sourcePath)
+			const jsonLdEntries = await extractJsonLd(head, html, sourcePath, getNextId)
 			if (jsonLdEntries.length > 0) {
 				seo.jsonLd = jsonLdEntries
 			}
@@ -82,7 +91,7 @@ export async function processSeoFromHtml(
 	return {
 		seo,
 		html: root.toString(),
-		titleCmsId,
+		titleId,
 	}
 }
 
@@ -95,7 +104,7 @@ async function extractTitle(
 	sourcePath?: string,
 	markTitle?: boolean,
 	getNextId?: () => string,
-): Promise<{ title: SeoTitle; cmsId?: string } | undefined> {
+): Promise<{ title: SeoTitle; id?: string } | undefined> {
 	const titleElement = root.querySelector('title')
 	if (!titleElement) return undefined
 
@@ -115,19 +124,19 @@ async function extractTitle(
 		}
 		: findElementSourceLocation(titleElement, html, sourcePath)
 
-	let cmsId: string | undefined
+	let id: string | undefined
 	if (markTitle && getNextId) {
-		cmsId = getNextId()
-		titleElement.setAttribute('data-cms-id', cmsId)
+		id = getNextId()
+		titleElement.setAttribute('data-cms-id', id)
 	}
 
 	return {
 		title: {
 			content,
-			cmsId,
+			id,
 			...sourceInfo,
 		},
-		cmsId,
+		id,
 	}
 }
 
@@ -138,6 +147,7 @@ async function extractMetaTags(
 	head: HTMLNode,
 	html: string,
 	sourcePath?: string,
+	getNextId?: () => string,
 ): Promise<SeoMetaTag[]> {
 	const metaTags: SeoMetaTag[] = []
 	const metas = head.querySelectorAll('meta')
@@ -150,17 +160,28 @@ async function extractMetaTags(
 		// Skip meta tags without content or without name/property
 		if (!content || (!name && !property)) continue
 
-		// Build a tag pattern for context matching (e.g., "meta.*name="description"")
-		const identifier = name || property
-		const tagPattern = identifier ? `<meta[^>]*(?:name|property)\\s*=\\s*["']${identifier}["']` : '<meta'
-
-		// Search for the content attribute value in source files
-		const sourceLocation = await findAttributeValueSource('content', content, tagPattern)
+		// Use the same source finding logic as regular text entries
+		// This tracks through props, variables, and imports
+		const sourceLocation = await findSourceLocation(content, 'meta')
 
 		// Fall back to rendered HTML location if source not found
-		const sourceInfo = sourceLocation || findElementSourceLocation(meta, html, sourcePath)
+		const sourceInfo = sourceLocation
+			? {
+				sourcePath: sourceLocation.file,
+				sourceLine: sourceLocation.line,
+				sourceSnippet: sourceLocation.snippet || '',
+			}
+			: findElementSourceLocation(meta, html, sourcePath)
+
+		// Mark meta tag with CMS ID for editing
+		let id: string | undefined
+		if (getNextId) {
+			id = getNextId()
+			meta.setAttribute('data-cms-id', id)
+		}
 
 		metaTags.push({
+			id,
 			name: name || undefined,
 			property: property || undefined,
 			content,
@@ -172,7 +193,7 @@ async function extractMetaTags(
 }
 
 /**
- * Categorize meta tags into description, keywords, robots, Open Graph and Twitter Card
+ * Categorize meta tags into description, keywords, Open Graph and Twitter Card
  */
 function categorizeMetaTags(metaTags: SeoMetaTag[], seo: PageSeoData): void {
 	const openGraph: OpenGraphData = {}
@@ -194,16 +215,6 @@ function categorizeMetaTags(metaTags: SeoMetaTag[], seo: PageSeoData): void {
 				...meta,
 				keywords,
 			} as SeoKeywords
-			continue
-		}
-
-		// Robots
-		if (name === 'robots') {
-			const directives = content.split(',').map(d => d.trim().toLowerCase()).filter(Boolean)
-			seo.robots = {
-				...meta,
-				directives,
-			} as RobotsDirective
 			continue
 		}
 
@@ -274,6 +285,7 @@ async function extractCanonical(
 	head: HTMLNode,
 	html: string,
 	sourcePath?: string,
+	getNextId?: () => string,
 ): Promise<CanonicalUrl | undefined> {
 	const canonical = head.querySelector('link[rel="canonical"]')
 	if (!canonical) return undefined
@@ -281,13 +293,28 @@ async function extractCanonical(
 	const href = canonical.getAttribute('href')
 	if (!href) return undefined
 
-	// Search for the href attribute value in source files
-	const sourceLocation = await findAttributeValueSource('href', href, '<link[^>]*rel\\s*=\\s*["\'"]canonical["\'"]')
+	// Use the same source finding logic as regular text entries
+	// This tracks through props, variables, and imports
+	const sourceLocation = await findSourceLocation(href, 'link')
 
 	// Fall back to rendered HTML location if source not found
-	const sourceInfo = sourceLocation || findElementSourceLocation(canonical, html, sourcePath)
+	const sourceInfo = sourceLocation
+		? {
+			sourcePath: sourceLocation.file,
+			sourceLine: sourceLocation.line,
+			sourceSnippet: sourceLocation.snippet || '',
+		}
+		: findElementSourceLocation(canonical, html, sourcePath)
+
+	// Mark canonical link with CMS ID for editing
+	let id: string | undefined
+	if (getNextId) {
+		id = getNextId()
+		canonical.setAttribute('data-cms-id', id)
+	}
 
 	return {
+		id,
 		href,
 		...sourceInfo,
 	}
@@ -300,6 +327,7 @@ async function extractJsonLd(
 	head: HTMLNode,
 	html: string,
 	sourcePath?: string,
+	getNextId?: () => string,
 ): Promise<JsonLdEntry[]> {
 	const entries: JsonLdEntry[] = []
 
@@ -321,7 +349,15 @@ async function extractJsonLd(
 			// Fall back to rendered HTML location if source not found
 			const sourceInfo = sourceLocation || findElementSourceLocation(script, html, sourcePath)
 
+			// Mark JSON-LD script with CMS ID for editing
+			let id: string | undefined
+			if (getNextId) {
+				id = getNextId()
+				script.setAttribute('data-cms-id', id)
+			}
+
 			entries.push({
+				id,
 				type,
 				data,
 				...sourceInfo,
@@ -470,144 +506,3 @@ function findElementSourceLocation(
 	}
 }
 
-/**
- * Search for a text value as an attribute value in source files.
- * Handles both static values (content="text") and dynamic expressions (content={variable}).
- */
-async function findAttributeValueSource(
-	attrName: string,
-	value: string,
-	tagPattern?: string,
-): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
-	const srcDir = path.join(getProjectRoot(), 'src')
-	const searchDirs = [
-		path.join(srcDir, 'pages'),
-		path.join(srcDir, 'layouts'),
-		path.join(srcDir, 'components'),
-	]
-
-	for (const dir of searchDirs) {
-		try {
-			const result = await searchDirForAttributeValue(dir, attrName, value, tagPattern)
-			if (result) return result
-		} catch {
-			// Directory doesn't exist
-		}
-	}
-
-	return undefined
-}
-
-/**
- * Recursively search a directory for attribute values
- */
-async function searchDirForAttributeValue(
-	dir: string,
-	attrName: string,
-	value: string,
-	tagPattern?: string,
-): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
-	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
-
-		for (const entry of entries) {
-			const fullPath = path.join(dir, entry.name)
-
-			if (entry.isDirectory()) {
-				const result = await searchDirForAttributeValue(fullPath, attrName, value, tagPattern)
-				if (result) return result
-			} else if (entry.isFile() && (entry.name.endsWith('.astro') || entry.name.endsWith('.html'))) {
-				const result = await searchFileForAttributeValue(fullPath, attrName, value, tagPattern)
-				if (result) return result
-			}
-		}
-	} catch {
-		// Error reading directory
-	}
-
-	return undefined
-}
-
-/**
- * Search a single file for an attribute value
- */
-async function searchFileForAttributeValue(
-	filePath: string,
-	attrName: string,
-	value: string,
-	tagPattern?: string,
-): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
-	try {
-		const content = await fs.readFile(filePath, 'utf-8')
-		const lines = content.split('\n')
-
-		// Escape special regex characters in the value
-		const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-		// Pattern to match static attribute: attrName="value" or attrName='value'
-		const staticPattern = new RegExp(`${attrName}\\s*=\\s*["']${escapedValue}["']`, 'i')
-
-		// Pattern to match the tag context if provided
-		const tagRegex = tagPattern ? new RegExp(tagPattern, 'i') : null
-
-		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i] || ''
-
-			// Check if this line matches the attribute pattern
-			if (staticPattern.test(line)) {
-				// If tag pattern provided, verify we're in the right context
-				if (tagRegex && !tagRegex.test(line)) {
-					// Check surrounding lines for tag context
-					const contextLines = lines.slice(Math.max(0, i - 3), i + 1).join(' ')
-					if (!tagRegex.test(contextLines)) {
-						continue
-					}
-				}
-
-				// Extract the full element snippet
-				const snippet = extractElementSnippetFromLines(lines, i, tagPattern)
-
-				return {
-					sourcePath: path.relative(getProjectRoot(), filePath),
-					sourceLine: i + 1,
-					sourceSnippet: snippet,
-				}
-			}
-		}
-	} catch {
-		// Error reading file
-	}
-
-	return undefined
-}
-
-/**
- * Extract a multi-line element snippet starting from a given line
- */
-function extractElementSnippetFromLines(lines: string[], startLine: number, tagPattern?: string): string {
-	const snippetLines: string[] = []
-
-	// Look backwards to find the tag opening if we're on an attribute line
-	let actualStart = startLine
-	for (let i = startLine; i >= Math.max(0, startLine - 5); i--) {
-		const line = lines[i] || ''
-		if (line.includes('<meta') || line.includes('<link') || line.includes('<title') || line.includes('<script')) {
-			actualStart = i
-			break
-		}
-	}
-
-	// Collect lines until we find the closing
-	for (let i = actualStart; i < Math.min(actualStart + 10, lines.length); i++) {
-		const line = lines[i]
-		if (!line) continue
-		snippetLines.push(line)
-
-		// Check for self-closing or closing tag
-		if (line.includes('/>') || line.includes('</') || (line.includes('>') && !line.includes('<'))) {
-			break
-		}
-	}
-
-	return snippetLines.join('\n')
-}

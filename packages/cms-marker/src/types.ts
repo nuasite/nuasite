@@ -325,6 +325,8 @@ export interface CmsManifest {
 
 /** Source tracking information for SEO elements */
 export interface SeoSourceInfo {
+	/** CMS ID if element was marked for editing */
+	id?: string
 	/** Path to source file */
 	sourcePath: string
 	/** Line number in source file (1-indexed) */
@@ -380,8 +382,6 @@ export interface CanonicalUrl extends SeoSourceInfo {
 export interface SeoTitle extends SeoSourceInfo {
 	/** Title text content */
 	content: string
-	/** CMS ID if title was marked for editing */
-	cmsId?: string
 }
 
 /** Meta keywords with parsed array */
@@ -390,14 +390,6 @@ export interface SeoKeywords extends SeoSourceInfo {
 	content: string
 	/** Parsed array of individual keywords */
 	keywords: string[]
-}
-
-/** Robots meta directive */
-export interface RobotsDirective extends SeoSourceInfo {
-	/** Raw content value */
-	content: string
-	/** Parsed individual directives (e.g., ['noindex', 'nofollow']) */
-	directives: string[]
 }
 
 /** Complete SEO data for a page */
@@ -410,8 +402,6 @@ export interface PageSeoData {
 	keywords?: SeoKeywords
 	/** Canonical URL */
 	canonical?: CanonicalUrl
-	/** Robots meta directive */
-	robots?: RobotsDirective
 	/** Open Graph metadata */
 	openGraph?: OpenGraphData
 	/** Twitter Card metadata */
