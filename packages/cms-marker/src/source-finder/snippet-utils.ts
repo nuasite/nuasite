@@ -173,14 +173,14 @@ export function extractImageSnippet(lines: string[], startLine: number): string 
 }
 
 /**
- * Read source file and extract the innerHTML at the specified line.
+ * Read source file and extract the complete element at the specified line.
  *
  * @param sourceFile - Path to source file (relative to cwd)
  * @param sourceLine - 1-indexed line number
  * @param tag - The tag name
- * @returns The innerHTML from source, or undefined if can't extract
+ * @returns The complete element from source, or undefined if can't extract
  */
-export async function extractSourceInnerHtml(
+export async function extractSourceSnippet(
 	sourceFile: string,
 	sourceLine: number,
 	tag: string,
@@ -193,11 +193,8 @@ export async function extractSourceInnerHtml(
 		const content = await fs.readFile(filePath, 'utf-8')
 		const lines = content.split('\n')
 
-		// Extract the complete tag snippet
-		const snippet = extractCompleteTagSnippet(lines, sourceLine - 1, tag)
-
-		// Extract innerHTML from the snippet
-		return extractInnerHtmlFromSnippet(snippet, tag)
+		// Extract the complete tag snippet (including wrapper element)
+		return extractCompleteTagSnippet(lines, sourceLine - 1, tag)
 	} catch {
 		return undefined
 	}
@@ -243,8 +240,8 @@ export async function enhanceManifestWithSourceSnippets(
 			return [id, entry] as const
 		}
 
-		// Extract the actual source innerHTML
-		const sourceSnippet = await extractSourceInnerHtml(
+		// Extract the complete source element
+		const sourceSnippet = await extractSourceSnippet(
 			entry.sourcePath,
 			entry.sourceLine,
 			entry.tag,

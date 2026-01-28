@@ -23,4 +23,4 @@ export { findImageSourceLocation } from './image-finder'
 export { findCollectionSource, findMarkdownSourceLocation, parseMarkdownContent } from './collection-finder'
 
 // Snippet utilities (used by html-processor)
-export { enhanceManifestWithSourceSnippets, extractCompleteTagSnippet, extractInnerHtmlFromSnippet, extractSourceInnerHtml } from './snippet-utils'
+export { enhanceManifestWithSourceSnippets, extractCompleteTagSnippet, extractInnerHtmlFromSnippet, extractSourceSnippet } from './snippet-utils'

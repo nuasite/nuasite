@@ -143,11 +143,8 @@ withTempDir('findSourceLocation - Snippets', (getCtx) => {
 		expect(result?.file).toBe('src/components/Heading.astro')
 		expect(result?.line).toBe(3)
 		expect(result?.type).toBe('static')
-		// Snippet should be just the innerHTML, not the complete element
-		// This ensures CMS updates only replace the content, not the element structure
-		expect(result?.snippet).toBe('Hello World')
-		expect(result?.snippet).not.toContain('<h2')
-		expect(result?.snippet).not.toContain('class=')
+		// Snippet should be the complete element including wrapper tags
+		expect(result?.snippet).toBe('<h2 class="text-4xl font-bold text-center">Hello World</h2>')
 	})
 
 	test('snippet should contain innerHTML for multi-line elements', async () => {
@@ -168,15 +165,14 @@ withTempDir('findSourceLocation - Snippets', (getCtx) => {
 
 		expect(result).toBeDefined()
 		expect(result?.type).toBe('static')
-		// Snippet should contain the innerHTML (may include whitespace)
+		// Snippet should be the complete element including wrapper tags
+		expect(result?.snippet).toContain('<p class="text-lg leading-relaxed">')
 		expect(result?.snippet).toContain('This is multi-line')
 		expect(result?.snippet).toContain('paragraph content')
-		// Should NOT contain the element tags or attributes
-		expect(result?.snippet).not.toContain('<p')
-		expect(result?.snippet).not.toContain('class=')
+		expect(result?.snippet).toContain('</p>')
 	})
 
-	test('snippet should contain innerHTML when opening tag is on separate lines (multi-line attributes)', async () => {
+	test('snippet should contain complete element when opening tag is on separate lines (multi-line attributes)', async () => {
 		const ctx = getCtx()
 		await setupAstroProjectStructure(ctx)
 		// This tests the case where <a> tag has attributes on multiple lines
@@ -198,17 +194,14 @@ withTempDir('findSourceLocation - Snippets', (getCtx) => {
 
 		expect(result).toBeDefined()
 		expect(result?.type).toBe('static')
-		// Snippet should contain only the innerHTML, not the opening tag or attributes
+		// Snippet should be the complete element including wrapper tags
+		expect(result?.snippet).toContain('<a')
+		expect(result?.snippet).toContain('href="/about"')
 		expect(result?.snippet).toContain('Read more about us')
-		// Should NOT contain the element tags or attributes
-		expect(result?.snippet).not.toContain('<a')
-		expect(result?.snippet).not.toContain('href=')
-		expect(result?.snippet).not.toContain('class=')
-		// Should NOT contain the closing tag
-		expect(result?.snippet).not.toContain('</a>')
+		expect(result?.snippet).toContain('</a>')
 	})
 
-	test('snippet should contain innerHTML with nested inline elements', async () => {
+	test('snippet should contain complete element with nested inline elements', async () => {
 		const ctx = getCtx()
 		await setupAstroProjectStructure(ctx)
 		await ctx.writeFile(
@@ -223,10 +216,7 @@ withTempDir('findSourceLocation - Snippets', (getCtx) => {
 
 		expect(result).toBeDefined()
 		expect(result?.type).toBe('static')
-		// Snippet should preserve inline HTML elements
-		expect(result?.snippet).toBe('Text with <strong>bold</strong> and <em>italic</em>')
-		// Should NOT contain the wrapper element
-		expect(result?.snippet).not.toContain('<p')
-		expect(result?.snippet).not.toContain('class=')
+		// Snippet should be the complete element including wrapper tags and nested elements
+		expect(result?.snippet).toBe('<p class="text-base">Text with <strong>bold</strong> and <em>italic</em></p>')
 	})
 }, { setupAstro: false })
