@@ -513,11 +513,11 @@ cmsDescribe('SEO integration', { generateManifest: true }, (ctx) => {
 		`
 		const result = await ctx.process(input, { seo: { trackSeo: true, markTitle: true } })
 
-		expect(result.seo?.title?.cmsId).toBeDefined()
-		expect(result.html).toContain(`data-cms-id="${result.seo?.title?.cmsId}"`)
+		expect(result.seo?.title?.id).toBeDefined()
+		expect(result.html).toContain(`data-cms-id="${result.seo?.title?.id}"`)
 
 		// Title should also be in entries
-		const titleEntry = result.entries[result.seo?.title?.cmsId || '']
+		const titleEntry = result.entries[result.seo?.title?.id || '']
 		expect(titleEntry).toBeDefined()
 		expect(titleEntry?.tag).toBe('title')
 		expect(titleEntry?.text).toBe('My Title')

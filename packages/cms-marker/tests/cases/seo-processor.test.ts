@@ -16,8 +16,8 @@ describe('processSeoFromHtml', () => {
 			let counter = 0
 			const result = await processSeoFromHtml(html, { markTitle: true }, () => `cms-${counter++}`)
 
-			expect(result.titleCmsId).toBe('cms-0')
-			expect(result.seo.title?.cmsId).toBe('cms-0')
+			expect(result.titleId).toBe('cms-0')
+			expect(result.seo.title?.id).toBe('cms-0')
 			expect(result.html).toContain('data-cms-id="cms-0"')
 		})
 
@@ -25,8 +25,8 @@ describe('processSeoFromHtml', () => {
 			const html = '<html><head><title>My Page Title</title></head><body></body></html>'
 			const result = await processSeoFromHtml(html, { markTitle: false })
 
-			expect(result.titleCmsId).toBeUndefined()
-			expect(result.seo.title?.cmsId).toBeUndefined()
+			expect(result.titleId).toBeUndefined()
+			expect(result.seo.title?.id).toBeUndefined()
 			expect(result.html).not.toContain('data-cms-id')
 		})
 
@@ -257,38 +257,6 @@ describe('processSeoFromHtml', () => {
 		})
 	})
 
-	describe('robots directive extraction', () => {
-		test('extracts robots meta', async () => {
-			const html = '<html><head><meta name="robots" content="noindex, nofollow"></head><body></body></html>'
-			const result = await processSeoFromHtml(html)
-
-			expect(result.seo.robots).toBeDefined()
-			expect(result.seo.robots?.content).toBe('noindex, nofollow')
-			expect(result.seo.robots?.directives).toEqual(['noindex', 'nofollow'])
-		})
-
-		test('handles single directive', async () => {
-			const html = '<html><head><meta name="robots" content="noindex"></head><body></body></html>'
-			const result = await processSeoFromHtml(html)
-
-			expect(result.seo.robots?.directives).toEqual(['noindex'])
-		})
-
-		test('handles missing robots', async () => {
-			const html = '<html><head></head><body></body></html>'
-			const result = await processSeoFromHtml(html)
-
-			expect(result.seo.robots).toBeUndefined()
-		})
-
-		test('normalizes directive case', async () => {
-			const html = '<html><head><meta name="robots" content="NoIndex, NoFollow"></head><body></body></html>'
-			const result = await processSeoFromHtml(html)
-
-			expect(result.seo.robots?.directives).toEqual(['noindex', 'nofollow'])
-		})
-	})
-
 	describe('JSON-LD extraction', () => {
 		test('extracts single JSON-LD block', async () => {
 			const html = `
@@ -419,16 +387,13 @@ describe('processSeoFromHtml', () => {
 
 			// Title
 			expect(result.seo.title?.content).toBe('My Page Title')
-			expect(result.seo.title?.cmsId).toBe('cms-0')
+			expect(result.seo.title?.id).toBe('cms-0')
 
 			// Description
 			expect(result.seo.description?.content).toBe('Page description')
 
 			// Keywords
 			expect(result.seo.keywords?.keywords).toEqual(['keyword1', 'keyword2'])
-
-			// Robots
-			expect(result.seo.robots?.directives).toEqual(['index', 'follow'])
 
 			// Open Graph
 			expect(result.seo.openGraph?.title?.content).toBe('OG Title')

@@ -777,9 +777,9 @@ export async function processHtml(
 		finalHtml = seoResult.html
 
 		// If title was marked with CMS ID, add it to entries
-		if (seoResult.titleCmsId && seo.title) {
-			enhancedEntries[seoResult.titleCmsId] = {
-				id: seoResult.titleCmsId,
+		if (seoResult.titleId && seo.title) {
+			enhancedEntries[seoResult.titleId] = {
+				id: seoResult.titleId,
 				tag: 'title',
 				text: seo.title.content,
 				sourcePath: seo.title.sourcePath || sourcePath,
