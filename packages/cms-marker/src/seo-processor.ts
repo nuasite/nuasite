@@ -1,5 +1,8 @@
+import fs from 'node:fs/promises'
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
-import { findSeoSource } from './source-finder/seo-finder'
+import path from 'node:path'
+import { getProjectRoot } from './config'
+import { findSourceLocation } from './source-finder/source-lookup'
 import type { CanonicalUrl, JsonLdEntry, OpenGraphData, PageSeoData, RobotsDirective, SeoKeywords, SeoMetaTag, SeoTitle, TwitterCardData } from './types'
 
 /** Type for parsed HTML element nodes from node-html-parser */
@@ -99,11 +102,18 @@ async function extractTitle(
 	const content = titleElement.textContent?.trim() || ''
 	if (!content) return undefined
 
-	// Try to find source location in actual source files
-	const sourceLocation = await findSeoSource('title', { content })
+	// Use the same source finding logic as regular text entries
+	// This tracks through props, variables, and imports
+	const sourceLocation = await findSourceLocation(content, 'title')
 
 	// Fall back to rendered HTML location if source not found
-	const sourceInfo = sourceLocation || findElementSourceLocation(titleElement, html, sourcePath)
+	const sourceInfo = sourceLocation
+		? {
+			sourcePath: sourceLocation.file,
+			sourceLine: sourceLocation.line,
+			sourceSnippet: sourceLocation.snippet || '',
+		}
+		: findElementSourceLocation(titleElement, html, sourcePath)
 
 	let cmsId: string | undefined
 	if (markTitle && getNextId) {
@@ -140,8 +150,12 @@ async function extractMetaTags(
 		// Skip meta tags without content or without name/property
 		if (!content || (!name && !property)) continue
 
-		// Try to find source location in actual source files
-		const sourceLocation = await findSeoSource('meta', { name: name || undefined, property: property || undefined, content })
+		// Build a tag pattern for context matching (e.g., "meta.*name="description"")
+		const identifier = name || property
+		const tagPattern = identifier ? `<meta[^>]*(?:name|property)\\s*=\\s*["']${identifier}["']` : '<meta'
+
+		// Search for the content attribute value in source files
+		const sourceLocation = await findAttributeValueSource('content', content, tagPattern)
 
 		// Fall back to rendered HTML location if source not found
 		const sourceInfo = sourceLocation || findElementSourceLocation(meta, html, sourcePath)
@@ -267,8 +281,8 @@ async function extractCanonical(
 	const href = canonical.getAttribute('href')
 	if (!href) return undefined
 
-	// Try to find source location in actual source files
-	const sourceLocation = await findSeoSource('canonical', { href })
+	// Search for the href attribute value in source files
+	const sourceLocation = await findAttributeValueSource('href', href, '<link[^>]*rel\\s*=\\s*["\'"]canonical["\'"]')
 
 	// Fall back to rendered HTML location if source not found
 	const sourceInfo = sourceLocation || findElementSourceLocation(canonical, html, sourcePath)
@@ -301,8 +315,8 @@ async function extractJsonLd(
 			const data = JSON.parse(content)
 			const type = data['@type'] || 'Unknown'
 
-			// Try to find source location in actual source files
-			const sourceLocation = await findSeoSource('jsonld', { jsonLdType: type })
+			// Search for JSON-LD script with this @type in source files
+			const sourceLocation = await findJsonLdSource(type)
 
 			// Fall back to rendered HTML location if source not found
 			const sourceInfo = sourceLocation || findElementSourceLocation(script, html, sourcePath)
@@ -318,6 +332,110 @@ async function extractJsonLd(
 	}
 
 	return entries
+}
+
+/**
+ * Search for JSON-LD script with a specific @type in source files
+ */
+async function findJsonLdSource(
+	jsonLdType: string,
+): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
+	const srcDir = path.join(getProjectRoot(), 'src')
+	const searchDirs = [
+		path.join(srcDir, 'pages'),
+		path.join(srcDir, 'layouts'),
+		path.join(srcDir, 'components'),
+	]
+
+	for (const dir of searchDirs) {
+		try {
+			const result = await searchDirForJsonLd(dir, jsonLdType)
+			if (result) return result
+		} catch {
+			// Directory doesn't exist
+		}
+	}
+
+	return undefined
+}
+
+/**
+ * Recursively search a directory for JSON-LD scripts
+ */
+async function searchDirForJsonLd(
+	dir: string,
+	jsonLdType: string,
+): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry.name)
+
+			if (entry.isDirectory()) {
+				const result = await searchDirForJsonLd(fullPath, jsonLdType)
+				if (result) return result
+			} else if (entry.isFile() && (entry.name.endsWith('.astro') || entry.name.endsWith('.html'))) {
+				const result = await searchFileForJsonLd(fullPath, jsonLdType)
+				if (result) return result
+			}
+		}
+	} catch {
+		// Error reading directory
+	}
+
+	return undefined
+}
+
+/**
+ * Search a single file for JSON-LD with a specific @type
+ */
+async function searchFileForJsonLd(
+	filePath: string,
+	jsonLdType: string,
+): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
+	try {
+		const content = await fs.readFile(filePath, 'utf-8')
+		const lines = content.split('\n')
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i] || ''
+
+			// Look for JSON-LD script opening
+			if (line.includes('application/ld+json')) {
+				// Check following lines for the @type
+				const snippetLines: string[] = []
+				let foundType = false
+
+				for (let j = i; j < Math.min(i + 30, lines.length); j++) {
+					const snippetLine = lines[j] || ''
+					snippetLines.push(snippetLine)
+
+					// Check if this JSON-LD contains the @type we're looking for
+					if (snippetLine.includes(`"@type"`) && snippetLine.includes(jsonLdType)) {
+						foundType = true
+					}
+
+					// Check for closing script tag
+					if (snippetLine.includes('</script>')) {
+						break
+					}
+				}
+
+				if (foundType) {
+					return {
+						sourcePath: path.relative(getProjectRoot(), filePath),
+						sourceLine: i + 1,
+						sourceSnippet: snippetLines.join('\n'),
+					}
+				}
+			}
+		}
+	} catch {
+		// Error reading file
+	}
+
+	return undefined
 }
 
 /**
@@ -350,4 +468,146 @@ function findElementSourceLocation(
 		sourceLine,
 		sourceSnippet,
 	}
+}
+
+/**
+ * Search for a text value as an attribute value in source files.
+ * Handles both static values (content="text") and dynamic expressions (content={variable}).
+ */
+async function findAttributeValueSource(
+	attrName: string,
+	value: string,
+	tagPattern?: string,
+): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
+	const srcDir = path.join(getProjectRoot(), 'src')
+	const searchDirs = [
+		path.join(srcDir, 'pages'),
+		path.join(srcDir, 'layouts'),
+		path.join(srcDir, 'components'),
+	]
+
+	for (const dir of searchDirs) {
+		try {
+			const result = await searchDirForAttributeValue(dir, attrName, value, tagPattern)
+			if (result) return result
+		} catch {
+			// Directory doesn't exist
+		}
+	}
+
+	return undefined
+}
+
+/**
+ * Recursively search a directory for attribute values
+ */
+async function searchDirForAttributeValue(
+	dir: string,
+	attrName: string,
+	value: string,
+	tagPattern?: string,
+): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry.name)
+
+			if (entry.isDirectory()) {
+				const result = await searchDirForAttributeValue(fullPath, attrName, value, tagPattern)
+				if (result) return result
+			} else if (entry.isFile() && (entry.name.endsWith('.astro') || entry.name.endsWith('.html'))) {
+				const result = await searchFileForAttributeValue(fullPath, attrName, value, tagPattern)
+				if (result) return result
+			}
+		}
+	} catch {
+		// Error reading directory
+	}
+
+	return undefined
+}
+
+/**
+ * Search a single file for an attribute value
+ */
+async function searchFileForAttributeValue(
+	filePath: string,
+	attrName: string,
+	value: string,
+	tagPattern?: string,
+): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
+	try {
+		const content = await fs.readFile(filePath, 'utf-8')
+		const lines = content.split('\n')
+
+		// Escape special regex characters in the value
+		const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+		// Pattern to match static attribute: attrName="value" or attrName='value'
+		const staticPattern = new RegExp(`${attrName}\\s*=\\s*["']${escapedValue}["']`, 'i')
+
+		// Pattern to match the tag context if provided
+		const tagRegex = tagPattern ? new RegExp(tagPattern, 'i') : null
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i] || ''
+
+			// Check if this line matches the attribute pattern
+			if (staticPattern.test(line)) {
+				// If tag pattern provided, verify we're in the right context
+				if (tagRegex && !tagRegex.test(line)) {
+					// Check surrounding lines for tag context
+					const contextLines = lines.slice(Math.max(0, i - 3), i + 1).join(' ')
+					if (!tagRegex.test(contextLines)) {
+						continue
+					}
+				}
+
+				// Extract the full element snippet
+				const snippet = extractElementSnippetFromLines(lines, i, tagPattern)
+
+				return {
+					sourcePath: path.relative(getProjectRoot(), filePath),
+					sourceLine: i + 1,
+					sourceSnippet: snippet,
+				}
+			}
+		}
+	} catch {
+		// Error reading file
+	}
+
+	return undefined
+}
+
+/**
+ * Extract a multi-line element snippet starting from a given line
+ */
+function extractElementSnippetFromLines(lines: string[], startLine: number, tagPattern?: string): string {
+	const snippetLines: string[] = []
+
+	// Look backwards to find the tag opening if we're on an attribute line
+	let actualStart = startLine
+	for (let i = startLine; i >= Math.max(0, startLine - 5); i--) {
+		const line = lines[i] || ''
+		if (line.includes('<meta') || line.includes('<link') || line.includes('<title') || line.includes('<script')) {
+			actualStart = i
+			break
+		}
+	}
+
+	// Collect lines until we find the closing
+	for (let i = actualStart; i < Math.min(actualStart + 10, lines.length); i++) {
+		const line = lines[i]
+		if (!line) continue
+		snippetLines.push(line)
+
+		// Check for self-closing or closing tag
+		if (line.includes('/>') || line.includes('</') || (line.includes('>') && !line.includes('<'))) {
+			break
+		}
+	}
+
+	return snippetLines.join('\n')
 }

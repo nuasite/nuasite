@@ -24,7 +24,3 @@ export { findCollectionSource, findMarkdownSourceLocation, parseMarkdownContent 
 
 // Snippet utilities (used by html-processor)
 export { enhanceManifestWithSourceSnippets, extractCompleteTagSnippet, extractInnerHtmlFromSnippet, extractSourceSnippet } from './snippet-utils'
-
-// SEO source finding
-export { findSeoSource } from './seo-finder'
-export type { SeoElementIdentifier, SeoSourceLocation } from './seo-finder'
