@@ -2,7 +2,24 @@ import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import { processSeoFromHtml } from './seo-processor'
 import { enhanceManifestWithSourceSnippets } from './source-finder'
 import { extractColorClasses } from './tailwind-colors'
-import type { ComponentInstance, ImageMetadata, ManifestEntry, PageSeoData, SeoOptions, SourceContext } from './types'
+import type {
+	AriaAttributes,
+	ButtonAttributes,
+	ComponentInstance,
+	DataAttributes,
+	FormAttributes,
+	IframeAttributes,
+	ImageMetadata,
+	InputAttributes,
+	LinkAttributes,
+	ManifestEntry,
+	MediaAttributes,
+	PageSeoData,
+	SelectAttributes,
+	SeoOptions,
+	SourceContext,
+	TextareaAttributes,
+} from './types'
 import { generateStableId } from './utils'
 
 /** Type for parsed HTML element nodes from node-html-parser */
@@ -719,6 +736,18 @@ export async function processHtml(
 			const classAttr = node.getAttribute('class')
 			const colorClasses = extractColorClasses(classAttr)
 
+			// Extract element-specific attributes for git diff tracking
+			const linkAttributes = extractLinkAttributes(node)
+			const buttonAttributes = extractButtonAttributes(node)
+			const inputAttributes = extractInputAttributes(node)
+			const formAttributes = extractFormAttributes(node)
+			const mediaAttributes = extractMediaAttributes(node)
+			const iframeAttributes = extractIframeAttributes(node)
+			const selectAttributes = extractSelectAttributes(node)
+			const textareaAttributes = extractTextareaAttributes(node)
+			const ariaAttributes = extractAriaAttributes(node)
+			const dataAttributes = extractDataAttributes(node)
+
 			entries[id] = {
 				id,
 				tag,
@@ -742,6 +771,17 @@ export async function processHtml(
 				imageMetadata: imageInfo?.metadata,
 				// Color classes for buttons/styled elements
 				colorClasses,
+				// Element-specific attributes for git diff tracking
+				linkAttributes,
+				buttonAttributes,
+				inputAttributes,
+				formAttributes,
+				mediaAttributes,
+				iframeAttributes,
+				selectAttributes,
+				textareaAttributes,
+				ariaAttributes,
+				dataAttributes,
 			}
 		})
 	}
@@ -815,6 +855,425 @@ function extractComponentName(sourceFile: string): string {
  */
 export function cleanText(text: string): string {
 	return text.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+/**
+ * Extract link attributes from an anchor element for git diff tracking.
+ * Returns undefined if the element is not an anchor or has no href.
+ */
+function extractLinkAttributes(node: HTMLNode): LinkAttributes | undefined {
+	const tag = node.tagName?.toLowerCase?.()
+	if (tag !== 'a') return undefined
+
+	const href = node.getAttribute('href')
+	if (!href) return undefined
+
+	const download = node.getAttribute('download')
+
+	return {
+		href,
+		target: node.getAttribute('target') || undefined,
+		rel: node.getAttribute('rel') || undefined,
+		title: node.getAttribute('title') || undefined,
+		download: download !== null ? (download || true) : undefined,
+	}
+}
+
+/**
+ * Extract button attributes for git diff tracking.
+ * Returns undefined if the element is not a button.
+ */
+function extractButtonAttributes(node: HTMLNode): ButtonAttributes | undefined {
+	const tag = node.tagName?.toLowerCase?.()
+	if (tag !== 'button') return undefined
+
+	const result: ButtonAttributes = {}
+	let hasValues = false
+
+	const type = node.getAttribute('type')
+	if (type) { result.type = type; hasValues = true }
+
+	if (node.hasAttribute('disabled')) { result.disabled = true; hasValues = true }
+
+	const form = node.getAttribute('form')
+	if (form) { result.form = form; hasValues = true }
+
+	const formAction = node.getAttribute('formaction')
+	if (formAction) { result.formAction = formAction; hasValues = true }
+
+	const formMethod = node.getAttribute('formmethod')
+	if (formMethod) { result.formMethod = formMethod; hasValues = true }
+
+	return hasValues ? result : undefined
+}
+
+/**
+ * Extract input attributes for git diff tracking.
+ * Returns undefined if the element is not an input.
+ */
+function extractInputAttributes(node: HTMLNode): InputAttributes | undefined {
+	const tag = node.tagName?.toLowerCase?.()
+	if (tag !== 'input') return undefined
+
+	const result: InputAttributes = {}
+	let hasValues = false
+
+	const type = node.getAttribute('type')
+	if (type) { result.type = type; hasValues = true }
+
+	const name = node.getAttribute('name')
+	if (name) { result.name = name; hasValues = true }
+
+	const placeholder = node.getAttribute('placeholder')
+	if (placeholder) { result.placeholder = placeholder; hasValues = true }
+
+	if (node.hasAttribute('required')) { result.required = true; hasValues = true }
+
+	const pattern = node.getAttribute('pattern')
+	if (pattern) { result.pattern = pattern; hasValues = true }
+
+	const inputMode = node.getAttribute('inputmode')
+	if (inputMode) { result.inputMode = inputMode; hasValues = true }
+
+	const autoComplete = node.getAttribute('autocomplete')
+	if (autoComplete) { result.autoComplete = autoComplete; hasValues = true }
+
+	if (node.hasAttribute('disabled')) { result.disabled = true; hasValues = true }
+
+	if (node.hasAttribute('readonly')) { result.readOnly = true; hasValues = true }
+
+	const min = node.getAttribute('min')
+	if (min) { result.min = min; hasValues = true }
+
+	const max = node.getAttribute('max')
+	if (max) { result.max = max; hasValues = true }
+
+	const step = node.getAttribute('step')
+	if (step) { result.step = step; hasValues = true }
+
+	const minLength = node.getAttribute('minlength')
+	if (minLength) { result.minLength = parseInt(minLength, 10); hasValues = true }
+
+	const maxLength = node.getAttribute('maxlength')
+	if (maxLength) { result.maxLength = parseInt(maxLength, 10); hasValues = true }
+
+	return hasValues ? result : undefined
+}
+
+/**
+ * Extract form attributes for git diff tracking.
+ * Returns undefined if the element is not a form.
+ */
+function extractFormAttributes(node: HTMLNode): FormAttributes | undefined {
+	const tag = node.tagName?.toLowerCase?.()
+	if (tag !== 'form') return undefined
+
+	const result: FormAttributes = {}
+	let hasValues = false
+
+	const action = node.getAttribute('action')
+	if (action) { result.action = action; hasValues = true }
+
+	const method = node.getAttribute('method')
+	if (method) { result.method = method; hasValues = true }
+
+	const encType = node.getAttribute('enctype')
+	if (encType) { result.encType = encType; hasValues = true }
+
+	if (node.hasAttribute('novalidate')) { result.noValidate = true; hasValues = true }
+
+	const target = node.getAttribute('target')
+	if (target) { result.target = target; hasValues = true }
+
+	const name = node.getAttribute('name')
+	if (name) { result.name = name; hasValues = true }
+
+	return hasValues ? result : undefined
+}
+
+/**
+ * Extract media attributes for video/audio elements for git diff tracking.
+ * Returns undefined if the element is not a video or audio.
+ */
+function extractMediaAttributes(node: HTMLNode): MediaAttributes | undefined {
+	const tag = node.tagName?.toLowerCase?.()
+	if (tag !== 'video' && tag !== 'audio') return undefined
+
+	const result: MediaAttributes = {}
+	let hasValues = false
+
+	const src = node.getAttribute('src')
+	if (src) { result.src = src; hasValues = true }
+
+	const poster = node.getAttribute('poster')
+	if (poster) { result.poster = poster; hasValues = true }
+
+	if (node.hasAttribute('controls')) { result.controls = true; hasValues = true }
+
+	if (node.hasAttribute('autoplay')) { result.autoplay = true; hasValues = true }
+
+	if (node.hasAttribute('muted')) { result.muted = true; hasValues = true }
+
+	if (node.hasAttribute('loop')) { result.loop = true; hasValues = true }
+
+	if (node.hasAttribute('playsinline')) { result.playsInline = true; hasValues = true }
+
+	const preload = node.getAttribute('preload')
+	if (preload) { result.preload = preload; hasValues = true }
+
+	return hasValues ? result : undefined
+}
+
+/**
+ * Extract iframe attributes for git diff tracking.
+ * Returns undefined if the element is not an iframe.
+ */
+function extractIframeAttributes(node: HTMLNode): IframeAttributes | undefined {
+	const tag = node.tagName?.toLowerCase?.()
+	if (tag !== 'iframe') return undefined
+
+	const result: IframeAttributes = {}
+	let hasValues = false
+
+	const src = node.getAttribute('src')
+	if (src) { result.src = src; hasValues = true }
+
+	const title = node.getAttribute('title')
+	if (title) { result.title = title; hasValues = true }
+
+	const allow = node.getAttribute('allow')
+	if (allow) { result.allow = allow; hasValues = true }
+
+	const sandbox = node.getAttribute('sandbox')
+	if (sandbox !== null) { result.sandbox = sandbox || ''; hasValues = true }
+
+	const loading = node.getAttribute('loading')
+	if (loading) { result.loading = loading; hasValues = true }
+
+	const width = node.getAttribute('width')
+	if (width) { result.width = width; hasValues = true }
+
+	const height = node.getAttribute('height')
+	if (height) { result.height = height; hasValues = true }
+
+	const name = node.getAttribute('name')
+	if (name) { result.name = name; hasValues = true }
+
+	return hasValues ? result : undefined
+}
+
+/**
+ * Extract select attributes for git diff tracking.
+ * Returns undefined if the element is not a select.
+ */
+function extractSelectAttributes(node: HTMLNode): SelectAttributes | undefined {
+	const tag = node.tagName?.toLowerCase?.()
+	if (tag !== 'select') return undefined
+
+	const result: SelectAttributes = {}
+	let hasValues = false
+
+	const name = node.getAttribute('name')
+	if (name) { result.name = name; hasValues = true }
+
+	if (node.hasAttribute('multiple')) { result.multiple = true; hasValues = true }
+
+	if (node.hasAttribute('required')) { result.required = true; hasValues = true }
+
+	if (node.hasAttribute('disabled')) { result.disabled = true; hasValues = true }
+
+	const size = node.getAttribute('size')
+	if (size) { result.size = parseInt(size, 10); hasValues = true }
+
+	return hasValues ? result : undefined
+}
+
+/**
+ * Extract textarea attributes for git diff tracking.
+ * Returns undefined if the element is not a textarea.
+ */
+function extractTextareaAttributes(node: HTMLNode): TextareaAttributes | undefined {
+	const tag = node.tagName?.toLowerCase?.()
+	if (tag !== 'textarea') return undefined
+
+	const result: TextareaAttributes = {}
+	let hasValues = false
+
+	const name = node.getAttribute('name')
+	if (name) { result.name = name; hasValues = true }
+
+	const placeholder = node.getAttribute('placeholder')
+	if (placeholder) { result.placeholder = placeholder; hasValues = true }
+
+	if (node.hasAttribute('required')) { result.required = true; hasValues = true }
+
+	if (node.hasAttribute('disabled')) { result.disabled = true; hasValues = true }
+
+	if (node.hasAttribute('readonly')) { result.readOnly = true; hasValues = true }
+
+	const rows = node.getAttribute('rows')
+	if (rows) { result.rows = parseInt(rows, 10); hasValues = true }
+
+	const cols = node.getAttribute('cols')
+	if (cols) { result.cols = parseInt(cols, 10); hasValues = true }
+
+	const minLength = node.getAttribute('minlength')
+	if (minLength) { result.minLength = parseInt(minLength, 10); hasValues = true }
+
+	const maxLength = node.getAttribute('maxlength')
+	if (maxLength) { result.maxLength = parseInt(maxLength, 10); hasValues = true }
+
+	const wrap = node.getAttribute('wrap')
+	if (wrap) { result.wrap = wrap; hasValues = true }
+
+	return hasValues ? result : undefined
+}
+
+/**
+ * Extract ARIA accessibility attributes for git diff tracking.
+ * Returns undefined if no ARIA attributes are present.
+ */
+function extractAriaAttributes(node: HTMLNode): AriaAttributes | undefined {
+	const result: AriaAttributes = {}
+	let hasValues = false
+
+	const role = node.getAttribute('role')
+	if (role) { result.role = role; hasValues = true }
+
+	const ariaLabel = node.getAttribute('aria-label')
+	if (ariaLabel) { result.ariaLabel = ariaLabel; hasValues = true }
+
+	const ariaLabelledBy = node.getAttribute('aria-labelledby')
+	if (ariaLabelledBy) { result.ariaLabelledBy = ariaLabelledBy; hasValues = true }
+
+	const ariaDescribedBy = node.getAttribute('aria-describedby')
+	if (ariaDescribedBy) { result.ariaDescribedBy = ariaDescribedBy; hasValues = true }
+
+	const ariaHidden = node.getAttribute('aria-hidden')
+	if (ariaHidden) { result.ariaHidden = ariaHidden === 'true'; hasValues = true }
+
+	const ariaExpanded = node.getAttribute('aria-expanded')
+	if (ariaExpanded) { result.ariaExpanded = ariaExpanded === 'true'; hasValues = true }
+
+	const ariaPressed = node.getAttribute('aria-pressed')
+	if (ariaPressed) {
+		result.ariaPressed = ariaPressed === 'mixed' ? 'mixed' : ariaPressed === 'true'
+		hasValues = true
+	}
+
+	const ariaSelected = node.getAttribute('aria-selected')
+	if (ariaSelected) { result.ariaSelected = ariaSelected === 'true'; hasValues = true }
+
+	const ariaDisabled = node.getAttribute('aria-disabled')
+	if (ariaDisabled) { result.ariaDisabled = ariaDisabled === 'true'; hasValues = true }
+
+	const ariaRequired = node.getAttribute('aria-required')
+	if (ariaRequired) { result.ariaRequired = ariaRequired === 'true'; hasValues = true }
+
+	const ariaInvalid = node.getAttribute('aria-invalid')
+	if (ariaInvalid) {
+		if (ariaInvalid === 'grammar' || ariaInvalid === 'spelling') {
+			result.ariaInvalid = ariaInvalid
+		} else {
+			result.ariaInvalid = ariaInvalid === 'true'
+		}
+		hasValues = true
+	}
+
+	const ariaLive = node.getAttribute('aria-live')
+	if (ariaLive && (ariaLive === 'polite' || ariaLive === 'assertive' || ariaLive === 'off')) {
+		result.ariaLive = ariaLive
+		hasValues = true
+	}
+
+	const ariaAtomic = node.getAttribute('aria-atomic')
+	if (ariaAtomic) { result.ariaAtomic = ariaAtomic === 'true'; hasValues = true }
+
+	const ariaBusy = node.getAttribute('aria-busy')
+	if (ariaBusy) { result.ariaBusy = ariaBusy === 'true'; hasValues = true }
+
+	const ariaCurrent = node.getAttribute('aria-current')
+	if (ariaCurrent) { result.ariaCurrent = ariaCurrent; hasValues = true }
+
+	const ariaControls = node.getAttribute('aria-controls')
+	if (ariaControls) { result.ariaControls = ariaControls; hasValues = true }
+
+	const ariaOwns = node.getAttribute('aria-owns')
+	if (ariaOwns) { result.ariaOwns = ariaOwns; hasValues = true }
+
+	const ariaHasPopup = node.getAttribute('aria-haspopup')
+	if (ariaHasPopup) {
+		if (ariaHasPopup === 'menu' || ariaHasPopup === 'listbox' || ariaHasPopup === 'tree' || ariaHasPopup === 'grid' || ariaHasPopup === 'dialog') {
+			result.ariaHasPopup = ariaHasPopup
+		} else {
+			result.ariaHasPopup = ariaHasPopup === 'true'
+		}
+		hasValues = true
+	}
+
+	return hasValues ? result : undefined
+}
+
+/**
+ * High-value data-* attribute prefixes to track.
+ * These are commonly used for analytics, tracking, feature flags, and business logic.
+ */
+const DATA_ATTR_PREFIXES = [
+	'data-analytics',
+	'data-track',
+	'data-feature',
+	'data-variant',
+	'data-component',
+	'data-action',
+	'data-test',
+	'data-testid',
+	'data-cy',
+	'data-id',
+	'data-type',
+	'data-state',
+	'data-value',
+	'data-index',
+	'data-target',
+	'data-toggle',
+	'data-dismiss',
+	'data-slide',
+	'data-modal',
+	'data-tooltip',
+	'data-placement',
+]
+
+/**
+ * Extract custom data-* attributes for git diff tracking.
+ * Only captures high-value attributes based on common prefixes.
+ * Returns undefined if no relevant data attributes are present.
+ */
+function extractDataAttributes(node: HTMLNode): DataAttributes | undefined {
+	const result: DataAttributes = {}
+	let hasValues = false
+
+	// Get all attributes from the node
+	const attrs = node.attributes || {}
+	for (const [attrName, attrValue] of Object.entries(attrs)) {
+		// Skip non-data attributes
+		if (!attrName.startsWith('data-')) continue
+
+		// Skip internal Astro attributes
+		if (attrName.startsWith('data-astro-')) continue
+
+		// Skip our own CMS attributes
+		if (attrName.startsWith('data-cms-')) continue
+
+		// Check if it matches any high-value prefix
+		const isHighValue = DATA_ATTR_PREFIXES.some(prefix => attrName.startsWith(prefix))
+		if (isHighValue) {
+			// Store without 'data-' prefix for cleaner output
+			const key = attrName.substring(5)
+			result[key] = attrValue
+			hasValues = true
+		}
+	}
+
+	return hasValues ? result : undefined
 }
 
 /**

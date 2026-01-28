@@ -139,6 +139,206 @@ export interface ColorClasses {
 	allColorClasses?: string[]
 }
 
+/** Link attributes for anchor elements (for git diff tracking) */
+export interface LinkAttributes {
+	/** The href attribute value */
+	href: string
+	/** Target attribute (e.g., '_blank', '_self') */
+	target?: string
+	/** Rel attribute (e.g., 'noopener noreferrer') */
+	rel?: string
+	/** Title attribute */
+	title?: string
+	/** Download attribute (triggers file download) */
+	download?: string | boolean
+}
+
+/** Button attributes for button elements (for git diff tracking) */
+export interface ButtonAttributes {
+	/** Button type (submit, reset, button) */
+	type?: string
+	/** Whether the button is disabled */
+	disabled?: boolean
+	/** Form ID the button belongs to */
+	form?: string
+	/** Form action URL override */
+	formAction?: string
+	/** Form method override */
+	formMethod?: string
+}
+
+/** Input attributes for form input elements (for git diff tracking) */
+export interface InputAttributes {
+	/** Input type (text, email, password, checkbox, etc.) */
+	type?: string
+	/** Input name for form submission */
+	name?: string
+	/** Placeholder text */
+	placeholder?: string
+	/** Whether the input is required */
+	required?: boolean
+	/** Validation pattern (regex) */
+	pattern?: string
+	/** Mobile keyboard type (numeric, email, tel, etc.) */
+	inputMode?: string
+	/** Autocomplete hint (email, username, current-password, etc.) */
+	autoComplete?: string
+	/** Whether the input is disabled */
+	disabled?: boolean
+	/** Whether the input is readonly */
+	readOnly?: boolean
+	/** Minimum value (for number/date inputs) */
+	min?: string
+	/** Maximum value (for number/date inputs) */
+	max?: string
+	/** Step value (for number inputs) */
+	step?: string
+	/** Minimum length */
+	minLength?: number
+	/** Maximum length */
+	maxLength?: number
+}
+
+/** Form attributes for form elements (for git diff tracking) */
+export interface FormAttributes {
+	/** Form submission endpoint */
+	action?: string
+	/** HTTP method (GET, POST, etc.) */
+	method?: string
+	/** Encoding type (multipart/form-data, etc.) */
+	encType?: string
+	/** Whether to disable HTML5 validation */
+	noValidate?: boolean
+	/** Target for form submission (_blank, _self, etc.) */
+	target?: string
+	/** Form name */
+	name?: string
+}
+
+/** Media attributes for video/audio elements (for git diff tracking) */
+export interface MediaAttributes {
+	/** Media source URL */
+	src?: string
+	/** Poster image URL (video only) */
+	poster?: string
+	/** Whether to show controls */
+	controls?: boolean
+	/** Whether to autoplay */
+	autoplay?: boolean
+	/** Whether to mute audio */
+	muted?: boolean
+	/** Whether to loop playback */
+	loop?: boolean
+	/** Whether to play inline on mobile */
+	playsInline?: boolean
+	/** Preload strategy (none, metadata, auto) */
+	preload?: string
+}
+
+/** Iframe attributes for embedded content (for git diff tracking) */
+export interface IframeAttributes {
+	/** Iframe source URL */
+	src?: string
+	/** Accessibility title */
+	title?: string
+	/** Permissions policy (camera, microphone, etc.) */
+	allow?: string
+	/** Sandbox restrictions */
+	sandbox?: string
+	/** Loading strategy (lazy, eager) */
+	loading?: string
+	/** Width */
+	width?: string
+	/** Height */
+	height?: string
+	/** Name attribute */
+	name?: string
+}
+
+/** Select attributes for dropdown elements (for git diff tracking) */
+export interface SelectAttributes {
+	/** Select name for form submission */
+	name?: string
+	/** Whether multiple selection is allowed */
+	multiple?: boolean
+	/** Whether the select is required */
+	required?: boolean
+	/** Whether the select is disabled */
+	disabled?: boolean
+	/** Number of visible options */
+	size?: number
+}
+
+/** Textarea attributes for multiline input (for git diff tracking) */
+export interface TextareaAttributes {
+	/** Textarea name for form submission */
+	name?: string
+	/** Placeholder text */
+	placeholder?: string
+	/** Whether the textarea is required */
+	required?: boolean
+	/** Whether the textarea is disabled */
+	disabled?: boolean
+	/** Whether the textarea is readonly */
+	readOnly?: boolean
+	/** Number of visible rows */
+	rows?: number
+	/** Number of visible columns */
+	cols?: number
+	/** Minimum length */
+	minLength?: number
+	/** Maximum length */
+	maxLength?: number
+	/** Wrap behavior (soft, hard, off) */
+	wrap?: string
+}
+
+/** ARIA accessibility attributes (for git diff tracking) */
+export interface AriaAttributes {
+	/** ARIA role (button, tab, navigation, dialog, etc.) */
+	role?: string
+	/** Screen reader label */
+	ariaLabel?: string
+	/** ID of element that labels this one */
+	ariaLabelledBy?: string
+	/** ID of element that describes this one */
+	ariaDescribedBy?: string
+	/** Whether hidden from assistive technology */
+	ariaHidden?: boolean
+	/** Expanded state for collapsibles */
+	ariaExpanded?: boolean
+	/** Pressed state for toggle buttons */
+	ariaPressed?: boolean | 'mixed'
+	/** Selected state for tabs/options */
+	ariaSelected?: boolean
+	/** Disabled state */
+	ariaDisabled?: boolean
+	/** Required state */
+	ariaRequired?: boolean
+	/** Invalid state */
+	ariaInvalid?: boolean | 'grammar' | 'spelling'
+	/** Live region announcement type */
+	ariaLive?: 'polite' | 'assertive' | 'off'
+	/** Atomic update for live regions */
+	ariaAtomic?: boolean
+	/** Busy state */
+	ariaBusy?: boolean
+	/** Current state (page, step, location, date, time, true, false) */
+	ariaCurrent?: string
+	/** Controls relationship */
+	ariaControls?: string
+	/** Owns relationship */
+	ariaOwns?: string
+	/** Haspopup type */
+	ariaHasPopup?: boolean | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog'
+}
+
+/** Custom data-* attributes (for git diff tracking) */
+export interface DataAttributes {
+	/** All data-* attributes as key-value pairs (without 'data-' prefix) */
+	[key: string]: string | undefined
+}
+
 /** Available colors palette from Tailwind config */
 export interface AvailableColors {
 	/** All available colors with their shades */
@@ -206,6 +406,26 @@ export interface ManifestEntry {
 	constraints?: ContentConstraints
 	/** Color classes applied to this element (for buttons, etc.) */
 	colorClasses?: ColorClasses
+	/** Link attributes for anchor elements (href, target, rel, title) */
+	linkAttributes?: LinkAttributes
+	/** Button attributes (type, disabled, form, etc.) */
+	buttonAttributes?: ButtonAttributes
+	/** Input attributes (type, name, placeholder, required, etc.) */
+	inputAttributes?: InputAttributes
+	/** Form attributes (action, method, enctype, etc.) */
+	formAttributes?: FormAttributes
+	/** Media attributes for video/audio (src, controls, autoplay, etc.) */
+	mediaAttributes?: MediaAttributes
+	/** Iframe attributes (src, title, allow, sandbox, etc.) */
+	iframeAttributes?: IframeAttributes
+	/** Select attributes (name, multiple, required, etc.) */
+	selectAttributes?: SelectAttributes
+	/** Textarea attributes (name, placeholder, rows, cols, etc.) */
+	textareaAttributes?: TextareaAttributes
+	/** ARIA accessibility attributes (role, aria-label, etc.) */
+	ariaAttributes?: AriaAttributes
+	/** Custom data-* attributes */
+	dataAttributes?: DataAttributes
 }
 
 export interface ComponentInstance {
