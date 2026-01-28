@@ -891,18 +891,33 @@ function extractButtonAttributes(node: HTMLNode): ButtonAttributes | undefined {
 	let hasValues = false
 
 	const type = node.getAttribute('type')
-	if (type) { result.type = type; hasValues = true }
+	if (type) {
+		result.type = type
+		hasValues = true
+	}
 
-	if (node.hasAttribute('disabled')) { result.disabled = true; hasValues = true }
+	if (node.hasAttribute('disabled')) {
+		result.disabled = true
+		hasValues = true
+	}
 
 	const form = node.getAttribute('form')
-	if (form) { result.form = form; hasValues = true }
+	if (form) {
+		result.form = form
+		hasValues = true
+	}
 
 	const formAction = node.getAttribute('formaction')
-	if (formAction) { result.formAction = formAction; hasValues = true }
+	if (formAction) {
+		result.formAction = formAction
+		hasValues = true
+	}
 
 	const formMethod = node.getAttribute('formmethod')
-	if (formMethod) { result.formMethod = formMethod; hasValues = true }
+	if (formMethod) {
+		result.formMethod = formMethod
+		hasValues = true
+	}
 
 	return hasValues ? result : undefined
 }
@@ -919,43 +934,85 @@ function extractInputAttributes(node: HTMLNode): InputAttributes | undefined {
 	let hasValues = false
 
 	const type = node.getAttribute('type')
-	if (type) { result.type = type; hasValues = true }
+	if (type) {
+		result.type = type
+		hasValues = true
+	}
 
 	const name = node.getAttribute('name')
-	if (name) { result.name = name; hasValues = true }
+	if (name) {
+		result.name = name
+		hasValues = true
+	}
 
 	const placeholder = node.getAttribute('placeholder')
-	if (placeholder) { result.placeholder = placeholder; hasValues = true }
+	if (placeholder) {
+		result.placeholder = placeholder
+		hasValues = true
+	}
 
-	if (node.hasAttribute('required')) { result.required = true; hasValues = true }
+	if (node.hasAttribute('required')) {
+		result.required = true
+		hasValues = true
+	}
 
 	const pattern = node.getAttribute('pattern')
-	if (pattern) { result.pattern = pattern; hasValues = true }
+	if (pattern) {
+		result.pattern = pattern
+		hasValues = true
+	}
 
 	const inputMode = node.getAttribute('inputmode')
-	if (inputMode) { result.inputMode = inputMode; hasValues = true }
+	if (inputMode) {
+		result.inputMode = inputMode
+		hasValues = true
+	}
 
 	const autoComplete = node.getAttribute('autocomplete')
-	if (autoComplete) { result.autoComplete = autoComplete; hasValues = true }
+	if (autoComplete) {
+		result.autoComplete = autoComplete
+		hasValues = true
+	}
 
-	if (node.hasAttribute('disabled')) { result.disabled = true; hasValues = true }
+	if (node.hasAttribute('disabled')) {
+		result.disabled = true
+		hasValues = true
+	}
 
-	if (node.hasAttribute('readonly')) { result.readOnly = true; hasValues = true }
+	if (node.hasAttribute('readonly')) {
+		result.readOnly = true
+		hasValues = true
+	}
 
 	const min = node.getAttribute('min')
-	if (min) { result.min = min; hasValues = true }
+	if (min) {
+		result.min = min
+		hasValues = true
+	}
 
 	const max = node.getAttribute('max')
-	if (max) { result.max = max; hasValues = true }
+	if (max) {
+		result.max = max
+		hasValues = true
+	}
 
 	const step = node.getAttribute('step')
-	if (step) { result.step = step; hasValues = true }
+	if (step) {
+		result.step = step
+		hasValues = true
+	}
 
 	const minLength = node.getAttribute('minlength')
-	if (minLength) { result.minLength = parseInt(minLength, 10); hasValues = true }
+	if (minLength) {
+		result.minLength = parseInt(minLength, 10)
+		hasValues = true
+	}
 
 	const maxLength = node.getAttribute('maxlength')
-	if (maxLength) { result.maxLength = parseInt(maxLength, 10); hasValues = true }
+	if (maxLength) {
+		result.maxLength = parseInt(maxLength, 10)
+		hasValues = true
+	}
 
 	return hasValues ? result : undefined
 }
@@ -972,21 +1029,39 @@ function extractFormAttributes(node: HTMLNode): FormAttributes | undefined {
 	let hasValues = false
 
 	const action = node.getAttribute('action')
-	if (action) { result.action = action; hasValues = true }
+	if (action) {
+		result.action = action
+		hasValues = true
+	}
 
 	const method = node.getAttribute('method')
-	if (method) { result.method = method; hasValues = true }
+	if (method) {
+		result.method = method
+		hasValues = true
+	}
 
 	const encType = node.getAttribute('enctype')
-	if (encType) { result.encType = encType; hasValues = true }
+	if (encType) {
+		result.encType = encType
+		hasValues = true
+	}
 
-	if (node.hasAttribute('novalidate')) { result.noValidate = true; hasValues = true }
+	if (node.hasAttribute('novalidate')) {
+		result.noValidate = true
+		hasValues = true
+	}
 
 	const target = node.getAttribute('target')
-	if (target) { result.target = target; hasValues = true }
+	if (target) {
+		result.target = target
+		hasValues = true
+	}
 
 	const name = node.getAttribute('name')
-	if (name) { result.name = name; hasValues = true }
+	if (name) {
+		result.name = name
+		hasValues = true
+	}
 
 	return hasValues ? result : undefined
 }
@@ -1003,23 +1078,47 @@ function extractMediaAttributes(node: HTMLNode): MediaAttributes | undefined {
 	let hasValues = false
 
 	const src = node.getAttribute('src')
-	if (src) { result.src = src; hasValues = true }
+	if (src) {
+		result.src = src
+		hasValues = true
+	}
 
 	const poster = node.getAttribute('poster')
-	if (poster) { result.poster = poster; hasValues = true }
+	if (poster) {
+		result.poster = poster
+		hasValues = true
+	}
 
-	if (node.hasAttribute('controls')) { result.controls = true; hasValues = true }
+	if (node.hasAttribute('controls')) {
+		result.controls = true
+		hasValues = true
+	}
 
-	if (node.hasAttribute('autoplay')) { result.autoplay = true; hasValues = true }
+	if (node.hasAttribute('autoplay')) {
+		result.autoplay = true
+		hasValues = true
+	}
 
-	if (node.hasAttribute('muted')) { result.muted = true; hasValues = true }
+	if (node.hasAttribute('muted')) {
+		result.muted = true
+		hasValues = true
+	}
 
-	if (node.hasAttribute('loop')) { result.loop = true; hasValues = true }
+	if (node.hasAttribute('loop')) {
+		result.loop = true
+		hasValues = true
+	}
 
-	if (node.hasAttribute('playsinline')) { result.playsInline = true; hasValues = true }
+	if (node.hasAttribute('playsinline')) {
+		result.playsInline = true
+		hasValues = true
+	}
 
 	const preload = node.getAttribute('preload')
-	if (preload) { result.preload = preload; hasValues = true }
+	if (preload) {
+		result.preload = preload
+		hasValues = true
+	}
 
 	return hasValues ? result : undefined
 }
@@ -1036,28 +1135,52 @@ function extractIframeAttributes(node: HTMLNode): IframeAttributes | undefined {
 	let hasValues = false
 
 	const src = node.getAttribute('src')
-	if (src) { result.src = src; hasValues = true }
+	if (src) {
+		result.src = src
+		hasValues = true
+	}
 
 	const title = node.getAttribute('title')
-	if (title) { result.title = title; hasValues = true }
+	if (title) {
+		result.title = title
+		hasValues = true
+	}
 
 	const allow = node.getAttribute('allow')
-	if (allow) { result.allow = allow; hasValues = true }
+	if (allow) {
+		result.allow = allow
+		hasValues = true
+	}
 
 	const sandbox = node.getAttribute('sandbox')
-	if (sandbox !== null) { result.sandbox = sandbox || ''; hasValues = true }
+	if (sandbox !== null) {
+		result.sandbox = sandbox || ''
+		hasValues = true
+	}
 
 	const loading = node.getAttribute('loading')
-	if (loading) { result.loading = loading; hasValues = true }
+	if (loading) {
+		result.loading = loading
+		hasValues = true
+	}
 
 	const width = node.getAttribute('width')
-	if (width) { result.width = width; hasValues = true }
+	if (width) {
+		result.width = width
+		hasValues = true
+	}
 
 	const height = node.getAttribute('height')
-	if (height) { result.height = height; hasValues = true }
+	if (height) {
+		result.height = height
+		hasValues = true
+	}
 
 	const name = node.getAttribute('name')
-	if (name) { result.name = name; hasValues = true }
+	if (name) {
+		result.name = name
+		hasValues = true
+	}
 
 	return hasValues ? result : undefined
 }
@@ -1074,16 +1197,31 @@ function extractSelectAttributes(node: HTMLNode): SelectAttributes | undefined {
 	let hasValues = false
 
 	const name = node.getAttribute('name')
-	if (name) { result.name = name; hasValues = true }
+	if (name) {
+		result.name = name
+		hasValues = true
+	}
 
-	if (node.hasAttribute('multiple')) { result.multiple = true; hasValues = true }
+	if (node.hasAttribute('multiple')) {
+		result.multiple = true
+		hasValues = true
+	}
 
-	if (node.hasAttribute('required')) { result.required = true; hasValues = true }
+	if (node.hasAttribute('required')) {
+		result.required = true
+		hasValues = true
+	}
 
-	if (node.hasAttribute('disabled')) { result.disabled = true; hasValues = true }
+	if (node.hasAttribute('disabled')) {
+		result.disabled = true
+		hasValues = true
+	}
 
 	const size = node.getAttribute('size')
-	if (size) { result.size = parseInt(size, 10); hasValues = true }
+	if (size) {
+		result.size = parseInt(size, 10)
+		hasValues = true
+	}
 
 	return hasValues ? result : undefined
 }
@@ -1100,31 +1238,61 @@ function extractTextareaAttributes(node: HTMLNode): TextareaAttributes | undefin
 	let hasValues = false
 
 	const name = node.getAttribute('name')
-	if (name) { result.name = name; hasValues = true }
+	if (name) {
+		result.name = name
+		hasValues = true
+	}
 
 	const placeholder = node.getAttribute('placeholder')
-	if (placeholder) { result.placeholder = placeholder; hasValues = true }
+	if (placeholder) {
+		result.placeholder = placeholder
+		hasValues = true
+	}
 
-	if (node.hasAttribute('required')) { result.required = true; hasValues = true }
+	if (node.hasAttribute('required')) {
+		result.required = true
+		hasValues = true
+	}
 
-	if (node.hasAttribute('disabled')) { result.disabled = true; hasValues = true }
+	if (node.hasAttribute('disabled')) {
+		result.disabled = true
+		hasValues = true
+	}
 
-	if (node.hasAttribute('readonly')) { result.readOnly = true; hasValues = true }
+	if (node.hasAttribute('readonly')) {
+		result.readOnly = true
+		hasValues = true
+	}
 
 	const rows = node.getAttribute('rows')
-	if (rows) { result.rows = parseInt(rows, 10); hasValues = true }
+	if (rows) {
+		result.rows = parseInt(rows, 10)
+		hasValues = true
+	}
 
 	const cols = node.getAttribute('cols')
-	if (cols) { result.cols = parseInt(cols, 10); hasValues = true }
+	if (cols) {
+		result.cols = parseInt(cols, 10)
+		hasValues = true
+	}
 
 	const minLength = node.getAttribute('minlength')
-	if (minLength) { result.minLength = parseInt(minLength, 10); hasValues = true }
+	if (minLength) {
+		result.minLength = parseInt(minLength, 10)
+		hasValues = true
+	}
 
 	const maxLength = node.getAttribute('maxlength')
-	if (maxLength) { result.maxLength = parseInt(maxLength, 10); hasValues = true }
+	if (maxLength) {
+		result.maxLength = parseInt(maxLength, 10)
+		hasValues = true
+	}
 
 	const wrap = node.getAttribute('wrap')
-	if (wrap) { result.wrap = wrap; hasValues = true }
+	if (wrap) {
+		result.wrap = wrap
+		hasValues = true
+	}
 
 	return hasValues ? result : undefined
 }
@@ -1138,22 +1306,40 @@ function extractAriaAttributes(node: HTMLNode): AriaAttributes | undefined {
 	let hasValues = false
 
 	const role = node.getAttribute('role')
-	if (role) { result.role = role; hasValues = true }
+	if (role) {
+		result.role = role
+		hasValues = true
+	}
 
 	const ariaLabel = node.getAttribute('aria-label')
-	if (ariaLabel) { result.ariaLabel = ariaLabel; hasValues = true }
+	if (ariaLabel) {
+		result.ariaLabel = ariaLabel
+		hasValues = true
+	}
 
 	const ariaLabelledBy = node.getAttribute('aria-labelledby')
-	if (ariaLabelledBy) { result.ariaLabelledBy = ariaLabelledBy; hasValues = true }
+	if (ariaLabelledBy) {
+		result.ariaLabelledBy = ariaLabelledBy
+		hasValues = true
+	}
 
 	const ariaDescribedBy = node.getAttribute('aria-describedby')
-	if (ariaDescribedBy) { result.ariaDescribedBy = ariaDescribedBy; hasValues = true }
+	if (ariaDescribedBy) {
+		result.ariaDescribedBy = ariaDescribedBy
+		hasValues = true
+	}
 
 	const ariaHidden = node.getAttribute('aria-hidden')
-	if (ariaHidden) { result.ariaHidden = ariaHidden === 'true'; hasValues = true }
+	if (ariaHidden) {
+		result.ariaHidden = ariaHidden === 'true'
+		hasValues = true
+	}
 
 	const ariaExpanded = node.getAttribute('aria-expanded')
-	if (ariaExpanded) { result.ariaExpanded = ariaExpanded === 'true'; hasValues = true }
+	if (ariaExpanded) {
+		result.ariaExpanded = ariaExpanded === 'true'
+		hasValues = true
+	}
 
 	const ariaPressed = node.getAttribute('aria-pressed')
 	if (ariaPressed) {
@@ -1162,13 +1348,22 @@ function extractAriaAttributes(node: HTMLNode): AriaAttributes | undefined {
 	}
 
 	const ariaSelected = node.getAttribute('aria-selected')
-	if (ariaSelected) { result.ariaSelected = ariaSelected === 'true'; hasValues = true }
+	if (ariaSelected) {
+		result.ariaSelected = ariaSelected === 'true'
+		hasValues = true
+	}
 
 	const ariaDisabled = node.getAttribute('aria-disabled')
-	if (ariaDisabled) { result.ariaDisabled = ariaDisabled === 'true'; hasValues = true }
+	if (ariaDisabled) {
+		result.ariaDisabled = ariaDisabled === 'true'
+		hasValues = true
+	}
 
 	const ariaRequired = node.getAttribute('aria-required')
-	if (ariaRequired) { result.ariaRequired = ariaRequired === 'true'; hasValues = true }
+	if (ariaRequired) {
+		result.ariaRequired = ariaRequired === 'true'
+		hasValues = true
+	}
 
 	const ariaInvalid = node.getAttribute('aria-invalid')
 	if (ariaInvalid) {
@@ -1187,19 +1382,34 @@ function extractAriaAttributes(node: HTMLNode): AriaAttributes | undefined {
 	}
 
 	const ariaAtomic = node.getAttribute('aria-atomic')
-	if (ariaAtomic) { result.ariaAtomic = ariaAtomic === 'true'; hasValues = true }
+	if (ariaAtomic) {
+		result.ariaAtomic = ariaAtomic === 'true'
+		hasValues = true
+	}
 
 	const ariaBusy = node.getAttribute('aria-busy')
-	if (ariaBusy) { result.ariaBusy = ariaBusy === 'true'; hasValues = true }
+	if (ariaBusy) {
+		result.ariaBusy = ariaBusy === 'true'
+		hasValues = true
+	}
 
 	const ariaCurrent = node.getAttribute('aria-current')
-	if (ariaCurrent) { result.ariaCurrent = ariaCurrent; hasValues = true }
+	if (ariaCurrent) {
+		result.ariaCurrent = ariaCurrent
+		hasValues = true
+	}
 
 	const ariaControls = node.getAttribute('aria-controls')
-	if (ariaControls) { result.ariaControls = ariaControls; hasValues = true }
+	if (ariaControls) {
+		result.ariaControls = ariaControls
+		hasValues = true
+	}
 
 	const ariaOwns = node.getAttribute('aria-owns')
-	if (ariaOwns) { result.ariaOwns = ariaOwns; hasValues = true }
+	if (ariaOwns) {
+		result.ariaOwns = ariaOwns
+		hasValues = true
+	}
 
 	const ariaHasPopup = node.getAttribute('aria-haspopup')
 	if (ariaHasPopup) {

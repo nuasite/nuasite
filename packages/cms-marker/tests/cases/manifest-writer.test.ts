@@ -343,18 +343,30 @@ describe('ManifestWriter', () => {
 				}, {})
 
 				// Page with SEO title
-				manifestWriter.addPage('/about', {
-					'cms-1': { id: 'cms-1', sourcePath: '/about.html', tag: 'h1', text: 'About' },
-				}, {}, undefined, {
-					title: { content: 'About Us', sourcePath: 'src/pages/about.astro', sourceLine: 5, sourceSnippet: '<title>About Us</title>' },
-				})
+				manifestWriter.addPage(
+					'/about',
+					{
+						'cms-1': { id: 'cms-1', sourcePath: '/about.html', tag: 'h1', text: 'About' },
+					},
+					{},
+					undefined,
+					{
+						title: { content: 'About Us', sourcePath: 'src/pages/about.astro', sourceLine: 5, sourceSnippet: '<title>About Us</title>' },
+					},
+				)
 
 				// Another page with SEO title
-				manifestWriter.addPage('/blog/my-post', {
-					'cms-2': { id: 'cms-2', sourcePath: '/blog/my-post.html', tag: 'article', text: '' },
-				}, {}, undefined, {
-					title: { content: 'My Blog Post', sourcePath: 'src/pages/blog/[slug].astro', sourceLine: 5, sourceSnippet: '<title>My Blog Post</title>' },
-				})
+				manifestWriter.addPage(
+					'/blog/my-post',
+					{
+						'cms-2': { id: 'cms-2', sourcePath: '/blog/my-post.html', tag: 'article', text: '' },
+					},
+					{},
+					undefined,
+					{
+						title: { content: 'My Blog Post', sourcePath: 'src/pages/blog/[slug].astro', sourceLine: 5, sourceSnippet: '<title>My Blog Post</title>' },
+					},
+				)
 
 				await manifestWriter.finalize()
 

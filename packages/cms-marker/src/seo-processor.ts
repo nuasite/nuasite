@@ -3,16 +3,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
 import { findSourceLocation } from './source-finder/source-lookup'
-import type {
-	CanonicalUrl,
-	JsonLdEntry,
-	OpenGraphData,
-	PageSeoData,
-	SeoKeywords,
-	SeoMetaTag,
-	SeoTitle,
-	TwitterCardData,
-} from './types'
+import type { CanonicalUrl, JsonLdEntry, OpenGraphData, PageSeoData, SeoKeywords, SeoMetaTag, SeoTitle, TwitterCardData } from './types'
 
 /** Type for parsed HTML element nodes from node-html-parser */
 type HTMLNode = ParsedHTMLElement
@@ -505,4 +496,3 @@ function findElementSourceLocation(
 		sourceSnippet,
 	}
 }
-
