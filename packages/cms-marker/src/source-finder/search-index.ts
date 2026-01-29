@@ -115,6 +115,10 @@ function getTextContent(node: AstroNode): string {
 	if (node.type === 'element' && (node as ElementNode).name.toLowerCase() === 'br') {
 		return ' '
 	}
+	// Treat <wbr> elements as empty (word break opportunity, no visible content)
+	if (node.type === 'element' && (node as ElementNode).name.toLowerCase() === 'wbr') {
+		return ''
+	}
 	if ('children' in node && Array.isArray(node.children)) {
 		return node.children.map(getTextContent).join('')
 	}

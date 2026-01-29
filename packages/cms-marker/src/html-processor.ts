@@ -148,6 +148,9 @@ function getTextContent(node: HTMLNode): string {
 			if (tagName === 'br') {
 				// Treat <br> as whitespace
 				result.push(' ')
+			} else if (tagName === 'wbr') {
+				// Word break opportunity - no visible content, skip
+				continue
 			} else {
 				// Recursively get text from child elements
 				result.push(getTextContent(child as HTMLNode))
@@ -662,9 +665,13 @@ export async function processHtml(
 						// Element node
 						const tagName = child.tagName?.toLowerCase?.()
 
-						// Preserve <br> literally so text matches source snippets
+						// Preserve <br> and <wbr> literally so text matches source snippets
 						if (tagName === 'br') {
 							text += '<br>'
+							continue
+						}
+						if (tagName === 'wbr') {
+							text += '<wbr>'
 							continue
 						}
 
