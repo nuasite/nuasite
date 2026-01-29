@@ -194,6 +194,53 @@ function extractCompleteTagSnippet(lines: string[], startLine: number, tag: stri
 }
 
 /**
+ * Extract the opening tag from source lines with its start line number.
+ * Local version for indexing (to avoid circular dependency)
+ */
+function extractOpeningTagWithLine(
+	lines: string[],
+	startLine: number,
+	tag: string,
+): { snippet: string; startLine: number } | undefined {
+	const openTagPattern = new RegExp(`<${tag}(?:[\\s>]|$)`, 'gi')
+
+	let actualStartLine = startLine
+	const startLineContent = lines[startLine] || ''
+	if (!openTagPattern.test(startLineContent)) {
+		for (let i = startLine - 1; i >= Math.max(0, startLine - 20); i--) {
+			const line = lines[i]
+			if (!line) continue
+			openTagPattern.lastIndex = 0
+			if (openTagPattern.test(line)) {
+				actualStartLine = i
+				break
+			}
+		}
+	}
+
+	const snippetLines: string[] = []
+	for (let i = actualStartLine; i < Math.min(actualStartLine + 10, lines.length); i++) {
+		const line = lines[i]
+		if (!line) continue
+
+		snippetLines.push(line)
+		const combined = snippetLines.join('\n')
+
+		const openTagMatch = combined.match(new RegExp(`<${tag}[^>]*>`, 'i'))
+		if (openTagMatch) {
+			return { snippet: openTagMatch[0], startLine: actualStartLine }
+		}
+
+		const selfClosingMatch = combined.match(new RegExp(`<${tag}[^>]*/\\s*>`, 'i'))
+		if (selfClosingMatch) {
+			return { snippet: selfClosingMatch[0], startLine: actualStartLine }
+		}
+	}
+
+	return undefined
+}
+
+/**
  * Index all searchable text content from a parsed file
  */
 export function indexFileContent(cached: CachedParsedFile, relFile: string): void {
@@ -241,11 +288,13 @@ export function indexFileContent(cached: CachedParsedFile, relFile: string): voi
 				// Index static text content
 				const completeSnippet = extractCompleteTagSnippet(cached.lines, line - 1, tag)
 				const snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
+				const openingTagInfo = extractOpeningTagWithLine(cached.lines, line - 1, tag)
 
 				addToTextSearchIndex({
 					file: relFile,
 					line,
 					snippet,
+					openingTagSnippet: openingTagInfo?.snippet,
 					type: 'static',
 					normalizedText,
 					tag,
@@ -358,6 +407,7 @@ export function findInTextIndex(textContent: string, tag: string): SourceLocatio
 				file: entry.file,
 				line: entry.line,
 				snippet: entry.snippet,
+				openingTagSnippet: entry.openingTagSnippet,
 				type: entry.type,
 				variableName: entry.variableName,
 				definitionLine: entry.definitionLine,
@@ -374,6 +424,7 @@ export function findInTextIndex(textContent: string, tag: string): SourceLocatio
 					file: entry.file,
 					line: entry.line,
 					snippet: entry.snippet,
+					openingTagSnippet: entry.openingTagSnippet,
 					type: entry.type,
 					variableName: entry.variableName,
 					definitionLine: entry.definitionLine,
@@ -389,6 +440,7 @@ export function findInTextIndex(textContent: string, tag: string): SourceLocatio
 				file: entry.file,
 				line: entry.line,
 				snippet: entry.snippet,
+				openingTagSnippet: entry.openingTagSnippet,
 				type: entry.type,
 				variableName: entry.variableName,
 				definitionLine: entry.definitionLine,

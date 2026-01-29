@@ -7,7 +7,7 @@ import { isSearchIndexInitialized } from './cache'
 import { searchForExpressionProp, searchForImportedValue, searchForPropInParents } from './cross-file-tracker'
 import { findElementWithText } from './element-finder'
 import { findInTextIndex } from './search-index'
-import { extractCompleteTagSnippet, extractInnerHtmlFromSnippet } from './snippet-utils'
+import { extractCompleteTagSnippet, extractInnerHtmlFromSnippet, extractOpeningTagSnippet } from './snippet-utils'
 import type { SourceLocation } from './types'
 
 // ============================================================================
@@ -138,9 +138,12 @@ export async function searchAstroFile(
 
 			// Get the source snippet - complete element for static content, definition line for variables
 			let snippet: string
+			let openingTagSnippet: string | undefined
 			if (bestMatch.type === 'static') {
 				// For static content, extract the complete element (including wrapper tags)
 				snippet = extractCompleteTagSnippet(lines, editableLine - 1, tag)
+				// Also extract just the opening tag for attribute updates
+				openingTagSnippet = extractOpeningTagSnippet(lines, editableLine - 1, tag)
 			} else {
 				// For variables/props, just the definition line with indentation
 				snippet = lines[editableLine - 1] || ''
@@ -150,6 +153,7 @@ export async function searchAstroFile(
 				file: path.relative(getProjectRoot(), filePath),
 				line: editableLine,
 				snippet,
+				openingTagSnippet,
 				type: bestMatch.type,
 				variableName: bestMatch.variableName,
 				definitionLine: bestMatch.type === 'variable' ? bestMatch.definitionLine : undefined,

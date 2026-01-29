@@ -39,20 +39,6 @@ export interface ComponentDefinition {
 	slots?: string[]
 }
 
-/** Context around an element for resilient matching when exact match fails */
-export interface SourceContext {
-	/** Text content of the preceding sibling element */
-	precedingText?: string
-	/** Text content of the following sibling element */
-	followingText?: string
-	/** Parent element's tag name */
-	parentTag?: string
-	/** Position among siblings (0-indexed) */
-	siblingIndex?: number
-	/** Parent element's class attribute */
-	parentClasses?: string
-}
-
 /** Image metadata for better tracking and integrity */
 export interface ImageMetadata {
 	/** Image source URL */
@@ -91,252 +77,18 @@ export interface TailwindColor {
 	isCustom?: boolean
 }
 
-/** Opacity classes currently applied to an element */
-export interface OpacityClasses {
-	/** Background opacity class (e.g., 'bg-opacity-90') */
-	bgOpacity?: string
-	/** Text opacity class (e.g., 'text-opacity-50') */
-	textOpacity?: string
-	/** Border opacity class (e.g., 'border-opacity-75') */
-	borderOpacity?: string
-}
-
-/** Gradient color classes currently applied to an element */
-export interface GradientClasses {
-	/** Gradient start color (e.g., 'from-blue-500') */
-	from?: string
-	/** Gradient middle color (e.g., 'via-purple-500') */
-	via?: string
-	/** Gradient end color (e.g., 'to-pink-500') */
-	to?: string
-	/** Hover gradient start color (e.g., 'hover:from-blue-600') */
-	hoverFrom?: string
-	/** Hover gradient middle color (e.g., 'hover:via-purple-600') */
-	hoverVia?: string
-	/** Hover gradient end color (e.g., 'hover:to-pink-600') */
-	hoverTo?: string
-}
-
-/** Color classes currently applied to an element */
-export interface ColorClasses {
-	/** Background color class (e.g., 'bg-blue-500') */
-	bg?: string
-	/** Text color class (e.g., 'text-white') */
-	text?: string
-	/** Border color class (e.g., 'border-blue-600') */
-	border?: string
-	/** Hover background color class (e.g., 'hover:bg-blue-600') */
-	hoverBg?: string
-	/** Hover text color class (e.g., 'hover:text-gray-100') */
-	hoverText?: string
-	/** Hover border color class (e.g., 'hover:border-blue-700') */
-	hoverBorder?: string
-	/** Gradient color classes */
-	gradient?: GradientClasses
-	/** Opacity classes */
-	opacity?: OpacityClasses
-	/** All color-related classes as found in the element */
-	allColorClasses?: string[]
-}
-
-/** Link attributes for anchor elements (for git diff tracking) */
-export interface LinkAttributes {
-	/** The href attribute value */
-	href: string
-	/** Target attribute (e.g., '_blank', '_self') */
-	target?: string
-	/** Rel attribute (e.g., 'noopener noreferrer') */
-	rel?: string
-	/** Title attribute */
-	title?: string
-	/** Download attribute (triggers file download) */
-	download?: string | boolean
-}
-
-/** Button attributes for button elements (for git diff tracking) */
-export interface ButtonAttributes {
-	/** Button type (submit, reset, button) */
-	type?: string
-	/** Whether the button is disabled */
-	disabled?: boolean
-	/** Form ID the button belongs to */
-	form?: string
-	/** Form action URL override */
-	formAction?: string
-	/** Form method override */
-	formMethod?: string
-}
-
-/** Input attributes for form input elements (for git diff tracking) */
-export interface InputAttributes {
-	/** Input type (text, email, password, checkbox, etc.) */
-	type?: string
-	/** Input name for form submission */
-	name?: string
-	/** Placeholder text */
-	placeholder?: string
-	/** Whether the input is required */
-	required?: boolean
-	/** Validation pattern (regex) */
-	pattern?: string
-	/** Mobile keyboard type (numeric, email, tel, etc.) */
-	inputMode?: string
-	/** Autocomplete hint (email, username, current-password, etc.) */
-	autoComplete?: string
-	/** Whether the input is disabled */
-	disabled?: boolean
-	/** Whether the input is readonly */
-	readOnly?: boolean
-	/** Minimum value (for number/date inputs) */
-	min?: string
-	/** Maximum value (for number/date inputs) */
-	max?: string
-	/** Step value (for number inputs) */
-	step?: string
-	/** Minimum length */
-	minLength?: number
-	/** Maximum length */
-	maxLength?: number
-}
-
-/** Form attributes for form elements (for git diff tracking) */
-export interface FormAttributes {
-	/** Form submission endpoint */
-	action?: string
-	/** HTTP method (GET, POST, etc.) */
-	method?: string
-	/** Encoding type (multipart/form-data, etc.) */
-	encType?: string
-	/** Whether to disable HTML5 validation */
-	noValidate?: boolean
-	/** Target for form submission (_blank, _self, etc.) */
-	target?: string
-	/** Form name */
-	name?: string
-}
-
-/** Media attributes for video/audio elements (for git diff tracking) */
-export interface MediaAttributes {
-	/** Media source URL */
-	src?: string
-	/** Poster image URL (video only) */
-	poster?: string
-	/** Whether to show controls */
-	controls?: boolean
-	/** Whether to autoplay */
-	autoplay?: boolean
-	/** Whether to mute audio */
-	muted?: boolean
-	/** Whether to loop playback */
-	loop?: boolean
-	/** Whether to play inline on mobile */
-	playsInline?: boolean
-	/** Preload strategy (none, metadata, auto) */
-	preload?: string
-}
-
-/** Iframe attributes for embedded content (for git diff tracking) */
-export interface IframeAttributes {
-	/** Iframe source URL */
-	src?: string
-	/** Accessibility title */
-	title?: string
-	/** Permissions policy (camera, microphone, etc.) */
-	allow?: string
-	/** Sandbox restrictions */
-	sandbox?: string
-	/** Loading strategy (lazy, eager) */
-	loading?: string
-	/** Width */
-	width?: string
-	/** Height */
-	height?: string
-	/** Name attribute */
-	name?: string
-}
-
-/** Select attributes for dropdown elements (for git diff tracking) */
-export interface SelectAttributes {
-	/** Select name for form submission */
-	name?: string
-	/** Whether multiple selection is allowed */
-	multiple?: boolean
-	/** Whether the select is required */
-	required?: boolean
-	/** Whether the select is disabled */
-	disabled?: boolean
-	/** Number of visible options */
-	size?: number
-}
-
-/** Textarea attributes for multiline input (for git diff tracking) */
-export interface TextareaAttributes {
-	/** Textarea name for form submission */
-	name?: string
-	/** Placeholder text */
-	placeholder?: string
-	/** Whether the textarea is required */
-	required?: boolean
-	/** Whether the textarea is disabled */
-	disabled?: boolean
-	/** Whether the textarea is readonly */
-	readOnly?: boolean
-	/** Number of visible rows */
-	rows?: number
-	/** Number of visible columns */
-	cols?: number
-	/** Minimum length */
-	minLength?: number
-	/** Maximum length */
-	maxLength?: number
-	/** Wrap behavior (soft, hard, off) */
-	wrap?: string
-}
-
-/** ARIA accessibility attributes (for git diff tracking) */
-export interface AriaAttributes {
-	/** ARIA role (button, tab, navigation, dialog, etc.) */
-	role?: string
-	/** Screen reader label */
-	ariaLabel?: string
-	/** ID of element that labels this one */
-	ariaLabelledBy?: string
-	/** ID of element that describes this one */
-	ariaDescribedBy?: string
-	/** Whether hidden from assistive technology */
-	ariaHidden?: boolean
-	/** Expanded state for collapsibles */
-	ariaExpanded?: boolean
-	/** Pressed state for toggle buttons */
-	ariaPressed?: boolean | 'mixed'
-	/** Selected state for tabs/options */
-	ariaSelected?: boolean
-	/** Disabled state */
-	ariaDisabled?: boolean
-	/** Required state */
-	ariaRequired?: boolean
-	/** Invalid state */
-	ariaInvalid?: boolean | 'grammar' | 'spelling'
-	/** Live region announcement type */
-	ariaLive?: 'polite' | 'assertive' | 'off'
-	/** Atomic update for live regions */
-	ariaAtomic?: boolean
-	/** Busy state */
-	ariaBusy?: boolean
-	/** Current state (page, step, location, date, time, true, false) */
-	ariaCurrent?: string
-	/** Controls relationship */
-	ariaControls?: string
-	/** Owns relationship */
-	ariaOwns?: string
-	/** Haspopup type */
-	ariaHasPopup?: boolean | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog'
-}
-
-/** Custom data-* attributes (for git diff tracking) */
-export interface DataAttributes {
-	/** All data-* attributes as key-value pairs (without 'data-' prefix) */
-	[key: string]: string | undefined
+/** Attribute with source information for git diff tracking */
+export interface Attribute {
+	/** The resolved attribute value (from rendered HTML) */
+	value: string
+	/** The expression text if dynamic (e.g., "component.githubUrl") */
+	sourceExpression?: string
+	/** Path to the source file where the value is defined */
+	sourcePath?: string
+	/** Line number where the value is defined in source (1-indexed) */
+	sourceLine?: number
+	/** The exact source snippet that can be replaced for git diff */
+	sourceSnippet?: string
 }
 
 /** Available colors palette from Tailwind config */
@@ -380,8 +132,8 @@ export interface ManifestEntry {
 	html?: string
 	sourcePath?: string
 	sourceLine?: number
+	/** Full element snippet from opening to closing tag (for text content updates) */
 	sourceSnippet?: string
-	sourceType?: 'static' | 'variable' | 'prop' | 'computed' | 'collection' | 'image'
 	variableName?: string
 	childCmsIds?: string[]
 	parentComponentId?: string
@@ -398,34 +150,14 @@ export interface ManifestEntry {
 	stableId?: string
 	/** SHA256 hash of sourceSnippet at generation time for conflict detection */
 	sourceHash?: string
-	/** Context around the element for resilient matching */
-	sourceContext?: SourceContext
 	/** Image metadata for img elements (replaces imageSrc/imageAlt) */
 	imageMetadata?: ImageMetadata
 	/** Content validation constraints */
 	constraints?: ContentConstraints
 	/** Color classes applied to this element (for buttons, etc.) */
-	colorClasses?: ColorClasses
-	/** Link attributes for anchor elements (href, target, rel, title) */
-	linkAttributes?: LinkAttributes
-	/** Button attributes (type, disabled, form, etc.) */
-	buttonAttributes?: ButtonAttributes
-	/** Input attributes (type, name, placeholder, required, etc.) */
-	inputAttributes?: InputAttributes
-	/** Form attributes (action, method, enctype, etc.) */
-	formAttributes?: FormAttributes
-	/** Media attributes for video/audio (src, controls, autoplay, etc.) */
-	mediaAttributes?: MediaAttributes
-	/** Iframe attributes (src, title, allow, sandbox, etc.) */
-	iframeAttributes?: IframeAttributes
-	/** Select attributes (name, multiple, required, etc.) */
-	selectAttributes?: SelectAttributes
-	/** Textarea attributes (name, placeholder, rows, cols, etc.) */
-	textareaAttributes?: TextareaAttributes
-	/** ARIA accessibility attributes (role, aria-label, etc.) */
-	ariaAttributes?: AriaAttributes
-	/** Custom data-* attributes */
-	dataAttributes?: DataAttributes
+	colorClasses?: Record<string, Attribute>
+	/** All HTML attributes with source information */
+	attributes?: Record<string, Attribute>
 }
 
 export interface ComponentInstance {

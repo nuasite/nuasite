@@ -189,7 +189,6 @@ cmsDescribe('collection wrapper', { generateManifest: true }, (ctx) => {
 
 		const wrapperEntry = result.entries[result.collectionWrapperId!]
 		expect(wrapperEntry).toBeDefined()
-		expect(wrapperEntry?.sourceType).toBe('collection')
 		expect(wrapperEntry?.collectionName).toBe('services')
 		expect(wrapperEntry?.collectionSlug).toBe('test-service')
 	})
@@ -213,7 +212,6 @@ cmsDescribe('collection wrapper', { generateManifest: true }, (ctx) => {
 		expect(result.html).toMatch(/class="prose"[^>]*data-cms-id/)
 
 		const wrapperEntry = result.entries[result.collectionWrapperId!]
-		expect(wrapperEntry?.sourceType).toBe('collection')
 		expect(wrapperEntry?.collectionName).toBe('blog')
 		expect(wrapperEntry?.collectionSlug).toBe('test-post')
 	})
@@ -228,7 +226,7 @@ cmsDescribe('collection wrapper', { generateManifest: true }, (ctx) => {
 
 		expect(result.collectionWrapperId).toBeUndefined()
 		for (const entry of Object.values(result.entries)) {
-			expect(entry.sourceType).not.toBe('collection')
+			expect(entry.collectionName).toBeUndefined()
 		}
 	})
 
@@ -294,7 +292,6 @@ cmsDescribe('collection wrapper', { generateManifest: true }, (ctx) => {
 
 		expect(result.collectionWrapperId).toBeDefined()
 		const wrapperEntry = result.entries[result.collectionWrapperId!]
-		expect(wrapperEntry?.sourceType).toBe('collection')
 		expect(wrapperEntry?.collectionName).toBe('blog')
 		expect(wrapperEntry?.collectionSlug).toBe('test-post')
 		expect(wrapperEntry?.contentPath).toBe('src/content/blog/test-post.md')
@@ -319,7 +316,7 @@ cmsDescribe('collection wrapper', { generateManifest: true }, (ctx) => {
 		})
 
 		expect(result.collectionWrapperId).toBeDefined()
-		expect(result.entries[result.collectionWrapperId!]?.sourceType).toBe('collection')
+		expect(result.entries[result.collectionWrapperId!]?.collectionName).toBeDefined()
 	})
 })
 
@@ -422,8 +419,8 @@ cmsDescribe('color class extraction', { generateManifest: true }, (ctx) => {
 
 		const buttonEntry = getEntryByTag(result, 'button')
 		expect(buttonEntry?.colorClasses).toBeDefined()
-		expect(buttonEntry?.colorClasses?.bg).toBe('bg-blue-500')
-		expect(buttonEntry?.colorClasses?.text).toBe('text-white')
+		expect(buttonEntry?.colorClasses?.bg?.value).toBe('bg-blue-500')
+		expect(buttonEntry?.colorClasses?.text?.value).toBe('text-white')
 	})
 
 	test('extracts hover color classes', async () => {
@@ -432,30 +429,30 @@ cmsDescribe('color class extraction', { generateManifest: true }, (ctx) => {
 		)
 
 		const buttonEntry = getEntryByTag(result, 'button')
-		expect(buttonEntry?.colorClasses?.bg).toBe('bg-blue-500')
-		expect(buttonEntry?.colorClasses?.hoverBg).toBe('hover:bg-blue-600')
-		expect(buttonEntry?.colorClasses?.text).toBe('text-white')
-		expect(buttonEntry?.colorClasses?.hoverText).toBe('hover:text-gray-100')
+		expect(buttonEntry?.colorClasses?.bg?.value).toBe('bg-blue-500')
+		expect(buttonEntry?.colorClasses?.hoverBg?.value).toBe('hover:bg-blue-600')
+		expect(buttonEntry?.colorClasses?.text?.value).toBe('text-white')
+		expect(buttonEntry?.colorClasses?.hoverText?.value).toBe('hover:text-gray-100')
 	})
 
 	test('extracts border color classes', async () => {
 		const result = await ctx.process('<div class="border border-gray-300 bg-white">Content</div>')
 
 		const divEntry = getEntryByTag(result, 'div')
-		expect(divEntry?.colorClasses?.border).toBe('border-gray-300')
-		expect(divEntry?.colorClasses?.bg).toBe('bg-white')
+		expect(divEntry?.colorClasses?.border?.value).toBe('border-gray-300')
+		expect(divEntry?.colorClasses?.bg?.value).toBe('bg-white')
 	})
 
-	test('includes all color classes in allColorClasses array', async () => {
+	test('extracts all color classes as flat Attribute keys', async () => {
 		const result = await ctx.process(
 			html.button('Button', 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600'),
 		)
 
 		const buttonEntry = getEntryByTag(result, 'button')
-		expect(buttonEntry?.colorClasses?.allColorClasses).toContain('bg-blue-500')
-		expect(buttonEntry?.colorClasses?.allColorClasses).toContain('text-white')
-		expect(buttonEntry?.colorClasses?.allColorClasses).toContain('border-blue-600')
-		expect(buttonEntry?.colorClasses?.allColorClasses).toContain('hover:bg-blue-600')
+		expect(buttonEntry?.colorClasses?.bg?.value).toBe('bg-blue-500')
+		expect(buttonEntry?.colorClasses?.text?.value).toBe('text-white')
+		expect(buttonEntry?.colorClasses?.border?.value).toBe('border-blue-600')
+		expect(buttonEntry?.colorClasses?.hoverBg?.value).toBe('hover:bg-blue-600')
 	})
 
 	test('does not include colorClasses for elements without color classes', async () => {

@@ -3,16 +3,20 @@ import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { getProjectRoot } from './config'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import {
 	clearSourceFinderCache,
+	extractOpeningTagWithLine,
 	findCollectionSource,
 	findImageSourceLocation,
 	findMarkdownSourceLocation,
 	findSourceLocation,
 	initializeSearchIndex,
 	parseMarkdownContent,
+	updateAttributeSources,
+	updateColorClassSources,
 } from './source-finder'
 import type { CmsMarkerOptions, CollectionEntry } from './types'
 
@@ -129,13 +133,12 @@ async function processFile(
 		}
 
 		// Handle image entries specially - search by image src
-		if (entry.sourceType === 'image' && entry.imageMetadata?.src) {
+		if (entry.imageMetadata?.src) {
 			const imageSource = await findImageSourceLocation(entry.imageMetadata.src)
 			if (imageSource) {
 				entry.sourcePath = imageSource.file
 				entry.sourceLine = imageSource.line
 				entry.sourceSnippet = imageSource.snippet
-				entry.sourceType = 'image'
 			}
 			return
 		}
@@ -147,7 +150,6 @@ async function processFile(
 				entry.sourcePath = mdSource.file
 				entry.sourceLine = mdSource.line
 				entry.sourceSnippet = mdSource.snippet
-				entry.sourceType = mdSource.type
 				entry.variableName = mdSource.variableName
 				entry.collectionName = mdSource.collectionName
 				entry.collectionSlug = mdSource.collectionSlug
@@ -161,8 +163,55 @@ async function processFile(
 			entry.sourcePath = sourceLocation.file
 			entry.sourceLine = sourceLocation.line
 			entry.sourceSnippet = sourceLocation.snippet
-			entry.sourceType = sourceLocation.type
 			entry.variableName = sourceLocation.variableName
+
+			// Update attribute and colorClasses source information if we have an opening tag
+			if (sourceLocation.openingTagSnippet) {
+				const filePath = path.isAbsolute(sourceLocation.file)
+					? sourceLocation.file
+					: path.join(getProjectRoot(), sourceLocation.file)
+				try {
+					const content = await fs.readFile(filePath, 'utf-8')
+					const lines = content.split('\n')
+					const tagInfo = extractOpeningTagWithLine(lines, sourceLocation.line - 1, entry.tag)
+					const startLine = tagInfo ? tagInfo.startLine + 1 : undefined
+
+					if (entry.attributes) {
+						entry.attributes = await updateAttributeSources(
+							sourceLocation.openingTagSnippet,
+							entry.attributes,
+							sourceLocation.file,
+							startLine,
+							lines,
+						)
+					}
+					if (entry.colorClasses) {
+						entry.colorClasses = updateColorClassSources(
+							sourceLocation.openingTagSnippet,
+							entry.colorClasses,
+							sourceLocation.file,
+							startLine,
+							lines,
+						)
+					}
+				} catch {
+					// Couldn't read file - still update without source lines
+					if (entry.attributes) {
+						entry.attributes = await updateAttributeSources(
+							sourceLocation.openingTagSnippet,
+							entry.attributes,
+							sourceLocation.file,
+						)
+					}
+					if (entry.colorClasses) {
+						entry.colorClasses = updateColorClassSources(
+							sourceLocation.openingTagSnippet,
+							entry.colorClasses,
+							sourceLocation.file,
+						)
+					}
+				}
+			}
 		}
 	})
 
@@ -172,7 +221,7 @@ async function processFile(
 	const idsToRemove: string[] = []
 	for (const [id, entry] of Object.entries(result.entries)) {
 		// Keep collection wrapper entries even without sourcePath (they use contentPath)
-		if (entry.sourceType === 'collection') continue
+		if (entry.collectionName) continue
 		// Remove entries that don't have a resolved sourcePath
 		if (!entry.sourcePath) {
 			idsToRemove.push(id)

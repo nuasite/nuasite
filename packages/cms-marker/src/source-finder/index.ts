@@ -16,6 +16,9 @@ export { initializeSearchIndex } from './search-index'
 // Source location finding
 export { findSourceLocation } from './source-lookup'
 
+// Attribute source finding
+export { findAttributeSourceLocation } from './cross-file-tracker'
+
 // Image finding
 export { findImageSourceLocation } from './image-finder'
 
@@ -23,4 +26,12 @@ export { findImageSourceLocation } from './image-finder'
 export { findCollectionSource, findMarkdownSourceLocation, parseMarkdownContent } from './collection-finder'
 
 // Snippet utilities (used by html-processor)
-export { enhanceManifestWithSourceSnippets, extractCompleteTagSnippet, extractInnerHtmlFromSnippet, extractSourceSnippet } from './snippet-utils'
+export {
+	enhanceManifestWithSourceSnippets,
+	extractCompleteTagSnippet,
+	extractInnerHtmlFromSnippet,
+	extractOpeningTagWithLine,
+	extractSourceSnippet,
+	updateAttributeSources,
+	updateColorClassSources,
+} from './snippet-utils'

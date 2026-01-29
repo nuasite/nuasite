@@ -17,51 +17,51 @@ describe('tailwind-colors', () => {
 		test('extracts background color class', () => {
 			const result = extractColorClasses('px-4 py-2 bg-blue-500 text-white rounded')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-blue-500')
+			expect(result?.bg?.value).toBe('bg-blue-500')
 		})
 
 		test('extracts text color class', () => {
 			const result = extractColorClasses('text-red-600 font-bold')
 			expect(result).toBeDefined()
-			expect(result?.text).toBe('text-red-600')
+			expect(result?.text?.value).toBe('text-red-600')
 		})
 
 		test('extracts border color class', () => {
 			const result = extractColorClasses('border border-gray-300')
 			expect(result).toBeDefined()
-			expect(result?.border).toBe('border-gray-300')
+			expect(result?.border?.value).toBe('border-gray-300')
 		})
 
 		test('extracts hover background color class', () => {
 			const result = extractColorClasses('bg-blue-500 hover:bg-blue-600')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-blue-500')
-			expect(result?.hoverBg).toBe('hover:bg-blue-600')
+			expect(result?.bg?.value).toBe('bg-blue-500')
+			expect(result?.hoverBg?.value).toBe('hover:bg-blue-600')
 		})
 
 		test('extracts hover text color class', () => {
 			const result = extractColorClasses('text-white hover:text-gray-100')
 			expect(result).toBeDefined()
-			expect(result?.text).toBe('text-white')
-			expect(result?.hoverText).toBe('hover:text-gray-100')
+			expect(result?.text?.value).toBe('text-white')
+			expect(result?.hoverText?.value).toBe('hover:text-gray-100')
 		})
 
 		test('extracts hover border color class', () => {
 			const result = extractColorClasses('border-gray-300 hover:border-blue-500')
 			expect(result).toBeDefined()
-			expect(result?.border).toBe('border-gray-300')
-			expect(result?.hoverBorder).toBe('hover:border-blue-500')
+			expect(result?.border?.value).toBe('border-gray-300')
+			expect(result?.hoverBorder?.value).toBe('hover:border-blue-500')
 		})
 
-		test('extracts all color classes', () => {
+		test('extracts all color classes as flat keys', () => {
 			const result = extractColorClasses('bg-blue-500 text-white border-blue-600 hover:bg-blue-600 hover:text-gray-100 hover:border-blue-700')
 			expect(result).toBeDefined()
-			expect(result?.allColorClasses).toContain('bg-blue-500')
-			expect(result?.allColorClasses).toContain('text-white')
-			expect(result?.allColorClasses).toContain('border-blue-600')
-			expect(result?.allColorClasses).toContain('hover:bg-blue-600')
-			expect(result?.allColorClasses).toContain('hover:text-gray-100')
-			expect(result?.allColorClasses).toContain('hover:border-blue-700')
+			expect(result?.bg?.value).toBe('bg-blue-500')
+			expect(result?.text?.value).toBe('text-white')
+			expect(result?.border?.value).toBe('border-blue-600')
+			expect(result?.hoverBg?.value).toBe('hover:bg-blue-600')
+			expect(result?.hoverText?.value).toBe('hover:text-gray-100')
+			expect(result?.hoverBorder?.value).toBe('hover:border-blue-700')
 		})
 
 		test('returns undefined when no color classes', () => {
@@ -77,148 +77,140 @@ describe('tailwind-colors', () => {
 		test('handles special colors without shades', () => {
 			const result = extractColorClasses('bg-white text-black')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-white')
-			expect(result?.text).toBe('text-black')
+			expect(result?.bg?.value).toBe('bg-white')
+			expect(result?.text?.value).toBe('text-black')
 		})
 
 		test('handles custom theme colors', () => {
 			const result = extractColorClasses('bg-primary-500 text-accent-200')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-primary-500')
-			expect(result?.text).toBe('text-accent-200')
+			expect(result?.bg?.value).toBe('bg-primary-500')
+			expect(result?.text?.value).toBe('text-accent-200')
 		})
 
-		test('extracts opacity classes separately', () => {
+		test('extracts opacity classes as flat keys', () => {
 			const result = extractColorClasses('bg-blue-500 bg-opacity-90 text-white text-opacity-80')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-blue-500')
-			expect(result?.text).toBe('text-white')
-			expect(result?.opacity?.bgOpacity).toBe('bg-opacity-90')
-			expect(result?.opacity?.textOpacity).toBe('text-opacity-80')
-		})
-
-		test('opacity classes are not included in allColorClasses', () => {
-			const result = extractColorClasses('bg-blue-500 bg-opacity-90')
-			expect(result).toBeDefined()
-			expect(result?.allColorClasses).toContain('bg-blue-500')
-			expect(result?.allColorClasses).not.toContain('bg-opacity-90')
+			expect(result?.bg?.value).toBe('bg-blue-500')
+			expect(result?.text?.value).toBe('text-white')
+			expect(result?.bgOpacity?.value).toBe('bg-opacity-90')
+			expect(result?.textOpacity?.value).toBe('text-opacity-80')
 		})
 
 		test('extracts border opacity', () => {
 			const result = extractColorClasses('border-gray-300 border-opacity-50')
 			expect(result).toBeDefined()
-			expect(result?.border).toBe('border-gray-300')
-			expect(result?.opacity?.borderOpacity).toBe('border-opacity-50')
+			expect(result?.border?.value).toBe('border-gray-300')
+			expect(result?.borderOpacity?.value).toBe('border-opacity-50')
 		})
 
 		test('returns result with only opacity classes', () => {
 			const result = extractColorClasses('px-4 bg-opacity-75')
 			expect(result).toBeDefined()
-			expect(result?.opacity?.bgOpacity).toBe('bg-opacity-75')
-			expect(result?.allColorClasses).toBeUndefined()
+			expect(result?.bgOpacity?.value).toBe('bg-opacity-75')
 		})
 
 		test('does not match opacity as a custom color', () => {
 			const result = extractColorClasses('bg-opacity-90')
 			expect(result?.bg).toBeUndefined()
-			expect(result?.opacity?.bgOpacity).toBe('bg-opacity-90')
+			expect(result?.bgOpacity?.value).toBe('bg-opacity-90')
 		})
 
 		test('extracts arbitrary hex color classes', () => {
 			const result = extractColorClasses('bg-[#41b883] text-[#fff]')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-[#41b883]')
-			expect(result?.text).toBe('text-[#fff]')
+			expect(result?.bg?.value).toBe('bg-[#41b883]')
+			expect(result?.text?.value).toBe('text-[#fff]')
 		})
 
 		test('extracts arbitrary hex with 6 digits', () => {
 			const result = extractColorClasses('bg-[#ff5733]')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-[#ff5733]')
+			expect(result?.bg?.value).toBe('bg-[#ff5733]')
 		})
 
 		test('extracts arbitrary hex with 8 digits (with alpha)', () => {
 			const result = extractColorClasses('bg-[#ff573380]')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-[#ff573380]')
+			expect(result?.bg?.value).toBe('bg-[#ff573380]')
 		})
 
 		test('extracts arbitrary rgb color classes', () => {
 			const result = extractColorClasses('bg-[rgb(255,0,0)] text-[rgba(0,0,0,0.5)]')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-[rgb(255,0,0)]')
-			expect(result?.text).toBe('text-[rgba(0,0,0,0.5)]')
+			expect(result?.bg?.value).toBe('bg-[rgb(255,0,0)]')
+			expect(result?.text?.value).toBe('text-[rgba(0,0,0,0.5)]')
 		})
 
 		test('extracts arbitrary hsl color classes', () => {
 			const result = extractColorClasses('bg-[hsl(0,100%,50%)] border-[hsla(120,100%,50%,0.3)]')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-[hsl(0,100%,50%)]')
-			expect(result?.border).toBe('border-[hsla(120,100%,50%,0.3)]')
+			expect(result?.bg?.value).toBe('bg-[hsl(0,100%,50%)]')
+			expect(result?.border?.value).toBe('border-[hsla(120,100%,50%,0.3)]')
 		})
 
 		test('extracts hover arbitrary color classes', () => {
 			const result = extractColorClasses('bg-[#41b883] hover:bg-[#3aa876]')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-[#41b883]')
-			expect(result?.hoverBg).toBe('hover:bg-[#3aa876]')
+			expect(result?.bg?.value).toBe('bg-[#41b883]')
+			expect(result?.hoverBg?.value).toBe('hover:bg-[#3aa876]')
 		})
 
 		test('mixes arbitrary and named colors', () => {
 			const result = extractColorClasses('bg-[#41b883] text-white border-gray-300')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-[#41b883]')
-			expect(result?.text).toBe('text-white')
-			expect(result?.border).toBe('border-gray-300')
+			expect(result?.bg?.value).toBe('bg-[#41b883]')
+			expect(result?.text?.value).toBe('text-white')
+			expect(result?.border?.value).toBe('border-gray-300')
 		})
 
 		test('extracts gradient color classes', () => {
 			const result = extractColorClasses('bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500')
 			expect(result).toBeDefined()
-			expect(result?.gradient?.from).toBe('from-blue-500')
-			expect(result?.gradient?.via).toBe('via-purple-500')
-			expect(result?.gradient?.to).toBe('to-pink-500')
+			expect(result?.gradientFrom?.value).toBe('from-blue-500')
+			expect(result?.gradientVia?.value).toBe('via-purple-500')
+			expect(result?.gradientTo?.value).toBe('to-pink-500')
 		})
 
 		test('extracts gradient with only from and to', () => {
 			const result = extractColorClasses('from-red-500 to-yellow-500')
 			expect(result).toBeDefined()
-			expect(result?.gradient?.from).toBe('from-red-500')
-			expect(result?.gradient?.to).toBe('to-yellow-500')
-			expect(result?.gradient?.via).toBeUndefined()
+			expect(result?.gradientFrom?.value).toBe('from-red-500')
+			expect(result?.gradientTo?.value).toBe('to-yellow-500')
+			expect(result?.gradientVia).toBeUndefined()
 		})
 
 		test('extracts hover gradient classes', () => {
 			const result = extractColorClasses('from-blue-500 hover:from-blue-600 to-pink-500 hover:to-pink-600')
 			expect(result).toBeDefined()
-			expect(result?.gradient?.from).toBe('from-blue-500')
-			expect(result?.gradient?.hoverFrom).toBe('hover:from-blue-600')
-			expect(result?.gradient?.to).toBe('to-pink-500')
-			expect(result?.gradient?.hoverTo).toBe('hover:to-pink-600')
+			expect(result?.gradientFrom?.value).toBe('from-blue-500')
+			expect(result?.hoverGradientFrom?.value).toBe('hover:from-blue-600')
+			expect(result?.gradientTo?.value).toBe('to-pink-500')
+			expect(result?.hoverGradientTo?.value).toBe('hover:to-pink-600')
 		})
 
 		test('extracts arbitrary gradient colors', () => {
 			const result = extractColorClasses('from-[#41b883] to-[#3aa876]')
 			expect(result).toBeDefined()
-			expect(result?.gradient?.from).toBe('from-[#41b883]')
-			expect(result?.gradient?.to).toBe('to-[#3aa876]')
+			expect(result?.gradientFrom?.value).toBe('from-[#41b883]')
+			expect(result?.gradientTo?.value).toBe('to-[#3aa876]')
 		})
 
-		test('gradient classes are included in allColorClasses', () => {
+		test('gradient classes are present as flat keys', () => {
 			const result = extractColorClasses('from-blue-500 via-purple-500 to-pink-500')
 			expect(result).toBeDefined()
-			expect(result?.allColorClasses).toContain('from-blue-500')
-			expect(result?.allColorClasses).toContain('via-purple-500')
-			expect(result?.allColorClasses).toContain('to-pink-500')
+			expect(result?.gradientFrom?.value).toBe('from-blue-500')
+			expect(result?.gradientVia?.value).toBe('via-purple-500')
+			expect(result?.gradientTo?.value).toBe('to-pink-500')
 		})
 
 		test('mixes gradient and regular colors', () => {
 			const result = extractColorClasses('bg-white text-gray-900 from-blue-500 to-pink-500')
 			expect(result).toBeDefined()
-			expect(result?.bg).toBe('bg-white')
-			expect(result?.text).toBe('text-gray-900')
-			expect(result?.gradient?.from).toBe('from-blue-500')
-			expect(result?.gradient?.to).toBe('to-pink-500')
+			expect(result?.bg?.value).toBe('bg-white')
+			expect(result?.text?.value).toBe('text-gray-900')
+			expect(result?.gradientFrom?.value).toBe('from-blue-500')
+			expect(result?.gradientTo?.value).toBe('to-pink-500')
 		})
 	})
 
@@ -311,21 +303,27 @@ describe('tailwind-colors', () => {
 		})
 
 		test('returns correct type for gradient from', () => {
-			expect(getColorType('from-blue-500')).toBe('from')
+			expect(getColorType('from-blue-500')).toBe('gradientFrom')
 		})
 
 		test('returns correct type for gradient via', () => {
-			expect(getColorType('via-purple-500')).toBe('via')
+			expect(getColorType('via-purple-500')).toBe('gradientVia')
 		})
 
 		test('returns correct type for gradient to', () => {
-			expect(getColorType('to-pink-500')).toBe('to')
+			expect(getColorType('to-pink-500')).toBe('gradientTo')
 		})
 
 		test('returns correct type for hover gradient', () => {
-			expect(getColorType('hover:from-blue-600')).toBe('hoverFrom')
-			expect(getColorType('hover:via-purple-600')).toBe('hoverVia')
-			expect(getColorType('hover:to-pink-600')).toBe('hoverTo')
+			expect(getColorType('hover:from-blue-600')).toBe('hoverGradientFrom')
+			expect(getColorType('hover:via-purple-600')).toBe('hoverGradientVia')
+			expect(getColorType('hover:to-pink-600')).toBe('hoverGradientTo')
+		})
+
+		test('returns correct type for opacity', () => {
+			expect(getColorType('bg-opacity-90')).toBe('bgOpacity')
+			expect(getColorType('text-opacity-50')).toBe('textOpacity')
+			expect(getColorType('border-opacity-75')).toBe('borderOpacity')
 		})
 
 		test('returns undefined for non-color class', () => {

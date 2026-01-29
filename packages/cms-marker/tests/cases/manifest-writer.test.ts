@@ -112,7 +112,6 @@ describe('ManifestWriter', () => {
 						sourcePath: '/blog/post.html',
 						tag: 'div',
 						text: '',
-						sourceType: 'collection',
 						collectionName: 'blog',
 						collectionSlug: 'my-post',
 					},
@@ -448,10 +447,9 @@ describe('ManifestWriter', () => {
 						tag: 'button',
 						text: 'Click me',
 						colorClasses: {
-							bg: 'bg-blue-500',
-							text: 'text-white',
-							hoverBg: 'hover:bg-blue-600',
-							allColorClasses: ['bg-blue-500', 'text-white', 'hover:bg-blue-600'],
+							bg: { value: 'bg-blue-500' },
+							text: { value: 'text-white' },
+							hoverBg: { value: 'hover:bg-blue-600' },
 						},
 					},
 				}
@@ -465,10 +463,9 @@ describe('ManifestWriter', () => {
 
 				const buttonEntry = manifest.entries['cms-0']
 				expect(buttonEntry.colorClasses).toBeDefined()
-				expect(buttonEntry.colorClasses.bg).toBe('bg-blue-500')
-				expect(buttonEntry.colorClasses.text).toBe('text-white')
-				expect(buttonEntry.colorClasses.hoverBg).toBe('hover:bg-blue-600')
-				expect(buttonEntry.colorClasses.allColorClasses).toContain('bg-blue-500')
+				expect(buttonEntry.colorClasses.bg.value).toBe('bg-blue-500')
+				expect(buttonEntry.colorClasses.text.value).toBe('text-white')
+				expect(buttonEntry.colorClasses.hoverBg.value).toBe('hover:bg-blue-600')
 			} finally {
 				await cleanup()
 			}

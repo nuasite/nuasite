@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { ManifestEntry, SourceContext } from './types'
+import type { ManifestEntry } from './types'
 
 /**
  * Generate a SHA256 hash of the given content
@@ -24,21 +24,16 @@ export function shortHash(content: string): string {
  * - tag name
  * - first 50 chars of text content
  * - source path (if available)
- * - parent tag
- * - sibling index
  */
 export function generateStableId(
 	tag: string,
 	text: string,
 	sourcePath?: string,
-	context?: SourceContext,
 ): string {
 	const components = [
 		tag,
 		text.substring(0, 50).trim(),
 		sourcePath || '',
-		context?.parentTag || '',
-		context?.siblingIndex?.toString() || '',
 	]
 
 	return shortHash(components.join('|'))

@@ -10,8 +10,7 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: marked h
 exports[`Nested Text Handling h1 with br elements and mixed span types: manifest entries 1`] = `
 {
   "cms-0": {
-    "ariaAttributes": undefined,
-    "buttonAttributes": undefined,
+    "attributes": undefined,
     "childCmsIds": [
       "cms-1",
     ],
@@ -19,8 +18,6 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
     "collectionSlug": undefined,
     "colorClasses": undefined,
     "contentPath": undefined,
-    "dataAttributes": undefined,
-    "formAttributes": undefined,
     "html": 
 "
   <span class="gradient" data-cms-id="cms-1">Chytrý</span><br>
@@ -28,61 +25,36 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
 "
 ,
     "id": "cms-0",
-    "iframeAttributes": undefined,
     "imageMetadata": undefined,
-    "inputAttributes": undefined,
-    "linkAttributes": undefined,
-    "mediaAttributes": undefined,
     "parentComponentId": undefined,
-    "selectAttributes": undefined,
-    "sourceContext": undefined,
     "sourceLine": undefined,
     "sourcePath": undefined,
     "sourceSnippet": undefined,
-    "sourceType": undefined,
-    "stableId": "319cac27a7de",
+    "stableId": "93d68029d1af",
     "tag": "h1",
     "text": 
 "{{cms:cms-1}}
   fulfillment pro váš růst"
 ,
-    "textareaAttributes": undefined,
     "variableName": undefined,
   },
   "cms-1": {
-    "ariaAttributes": undefined,
-    "buttonAttributes": undefined,
+    "attributes": undefined,
     "childCmsIds": undefined,
     "collectionName": undefined,
     "collectionSlug": undefined,
     "colorClasses": undefined,
     "contentPath": undefined,
-    "dataAttributes": undefined,
-    "formAttributes": undefined,
     "html": undefined,
     "id": "cms-1",
-    "iframeAttributes": undefined,
     "imageMetadata": undefined,
-    "inputAttributes": undefined,
-    "linkAttributes": undefined,
-    "mediaAttributes": undefined,
     "parentComponentId": undefined,
-    "selectAttributes": undefined,
-    "sourceContext": {
-      "followingText": undefined,
-      "parentClasses": "text-4xl",
-      "parentTag": "h1",
-      "precedingText": undefined,
-      "siblingIndex": 0,
-    },
     "sourceLine": undefined,
     "sourcePath": undefined,
     "sourceSnippet": undefined,
-    "sourceType": undefined,
-    "stableId": "34422c39da6f",
+    "stableId": "151482158645",
     "tag": "span",
     "text": "Chytrý",
-    "textareaAttributes": undefined,
     "variableName": undefined,
   },
 }

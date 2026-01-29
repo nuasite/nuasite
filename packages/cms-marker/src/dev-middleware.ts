@@ -230,7 +230,7 @@ async function processHtmlForDev(
 	// However, images may not have source info if their ancestors don't have it
 	// In that case, fall back to searching for the image src
 	for (const entry of Object.values(result.entries)) {
-		if (entry.sourceType === 'image' && entry.imageMetadata?.src && !entry.sourcePath) {
+		if (entry.imageMetadata?.src && !entry.sourcePath) {
 			const imageSource = await findImageSourceLocation(entry.imageMetadata.src)
 			if (imageSource) {
 				entry.sourcePath = imageSource.file
@@ -244,7 +244,7 @@ async function processHtmlForDev(
 	const idsToRemove: string[] = []
 	for (const [id, entry] of Object.entries(result.entries)) {
 		// Keep collection wrapper entries even without sourcePath (they use contentPath)
-		if (entry.sourceType === 'collection') continue
+		if (entry.collectionName) continue
 		// Remove entries that don't have a resolved sourcePath
 		if (!entry.sourcePath) {
 			idsToRemove.push(id)

@@ -5,7 +5,7 @@
  * with sensible defaults and easy overrides.
  */
 
-import type { AvailableColors, CollectionEntry, ColorClasses, ComponentInstance, ManifestEntry, TailwindColor } from '../../src/types'
+import type { Attribute, AvailableColors, CollectionEntry, ComponentInstance, ManifestEntry, TailwindColor } from '../../src/types'
 
 // ============================================================================
 // Manifest Entry Factories
@@ -85,7 +85,6 @@ export function createImageEntry(
 	return createManifestEntry({
 		tag: 'img',
 		text: alt,
-		sourceType: 'image',
 		imageMetadata: {
 			src,
 			alt,
@@ -111,7 +110,6 @@ export function createCollectionManifestEntry(
 	overrides: Partial<ManifestEntry> = {},
 ): ManifestEntry {
 	return createManifestEntry({
-		sourceType: 'collection',
 		collectionName,
 		collectionSlug: slug,
 		contentPath: `src/content/${collectionName}/${slug}.md`,
@@ -281,10 +279,10 @@ export function createAvailableColors(
 }
 
 /**
- * Creates a ColorClasses object for element color styling.
+ * Creates a flat Record<string, Attribute> for element color styling.
  *
- * @param overrides - Override specific properties
- * @returns A ColorClasses object
+ * @param overrides - Map of flat color keys to class values (e.g., { bg: 'bg-blue-500', text: 'text-white' })
+ * @returns A Record<string, Attribute>
  *
  * @example
  * const classes = createColorClasses({
@@ -294,25 +292,13 @@ export function createAvailableColors(
  * })
  */
 export function createColorClasses(
-	overrides: Partial<ColorClasses> = {},
-): ColorClasses {
-	const classes: ColorClasses = { ...overrides }
-
-	// Compute allColorClasses if not provided
-	if (!classes.allColorClasses) {
-		const allClasses: string[] = []
-		if (classes.bg) allClasses.push(classes.bg)
-		if (classes.text) allClasses.push(classes.text)
-		if (classes.border) allClasses.push(classes.border)
-		if (classes.hoverBg) allClasses.push(classes.hoverBg)
-		if (classes.hoverText) allClasses.push(classes.hoverText)
-		if (classes.hoverBorder) allClasses.push(classes.hoverBorder)
-		if (allClasses.length > 0) {
-			classes.allColorClasses = allClasses
-		}
+	overrides: Record<string, string> = {},
+): Record<string, Attribute> {
+	const result: Record<string, Attribute> = {}
+	for (const [key, value] of Object.entries(overrides)) {
+		result[key] = { value }
 	}
-
-	return classes
+	return result
 }
 
 // ============================================================================

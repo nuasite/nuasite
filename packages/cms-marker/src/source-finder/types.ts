@@ -49,6 +49,8 @@ export interface SearchIndexEntry {
 	file: string
 	line: number
 	snippet: string
+	/** Just the opening tag with attributes (for attribute/class updates) */
+	openingTagSnippet?: string
 	type: 'static' | 'variable' | 'prop' | 'computed'
 	variableName?: string
 	definitionLine?: number
@@ -71,6 +73,8 @@ export interface SourceLocation {
 	file: string
 	line: number
 	snippet?: string
+	/** Just the opening tag with attributes (for attribute/class updates) */
+	openingTagSnippet?: string
 	type?: 'static' | 'variable' | 'prop' | 'computed' | 'collection'
 	variableName?: string
 	definitionLine?: number

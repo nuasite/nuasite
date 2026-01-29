@@ -26,6 +26,16 @@ export function getStringValue(node: BabelNode): string | null {
 // ============================================================================
 
 /**
+ * Extract property name from an object key node.
+ * Handles both `{ name: value }` (Identifier) and `{ "name": value }` (StringLiteral).
+ */
+function getKeyName(key: BabelNode): string | null {
+	if (key.type === 'Identifier') return key.name as string
+	if (key.type === 'StringLiteral') return key.value as string
+	return null
+}
+
+/**
  * Recursively extract properties from an object expression
  * @param objNode - The ObjectExpression node
  * @param parentPath - The full path to this object (e.g., 'config' or 'config.nav')
@@ -43,9 +53,9 @@ export function extractObjectProperties(
 		if (prop.type !== 'ObjectProperty') continue
 		const key = prop.key as BabelNode | undefined
 		const value = prop.value as BabelNode | undefined
-		if (!key || key.type !== 'Identifier' || !value) continue
-
-		const propName = key.name as string
+		if (!key || !value) continue
+		const propName = getKeyName(key)
+		if (!propName) continue
 		const fullPath = `${parentPath}.${propName}`
 		const propLoc = prop.loc as { start: { line: number } } | undefined
 		const propLine = lineTransformer(propLoc?.start.line ?? 1)
@@ -107,16 +117,16 @@ export function extractArrayElements(
 			})
 		}
 
-		// Handle array of objects: [{ text: 'Home' }]
+		// Handle array of objects: [{ text: 'Home' }] or [{ "text": 'Home' }]
 		if (elem.type === 'ObjectExpression') {
 			const objProperties = elem.properties as BabelNode[] | undefined
 			for (const prop of objProperties ?? []) {
 				if (prop.type !== 'ObjectProperty') continue
 				const key = prop.key as BabelNode | undefined
 				const value = prop.value as BabelNode | undefined
-				if (!key || key.type !== 'Identifier' || !value) continue
-
-				const propName = key.name as string
+				if (!key || !value) continue
+				const propName = getKeyName(key)
+				if (!propName) continue
 				const propLoc = prop.loc as { start: { line: number } } | undefined
 				const propLine = propLoc ? lineTransformer(propLoc.start.line) : elemLine
 

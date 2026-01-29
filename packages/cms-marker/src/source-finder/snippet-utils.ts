@@ -2,8 +2,9 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
-import type { ManifestEntry } from '../types'
+import type { Attribute, ManifestEntry } from '../types'
 import { generateSourceHash } from '../utils'
+import { findAttributeSourceLocation } from './cross-file-tracker'
 import { findImageSourceLocation } from './image-finder'
 
 // ============================================================================
@@ -114,6 +115,219 @@ export function extractCompleteTagSnippet(lines: string[], startLine: number, ta
 }
 
 /**
+ * Extract just the opening tag from source lines (e.g., `<a href="/foo" class="btn">`)
+ * Handles multi-line opening tags.
+ *
+ * @param lines - Source file lines
+ * @param startLine - 0-indexed line number where element starts
+ * @param tag - The tag name
+ * @returns The opening tag string, or undefined if can't extract
+ */
+export function extractOpeningTagSnippet(lines: string[], startLine: number, tag: string): string | undefined {
+	const result = extractOpeningTagWithLine(lines, startLine, tag)
+	return result?.snippet
+}
+
+/**
+ * Extract the opening tag from source lines along with its starting line number.
+ * Handles multi-line opening tags.
+ *
+ * @param lines - Source file lines
+ * @param startLine - 0-indexed line number where element starts
+ * @param tag - The tag name
+ * @returns Object with the opening tag snippet and 0-indexed startLine, or undefined if can't extract
+ */
+export function extractOpeningTagWithLine(
+	lines: string[],
+	startLine: number,
+	tag: string,
+): { snippet: string; startLine: number } | undefined {
+	const openTagPattern = new RegExp(`<${tag}(?:[\\s>]|$)`, 'gi')
+
+	// Find the line containing the opening tag
+	let actualStartLine = startLine
+	const startLineContent = lines[startLine] || ''
+	if (!openTagPattern.test(startLineContent)) {
+		for (let i = startLine - 1; i >= Math.max(0, startLine - 20); i--) {
+			const line = lines[i]
+			if (!line) continue
+			openTagPattern.lastIndex = 0
+			if (openTagPattern.test(line)) {
+				actualStartLine = i
+				break
+			}
+		}
+	}
+
+	// Collect lines until we find the closing > of the opening tag
+	const snippetLines: string[] = []
+	for (let i = actualStartLine; i < Math.min(actualStartLine + 10, lines.length); i++) {
+		const line = lines[i]
+		if (!line) continue
+
+		snippetLines.push(line)
+		const combined = snippetLines.join('\n')
+
+		// Check if we have the complete opening tag (found the closing >)
+		// Match from <tag to the first > that's not part of => or />
+		const openTagMatch = combined.match(new RegExp(`<${tag}[^>]*>`, 'i'))
+		if (openTagMatch) {
+			return { snippet: openTagMatch[0], startLine: actualStartLine }
+		}
+
+		// Also check for self-closing tag
+		const selfClosingMatch = combined.match(new RegExp(`<${tag}[^>]*/\\s*>`, 'i'))
+		if (selfClosingMatch) {
+			return { snippet: selfClosingMatch[0], startLine: actualStartLine }
+		}
+	}
+
+	return undefined
+}
+
+/**
+ * Update attribute source information from an opening tag snippet.
+ * Determines whether each attribute is static (quoted value) or dynamic (expression).
+ * - For static attributes: sourcePath/Line/Snippet point to the template file
+ * - For dynamic attributes: sourcePath/Line/Snippet point to where the VALUE is defined
+ *
+ * @param openingTagSnippet - The opening tag string (e.g., `<a href={url} class="btn">`)
+ * @param attributes - Existing attributes with resolved values (isStatic will be updated)
+ * @param sourceFilePath - The source file path (used for static attrs and as starting point for dynamic attr tracing)
+ * @param openingTagStartLine - 1-indexed line number where the opening tag starts in the source file
+ * @returns Updated attributes with sourcePath, sourceLine, and sourceSnippet
+ */
+export async function updateAttributeSources(
+	openingTagSnippet: string,
+	attributes: Record<string, Attribute>,
+	sourceFilePath?: string,
+	openingTagStartLine?: number,
+	sourceLines?: string[],
+): Promise<Record<string, Attribute>> {
+	const result: Record<string, Attribute> = {}
+
+	// Normalize the snippet (remove newlines, collapse whitespace for easier parsing)
+	const normalized = openingTagSnippet.replace(/\s+/g, ' ')
+
+	// Split opening tag into lines for finding attribute line numbers
+	const snippetLines = openingTagSnippet.split('\n')
+
+	// Process each attribute
+	const attrPromises = Object.entries(attributes).map(async ([attrName, attr]) => {
+		const { value } = attr
+
+		// Check for expression attribute: attr={expression} or attr={`template`}
+		const exprPattern = new RegExp(`${attrName}\\s*=\\s*\\{([^}]+)\\}`, 'i')
+		const exprMatch = normalized.match(exprPattern)
+
+		if (exprMatch) {
+			const expression = exprMatch[1]!.trim()
+			const isTemplateLiteral = expression.startsWith('`') && expression.endsWith('`')
+			const cleanExpression = isTemplateLiteral ? expression.slice(1, -1) : expression
+
+			// For dynamic attributes, search by VALUE to find the source definition
+			if (sourceFilePath) {
+				const sourceLocation = await findAttributeSourceLocation(cleanExpression, value, sourceFilePath)
+				if (sourceLocation) {
+					return [attrName, {
+						value,
+						sourcePath: sourceLocation.file,
+						sourceLine: sourceLocation.line,
+						sourceSnippet: sourceLocation.snippet,
+					}] as const
+				}
+			}
+
+			// Couldn't resolve - return without source info
+			return [attrName, { value }] as const
+		}
+
+		// Check for static attribute: attr="value" or attr='value'
+		const staticPattern = new RegExp(`${attrName}\\s*=\\s*["']([^"']*)["']`, 'i')
+		const staticMatch = normalized.match(staticPattern)
+
+		if (staticMatch) {
+			const attrLine = findAttributeLineInSnippet(attrName, snippetLines, openingTagStartLine)
+
+			return [attrName, {
+				value,
+				sourcePath: sourceFilePath,
+				sourceLine: attrLine,
+				sourceSnippet: (attrLine && sourceLines) ? sourceLines[attrLine - 1] || '' : undefined,
+			}] as const
+		}
+
+		// Check for boolean attribute (just the attribute name, no value)
+		const boolPattern = new RegExp(`\\s${attrName}(?:\\s|>|/>)`, 'i')
+		if (boolPattern.test(normalized)) {
+			const attrLine = findAttributeLineInSnippet(attrName, snippetLines, openingTagStartLine)
+
+			return [attrName, {
+				value,
+				sourcePath: sourceFilePath,
+				sourceLine: attrLine,
+				sourceSnippet: (attrLine && sourceLines) ? sourceLines[attrLine - 1] || '' : undefined,
+			}] as const
+		}
+
+		// Fallback: couldn't determine source type, keep original
+		return [attrName, attr] as const
+	})
+
+	const results = await Promise.all(attrPromises)
+	for (const [attrName, attrValue] of results) {
+		result[attrName] = attrValue
+	}
+
+	return result
+}
+
+/**
+ * Find the 1-indexed line number of an attribute within an opening tag snippet.
+ */
+function findAttributeLineInSnippet(
+	attrName: string,
+	snippetLines: string[],
+	startLine?: number,
+): number | undefined {
+	if (!startLine) return undefined
+	const attrPattern = new RegExp(`(?:^|\\s)${attrName}(?:\\s*=|\\s|>|/>|$)`, 'i')
+	for (let i = 0; i < snippetLines.length; i++) {
+		if (attrPattern.test(snippetLines[i]!)) {
+			return startLine + i
+		}
+	}
+	return undefined
+}
+
+/**
+ * Update colorClasses entries with source info from the class attribute in the opening tag.
+ * All color classes come from the same `class="..."` attribute, so they share the same source location.
+ */
+export function updateColorClassSources(
+	openingTagSnippet: string,
+	colorClasses: Record<string, Attribute>,
+	sourceFilePath?: string,
+	openingTagStartLine?: number,
+	sourceLines?: string[],
+): Record<string, Attribute> {
+	const snippetLines = openingTagSnippet.split('\n')
+	const classLine = findAttributeLineInSnippet('class', snippetLines, openingTagStartLine)
+	const sourceSnippet = (classLine && sourceLines) ? sourceLines[classLine - 1] || '' : undefined
+
+	const result: Record<string, Attribute> = {}
+	for (const [key, attr] of Object.entries(colorClasses)) {
+		result[key] = {
+			...attr,
+			sourcePath: sourceFilePath,
+			sourceLine: classLine,
+			sourceSnippet,
+		}
+	}
+	return result
+}
+
+/**
  * Extract innerHTML from a complete tag snippet.
  * Given `<p class="foo">content here</p>`, returns `content here`.
  *
@@ -210,7 +424,7 @@ export async function extractSourceSnippet(
  * For images, it finds the correct line containing the src attribute.
  *
  * @param entries - Manifest entries to enhance
- * @returns Enhanced entries with sourceSnippet populated
+ * @returns Enhanced entries with sourceSnippet and openingTagSnippet populated
  */
 export async function enhanceManifestWithSourceSnippets(
 	entries: Record<string, ManifestEntry>,
@@ -220,7 +434,7 @@ export async function enhanceManifestWithSourceSnippets(
 	// Process entries in parallel for better performance
 	const entryPromises = Object.entries(entries).map(async ([id, entry]) => {
 		// Handle image entries specially - find the line with src attribute
-		if (entry.sourceType === 'image' && entry.imageMetadata?.src) {
+		if (entry.imageMetadata?.src) {
 			const imageLocation = await findImageSourceLocation(entry.imageMetadata.src)
 			if (imageLocation) {
 				const sourceHash = generateSourceHash(imageLocation.snippet || entry.imageMetadata.src)
@@ -240,17 +454,59 @@ export async function enhanceManifestWithSourceSnippets(
 			return [id, entry] as const
 		}
 
-		// Extract the complete source element
-		const sourceSnippet = await extractSourceSnippet(
-			entry.sourcePath,
-			entry.sourceLine,
-			entry.tag,
-		)
+		// Read file once and extract both snippets
+		try {
+			const filePath = path.isAbsolute(entry.sourcePath)
+				? entry.sourcePath
+				: path.join(getProjectRoot(), entry.sourcePath)
 
-		if (sourceSnippet) {
-			// Generate hash of source snippet for conflict detection
-			const sourceHash = generateSourceHash(sourceSnippet)
-			return [id, { ...entry, sourceSnippet, sourceHash }] as const
+			const content = await fs.readFile(filePath, 'utf-8')
+			const lines = content.split('\n')
+
+			// Extract the complete source element
+			const sourceSnippet = extractCompleteTagSnippet(lines, entry.sourceLine - 1, entry.tag)
+
+			// Extract opening tag with its start line for attribute line tracking
+			const openingTagInfo = extractOpeningTagWithLine(lines, entry.sourceLine - 1, entry.tag)
+
+			// Update attribute sources if we have an opening tag and attributes
+			// - Static attributes get sourceLine/snippet from the template
+			// - Dynamic attributes get traced to their actual value definition
+			let attributes = entry.attributes
+			if (openingTagInfo && attributes) {
+				attributes = await updateAttributeSources(
+					openingTagInfo.snippet,
+					attributes,
+					entry.sourcePath,
+					openingTagInfo.startLine + 1, // Convert to 1-indexed
+					lines,
+				)
+			}
+
+			// Update colorClasses with source info from the class attribute
+			let colorClasses = entry.colorClasses
+			if (openingTagInfo && colorClasses) {
+				colorClasses = updateColorClassSources(
+					openingTagInfo.snippet,
+					colorClasses,
+					entry.sourcePath,
+					openingTagInfo.startLine + 1, // Convert to 1-indexed
+					lines,
+				)
+			}
+
+			if (sourceSnippet) {
+				const sourceHash = generateSourceHash(sourceSnippet)
+				return [id, {
+					...entry,
+					sourceSnippet,
+					attributes,
+					colorClasses,
+					sourceHash,
+				}] as const
+			}
+		} catch {
+			// Fall through to return entry as-is
 		}
 
 		return [id, entry] as const

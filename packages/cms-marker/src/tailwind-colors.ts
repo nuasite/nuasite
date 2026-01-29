@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
-import type { AvailableColors, AvailableTextStyles, ColorClasses, GradientClasses, OpacityClasses, TailwindColor, TextStyleValue } from './types'
+import type { Attribute, AvailableColors, AvailableTextStyles, TailwindColor, TextStyleValue } from './types'
 
 /**
  * Default Tailwind CSS v4 color names.
@@ -701,43 +701,58 @@ function extractTextStylesFromCss(content: string): Partial<AvailableTextStyles>
 	}
 }
 
+/** Flat key names for color class categories */
+const COLOR_FLAT_KEYS: Record<string, string> = {
+	// COLOR_CLASS_PATTERNS keys map directly
+	bg: 'bg',
+	text: 'text',
+	border: 'border',
+	hoverBg: 'hoverBg',
+	hoverText: 'hoverText',
+	hoverBorder: 'hoverBorder',
+}
+
+const GRADIENT_FLAT_KEYS: Record<string, string> = {
+	from: 'gradientFrom',
+	via: 'gradientVia',
+	to: 'gradientTo',
+	hoverFrom: 'hoverGradientFrom',
+	hoverVia: 'hoverGradientVia',
+	hoverTo: 'hoverGradientTo',
+}
+
 /**
  * Extract color classes from an element's class attribute.
+ * Returns a flat Record<string, Attribute> with keys like bg, text, gradientFrom, bgOpacity, etc.
  */
-export function extractColorClasses(classAttr: string | null | undefined): ColorClasses | undefined {
+export function extractColorClasses(classAttr: string | null | undefined): Record<string, Attribute> | undefined {
 	if (!classAttr) return undefined
 
 	const classes = classAttr.split(/\s+/).filter(Boolean)
-	const colorClasses: ColorClasses = {}
-	const opacityClasses: OpacityClasses = {}
-	const gradientClasses: GradientClasses = {}
-	const allColorClasses: string[] = []
+	const result: Record<string, Attribute> = {}
 
 	for (const cls of classes) {
-		// Check color patterns
 		let matched = false
+
+		// Check color patterns
 		for (const [key, pattern] of Object.entries(COLOR_CLASS_PATTERNS)) {
-			const match = cls.match(pattern)
-			if (match) {
-				allColorClasses.push(cls)
-				const colorKey = key as keyof Omit<ColorClasses, 'allColorClasses' | 'opacity' | 'gradient'>
-				if (!(colorKey in colorClasses)) {
-					colorClasses[colorKey] = cls
+			if (pattern.test(cls)) {
+				const flatKey = COLOR_FLAT_KEYS[key]
+				if (flatKey && !(flatKey in result)) {
+					result[flatKey] = { value: cls }
 				}
 				matched = true
 				break
 			}
 		}
 
-		// Check gradient patterns if not already matched
+		// Check gradient patterns
 		if (!matched) {
 			for (const [key, pattern] of Object.entries(GRADIENT_CLASS_PATTERNS)) {
-				const match = cls.match(pattern)
-				if (match) {
-					allColorClasses.push(cls)
-					const gradientKey = key as keyof GradientClasses
-					if (!(gradientKey in gradientClasses)) {
-						gradientClasses[gradientKey] = cls
+				if (pattern.test(cls)) {
+					const flatKey = GRADIENT_FLAT_KEYS[key]
+					if (flatKey && !(flatKey in result)) {
+						result[flatKey] = { value: cls }
 					}
 					matched = true
 					break
@@ -745,14 +760,12 @@ export function extractColorClasses(classAttr: string | null | undefined): Color
 			}
 		}
 
-		// Check opacity patterns if not already matched
+		// Check opacity patterns
 		if (!matched) {
 			for (const [key, pattern] of Object.entries(OPACITY_CLASS_PATTERNS)) {
-				const match = cls.match(pattern)
-				if (match) {
-					const opacityKey = key as keyof OpacityClasses
-					if (!(opacityKey in opacityClasses)) {
-						opacityClasses[opacityKey] = cls
+				if (pattern.test(cls)) {
+					if (!(key in result)) {
+						result[key] = { value: cls }
 					}
 					break
 				}
@@ -760,25 +773,7 @@ export function extractColorClasses(classAttr: string | null | undefined): Color
 		}
 	}
 
-	// Add gradient if any found
-	if (Object.keys(gradientClasses).length > 0) {
-		colorClasses.gradient = gradientClasses
-	}
-
-	// Add opacity if any found
-	if (Object.keys(opacityClasses).length > 0) {
-		colorClasses.opacity = opacityClasses
-	}
-
-	if (allColorClasses.length === 0 && !colorClasses.opacity) {
-		return undefined
-	}
-
-	if (allColorClasses.length > 0) {
-		colorClasses.allColorClasses = allColorClasses
-	}
-
-	return colorClasses
+	return Object.keys(result).length > 0 ? result : undefined
 }
 
 /**
@@ -804,16 +799,22 @@ export function replaceColorClass(
 
 /**
  * Get the color type from a color class.
+ * Returns the flat key name (e.g., 'bg', 'gradientFrom', 'bgOpacity').
  */
-export function getColorType(colorClass: string): keyof ColorClasses | keyof GradientClasses | undefined {
+export function getColorType(colorClass: string): string | undefined {
 	for (const [key, pattern] of Object.entries(COLOR_CLASS_PATTERNS)) {
 		if (pattern.test(colorClass)) {
-			return key as keyof ColorClasses
+			return COLOR_FLAT_KEYS[key]
 		}
 	}
 	for (const [key, pattern] of Object.entries(GRADIENT_CLASS_PATTERNS)) {
 		if (pattern.test(colorClass)) {
-			return key as keyof GradientClasses
+			return GRADIENT_FLAT_KEYS[key]
+		}
+	}
+	for (const [key, pattern] of Object.entries(OPACITY_CLASS_PATTERNS)) {
+		if (pattern.test(colorClass)) {
+			return key
 		}
 	}
 	return undefined
