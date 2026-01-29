@@ -1,6 +1,6 @@
 {
 	"name": "@nuasite/nua",
-	"version": "0.0.85",
+	"version": "0.0.86",
 	"type": "module",
 	"license": "Apache-2.0",
 	"module": "src/index.ts",
