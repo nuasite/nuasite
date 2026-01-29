@@ -366,4 +366,81 @@ const message = \`Welcome to our site\`;
 		expect(result).toBeDefined()
 		expect(result?.type).toBe('static')
 	})
+
+	test('should handle wbr elements in text content', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/WordBreak.astro',
+			`---
+---
+<h3>Glass<wbr>Decor</h3>
+`,
+		)
+
+		// wbr renders as empty (zero-width), so text is "GlassDecor"
+		const result = await findSourceLocation('GlassDecor', 'h3')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/WordBreak.astro')
+		expect(result?.type).toBe('static')
+	})
+
+	test('should match wbr text from manifest with literal <wbr> tag', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/WordBreak2.astro',
+			`---
+---
+<h3>Glass<wbr>Decor</h3>
+`,
+		)
+
+		// Manifest stores text as "Glass<wbr>Decor" (literal tag preserved)
+		// normalizeText should strip <wbr> so it matches the indexed "GlassDecor"
+		const result = await findSourceLocation('Glass<wbr>Decor', 'h3')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/WordBreak2.astro')
+		expect(result?.type).toBe('static')
+	})
+
+	test('should match br text from manifest with literal <br> tag', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/LineBreak.astro',
+			`---
+---
+<p>Glass<br>Decor</p>
+`,
+		)
+
+		// Manifest stores text as "Glass<br>Decor" (literal tag preserved)
+		// normalizeText should convert <br> to whitespace so it matches the indexed "Glass Decor"
+		const result = await findSourceLocation('Glass<br>Decor', 'p')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/LineBreak.astro')
+		expect(result?.type).toBe('static')
+	})
+
+	test('should handle nbsp entity in text content', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Nbsp.astro',
+			`---
+---
+<p>Hello&nbsp;World</p>
+`,
+		)
+
+		const result = await findSourceLocation('Hello World', 'p')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Nbsp.astro')
+		expect(result?.type).toBe('static')
+	})
 }, { setupAstro: false }) // Don't auto-setup, tests do it themselves for backwards compat

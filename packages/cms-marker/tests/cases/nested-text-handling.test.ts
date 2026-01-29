@@ -118,4 +118,33 @@ cmsDescribe('Nested Text Handling', { includeTags: ['p', 'h1', 'strong', 'em'], 
 		const pEntry = result.entries['cms-0']
 		expect(pEntry?.text).toBe('{{cms:cms-1}}<br>after break')
 	})
+
+	test('preserves <wbr> literally in text field', async () => {
+		const result = await ctx.process('<p>Glass<wbr>Decor</p>')
+
+		const pEntry = result.entries['cms-0']
+		expect(pEntry?.text).toBe('Glass<wbr>Decor')
+	})
+
+	test('preserves <wbr> alongside nested CMS elements', async () => {
+		const result = await ctx.process('<p><strong>bold</strong><wbr>after break</p>')
+
+		const pEntry = result.entries['cms-0']
+		expect(pEntry?.text).toBe('{{cms:cms-1}}<wbr>after break')
+	})
+
+	test('handles &nbsp; in text content', async () => {
+		const result = await ctx.process('<p>Hello&nbsp;World</p>')
+
+		const pEntry = result.entries['cms-0']
+		expect(pEntry).toBeDefined()
+		expect(pEntry?.tag).toBe('p')
+	})
+
+	test('handles mixed <br> and <wbr> tags', async () => {
+		const result = await ctx.process('<p>Line<wbr>One<br>Line<wbr>Two</p>')
+
+		const pEntry = result.entries['cms-0']
+		expect(pEntry?.text).toBe('Line<wbr>One<br>Line<wbr>Two')
+	})
 })

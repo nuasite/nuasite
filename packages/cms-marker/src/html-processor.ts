@@ -149,8 +149,7 @@ function getTextContent(node: HTMLNode): string {
 				// Treat <br> as whitespace
 				result.push(' ')
 			} else if (tagName === 'wbr') {
-				// Word break opportunity - no visible content, skip
-				continue
+				// Word break opportunity - no visible content
 			} else {
 				// Recursively get text from child elements
 				result.push(getTextContent(child as HTMLNode))
