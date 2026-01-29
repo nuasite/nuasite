@@ -438,13 +438,49 @@ export async function enhanceManifestWithSourceSnippets(
 			const imageLocation = await findImageSourceLocation(entry.imageMetadata.src)
 			if (imageLocation) {
 				const sourceHash = generateSourceHash(imageLocation.snippet || entry.imageMetadata.src)
-				return [id, {
+				const updated: ManifestEntry = {
 					...entry,
 					sourcePath: imageLocation.file,
 					sourceLine: imageLocation.line,
 					sourceSnippet: imageLocation.snippet,
 					sourceHash,
-				}] as const
+				}
+
+				// Also update attribute and colorClasses source info from the opening tag
+				try {
+					const filePath = path.isAbsolute(imageLocation.file)
+						? imageLocation.file
+						: path.join(getProjectRoot(), imageLocation.file)
+					const content = await fs.readFile(filePath, 'utf-8')
+					const lines = content.split('\n')
+					const openingTagInfo = extractOpeningTagWithLine(lines, imageLocation.line - 1, entry.tag)
+
+					if (openingTagInfo) {
+						const startLine = openingTagInfo.startLine + 1
+						if (updated.attributes) {
+							updated.attributes = await updateAttributeSources(
+								openingTagInfo.snippet,
+								updated.attributes,
+								imageLocation.file,
+								startLine,
+								lines,
+							)
+						}
+						if (updated.colorClasses) {
+							updated.colorClasses = updateColorClassSources(
+								openingTagInfo.snippet,
+								updated.colorClasses,
+								imageLocation.file,
+								startLine,
+								lines,
+							)
+						}
+					}
+				} catch {
+					// Couldn't read file - return without source lines on attributes
+				}
+
+				return [id, updated] as const
 			}
 			return [id, entry] as const
 		}
