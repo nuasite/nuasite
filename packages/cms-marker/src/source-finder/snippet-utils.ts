@@ -23,6 +23,9 @@ export function normalizeText(text: string): string {
 		.replace(/&quot;/g, '"') // HTML entity for quote
 		.replace(/&apos;/g, "'") // HTML entity for apostrophe (alternative)
 		.replace(/&amp;/g, '&') // HTML entity for ampersand
+		.replace(/&nbsp;/gi, ' ') // HTML entity for non-breaking space
+		.replace(/<br\s*\/?>/gi, '\n') // Normalize <br> tags to newlines
+		.replace(/<wbr\s*\/?>/gi, '') // Strip <wbr> tags (word break opportunity, no visible content)
 		.replace(/\s+/g, ' ') // Normalize whitespace
 		.toLowerCase()
 }
