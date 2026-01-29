@@ -97,4 +97,25 @@ cmsDescribe('Nested Text Handling', { includeTags: ['p', 'h1', 'strong', 'em'], 
 		expect(result.html).toMatchSnapshot('marked html')
 		expect(result.entries).toMatchSnapshot('manifest entries')
 	})
+
+	test('preserves <br> literally in text field', async () => {
+		const result = await ctx.process('<p>first line<br>second line</p>')
+
+		const pEntry = result.entries['cms-0']
+		expect(pEntry?.text).toBe('first line<br>second line')
+	})
+
+	test('preserves multiple <br> tags in text field', async () => {
+		const result = await ctx.process('<p>line one<br>line two<br>line three</p>')
+
+		const pEntry = result.entries['cms-0']
+		expect(pEntry?.text).toBe('line one<br>line two<br>line three')
+	})
+
+	test('preserves <br> alongside nested CMS elements', async () => {
+		const result = await ctx.process('<p><strong>bold</strong><br>after break</p>')
+
+		const pEntry = result.entries['cms-0']
+		expect(pEntry?.text).toBe('{{cms:cms-1}}<br>after break')
+	})
 })

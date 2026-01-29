@@ -651,7 +651,7 @@ export async function processHtml(
 
 			// Build text with placeholders for child CMS elements
 			// Recursively process child nodes to handle nested CMS elements correctly
-			type ChildNode = { nodeType: number; text?: string; childNodes?: ChildNode[]; getAttribute?: (name: string) => string | null }
+			type ChildNode = { nodeType: number; text?: string; tagName?: string; childNodes?: ChildNode[]; getAttribute?: (name: string) => string | null }
 			const buildTextWithPlaceholders = (nodes: ChildNode[]): string => {
 				let text = ''
 				for (const child of nodes) {
@@ -660,6 +660,14 @@ export async function processHtml(
 						text += child.text || ''
 					} else if (child.nodeType === 1) {
 						// Element node
+						const tagName = child.tagName?.toLowerCase?.()
+
+						// Preserve <br> literally so text matches source snippets
+						if (tagName === 'br') {
+							text += '<br>'
+							continue
+						}
+
 						const directCmsId = child.getAttribute?.(attributeName)
 
 						if (directCmsId) {

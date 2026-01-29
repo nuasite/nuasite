@@ -30,10 +30,10 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
     "sourceLine": undefined,
     "sourcePath": undefined,
     "sourceSnippet": undefined,
-    "stableId": "93d68029d1af",
+    "stableId": "7fcf82b7c3cc",
     "tag": "h1",
     "text": 
-"{{cms:cms-1}}
+"{{cms:cms-1}}<br>
   fulfillment pro váš růst"
 ,
     "variableName": undefined,
