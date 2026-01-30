@@ -115,6 +115,87 @@ title: Enterprise Solutions
 		expect(result?.slug).toBe('enterprise')
 		expect(result?.file).toBe('src/content/services/enterprise/index.md')
 	})
+
+	test('should find entry when URL prefix does not match collection dir name', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/web-design.md',
+			`---
+title: Web Design
+---
+`,
+		)
+
+		// URL uses a localized prefix "sluzby" but content lives in "services"
+		const result = await findCollectionSource('/sluzby/web-design')
+
+		expect(result).toBeDefined()
+		expect(result?.name).toBe('services')
+		expect(result?.slug).toBe('web-design')
+		expect(result?.file).toBe('src/content/services/web-design.md')
+	})
+
+	test('should find entry when slug only exists in one collection', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/blog/unique-post.md',
+			`---
+title: Unique Post
+---
+`,
+		)
+
+		const result = await findCollectionSource('/novinky/unique-post')
+
+		expect(result).toBeDefined()
+		expect(result?.name).toBe('blog')
+		expect(result?.slug).toBe('unique-post')
+		expect(result?.file).toBe('src/content/blog/unique-post.md')
+	})
+
+	test('should prefer collection matching URL prefix when slug exists in multiple collections', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/hello.md',
+			`---
+title: Hello Service
+---
+`,
+		)
+		await ctx.writeFile(
+			'src/content/blog/hello.md',
+			`---
+title: Hello Blog
+---
+`,
+		)
+
+		// URL prefix matches "services" collection
+		const result = await findCollectionSource('/services/hello')
+
+		expect(result).toBeDefined()
+		expect(result?.name).toBe('services')
+		expect(result?.file).toBe('src/content/services/hello.md')
+	})
+
+	test('should find nested slug with mismatched URL prefix', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/enterprise/index.md',
+			`---
+title: Enterprise
+---
+`,
+		)
+
+		// URL uses a different prefix but the nested slug still resolves
+		const result = await findCollectionSource('/sluzby/enterprise')
+
+		expect(result).toBeDefined()
+		expect(result?.name).toBe('services')
+		expect(result?.slug).toBe('enterprise')
+		expect(result?.file).toBe('src/content/services/enterprise/index.md')
+	})
 })
 
 withTempDir('findMarkdownSourceLocation', (getCtx) => {

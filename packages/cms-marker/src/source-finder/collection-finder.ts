@@ -34,7 +34,12 @@ async function getCachedMarkdownFile(filePath: string): Promise<{ content: strin
 // ============================================================================
 
 /**
- * Find markdown collection file for a given page path
+ * Find markdown collection file for a given page path.
+ *
+ * Uses slug-based reverse lookup: scans all collection directories for a
+ * matching entry regardless of the URL prefix. This supports localized or
+ * renamed routes (e.g. `/aktuality/my-article` with content in `src/content/news/`).
+ *
  * @param pagePath - The URL path of the page (e.g., '/services/3d-tisk')
  * @param contentDir - The content directory (default: 'src/content')
  * @returns Collection info if found, undefined otherwise
@@ -48,48 +53,60 @@ export async function findCollectionSource(
 	const pathParts = cleanPath.split('/')
 
 	if (pathParts.length < 2) {
-		// Need at least collection/slug
 		return undefined
 	}
 
 	const contentPath = path.join(getProjectRoot(), contentDir)
 
 	try {
-		// Check if content directory exists
 		await fs.access(contentPath)
 	} catch {
 		return undefined
 	}
 
-	// Try different collection/slug combinations
-	// Strategy 1: First segment is collection, rest is slug
-	// e.g., /services/3d-tisk -> collection: services, slug: 3d-tisk
-	const collectionName = pathParts[0]
-	const slug = pathParts.slice(1).join('/')
-
-	if (!collectionName || !slug) {
-		return undefined
-	}
-
-	const collectionPath = path.join(contentPath, collectionName)
-
+	// List all collection directories (skip _ and . prefixed)
+	let collectionDirs: string[]
 	try {
-		await fs.access(collectionPath)
-		const stat = await fs.stat(collectionPath)
-		if (!stat.isDirectory()) {
-			return undefined
-		}
+		const entries = await fs.readdir(contentPath, { withFileTypes: true })
+		collectionDirs = entries
+			.filter(e => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))
+			.map(e => e.name)
 	} catch {
 		return undefined
 	}
 
-	// Look for markdown files matching the slug
-	const mdFile = await findMarkdownFile(collectionPath, slug)
-	if (mdFile) {
-		return {
-			name: collectionName,
-			slug,
-			file: path.relative(getProjectRoot(), mdFile),
+	// Try progressively longer tail segments as slug candidates
+	// For /a/b/c try: "c", then "b/c"
+	for (let i = pathParts.length - 1; i >= 1; i--) {
+		const slug = pathParts.slice(i).join('/')
+		const matches: { name: string; file: string }[] = []
+
+		for (const dir of collectionDirs) {
+			const collectionPath = path.join(contentPath, dir)
+			const mdFile = await findMarkdownFile(collectionPath, slug)
+			if (mdFile) {
+				matches.push({ name: dir, file: mdFile })
+			}
+		}
+
+		if (matches.length === 1) {
+			return {
+				name: matches[0].name,
+				slug,
+				file: path.relative(getProjectRoot(), matches[0].file),
+			}
+		}
+
+		if (matches.length > 1) {
+			// Disambiguate: prefer collection whose name matches the URL prefix
+			const urlPrefix = pathParts[0]
+			const prefixMatch = matches.find(m => m.name === urlPrefix)
+			const chosen = prefixMatch || matches[0]
+			return {
+				name: chosen.name,
+				slug,
+				file: path.relative(getProjectRoot(), chosen.file),
+			}
 		}
 	}
 
