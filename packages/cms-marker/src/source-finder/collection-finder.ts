@@ -89,7 +89,7 @@ export async function findCollectionSource(
 			}
 		}
 
-		if (matches.length === 1) {
+		if (matches.length === 1 && matches[0]) {
 			return {
 				name: matches[0].name,
 				slug,
@@ -97,11 +97,12 @@ export async function findCollectionSource(
 			}
 		}
 
-		if (matches.length > 1) {
+		if (matches.length > 1 && matches[0]) {
 			// Disambiguate: prefer collection whose name matches the URL prefix
 			const urlPrefix = pathParts[0]
 			const prefixMatch = matches.find(m => m.name === urlPrefix)
 			const chosen = prefixMatch || matches[0]
+
 			return {
 				name: chosen.name,
 				slug,
