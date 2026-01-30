@@ -29,7 +29,8 @@
 		"@astrojs/compiler": "catalog:astro",
 		"@babel/parser": "catalog:parsers",
 		"astro": "catalog:astro",
-		"node-html-parser": "catalog:parsers"
+		"node-html-parser": "catalog:parsers",
+		"yaml": "catalog:parsers"
 	},
 	"devDependencies": {
 		"@types/bun": "catalog:build"

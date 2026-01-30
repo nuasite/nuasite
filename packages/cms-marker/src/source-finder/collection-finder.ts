@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { isMap, isPair, isScalar, LineCounter, parseDocument } from 'yaml'
 
 import { getProjectRoot } from '../config'
 import { getMarkdownFileCache } from './cache'
@@ -291,28 +292,23 @@ export async function parseMarkdownContent(
 
 		const frontmatter: Record<string, { value: string; line: number }> = {}
 
-		// Extract frontmatter fields
+		// Extract frontmatter fields using yaml parser
 		if (frontmatterEnd > 0) {
-			for (let i = frontmatterStart + 1; i < frontmatterEnd; i++) {
-				const line = lines[i]
-				if (!line) continue
+			const yamlStr = lines.slice(frontmatterStart + 1, frontmatterEnd).join('\n')
+			const lineCounter = new LineCounter()
+			const doc = parseDocument(yamlStr, { lineCounter })
 
-				// Extract value from YAML key: value (simple single-line values only)
-				const match = line.match(/^\s*(\w+):\s*(.+)$/)
-				if (match) {
-					const key = match[1]
-					let value = match[2]?.trim() || ''
-
-					// Handle quoted strings
-					if (
-						(value.startsWith('"') && value.endsWith('"'))
-						|| (value.startsWith("'") && value.endsWith("'"))
-					) {
-						value = value.slice(1, -1)
-					}
-
-					if (key && value) {
-						frontmatter[key] = { value, line: i + 1 }
+			if (isMap(doc.contents)) {
+				for (const pair of doc.contents.items) {
+					if (isPair(pair) && isScalar(pair.key)) {
+						const key = String(pair.key.value)
+						const value = isScalar(pair.value) ? String(pair.value.value) : ''
+						const keyRange = (pair.key as any).range
+						const yamlLine = keyRange ? lineCounter.linePos(keyRange[0]).line : 0
+						const fileLine = yamlLine + frontmatterStart + 1
+						if (key && value) {
+							frontmatter[key] = { value, line: fileLine }
+						}
 					}
 				}
 			}

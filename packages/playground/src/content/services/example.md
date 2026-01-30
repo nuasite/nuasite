@@ -10,7 +10,10 @@ stats:
     label: continuous operation
   - value: "95%"
     label: first attempt success rate
-ctaText: Need to quickly validate your mind?
+ctaText: >-
+  Need to quickly validate your mind?
+  Or just test a new idea in practice?
+  ...
 ctaLink: /contact/
 ---
 

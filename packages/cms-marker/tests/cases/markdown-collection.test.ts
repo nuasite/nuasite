@@ -517,6 +517,40 @@ title: No Body
 		expect(result?.frontmatter.title).toEqual({ value: 'No Body', line: 2 })
 	})
 
+	test('should handle YAML block scalar values', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/block.md',
+			`---
+title: Block Test
+description: >-
+  This is a multi-line
+  folded description
+tag: Událost
+emoji: "\\U0001F3C6"
+---
+
+Body content.
+`,
+		)
+
+		const collectionInfo = {
+			name: 'services',
+			slug: 'block',
+			file: 'src/content/services/block.md',
+		}
+
+		const result = await parseMarkdownContent(collectionInfo)
+
+		expect(result).toBeDefined()
+		expect(result?.frontmatter.title).toEqual({ value: 'Block Test', line: 2 })
+		expect(result?.frontmatter.description).toEqual({
+			value: 'This is a multi-line folded description',
+			line: 3,
+		})
+		expect(result?.frontmatter.tag).toEqual({ value: 'Událost', line: 6 })
+	})
+
 	test('should handle file without frontmatter', async () => {
 		const ctx = getCtx()
 		await ctx.writeFile(

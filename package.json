@@ -55,7 +55,8 @@
 			"parsers": {
 				"@babel/parser": "^7.24.0",
 				"node-html-parser": "^6.1.13",
-				"stacktracey": "2.1.8"
+				"stacktracey": "2.1.8",
+				"yaml": "^2.8.2"
 			},
 			"ui": {
 				"@tailwindcss/vite": "^4.1.11",

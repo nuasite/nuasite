@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { parse as parseYaml } from 'yaml'
 import { getProjectRoot } from './config'
 import type { CollectionDefinition, FieldDefinition, FieldType } from './types'
 
@@ -31,78 +32,7 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
 	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
 	if (!match?.[1]) return null
 
-	const frontmatter: Record<string, unknown> = {}
-	const lines = match[1].split('\n')
-
-	let currentKey: string | null = null
-	let currentArrayItems: unknown[] = []
-	let isInArray = false
-
-	for (const line of lines) {
-		// Check for array item (starts with "- ")
-		const arrayMatch = line.match(/^(\s*)- (.*)$/)
-		if (arrayMatch && isInArray && arrayMatch[2] !== undefined) {
-			const value = parseYamlValue(arrayMatch[2].trim())
-			currentArrayItems.push(value)
-			continue
-		}
-
-		// Check for key-value pair
-		const kvMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)$/)
-		if (kvMatch?.[1] && kvMatch[2] !== undefined) {
-			// Save previous array if any
-			if (isInArray && currentKey) {
-				frontmatter[currentKey] = currentArrayItems
-			}
-
-			currentKey = kvMatch[1]
-			const rawValue = kvMatch[2].trim()
-
-			// Check if starting an array
-			if (rawValue === '' || rawValue === '[]') {
-				isInArray = true
-				currentArrayItems = []
-			} else if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
-				// Inline array like [a, b, c]
-				const items = rawValue.slice(1, -1).split(',').map(s => parseYamlValue(s.trim()))
-				frontmatter[currentKey] = items
-				isInArray = false
-			} else {
-				frontmatter[currentKey] = parseYamlValue(rawValue)
-				isInArray = false
-			}
-		}
-	}
-
-	// Save final array if any
-	if (isInArray && currentKey) {
-		frontmatter[currentKey] = currentArrayItems
-	}
-
-	return frontmatter
-}
-
-/**
- * Parse a YAML value into appropriate JS type
- */
-function parseYamlValue(value: string): unknown {
-	// Handle quoted strings
-	if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-		return value.slice(1, -1)
-	}
-
-	// Handle booleans
-	if (value === 'true') return true
-	if (value === 'false') return false
-
-	// Handle null/empty
-	if (value === '' || value === 'null' || value === '~') return null
-
-	// Handle numbers
-	const num = Number(value)
-	if (!Number.isNaN(num) && value !== '') return num
-
-	return value
+	return parseYaml(match[1]) as Record<string, unknown> | null
 }
 
 /**
