@@ -15,6 +15,21 @@ const MAX_SELECT_OPTIONS = 10
 /** Minimum length for textarea detection */
 const TEXTAREA_MIN_LENGTH = 200
 
+/** Field names that should never be inferred as select (always free-text) */
+const FREE_TEXT_FIELD_NAMES = new Set([
+	'title',
+	'name',
+	'description',
+	'summary',
+	'excerpt',
+	'subtitle',
+	'heading',
+	'headline',
+	'slug',
+	'alt',
+	'caption',
+])
+
 /**
  * Observed values for a single field across multiple files
  */
@@ -124,9 +139,12 @@ function mergeFieldObservations(observations: FieldObservation[]): FieldDefiniti
 		}
 
 		// For text fields, check if we should treat as select (limited unique values)
-		if (fieldType === 'text') {
+		if (fieldType === 'text' && !FREE_TEXT_FIELD_NAMES.has(obs.name.toLowerCase())) {
 			const uniqueValues = [...new Set(nonNullValues.map(v => String(v)))]
-			if (uniqueValues.length > 0 && uniqueValues.length <= MAX_SELECT_OPTIONS && nonNullValues.length >= 2) {
+			const uniqueRatio = uniqueValues.length / nonNullValues.length
+			// Only treat as select if unique values are limited AND not nearly all unique
+			// (a high unique ratio means entries have distinct values, indicating free-text)
+			if (uniqueValues.length > 0 && uniqueValues.length <= MAX_SELECT_OPTIONS && nonNullValues.length >= 2 && uniqueRatio <= 0.8) {
 				field.type = 'select'
 				field.options = uniqueValues.sort()
 			}
