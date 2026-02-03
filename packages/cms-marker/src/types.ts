@@ -223,6 +223,14 @@ export interface FieldDefinition {
 	examples?: unknown[]
 }
 
+/** Per-entry metadata for collection browsing */
+export interface CollectionEntryInfo {
+	slug: string
+	title?: string
+	sourcePath: string
+	draft?: boolean
+}
+
 /** Definition of a content collection with inferred schema */
 export interface CollectionDefinition {
 	/** Collection identifier (directory name) */
@@ -239,6 +247,8 @@ export interface CollectionDefinition {
 	supportsDraft?: boolean
 	/** File extension used by entries */
 	fileExtension: 'md' | 'mdx'
+	/** Per-entry metadata for browsing */
+	entries?: CollectionEntryInfo[]
 }
 
 /** Manifest metadata for versioning and conflict detection */

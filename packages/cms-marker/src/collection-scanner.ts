@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { getProjectRoot } from './config'
-import type { CollectionDefinition, FieldDefinition, FieldType } from './types'
+import type { CollectionDefinition, CollectionEntryInfo, FieldDefinition, FieldType } from './types'
 
 /** Regex patterns for type inference */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}/
@@ -187,14 +187,31 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 		const hasMd = markdownFiles.some(f => f.name.endsWith('.md'))
 		const fileExtension: 'md' | 'mdx' = hasMd ? 'md' : 'mdx'
 
-		// Collect field observations across all files
+		// Collect field observations and entry info across all files
 		const fieldMap = new Map<string, FieldObservation>()
+		const entryInfos: CollectionEntryInfo[] = []
 		let hasDraft = false
 
 		for (const file of markdownFiles) {
 			const filePath = path.join(collectionPath, file.name)
 			const content = await fs.readFile(filePath, 'utf-8')
 			const frontmatter = parseFrontmatter(content)
+
+			// Collect entry info
+			const slug = file.name.replace(/\.(md|mdx)$/, '')
+			const entryInfo: CollectionEntryInfo = {
+				slug,
+				sourcePath: path.join(contentDir, collectionName, file.name),
+			}
+			if (frontmatter) {
+				if (typeof frontmatter.title === 'string') {
+					entryInfo.title = frontmatter.title
+				}
+				if (typeof frontmatter.draft === 'boolean' && frontmatter.draft) {
+					entryInfo.draft = true
+				}
+			}
+			entryInfos.push(entryInfo)
 
 			if (!frontmatter) continue
 
@@ -219,6 +236,13 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 			}
 		}
 
+		// Sort entries alphabetically by title (fallback to slug)
+		entryInfos.sort((a, b) => {
+			const aLabel = a.title ?? a.slug
+			const bLabel = b.title ?? b.slug
+			return aLabel.localeCompare(bLabel)
+		})
+
 		// Update totalEntries for all observations
 		for (const obs of fieldMap.values()) {
 			obs.totalEntries = markdownFiles.length
@@ -239,6 +263,7 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 			fields,
 			supportsDraft: hasDraft,
 			fileExtension,
+			entries: entryInfos,
 		}
 	} catch {
 		return null
