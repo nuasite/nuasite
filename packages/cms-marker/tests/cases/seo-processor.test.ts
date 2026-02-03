@@ -257,6 +257,77 @@ describe('processSeoFromHtml', () => {
 		})
 	})
 
+	describe('favicon extraction', () => {
+		test('extracts basic favicon', async () => {
+			const html = '<html><head><link rel="icon" href="/favicon.ico"></head><body></body></html>'
+			const result = await processSeoFromHtml(html)
+
+			expect(result.seo.favicons).toBeDefined()
+			expect(result.seo.favicons).toHaveLength(1)
+			expect(result.seo.favicons?.[0]?.href).toBe('/favicon.ico')
+			expect(result.seo.favicons?.[0]?.rel).toBe('icon')
+		})
+
+		test('extracts favicon with type and sizes', async () => {
+			const html = '<html><head><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"></head><body></body></html>'
+			const result = await processSeoFromHtml(html)
+
+			expect(result.seo.favicons).toHaveLength(1)
+			expect(result.seo.favicons?.[0]?.href).toBe('/favicon-32x32.png')
+			expect(result.seo.favicons?.[0]?.type).toBe('image/png')
+			expect(result.seo.favicons?.[0]?.sizes).toBe('32x32')
+		})
+
+		test('extracts apple-touch-icon', async () => {
+			const html = '<html><head><link rel="apple-touch-icon" href="/apple-touch-icon.png"></head><body></body></html>'
+			const result = await processSeoFromHtml(html)
+
+			expect(result.seo.favicons).toHaveLength(1)
+			expect(result.seo.favicons?.[0]?.rel).toBe('apple-touch-icon')
+		})
+
+		test('extracts multiple favicons', async () => {
+			const html = `<html><head>
+				<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+				<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+				<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+			</head><body></body></html>`
+			const result = await processSeoFromHtml(html)
+
+			expect(result.seo.favicons).toHaveLength(3)
+		})
+
+		test('handles missing favicon', async () => {
+			const html = '<html><head></head><body></body></html>'
+			const result = await processSeoFromHtml(html)
+
+			expect(result.seo.favicons).toBeUndefined()
+		})
+
+		test('ignores link tags without href', async () => {
+			const html = '<html><head><link rel="icon"></head><body></body></html>'
+			const result = await processSeoFromHtml(html)
+
+			expect(result.seo.favicons).toBeUndefined()
+		})
+
+		test('ignores non-favicon link tags', async () => {
+			const html = '<html><head><link rel="stylesheet" href="/style.css"><link rel="icon" href="/favicon.ico"></head><body></body></html>'
+			const result = await processSeoFromHtml(html)
+
+			expect(result.seo.favicons).toHaveLength(1)
+			expect(result.seo.favicons?.[0]?.href).toBe('/favicon.ico')
+		})
+
+		test('includes source info for favicon', async () => {
+			const html = '<html><head><link rel="icon" href="/favicon.ico"></head><body></body></html>'
+			const result = await processSeoFromHtml(html, { sourcePath: 'src/pages/index.astro' })
+
+			expect(result.seo.favicons?.[0]?.sourcePath).toBe('src/pages/index.astro')
+			expect(result.seo.favicons?.[0]?.sourceSnippet).toContain('favicon')
+		})
+	})
+
 	describe('JSON-LD extraction', () => {
 		test('extracts single JSON-LD block', async () => {
 			const html = `

@@ -352,6 +352,18 @@ export interface CanonicalUrl extends SeoSourceInfo {
 	href: string
 }
 
+/** Favicon link element */
+export interface SeoFavicon extends SeoSourceInfo {
+	/** The favicon href value */
+	href: string
+	/** The type attribute (e.g. "image/png", "image/svg+xml") */
+	type?: string
+	/** The sizes attribute (e.g. "32x32", "16x16") */
+	sizes?: string
+	/** The rel value (e.g. "icon", "apple-touch-icon") */
+	rel: string
+}
+
 /** Page title element with optional CMS ID */
 export interface SeoTitle extends SeoSourceInfo {
 	/** Title text content */
@@ -376,6 +388,8 @@ export interface PageSeoData {
 	keywords?: SeoKeywords
 	/** Canonical URL */
 	canonical?: CanonicalUrl
+	/** Favicons */
+	favicons?: SeoFavicon[]
 	/** Open Graph metadata */
 	openGraph?: OpenGraphData
 	/** Twitter Card metadata */

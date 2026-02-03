@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
 import { findSourceLocation } from './source-finder/source-lookup'
-import type { CanonicalUrl, JsonLdEntry, OpenGraphData, PageSeoData, SeoKeywords, SeoMetaTag, SeoTitle, TwitterCardData } from './types'
+import type { CanonicalUrl, JsonLdEntry, OpenGraphData, PageSeoData, SeoFavicon, SeoKeywords, SeoMetaTag, SeoTitle, TwitterCardData } from './types'
 
 /** Type for parsed HTML element nodes from node-html-parser */
 type HTMLNode = ParsedHTMLElement
@@ -68,6 +68,12 @@ export async function processSeoFromHtml(
 		const canonical = await extractCanonical(head, html, sourcePath, getNextId)
 		if (canonical) {
 			seo.canonical = canonical
+		}
+
+		// Extract favicons
+		const favicons = await extractFavicons(head, html, sourcePath, getNextId)
+		if (favicons.length > 0) {
+			seo.favicons = favicons
 		}
 
 		// Extract JSON-LD
@@ -309,6 +315,53 @@ async function extractCanonical(
 		href,
 		...sourceInfo,
 	}
+}
+
+/**
+ * Extract favicon link elements from head
+ */
+async function extractFavicons(
+	head: HTMLNode,
+	html: string,
+	sourcePath?: string,
+	getNextId?: () => string,
+): Promise<SeoFavicon[]> {
+	const favicons: SeoFavicon[] = []
+	const links = head.querySelectorAll('link')
+
+	for (const link of links) {
+		const rel = link.getAttribute('rel')?.toLowerCase()
+		if (!rel || !['icon', 'shortcut icon', 'apple-touch-icon', 'apple-touch-icon-precomposed'].includes(rel)) continue
+
+		const href = link.getAttribute('href')
+		if (!href) continue
+
+		const sourceLocation = await findSourceLocation(href, 'link')
+		const sourceInfo = sourceLocation
+			? {
+				sourcePath: sourceLocation.file,
+				sourceLine: sourceLocation.line,
+				sourceSnippet: sourceLocation.snippet || '',
+			}
+			: findElementSourceLocation(link, html, sourcePath)
+
+		let id: string | undefined
+		if (getNextId) {
+			id = getNextId()
+			link.setAttribute('data-cms-id', id)
+		}
+
+		favicons.push({
+			id,
+			href,
+			rel,
+			type: link.getAttribute('type') || undefined,
+			sizes: link.getAttribute('sizes') || undefined,
+			...sourceInfo,
+		})
+	}
+
+	return favicons
 }
 
 /**
