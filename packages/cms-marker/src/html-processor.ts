@@ -62,6 +62,8 @@ export interface ProcessHtmlOptions {
 		slug: string
 		/** First line of the markdown body (used to find wrapper element in build mode) */
 		bodyFirstLine?: string
+		/** Full markdown body text (used for robust wrapper detection in build mode) */
+		bodyText?: string
 		/** Path to the markdown file (e.g., 'src/content/blog/my-post.md') */
 		contentPath?: string
 	}
@@ -366,30 +368,92 @@ export async function processHtml(
 			}
 		}
 
-		// Strategy 2: Build mode - find element by matching markdown body content
-		if (!foundWrapper && collectionInfo.bodyFirstLine) {
-			// Normalize the first line of markdown body for comparison
-			// Strip markdown syntax to compare with rendered HTML text
-			const bodyStart = collectionInfo.bodyFirstLine
-				.replace(/^\*\*|\*\*$/g, '') // Remove markdown bold markers at start/end
-				.replace(/\*\*/g, '') // Remove any remaining markdown bold markers
-				.replace(/\*/g, '') // Remove markdown italic markers
-				.replace(/^#+ /, '') // Remove heading markers
-				.replace(/^\s*[-*+]\s+/, '') // Remove list markers
-				.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Extract link text
+		// Strategy 2: Build mode - find the deepest element containing all markdown body text
+		if (!foundWrapper && collectionInfo.bodyText) {
+			// Strip markdown syntax to get plain text for comparison
+			const bodyPlain = collectionInfo.bodyText
+				.replace(/^---[\s\S]*?---\n*/m, '') // Remove frontmatter
+				.replace(/!\[[^\]]*\]\([^)]+\)/g, '') // Remove images
+				.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1') // Extract link text
+				.replace(/^#+\s+/gm, '') // Remove heading markers
+				.replace(/^\s*[-*+]\s+/gm, '') // Remove list markers
+				.replace(/^\s*\d+\.\s+/gm, '') // Remove ordered list markers
+				.replace(/^\s*>\s+/gm, '') // Remove blockquote markers
+				.replace(/`{1,3}[^`]*`{1,3}/g, (m) => m.replace(/`/g, '')) // Remove code backticks
+				.replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1') // Remove bold/italic markers
+				.replace(/~{2}([^~]+)~{2}/g, '$1') // Remove strikethrough markers
+				.replace(/\n{2,}/g, '\n') // Collapse multiple newlines
 				.trim()
-				.substring(0, 50) // Take first 50 chars for matching
 
-			if (bodyStart.length > 10) {
-				// Store all candidates that match the body start
+			// Extract a few unique text snippets from different parts of the body
+			const lines = bodyPlain.split('\n').map(l => l.trim()).filter(l => l.length > 3)
+			const snippets: string[] = []
+			if (lines.length > 0) snippets.push(lines[0]!.substring(0, 60))
+			if (lines.length > 1) snippets.push(lines[lines.length - 1]!.substring(0, 60))
+			if (lines.length > 2) snippets.push(lines[Math.floor(lines.length / 2)]!.substring(0, 60))
+
+			if (snippets.length > 0) {
+				// Find the deepest element that contains all snippets
+				let bestWrapper: HTMLNode | null = null
+				let bestDepth = -1
+
+				const measureDepth = (node: HTMLNode): number => {
+					let depth = 0
+					let current = node.parentNode as HTMLNode | null
+					while (current) {
+						depth++
+						current = current.parentNode as HTMLNode | null
+					}
+					return depth
+				}
+
+				for (const node of allElements) {
+					const tag = node.tagName?.toLowerCase?.() ?? ''
+					if (['script', 'style', 'head', 'meta', 'link', 'html'].includes(tag)) continue
+					// Skip already-marked elements
+					if (node.getAttribute(attributeName)) continue
+
+					const nodeText = getTextContent(node).trim()
+					const containsAll = snippets.every(s => nodeText.includes(s))
+					if (containsAll) {
+						const depth = measureDepth(node)
+						if (depth > bestDepth) {
+							bestDepth = depth
+							bestWrapper = node
+						}
+					}
+				}
+
+				if (bestWrapper) {
+					const id = getNextId()
+					bestWrapper.setAttribute(attributeName, id)
+					bestWrapper.setAttribute('data-cms-markdown', 'true')
+					collectionWrapperId = id
+					markdownWrapperNode = bestWrapper
+					foundWrapper = true
+				}
+			}
+		}
+
+		// Strategy 3: Legacy fallback - match first line only (for when bodyText is not available)
+		if (!foundWrapper && collectionInfo.bodyFirstLine) {
+			const bodyStart = collectionInfo.bodyFirstLine
+				.replace(/^\*\*|\*\*$/g, '')
+				.replace(/\*\*/g, '')
+				.replace(/\*/g, '')
+				.replace(/^#+ /, '')
+				.replace(/^\s*[-*+]\s+/, '')
+				.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+				.trim()
+				.substring(0, 50)
+
+			if (bodyStart.length > 3) {
 				const candidates: Array<{ node: HTMLNode; blockChildCount: number }> = []
 
 				for (const node of allElements) {
 					const tag = node.tagName?.toLowerCase?.() ?? ''
-					// Skip script, style, etc.
 					if (['script', 'style', 'head', 'meta', 'link'].includes(tag)) continue
 
-					// Check if this element's first text content starts with the markdown body
 					const firstChild = node.childNodes.find(
 						(child): child is HTMLNode => child.nodeType === 1 && 'tagName' in child,
 					)
@@ -397,8 +461,6 @@ export async function processHtml(
 					if (firstChild) {
 						const firstChildText = getTextContent(firstChild).trim().substring(0, 80)
 						if (firstChildText.includes(bodyStart)) {
-							// Count block-level child elements
-							// Markdown typically renders to multiple block elements (p, h2, h3, ul, ol, etc.)
 							const blockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre', 'table', 'hr']
 							const blockChildCount = node.childNodes.filter(
 								(child): child is HTMLNode =>
@@ -410,13 +472,10 @@ export async function processHtml(
 					}
 				}
 
-				// Pick the candidate with the most block children (likely the markdown wrapper)
-				// Filter out already-marked elements
 				const unmarkedCandidates = candidates.filter(c => !c.node.getAttribute(attributeName))
 				if (unmarkedCandidates.length > 0) {
 					const best = unmarkedCandidates.reduce((a, b) => (b.blockChildCount > a.blockChildCount ? b : a))
-					if (best.blockChildCount >= 2) {
-						// Markdown body should have at least 2 block children
+					if (best.blockChildCount >= 1) {
 						const id = getNextId()
 						best.node.setAttribute(attributeName, id)
 						best.node.setAttribute('data-cms-markdown', 'true')
