@@ -876,7 +876,7 @@ export async function processHtml(
  * e.g., "src/components/Welcome.astro" -> "Welcome"
  * e.g., "src/components/ui/Button.astro" -> "Button"
  */
-function extractComponentName(sourceFile: string): string {
+export function extractComponentName(sourceFile: string): string {
 	const parts = sourceFile.split('/')
 	const fileName = parts[parts.length - 1] || ''
 	return fileName.replace('.astro', '')

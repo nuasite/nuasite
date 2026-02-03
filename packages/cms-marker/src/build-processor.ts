@@ -4,7 +4,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getProjectRoot } from './config'
-import { processHtml } from './html-processor'
+import { extractComponentName, processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import {
 	clearSourceFinderCache,
@@ -226,6 +226,119 @@ async function processFile(
 		if (!entry.sourcePath) {
 			idsToRemove.push(id)
 			delete result.entries[id]
+		}
+	}
+
+	// Post-process: detect component roots from resolved entry source paths
+	// In production builds, data-astro-source-file is not available so processHtml
+	// cannot detect components. We infer them from the resolved sourcePath of entries.
+	const componentDirs = config.componentDirs ?? ['src/components']
+	const excludeComponentDirs = ['src/pages', 'src/layouts', 'src/layout']
+
+	if (config.markComponents) {
+		// Group entries by their source file (only component files)
+		const entriesBySourceFile = new Map<string, string[]>()
+		for (const [id, entry] of Object.entries(result.entries)) {
+			if (!entry.sourcePath) continue
+			const sp = entry.sourcePath
+
+			const isExcluded = excludeComponentDirs.some(dir => {
+				const d = dir.replace(/^\/+|\/+$/g, '')
+				return sp.startsWith(d + '/') || sp.includes('/' + d + '/')
+			})
+			if (isExcluded) continue
+
+			const isComponent = componentDirs.some(dir => {
+				const d = dir.replace(/^\/+|\/+$/g, '')
+				return sp.startsWith(d + '/') || sp.includes('/' + d + '/')
+			})
+			if (!isComponent) continue
+
+			const existing = entriesBySourceFile.get(sp)
+			if (existing) {
+				existing.push(id)
+			} else {
+				entriesBySourceFile.set(sp, [id])
+			}
+		}
+
+		// For each component source file, find the outermost common ancestor in the DOM
+		if (entriesBySourceFile.size > 0) {
+			const root = parse(result.html, {
+				lowerCaseTagName: false,
+				comment: true,
+			})
+
+			for (const [sourceFile, entryIds] of entriesBySourceFile) {
+				// Find DOM elements for these entries
+				const elements = entryIds
+					.map(id => root.querySelector(`[${config.attributeName}="${id}"]`))
+					.filter((el): el is NonNullable<typeof el> => el !== null)
+
+				if (elements.length === 0) continue
+
+				// Find the lowest common ancestor of all elements
+				const getAncestors = (el: ReturnType<typeof root.querySelector>): typeof el[] => {
+					const ancestors: typeof el[] = []
+					let current = el?.parentNode as typeof el
+					while (current) {
+						ancestors.unshift(current)
+						current = current.parentNode as typeof el
+					}
+					return ancestors
+				}
+
+				const ancestorChains = elements.map(el => getAncestors(el))
+				let lca = ancestorChains[0]?.[0]
+				if (ancestorChains.length > 1) {
+					const minLen = Math.min(...ancestorChains.map(c => c.length))
+					let lcaIdx = 0
+					for (let i = 0; i < minLen; i++) {
+						if (ancestorChains.every(chain => chain[i] === ancestorChains[0]![i])) {
+							lcaIdx = i
+						} else {
+							break
+						}
+					}
+					lca = ancestorChains[0]![lcaIdx]
+				}
+
+				// If the LCA is a text element itself (only one entry from this component),
+				// use its parent instead so the component wraps the element
+				if (lca && elements.length === 1 && lca === elements[0]) {
+					lca = lca.parentNode as typeof lca
+				}
+
+				if (!lca || !('setAttribute' in lca) || !('getAttribute' in lca)) continue
+				// Skip if already marked as a component
+				if (lca.getAttribute?.('data-cms-component-id')) continue
+
+				const compId = idGenerator()
+				lca.setAttribute('data-cms-component-id', compId)
+
+				const componentName = extractComponentName(sourceFile)
+				const firstEntry = result.entries[entryIds[0]!]!
+
+				result.components[compId] = {
+					id: compId,
+					componentName,
+					file: relPath,
+					sourcePath: sourceFile,
+					sourceLine: firstEntry.sourceLine ?? 1,
+					props: {},
+				}
+
+				// Set parentComponentId on entries
+				for (const eid of entryIds) {
+					const entry = result.entries[eid]
+					if (entry) {
+						entry.parentComponentId = compId
+					}
+				}
+			}
+
+			// Re-serialize HTML with component markers
+			result.html = root.toString()
 		}
 	}
 
