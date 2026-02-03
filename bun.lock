@@ -17,7 +17,7 @@
     },
     "packages/agent-summary": {
       "name": "@nuasite/agent-summary",
-      "version": "0.0.88",
+      "version": "0.0.93",
       "dependencies": {
         "astro": "catalog:astro",
       },
@@ -30,7 +30,7 @@
     },
     "packages/cli": {
       "name": "@nuasite/cli",
-      "version": "0.0.88",
+      "version": "0.0.93",
       "bin": {
         "nua": "src/index.ts",
       },
@@ -48,7 +48,7 @@
     },
     "packages/cms-marker": {
       "name": "@nuasite/cms-marker",
-      "version": "0.0.88",
+      "version": "0.0.93",
       "dependencies": {
         "@astrojs/compiler": "catalog:astro",
         "@babel/parser": "catalog:parsers",
@@ -66,14 +66,14 @@
     },
     "packages/components": {
       "name": "@nuasite/components",
-      "version": "0.0.88",
+      "version": "0.0.93",
       "peerDependencies": {
         "typescript": "catalog:build",
       },
     },
     "packages/core": {
       "name": "@nuasite/core",
-      "version": "0.0.88",
+      "version": "0.0.93",
       "devDependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -89,7 +89,7 @@
     },
     "packages/llm-enhancements": {
       "name": "@nuasite/llm-enhancements",
-      "version": "0.0.88",
+      "version": "0.0.93",
       "dependencies": {
         "astro": "catalog:astro",
         "node-html-parser": "catalog:parsers",
@@ -108,7 +108,7 @@
     },
     "packages/nua": {
       "name": "@nuasite/nua",
-      "version": "0.0.88",
+      "version": "0.0.93",
       "dependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -119,6 +119,7 @@
         "@nuasite/components": "workspace:*",
         "@nuasite/core": "workspace:*",
         "@nuasite/llm-enhancements": "workspace:*",
+        "@tailwindcss/typography": "catalog:ui",
         "@tailwindcss/vite": "catalog:ui",
         "astro": "catalog:astro",
         "flowbite": "catalog:ui",
@@ -129,7 +130,7 @@
     },
     "packages/playground": {
       "name": "playground",
-      "version": "0.0.88",
+      "version": "0.0.93",
       "dependencies": {
         "@nuasite/nua": "workspace:*",
       },
@@ -162,6 +163,7 @@
       "yaml": "^2.8.2",
     },
     "ui": {
+      "@tailwindcss/typography": "^0.5.19",
       "@tailwindcss/vite": "^4.1.11",
       "flowbite": "3.1.2",
       "tailwindcss": "4.1.16",
@@ -495,6 +497,8 @@
     "@tailwindcss/oxide-win32-arm64-msvc": ["@tailwindcss/oxide-win32-arm64-msvc@4.1.18", "", { "os": "win32", "cpu": "arm64" }, "sha512-HjSA7mr9HmC8fu6bdsZvZ+dhjyGCLdotjVOgLA2vEqxEBZaQo9YTX4kwgEvPCpRh8o4uWc4J/wEoFzhEmjvPbA=="],
 
     "@tailwindcss/oxide-win32-x64-msvc": ["@tailwindcss/oxide-win32-x64-msvc@4.1.18", "", { "os": "win32", "cpu": "x64" }, "sha512-bJWbyYpUlqamC8dpR7pfjA0I7vdF6t5VpUGMWRkXVE3AXgIZjYUYAK7II1GNaxR8J1SSrSrppRar8G++JekE3Q=="],
+
+    "@tailwindcss/typography": ["@tailwindcss/typography@0.5.19", "", { "dependencies": { "postcss-selector-parser": "6.0.10" }, "peerDependencies": { "tailwindcss": ">=3.0.0 || insiders || >=4.0.0-alpha.20 || >=4.0.0-beta.1" } }, "sha512-w31dd8HOx3k9vPtcQh5QHP9GwKcgbMp87j58qi6xgiBnFFtKEAgCWnDw4qUT8aHwkCp8bKvb/KGKWWHedP0AAg=="],
 
     "@tailwindcss/vite": ["@tailwindcss/vite@4.1.18", "", { "dependencies": { "@tailwindcss/node": "4.1.18", "@tailwindcss/oxide": "4.1.18", "tailwindcss": "4.1.18" }, "peerDependencies": { "vite": "^5.2.0 || ^6 || ^7" } }, "sha512-jVA+/UpKL1vRLg6Hkao5jldawNmRo7mQYrZtNHMIVpLfLhDml5nMRUo/8MwoX2vNXvnaXNNMedrMfMugAVX1nA=="],
 
@@ -1058,6 +1062,8 @@
 
     "postcss": ["postcss@8.5.6", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg=="],
 
+    "postcss-selector-parser": ["postcss-selector-parser@6.0.10", "", { "dependencies": { "cssesc": "^3.0.0", "util-deprecate": "^1.0.2" } }, "sha512-IQ7TZdoaqbT+LCpShg46jnZVlhWD2w6iQYAcYXfHARZ7X1t/UGhhceQDs5X0cGqKvYlHNOuv7Oa1xmb0oQuA3w=="],
+
     "prettier": ["prettier@3.7.4", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-v6UNi1+3hSlVvv8fSaoUbggEM5VErKmmpGA7Pl3HF8V6uKY7rvClBOJlH6yNwQtfTueNkGVpOv/mtWL9L4bgRA=="],
 
     "printable-characters": ["printable-characters@1.0.42", "", {}, "sha512-dKp+C4iXWK4vVYZmYSd0KBH5F/h1HoZRsbJ82AVKRO3PEo8L4lBS/vLwhVtpwwuYcoIsVY+1JYKR268yn480uQ=="],
@@ -1243,6 +1249,8 @@
     "unist-util-visit-parents": ["unist-util-visit-parents@6.0.2", "", { "dependencies": { "@types/unist": "^3.0.0", "unist-util-is": "^6.0.0" } }, "sha512-goh1s1TBrqSqukSc8wrjwWhL0hiJxgA8m4kFxGlQ+8FYQ3C/m11FcTs4YYem7V664AhHVvgoQLk890Ssdsr2IQ=="],
 
     "unstorage": ["unstorage@1.17.3", "", { "dependencies": { "anymatch": "^3.1.3", "chokidar": "^4.0.3", "destr": "^2.0.5", "h3": "^1.15.4", "lru-cache": "^10.4.3", "node-fetch-native": "^1.6.7", "ofetch": "^1.5.1", "ufo": "^1.6.1" }, "peerDependencies": { "@azure/app-configuration": "^1.8.0", "@azure/cosmos": "^4.2.0", "@azure/data-tables": "^13.3.0", "@azure/identity": "^4.6.0", "@azure/keyvault-secrets": "^4.9.0", "@azure/storage-blob": "^12.26.0", "@capacitor/preferences": "^6.0.3 || ^7.0.0", "@deno/kv": ">=0.9.0", "@netlify/blobs": "^6.5.0 || ^7.0.0 || ^8.1.0 || ^9.0.0 || ^10.0.0", "@planetscale/database": "^1.19.0", "@upstash/redis": "^1.34.3", "@vercel/blob": ">=0.27.1", "@vercel/functions": "^2.2.12 || ^3.0.0", "@vercel/kv": "^1.0.1", "aws4fetch": "^1.0.20", "db0": ">=0.2.1", "idb-keyval": "^6.2.1", "ioredis": "^5.4.2", "uploadthing": "^7.4.4" }, "optionalPeers": ["@azure/app-configuration", "@azure/cosmos", "@azure/data-tables", "@azure/identity", "@azure/keyvault-secrets", "@azure/storage-blob", "@capacitor/preferences", "@deno/kv", "@netlify/blobs", "@planetscale/database", "@upstash/redis", "@vercel/blob", "@vercel/functions", "@vercel/kv", "aws4fetch", "db0", "idb-keyval", "ioredis", "uploadthing"] }, "sha512-i+JYyy0DoKmQ3FximTHbGadmIYb8JEpq7lxUjnjeB702bCPum0vzo6oy5Mfu0lpqISw7hCyMW2yj4nWC8bqJ3Q=="],
+
+    "util-deprecate": ["util-deprecate@1.0.2", "", {}, "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw=="],
 
     "vfile": ["vfile@6.0.3", "", { "dependencies": { "@types/unist": "^3.0.0", "vfile-message": "^4.0.0" } }, "sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q=="],
 

@@ -45,6 +45,7 @@
 		"@nuasite/components": "workspace:*",
 		"@nuasite/core": "workspace:*",
 		"@tailwindcss/vite": "catalog:ui",
+		"@tailwindcss/typography": "catalog:ui",
 		"astro": "catalog:astro",
 		"flowbite": "catalog:ui",
 		"tailwindcss": "catalog:ui",
