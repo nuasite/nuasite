@@ -221,6 +221,27 @@ export class ManifestWriter {
 			})
 			.sort((a, b) => a.pathname.localeCompare(b.pathname))
 
+		// Build a map from "collectionName/slug" → pagePath using page collections
+		const collectionPathMap = new Map<string, string>()
+		for (const [pagePath, data] of this.pageManifests) {
+			if (data.collection) {
+				const key = `${data.collection.collectionName}/${data.collection.collectionSlug}`
+				collectionPathMap.set(key, pagePath)
+			}
+		}
+
+		// Populate pathname on collection definition entries
+		for (const def of Object.values(this.collectionDefinitions)) {
+			if (def.entries) {
+				for (const entry of def.entries) {
+					const pathname = collectionPathMap.get(`${def.name}/${entry.slug}`)
+					if (pathname) {
+						entry.pathname = pathname
+					}
+				}
+			}
+		}
+
 		// Write global manifest with settings (component definitions, colors, text styles, collection definitions, and pages)
 		if (this.outDir) {
 			const globalManifestPath = path.join(this.outDir, this.manifestFile)

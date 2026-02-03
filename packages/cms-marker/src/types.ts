@@ -229,6 +229,8 @@ export interface CollectionEntryInfo {
 	title?: string
 	sourcePath: string
 	draft?: boolean
+	/** URL pathname of the rendered page for this entry */
+	pathname?: string
 }
 
 /** Definition of a content collection with inferred schema */
