@@ -229,6 +229,7 @@ export async function processHtml(
 	const sourceLocationMap = new Map<string, { file: string; line: number }>()
 	const markedComponentRoots = new Set<HTMLNode>()
 	let collectionWrapperId: string | undefined
+	const componentCountPerParent = new Map<string, Map<string, number>>()
 
 	// First pass: detect and mark component root elements
 	// A component root is detected by data-astro-source-file pointing to a component directory
@@ -275,6 +276,18 @@ export async function processHtml(
 
 			if (ancestorFromSameComponent) return
 
+			// Find the nearest ancestor with a different source file (the parent that invokes this component)
+			let invocationSourcePath: string | undefined
+			let ancestor = node.parentNode as HTMLNode | null
+			while (ancestor) {
+				const ancestorSource = ancestor.getAttribute?.('data-astro-source-file')
+				if (ancestorSource && ancestorSource !== sourceFile) {
+					invocationSourcePath = ancestorSource
+					break
+				}
+				ancestor = ancestor.parentNode as HTMLNode | null
+			}
+
 			// This is a component root - mark it
 			const id = getNextId()
 			node.setAttribute('data-cms-component-id', id)
@@ -289,6 +302,18 @@ export async function processHtml(
 				|| '1:0'
 			const sourceLine = parseInt(sourceLocAttr.split(':')[0] ?? '1', 10)
 
+			// Track invocation index (0-based count of same component name per parent file)
+			let invocationIndex: number | undefined
+			if (invocationSourcePath) {
+				if (!componentCountPerParent.has(invocationSourcePath)) {
+					componentCountPerParent.set(invocationSourcePath, new Map())
+				}
+				const counters = componentCountPerParent.get(invocationSourcePath)!
+				const current = counters.get(componentName) ?? 0
+				counters.set(componentName, current + 1)
+				invocationIndex = current
+			}
+
 			components[id] = {
 				id,
 				componentName,
@@ -296,6 +321,8 @@ export async function processHtml(
 				sourcePath: sourceFile,
 				sourceLine,
 				props: {}, // Props will be filled from component definitions
+				invocationSourcePath,
+				invocationIndex,
 			}
 		})
 	}

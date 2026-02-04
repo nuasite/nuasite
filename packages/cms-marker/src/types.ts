@@ -169,6 +169,10 @@ export interface ComponentInstance {
 	props: Record<string, any>
 	slots?: Record<string, string>
 	parentId?: string
+	/** File where this component is invoked (parent page/layout) */
+	invocationSourcePath?: string
+	/** 0-based index among same-name component invocations in the parent file */
+	invocationIndex?: number
 }
 
 /** Represents a content collection entry (markdown file) */
