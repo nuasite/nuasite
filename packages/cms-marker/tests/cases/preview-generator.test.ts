@@ -81,7 +81,7 @@ describe('generateComponentPreviews', () => {
 		expect(previewHtml).toContain('body { margin: 0; }')
 
 		// Check previewUrl was set on the definition
-		expect(componentDefinitions.HeroSection.previewUrl).toBe('/_cms-preview/HeroSection/')
+		expect(componentDefinitions.HeroSection?.previewUrl).toBe('/_cms-preview/HeroSection/')
 	})
 
 	test('annotates text props with data-cms-preview-prop', async () => {
@@ -216,8 +216,8 @@ describe('generateComponentPreviews', () => {
 
 		expect(heroExists).toBe(true)
 		expect(aboutExists).toBe(true)
-		expect(componentDefinitions.HeroSection.previewUrl).toBe('/_cms-preview/HeroSection/')
-		expect(componentDefinitions.AboutSection.previewUrl).toBe('/_cms-preview/AboutSection/')
+		expect(componentDefinitions.HeroSection?.previewUrl).toBe('/_cms-preview/HeroSection/')
+		expect(componentDefinitions.AboutSection?.previewUrl).toBe('/_cms-preview/AboutSection/')
 	})
 
 	test('only generates one preview per component name (uses first occurrence)', async () => {
@@ -298,6 +298,6 @@ describe('generateComponentPreviews', () => {
 
 		const exists = await fs.access(path.join(tempDir, '_cms-preview', 'Ghost')).then(() => true).catch(() => false)
 		expect(exists).toBe(false)
-		expect(componentDefinitions.Ghost.previewUrl).toBeUndefined()
+		expect(componentDefinitions.Ghost?.previewUrl).toBeUndefined()
 	})
 })

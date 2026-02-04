@@ -243,7 +243,7 @@ async function detectEntrylessComponents(
 	// If no components detected yet, we can't determine the container
 	if (detectedRoots.length === 0) return
 
-	const container = detectedRoots[0].el.parentNode
+	const container = detectedRoots[0]?.el.parentNode
 	if (!container || !container.childNodes) return
 
 	// Verify all detected roots share the same parent
