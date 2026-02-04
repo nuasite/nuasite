@@ -49,6 +49,253 @@ function getPagePath(htmlPath: string, outDir: string): string {
 }
 
 /**
+ * Cluster entries from the same source file into separate component instances.
+ * When a component is used multiple times on a page, its entries are in different
+ * subtrees. We partition by finding which direct child of the LCA each entry belongs to.
+ */
+export function clusterComponentEntries<T>(
+	elements: T[],
+	entryIds: string[],
+	findLCA: (els: T[]) => T | null,
+): Array<{ clusterEntryIds: string[]; clusterElements: T[] }> {
+	if (elements.length <= 1) {
+		return [{ clusterEntryIds: [...entryIds], clusterElements: [...elements] }]
+	}
+
+	const lca = findLCA(elements)
+	if (!lca) {
+		return [{ clusterEntryIds: [...entryIds], clusterElements: [...elements] }]
+	}
+
+	// If any entry is a direct child of the LCA, the LCA is the component
+	// root itself — don't split its content into separate instances.
+	// Only split when ALL entries are behind intermediate wrapper elements.
+	const anyDirectChild = elements.some(
+		(el: any) => el.parentNode === lca,
+	)
+	if (anyDirectChild) {
+		return [{ clusterEntryIds: [...entryIds], clusterElements: [...elements] }]
+	}
+
+	// Group entries by which direct child of the LCA they fall under.
+	// Entries under different intermediate subtrees belong to different instances.
+	const childGroups = new Map<unknown, { clusterEntryIds: string[]; clusterElements: T[] }>()
+
+	for (let i = 0; i < elements.length; i++) {
+		let current: any = elements[i]
+		while (current && current.parentNode !== lca) {
+			current = current.parentNode
+		}
+		if (!current) continue
+
+		const existing = childGroups.get(current)
+		if (existing) {
+			existing.clusterEntryIds.push(entryIds[i]!)
+			existing.clusterElements.push(elements[i]!)
+		} else {
+			childGroups.set(current, {
+				clusterEntryIds: [entryIds[i]!],
+				clusterElements: [elements[i]!],
+			})
+		}
+	}
+
+	if (childGroups.size > 1) {
+		// Multiple subtrees → each is a separate component instance
+		return Array.from(childGroups.values())
+	}
+
+	// All entries are in the same subtree → single instance
+	return [{ clusterEntryIds: [...entryIds], clusterElements: [...elements] }]
+}
+
+interface PageComponentInvocation {
+	componentName: string
+	sourceFile: string
+	/** Template offset for ordering invocations */
+	offset: number
+}
+
+/**
+ * Find the .astro source file for a page given its URL path.
+ */
+async function findPageSource(pagePath: string): Promise<string | null> {
+	const projectRoot = getProjectRoot()
+	const candidates: string[] = []
+
+	if (pagePath === '/' || pagePath === '') {
+		candidates.push(path.join(projectRoot, 'src/pages/index.astro'))
+	} else {
+		const cleanPath = pagePath.replace(/^\//, '')
+		candidates.push(
+			path.join(projectRoot, `src/pages/${cleanPath}.astro`),
+			path.join(projectRoot, `src/pages/${cleanPath}/index.astro`),
+		)
+	}
+
+	for (const candidate of candidates) {
+		try {
+			await fs.access(candidate)
+			return candidate
+		} catch {
+			continue
+		}
+	}
+	return null
+}
+
+/**
+ * Parse an .astro page source file to find component invocations.
+ * Returns an ordered list of component usages (including duplicates).
+ */
+async function parseComponentInvocations(
+	pageSourcePath: string,
+	componentDirs: string[],
+): Promise<PageComponentInvocation[]> {
+	const content = await fs.readFile(pageSourcePath, 'utf-8')
+	const projectRoot = getProjectRoot()
+	const pageDir = path.dirname(pageSourcePath)
+
+	// Split frontmatter from template
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+	if (!fmMatch) return []
+	const frontmatter = fmMatch[1]!
+	const templateStart = fmMatch[0].length
+	const template = content.slice(templateStart)
+
+	// Parse import statements to map component names to source files
+	const imports = new Map<string, string>() // componentName -> relative source path
+	const importRegex = /import\s+(\w+)\s+from\s+['"]([^'"]+)['"]/g
+	let match
+	while ((match = importRegex.exec(frontmatter)) !== null) {
+		const name = match[1]!
+		const importPath = match[2]!
+
+		// Resolve the import path relative to the page file
+		const resolved = path.resolve(pageDir, importPath)
+		const relToProject = path.relative(projectRoot, resolved)
+
+		// Check if it's in a component directory
+		const isComponent = componentDirs.some(dir => {
+			const d = dir.replace(/^\/+|\/+$/g, '')
+			return relToProject.startsWith(d + '/') || relToProject.startsWith(d + path.sep)
+		})
+		if (isComponent) {
+			imports.set(name, relToProject)
+		}
+	}
+
+	if (imports.size === 0) return []
+
+	// Find component invocations in the template (both self-closing and paired tags)
+	const invocations: PageComponentInvocation[] = []
+	for (const [componentName, sourceFile] of imports) {
+		const tagRegex = new RegExp(`<${componentName}[\\s/>]`, 'g')
+		let tagMatch
+		while ((tagMatch = tagRegex.exec(template)) !== null) {
+			invocations.push({
+				componentName,
+				sourceFile,
+				offset: tagMatch.index,
+			})
+		}
+	}
+
+	// Sort by position in template (invocation order)
+	invocations.sort((a, b) => a.offset - b.offset)
+
+	return invocations
+}
+
+/**
+ * Detect components that have no text entries by parsing the page source file.
+ * After entry-based components are detected, this finds any remaining component
+ * invocations and assigns them to unclaimed DOM elements using invocation order.
+ */
+async function detectEntrylessComponents(
+	pagePath: string,
+	root: ReturnType<typeof parse>,
+	components: Record<string, import('./types').ComponentInstance>,
+	componentDirs: string[],
+	relPath: string,
+	idGenerator: () => string,
+	markComponentRoot: (el: any, sourceFile: string, entryIds: string[]) => void,
+): Promise<void> {
+	const pageSourcePath = await findPageSource(pagePath)
+	if (!pageSourcePath) return
+
+	const invocations = await parseComponentInvocations(pageSourcePath, componentDirs)
+	if (invocations.length === 0) return
+
+	// Collect all detected component root elements in DOM order
+	const detectedRoots: Array<{ el: any; componentName: string }> = []
+	const compEls = root.querySelectorAll('[data-cms-component-id]')
+	for (const el of compEls) {
+		const compId = el.getAttribute('data-cms-component-id')
+		if (compId && components[compId]) {
+			detectedRoots.push({ el, componentName: components[compId].componentName })
+		}
+	}
+
+	if (detectedRoots.length === 0 && invocations.length === 0) return
+
+	// Find the container: parent of all detected component roots
+	// If no components detected yet, we can't determine the container
+	if (detectedRoots.length === 0) return
+
+	const container = detectedRoots[0].el.parentNode
+	if (!container || !container.childNodes) return
+
+	// Verify all detected roots share the same parent
+	const allSameParent = detectedRoots.every(r => r.el.parentNode === container)
+	if (!allSameParent) return
+
+	// Get the container's element children in DOM order
+	const containerChildren: any[] = []
+	for (const child of container.childNodes) {
+		// Only consider element nodes (nodeType 1)
+		if (child.nodeType === 1) {
+			containerChildren.push(child)
+		}
+	}
+
+	// Build a paired mapping between invocations and container children.
+	// Detected components serve as anchor points; undetected children between
+	// anchors are assigned to the corresponding unmatched invocations in order.
+
+	// First, find anchor points: container children that are already detected
+	const anchorMap = new Map<number, string>() // childIdx → componentName
+	for (let ci = 0; ci < containerChildren.length; ci++) {
+		const compId = containerChildren[ci].getAttribute?.('data-cms-component-id')
+		if (compId && components[compId]) {
+			anchorMap.set(ci, components[compId].componentName)
+		}
+	}
+
+	// Walk both lists, using anchors to stay in sync
+	let invIdx = 0
+	for (let ci = 0; ci < containerChildren.length && invIdx < invocations.length; ci++) {
+		const anchorName = anchorMap.get(ci)
+
+		if (anchorName) {
+			// This child is a detected component. Find the matching invocation.
+			while (invIdx < invocations.length && invocations[invIdx]!.componentName !== anchorName) {
+				invIdx++
+			}
+			if (invIdx < invocations.length) {
+				invIdx++ // consume the matched invocation
+			}
+		} else {
+			// Undetected child - assign it to the current invocation
+			const inv = invocations[invIdx]!
+			// Only assign if the invocation's component isn't already detected at a later anchor
+			markComponentRoot(containerChildren[ci], inv.sourceFile, [])
+			invIdx++
+		}
+	}
+}
+
+/**
  * Process a single HTML file
  */
 async function processFile(
@@ -263,84 +510,113 @@ async function processFile(
 			}
 		}
 
-		// For each component source file, find the outermost common ancestor in the DOM
-		if (entriesBySourceFile.size > 0) {
-			const root = parse(result.html, {
-				lowerCaseTagName: false,
-				comment: true,
-			})
+		const root = parse(result.html, {
+			lowerCaseTagName: false,
+			comment: true,
+		})
 
+		// Helper: find lowest common ancestor of DOM elements
+		type HTMLNode = ReturnType<typeof root.querySelector>
+		const findLCA = (elements: NonNullable<HTMLNode>[]): HTMLNode => {
+			if (elements.length === 0) return null
+			if (elements.length === 1) return elements[0]!
+
+			const getAncestors = (el: HTMLNode): HTMLNode[] => {
+				const ancestors: HTMLNode[] = []
+				let current = el?.parentNode as HTMLNode
+				while (current) {
+					ancestors.unshift(current)
+					current = current.parentNode as HTMLNode
+				}
+				return ancestors
+			}
+
+			const chains = elements.map(el => getAncestors(el))
+			const minLen = Math.min(...chains.map(c => c.length))
+			let lcaIdx = 0
+			for (let i = 0; i < minLen; i++) {
+				if (chains.every(chain => chain[i] === chains[0]![i])) {
+					lcaIdx = i
+				} else {
+					break
+				}
+			}
+			return chains[0]![lcaIdx] ?? null
+		}
+
+		// Helper: mark an element as a component root and register the instance
+		const markComponentRoot = (
+			lca: NonNullable<HTMLNode>,
+			sourceFile: string,
+			instanceEntryIds: string[],
+		) => {
+			if (!('setAttribute' in lca) || !('getAttribute' in lca)) return
+			if (lca.getAttribute?.('data-cms-component-id')) return
+
+			const compId = idGenerator()
+			lca.setAttribute('data-cms-component-id', compId)
+
+			const componentName = extractComponentName(sourceFile)
+			const firstEntry = instanceEntryIds.length > 0 ? result.entries[instanceEntryIds[0]!] : undefined
+
+			result.components[compId] = {
+				id: compId,
+				componentName,
+				file: relPath,
+				sourcePath: sourceFile,
+				sourceLine: firstEntry?.sourceLine ?? 1,
+				props: {},
+			}
+
+			for (const eid of instanceEntryIds) {
+				const entry = result.entries[eid]
+				if (entry) {
+					entry.parentComponentId = compId
+				}
+			}
+		}
+
+		// For each component source file, cluster entries into separate instances
+		// by partitioning them based on which subtree of their common ancestor they belong to
+		if (entriesBySourceFile.size > 0) {
 			for (const [sourceFile, entryIds] of entriesBySourceFile) {
-				// Find DOM elements for these entries
 				const elements = entryIds
 					.map(id => root.querySelector(`[${config.attributeName}="${id}"]`))
-					.filter((el): el is NonNullable<typeof el> => el !== null)
+					.filter((el): el is NonNullable<HTMLNode> => el !== null)
 
 				if (elements.length === 0) continue
 
-				// Find the lowest common ancestor of all elements
-				const getAncestors = (el: ReturnType<typeof root.querySelector>): typeof el[] => {
-					const ancestors: typeof el[] = []
-					let current = el?.parentNode as typeof el
-					while (current) {
-						ancestors.unshift(current)
-						current = current.parentNode as typeof el
+				// Cluster entries into separate component instances
+				const clusters = clusterComponentEntries(elements, entryIds, findLCA)
+
+				for (const { clusterEntryIds, clusterElements } of clusters) {
+					let lca = findLCA(clusterElements)
+
+					// If the LCA is a text element itself (only one entry),
+					// use its parent so the component wraps the element
+					if (lca && clusterElements.length === 1 && lca === clusterElements[0]) {
+						lca = lca.parentNode as HTMLNode
 					}
-					return ancestors
-				}
 
-				const ancestorChains = elements.map(el => getAncestors(el))
-				let lca = ancestorChains[0]?.[0]
-				if (ancestorChains.length > 1) {
-					const minLen = Math.min(...ancestorChains.map(c => c.length))
-					let lcaIdx = 0
-					for (let i = 0; i < minLen; i++) {
-						if (ancestorChains.every(chain => chain[i] === ancestorChains[0]![i])) {
-							lcaIdx = i
-						} else {
-							break
-						}
-					}
-					lca = ancestorChains[0]![lcaIdx]
-				}
-
-				// If the LCA is a text element itself (only one entry from this component),
-				// use its parent instead so the component wraps the element
-				if (lca && elements.length === 1 && lca === elements[0]) {
-					lca = lca.parentNode as typeof lca
-				}
-
-				if (!lca || !('setAttribute' in lca) || !('getAttribute' in lca)) continue
-				// Skip if already marked as a component
-				if (lca.getAttribute?.('data-cms-component-id')) continue
-
-				const compId = idGenerator()
-				lca.setAttribute('data-cms-component-id', compId)
-
-				const componentName = extractComponentName(sourceFile)
-				const firstEntry = result.entries[entryIds[0]!]!
-
-				result.components[compId] = {
-					id: compId,
-					componentName,
-					file: relPath,
-					sourcePath: sourceFile,
-					sourceLine: firstEntry.sourceLine ?? 1,
-					props: {},
-				}
-
-				// Set parentComponentId on entries
-				for (const eid of entryIds) {
-					const entry = result.entries[eid]
-					if (entry) {
-						entry.parentComponentId = compId
-					}
+					if (!lca) continue
+					markComponentRoot(lca, sourceFile, clusterEntryIds)
 				}
 			}
-
-			// Re-serialize HTML with component markers
-			result.html = root.toString()
 		}
+
+		// Detect components without text entries by parsing the page source file
+		await detectEntrylessComponents(
+			pagePath,
+			root,
+			result.components,
+			componentDirs,
+			relPath,
+			idGenerator,
+			markComponentRoot,
+		)
+
+		// Re-serialize HTML with component markers
+		result.html = root.toString()
 	}
 
 	// Remove CMS ID attributes from HTML for entries that were filtered out
