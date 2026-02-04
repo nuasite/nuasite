@@ -137,9 +137,7 @@ async function findPageSource(pagePath: string): Promise<string | null> {
 		try {
 			await fs.access(candidate)
 			return candidate
-		} catch {
-			continue
-		}
+		} catch {}
 	}
 	return null
 }
@@ -166,7 +164,7 @@ async function parseComponentInvocations(
 	// Parse import statements to map component names to source files
 	const imports = new Map<string, string>() // componentName -> relative source path
 	const importRegex = /import\s+(\w+)\s+from\s+['"]([^'"]+)['"]/g
-	let match
+	let match: RegExpMatchArray | null
 	while ((match = importRegex.exec(frontmatter)) !== null) {
 		const name = match[1]!
 		const importPath = match[2]!
@@ -191,7 +189,7 @@ async function parseComponentInvocations(
 	const invocations: PageComponentInvocation[] = []
 	for (const [componentName, sourceFile] of imports) {
 		const tagRegex = new RegExp(`<${componentName}[\\s/>]`, 'g')
-		let tagMatch
+		let tagMatch: RegExpExecArray | null
 		while ((tagMatch = tagRegex.exec(template)) !== null) {
 			invocations.push({
 				componentName,
