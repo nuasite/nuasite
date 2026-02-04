@@ -72,6 +72,7 @@ export class ComponentRegistry {
 			const props = await this.extractProps(content)
 			const slots = this.extractSlots(content)
 			const description = this.extractDescription(content)
+			const previewWidth = this.extractPreviewWidth(content)
 
 			this.components.set(componentName, {
 				name: componentName,
@@ -79,6 +80,7 @@ export class ComponentRegistry {
 				props,
 				slots: slots.length > 0 ? slots : undefined,
 				description,
+				previewWidth,
 			})
 		} catch (error) {
 			console.warn(`[ComponentRegistry] Failed to parse ${filePath}:`, error)
@@ -320,6 +322,20 @@ export class ComponentRegistry {
 				.map(line => line.replace(/^\s*\*\s?/, '').trim())
 				.filter(Boolean)
 				.join(' ')
+		}
+		return undefined
+	}
+
+	/**
+	 * Extract @previewWidth value from JSDoc comment
+	 */
+	private extractPreviewWidth(content: string): number | undefined {
+		const match = content.match(/^---\n\/\*\*\s*([\s\S]*?)\s*\*\//)
+		if (match?.[1]) {
+			const widthMatch = match[1].match(/@previewWidth\s+(\d+)/)
+			if (widthMatch?.[1]) {
+				return parseInt(widthMatch[1], 10)
+			}
 		}
 		return undefined
 	}

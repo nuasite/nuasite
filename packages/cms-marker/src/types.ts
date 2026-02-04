@@ -38,6 +38,8 @@ export interface ComponentDefinition {
 	description?: string
 	slots?: string[]
 	previewUrl?: string
+	/** Viewport width (in px) used to render the preview iframe (default: 1280) */
+	previewWidth?: number
 }
 
 /** Image metadata for better tracking and integrity */
