@@ -315,6 +315,32 @@ export class ManifestWriter {
 	}
 
 	/**
+	 * Get page data for preview generation (pages and their components)
+	 */
+	getPageDataForPreviews(): Map<string, {
+		entries: Record<string, ManifestEntry>
+		components: Record<string, ComponentInstance>
+		collection?: CollectionEntry
+		seo?: PageSeoData
+	}> {
+		return this.pageManifests
+	}
+
+	/**
+	 * Get component definitions
+	 */
+	getComponentDefinitions(): Record<string, ComponentDefinition> {
+		return this.componentDefinitions
+	}
+
+	/**
+	 * Get the output directory
+	 */
+	getOutDir(): string {
+		return this.outDir
+	}
+
+	/**
 	 * Get available colors (for use in dev middleware)
 	 */
 	getAvailableColors(): AvailableColors | undefined {

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { getProjectRoot } from './config'
 import { extractComponentName, processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
+import { generateComponentPreviews } from './preview-generator'
 import {
 	clearSourceFinderCache,
 	extractOpeningTagWithLine,
@@ -455,6 +456,14 @@ export async function processBuildOutput(
 			errorLog(`  - ${relPath}: ${error.message}`)
 		}
 	}
+
+	// Generate component preview pages before finalizing manifest
+	// (preview URLs are written into componentDefinitions in-place)
+	await generateComponentPreviews(
+		outDir,
+		manifestWriter.getPageDataForPreviews(),
+		manifestWriter.getComponentDefinitions(),
+	)
 
 	// Finalize manifest (writes global manifest and waits for all per-page writes)
 	const stats = await manifestWriter.finalize()

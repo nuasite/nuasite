@@ -37,6 +37,7 @@ export interface ComponentDefinition {
 	props: ComponentProp[]
 	description?: string
 	slots?: string[]
+	previewUrl?: string
 }
 
 /** Image metadata for better tracking and integrity */
