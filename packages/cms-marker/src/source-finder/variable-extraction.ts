@@ -49,6 +49,57 @@ export function extractVariableDefinitions(ast: BabelFile, frontmatterStartLine:
 						extractArrayElements(init, varName, definitions, lineTransformer, line)
 					}
 				}
+
+				// Handle ObjectPattern (destructuring from Astro.props with default values)
+				// Pattern: const { title = ['a', 'b'] } = Astro.props
+				if (id?.type === 'ObjectPattern' && init?.type === 'MemberExpression') {
+					const object = init.object as BabelNode | undefined
+					const property = init.property as BabelNode | undefined
+
+					// Only process Astro.props destructuring
+					if (
+						object?.type === 'Identifier'
+						&& (object.name as string) === 'Astro'
+						&& property?.type === 'Identifier'
+						&& (property.name as string) === 'props'
+					) {
+						const properties = id.properties as BabelNode[] | undefined
+						for (const prop of properties ?? []) {
+							if (prop.type === 'ObjectProperty') {
+								const value = prop.value as BabelNode | undefined
+
+								// Handle default values: { title = [...] } or { heading: title = [...] }
+								if (value?.type === 'AssignmentPattern') {
+									const left = value.left as BabelNode | undefined
+									const right = value.right as BabelNode | undefined
+
+									// The local variable name is from `left` (e.g., 'title' in both cases)
+									if (left?.type === 'Identifier' && right) {
+										const localVarName = left.name as string
+										const loc = right.loc as { start: { line: number } } | undefined
+										const line = lineTransformer(loc?.start.line ?? 1)
+
+										// Extract the default value
+										const stringValue = getStringValue(right)
+										if (stringValue !== null) {
+											definitions.push({ name: localVarName, value: stringValue, line })
+										}
+
+										// Object expression default value
+										if (right.type === 'ObjectExpression') {
+											extractObjectProperties(right, localVarName, definitions, lineTransformer)
+										}
+
+										// Array expression default value
+										if (right.type === 'ArrayExpression') {
+											extractArrayElements(right, localVarName, definitions, lineTransformer, line)
+										}
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 

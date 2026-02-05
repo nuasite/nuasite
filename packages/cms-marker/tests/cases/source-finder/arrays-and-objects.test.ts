@@ -215,6 +215,114 @@ const numbers = ['One', 'Two', 'Three', 'Four', 'Five'];
 	})
 }, { setupAstro: false })
 
+withTempDir('findSourceLocation - Prop Default Array Values', (getCtx) => {
+	test('should find text from prop default array value', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Heading.astro',
+			`---
+const {
+  title = ['Už jste si toho přečetli dost,', 'je na čase se nám ozvat.'],
+} = Astro.props
+---
+<h1>{title[0]}</h1>
+<h2>{title[1]}</h2>
+`,
+		)
+
+		const result0 = await findSourceLocation('Už jste si toho přečetli dost,', 'h1')
+		const result1 = await findSourceLocation('je na čase se nám ozvat.', 'h2')
+
+		expect(result0).toBeDefined()
+		expect(result0?.file).toBe('src/components/Heading.astro')
+		expect(result0?.type).toBe('variable')
+		expect(result0?.variableName).toBe('title[0]')
+
+		expect(result1).toBeDefined()
+		expect(result1?.file).toBe('src/components/Heading.astro')
+		expect(result1?.type).toBe('variable')
+		expect(result1?.variableName).toBe('title[1]')
+	})
+
+	test('should find text from prop default object value', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Card.astro',
+			`---
+const {
+  config = { title: 'Default Title', subtitle: 'Default Subtitle' },
+} = Astro.props
+---
+<h1>{config.title}</h1>
+<p>{config.subtitle}</p>
+`,
+		)
+
+		const result = await findSourceLocation('Default Title', 'h1')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Card.astro')
+		expect(result?.type).toBe('variable')
+		expect(result?.variableName).toBe('config.title')
+	})
+
+	test('should find text from prop default with array of objects', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Links.astro',
+			`---
+const {
+  links = [
+    { text: 'Home', href: '/' },
+    { text: 'About', href: '/about' }
+  ],
+} = Astro.props
+---
+<a>{links[0].text}</a>
+<a>{links[1].text}</a>
+`,
+		)
+
+		const result0 = await findSourceLocation('Home', 'a')
+		const result1 = await findSourceLocation('About', 'a')
+
+		expect(result0).toBeDefined()
+		expect(result0?.file).toBe('src/components/Links.astro')
+		expect(result0?.type).toBe('variable')
+		expect(result0?.variableName).toBe('links[0].text')
+
+		expect(result1).toBeDefined()
+		expect(result1?.file).toBe('src/components/Links.astro')
+		expect(result1?.type).toBe('variable')
+		expect(result1?.variableName).toBe('links[1].text')
+	})
+
+	test('should find text from renamed prop with default value', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Hero.astro',
+			`---
+const {
+  heading: title = ['Line 1', 'Line 2'],
+} = Astro.props
+---
+<h1>{title[0]}</h1>
+`,
+		)
+
+		const result = await findSourceLocation('Line 1', 'h1')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Hero.astro')
+		expect(result?.type).toBe('variable')
+		expect(result?.variableName).toBe('title[0]')
+	})
+}, { setupAstro: false })
+
 withTempDir('findSourceLocation - Cross-File Prop Tracking', (getCtx) => {
 	test('should track array passed as expression prop between files', async () => {
 		const ctx = getCtx()
