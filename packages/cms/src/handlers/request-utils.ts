@@ -91,7 +91,7 @@ export function parseMultipartFile(body: Buffer, contentTypeHeader: string): Par
 		}
 
 		// Check if this is a file part
-		const dispositionMatch = headerSection.match(/Content-Disposition:\s*form-data;[^]*?filename="([^"]*)"/)
+		const dispositionMatch = headerSection.match(/Content-Disposition:\s*form-data;[\s\S]*?filename="([^"]*)"/)
 		if (!dispositionMatch) {
 			offset = nextBoundary
 			continue

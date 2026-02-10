@@ -20,7 +20,7 @@ export function createContemberStorageAdapter(options: ContemberStorageOptions):
 	function headers(): Record<string, string> {
 		const h: Record<string, string> = {}
 		if (sessionToken) {
-			h['Cookie'] = `NUA_SITE_SESSION_TOKEN=${sessionToken}`
+			h.Cookie = `NUA_SITE_SESSION_TOKEN=${sessionToken}`
 		}
 		return h
 	}

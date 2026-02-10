@@ -374,7 +374,7 @@ function parsePropsString(propsString?: string): Record<string, string> {
 		} else if (match[0].endsWith('{')) {
 			// Expression: count braces to find the matching close
 			let depth = 1
-			let start = regex.lastIndex
+			const start = regex.lastIndex
 			let i = start
 			while (i < propsString.length && depth > 0) {
 				if (propsString[i] === '{') depth++

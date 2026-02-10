@@ -382,7 +382,7 @@ export const AIChat = ({ callbacks }: AIChatProps) => {
 															? 'bg-cms-primary text-cms-primary-text self-end rounded-cms-lg rounded-br-cms-sm'
 															: 'bg-white/10 text-white self-start rounded-cms-lg rounded-bl-cms-sm cms-markdown border border-white/10'
 													}`}
-													// biome-ignore lint/security/noDangerouslySetInnerHtml: Markdown rendering requires innerHTML
+	
 													dangerouslySetInnerHTML={msg.role === 'assistant'
 														? { __html: renderMarkdown(msg.content) }
 														: undefined}
