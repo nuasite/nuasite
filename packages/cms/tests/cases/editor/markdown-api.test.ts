@@ -354,7 +354,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = () => mockXhr
+		global.XMLHttpRequest = function () { return mockXhr }
 
 		const file = new File(['test content'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
@@ -396,7 +396,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = () => mockXhr
+		global.XMLHttpRequest = function () { return mockXhr }
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		await uploadMedia(mockConfig, file, percent => progressValues.push(percent))
@@ -427,7 +427,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = () => mockXhr
+		global.XMLHttpRequest = function () { return mockXhr }
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
@@ -453,7 +453,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = () => mockXhr
+		global.XMLHttpRequest = function () { return mockXhr }
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
@@ -479,7 +479,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = () => mockXhr
+		global.XMLHttpRequest = function () { return mockXhr }
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
@@ -509,7 +509,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = () => mockXhr
+		global.XMLHttpRequest = function () { return mockXhr }
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
