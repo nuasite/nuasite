@@ -23,10 +23,15 @@
 		"@biomejs/biome": "catalog:build",
 		"@types/bun": "catalog:build",
 		"@types/js-yaml": "catalog:build",
+		"@happy-dom/global-registrator": "catalog:tests",
 		"dprint": "catalog:build",
+		"happy-dom": "catalog:tests",
 		"js-yaml": "catalog:build",
 		"json5": "catalog:build",
 		"typescript": "catalog:build"
+	},
+	"overrides": {
+		"vite": "^6"
 	},
 	"workspaces": {
 		"packages": [
@@ -63,6 +68,36 @@
 				"@tailwindcss/typography": "^0.5.19",
 				"flowbite": "3.1.2",
 				"tailwindcss": "4.1.16"
+			},
+			"tests": {
+				"happy-dom": "^20.6.0",
+				"@happy-dom/global-registrator": "^20.5.0"
+			},
+			"editor": {
+				"@milkdown/core": "^7.8.0",
+				"@milkdown/ctx": "^7.8.0",
+				"@milkdown/plugin-listener": "^7.8.0",
+				"@milkdown/preset-commonmark": "^7.8.0",
+				"@milkdown/preset-gfm": "^7.8.0",
+				"@milkdown/prose": "^7.8.0",
+				"@milkdown/utils": "^7.8.0",
+				"@preact/signals": "^2.6.1",
+				"@tailwindcss/postcss": "^4.1.17",
+				"autoprefixer": "^10.4.22",
+				"clsx": "^2.1.1",
+				"marked": "^17.0.1",
+				"postcss": "^8",
+				"preact": "^10.28.0",
+				"prosemirror-commands": "^1.7.1",
+				"prosemirror-inputrules": "^1.5.1",
+				"prosemirror-keymap": "^1.2.3",
+				"prosemirror-model": "^1.25.4",
+				"prosemirror-safari-ime-span": "^1.0.2",
+				"prosemirror-schema-list": "^1.5.1",
+				"prosemirror-state": "^1.4.4",
+				"prosemirror-transform": "^1.10.5",
+				"prosemirror-view": "^1.41.5",
+				"tailwind-merge": "^3.4.0"
 			}
 		}
 	}

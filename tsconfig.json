@@ -12,7 +12,7 @@
 			"path": "./packages/cli"
 		},
 		{
-			"path": "./packages/cms-marker"
+			"path": "./packages/cms"
 		},
 		{
 			"path": "./packages/components"
