@@ -1,0 +1,12 @@
+{
+	"extends": "../../../tsconfig.settings.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"emitDeclarationOnly": false,
+		"composite": false,
+		"lib": ["ESNext", "DOM"]
+	},
+	"references": [
+		{ "path": "../src" }
+	]
+}
