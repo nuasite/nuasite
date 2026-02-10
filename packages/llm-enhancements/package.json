@@ -35,10 +35,10 @@
 	"peerDependencies": {
 		"typescript": "catalog:build",
 		"vite": "catalog:build",
-		"@nuasite/cms-marker": "workspace:*"
+		"@nuasite/cms": "workspace:*"
 	},
 	"peerDependenciesMeta": {
-		"@nuasite/cms-marker": {
+		"@nuasite/cms": {
 			"optional": true
 		}
 	},

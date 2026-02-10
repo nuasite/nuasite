@@ -1,6 +1,6 @@
 import mdx from '@astrojs/mdx'
 import sitemap from '@astrojs/sitemap'
-import cmsMarker from '@nuasite/cms-marker'
+import cms from '@nuasite/cms'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroIntegration } from 'astro'
 import pageMarkdown from '../../llm-enhancements/src'
@@ -14,18 +14,18 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 		hooks: {
 			'astro:config:setup': ({ updateConfig, logger }) => {
 				const integrations: AstroIntegration[] = []
-				const vitePlugins: unknown[] = []
+				const vitePlugins = []
 
 				// Add Tailwind CSS Vite plugin
 				if (resolved.tailwindcss) {
-					vitePlugins.push(tailwindcss())
+					vitePlugins.push(...tailwindcss())
 					logger.info('Tailwind CSS enabled')
 				}
 
 				// Add nuasite integrations
-				if (resolved.cmsMarker !== false) {
-					integrations.push(cmsMarker(resolved.cmsMarker))
-					logger.info('CMS Marker enabled')
+				if (resolved.cms !== false) {
+					integrations.push(cms(resolved.cms))
+					logger.info('CMS enabled')
 				}
 
 				if (resolved.pageMarkdown !== false) {

@@ -41,7 +41,7 @@
 		"@astrojs/sitemap": "catalog:astro",
 		"@nuasite/llm-enhancements": "workspace:*",
 		"@nuasite/cli": "workspace:*",
-		"@nuasite/cms-marker": "workspace:*",
+		"@nuasite/cms": "workspace:*",
 		"@nuasite/components": "workspace:*",
 		"@nuasite/core": "workspace:*",
 		"@tailwindcss/vite": "catalog:ui",

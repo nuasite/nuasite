@@ -1,8 +1,7 @@
 {
 	"extends": "../tsconfig.settings.json",
 	"compilerOptions": {
-		"outDir": "../dist/types/tests",
-		"noEmit": true
+		"outDir": "../dist/types/tests"
 	},
 	"include": [
 		"./**/*.ts"

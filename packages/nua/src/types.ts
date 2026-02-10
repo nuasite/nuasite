@@ -1,16 +1,16 @@
-import type { Options as MdxOptions } from '@astrojs/mdx'
+import type { MdxOptions } from '@astrojs/mdx'
 import type { SitemapOptions } from '@astrojs/sitemap'
-import type { CmsMarkerOptions } from '@nuasite/cms-marker'
+import type { CmsMarkerOptions } from '../../cms/src'
 import type { PageMarkdownOptions } from '../../llm-enhancements/src'
 
-export type { Options as MdxOptions } from '@astrojs/mdx'
+export type { MdxOptions } from '@astrojs/mdx'
 export type { SitemapOptions } from '@astrojs/sitemap'
-export type { CmsMarkerOptions } from '@nuasite/cms-marker'
+export type { CmsMarkerOptions } from '../../cms/src'
 export type { PageMarkdownOptions } from '../../llm-enhancements/src'
 
 export interface NuaIntegrationOptions {
-	/** Enable/disable or configure @nuasite/cms-marker (default: true) */
-	cmsMarker?: boolean | CmsMarkerOptions
+	/** Enable/disable or configure @nuasite/astro-cms (default: true) */
+	cms?: boolean | CmsMarkerOptions
 	/** Enable/disable or configure @nuasite/llm-enhancements (default: true) */
 	pageMarkdown?: boolean | PageMarkdownOptions
 	/** Enable/disable or configure @astrojs/mdx (default: true) */
@@ -22,7 +22,7 @@ export interface NuaIntegrationOptions {
 }
 
 export interface ResolvedIntegrationOptions {
-	cmsMarker: CmsMarkerOptions | false
+	cms: CmsMarkerOptions | false
 	pageMarkdown: PageMarkdownOptions | false
 	mdx: MdxOptions | false
 	sitemap: SitemapOptions | false
@@ -40,7 +40,7 @@ function resolveOption<T extends object>(value: boolean | T | undefined, default
 
 export function resolveOptions(options: NuaIntegrationOptions = {}): ResolvedIntegrationOptions {
 	return {
-		cmsMarker: resolveOption(options.cmsMarker),
+		cms: resolveOption(options.cms),
 		pageMarkdown: resolveOption(options.pageMarkdown),
 		mdx: resolveOption(options.mdx),
 		sitemap: resolveOption(options.sitemap),

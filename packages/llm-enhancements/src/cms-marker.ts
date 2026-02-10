@@ -25,7 +25,7 @@ async function init() {
 	initialized = true
 
 	try {
-		const cmsMarker = await import('@nuasite/cms-marker')
+		const cmsMarker = await import('@nuasite/cms')
 		findCollectionSource = cmsMarker.findCollectionSource
 		parseMarkdownContent = cmsMarker.parseMarkdownContent
 	} catch {
@@ -49,8 +49,4 @@ export async function getCollectionContent(
 	}
 
 	return parseMarkdownContent(collectionInfo)
-}
-
-export function hasCmsMarker(): boolean {
-	return findCollectionSource !== undefined && parseMarkdownContent !== undefined
 }

@@ -1,9 +1,10 @@
 import { defineConfig as astroDefineConfig } from 'astro/config'
-import type { AstroUserConfig } from 'astro/config'
 import nua from './integration'
 import type { NuaIntegrationOptions } from './types'
 
 export type { NuaIntegrationOptions } from './types'
+
+type AstroUserConfig = Parameters<typeof astroDefineConfig>[0]
 
 export interface NuaConfig extends AstroUserConfig {
 	/**
