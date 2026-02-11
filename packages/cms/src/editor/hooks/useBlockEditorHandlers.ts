@@ -50,16 +50,16 @@ export function useBlockEditorHandlers({
 	config,
 	showToast,
 }: BlockEditorHandlersOptions) {
-	const [blockEditorRect, setBlockEditorRect] = useState<DOMRect | null>(null)
+	const [blockEditorCursor, setBlockEditorCursor] = useState<{ x: number; y: number } | null>(null)
 
 	/**
 	 * Open block editor for a component
 	 */
 	const handleComponentSelect = useCallback(
-		(componentId: string, rect: DOMRect) => {
+		(componentId: string, cursor: { x: number; y: number }) => {
 			signals.setCurrentComponentId(componentId)
 			signals.setBlockEditorOpen(true)
-			setBlockEditorRect(rect)
+			setBlockEditorCursor(cursor)
 		},
 		[],
 	)
@@ -70,7 +70,7 @@ export function useBlockEditorHandlers({
 	const handleBlockEditorClose = useCallback(() => {
 		signals.setBlockEditorOpen(false)
 		signals.setCurrentComponentId(null)
-		setBlockEditorRect(null)
+		setBlockEditorCursor(null)
 	}, [])
 
 	/**
@@ -253,7 +253,7 @@ export function useBlockEditorHandlers({
 	)
 
 	return {
-		blockEditorRect,
+		blockEditorCursor,
 		handleComponentSelect,
 		handleBlockEditorClose,
 		handleUpdateProps,

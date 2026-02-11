@@ -209,7 +209,7 @@ export function useElementDetection(): OutlineState {
 }
 
 export interface ComponentClickHandlerOptions {
-	onComponentSelect: (componentId: string, rect: DOMRect) => void
+	onComponentSelect: (componentId: string, cursor: { x: number; y: number }) => void
 }
 
 /**
@@ -269,7 +269,7 @@ export function useComponentClickHandler({
 					if (componentId) {
 						ev.preventDefault()
 						ev.stopPropagation()
-						onComponentSelect(componentId, rect)
+						onComponentSelect(componentId, { x: ev.clientX, y: ev.clientY })
 					}
 				}
 			}

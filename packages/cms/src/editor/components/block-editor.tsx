@@ -7,7 +7,7 @@ import type { ComponentProp, InsertPosition } from '../types'
 export interface BlockEditorProps {
 	visible: boolean
 	componentId: string | null
-	rect: DOMRect | null
+	cursor: { x: number; y: number } | null
 	onClose: () => void
 	onUpdateProps: (componentId: string, props: Record<string, any>) => void
 	onInsertComponent: (
@@ -24,7 +24,7 @@ type EditorMode = 'edit' | 'insert-picker' | 'insert-props' | 'confirm-remove'
 export function BlockEditor({
 	visible,
 	componentId,
-	rect,
+	cursor,
 	onClose,
 	onUpdateProps,
 	onInsertComponent,
@@ -79,7 +79,6 @@ export function BlockEditor({
 
 		const updatePosition = () => {
 			const editorWidth = LAYOUT.BLOCK_EDITOR_WIDTH
-			const editorHeight = LAYOUT.BLOCK_EDITOR_HEIGHT
 			const padding = LAYOUT.VIEWPORT_PADDING
 			const viewportWidth = window.innerWidth
 			const viewportHeight = window.innerHeight
@@ -87,18 +86,11 @@ export function BlockEditor({
 			let top: number
 			let left: number
 
-			if (rect) {
-				top = rect.bottom + padding
-				left = rect.left
+			if (cursor) {
+				top = cursor.y
+				left = cursor.x
 
-				if (top + editorHeight > viewportHeight - padding) {
-					top = Math.max(padding, rect.top - editorHeight - padding)
-				}
-
-				if (top < padding) {
-					top = Math.max(padding, (viewportHeight - editorHeight) / 2)
-				}
-
+				// Keep within viewport bounds
 				if (left + editorWidth > viewportWidth - padding) {
 					left = viewportWidth - editorWidth - padding
 				}
@@ -106,7 +98,7 @@ export function BlockEditor({
 					left = padding
 				}
 			} else {
-				top = (viewportHeight - editorHeight) / 2
+				top = viewportHeight / 2
 				left = (viewportWidth - editorWidth) / 2
 			}
 
@@ -119,13 +111,11 @@ export function BlockEditor({
 
 		updatePosition()
 		window.addEventListener('resize', updatePosition)
-		window.addEventListener('scroll', updatePosition)
 
 		return () => {
 			window.removeEventListener('resize', updatePosition)
-			window.removeEventListener('scroll', updatePosition)
 		}
-	}, [visible, rect])
+	}, [visible, cursor])
 
 	// Inject/remove inline mock preview into the real page at the insertion point
 	useEffect(() => {

@@ -109,7 +109,7 @@ const CmsUI = () => {
 	})
 
 	const {
-		blockEditorRect,
+		blockEditorCursor,
 		handleComponentSelect,
 		handleBlockEditorClose,
 		handleUpdateProps,
@@ -346,7 +346,7 @@ const CmsUI = () => {
 				<BlockEditor
 					visible={blockEditorState.isOpen && isEditing}
 					componentId={blockEditorState.currentComponentId}
-					rect={blockEditorRect}
+					cursor={blockEditorCursor}
 					onClose={handleBlockEditorClose}
 					onUpdateProps={handleUpdateProps}
 					onInsertComponent={handleInsertComponent}
