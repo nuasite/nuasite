@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/nuasite/nuasite/compare/v0.4.0...v0.5.0) (2026-02-11)
+
+
+### Features
+
+* **cms:** pre-bundle editor for npm distribution ([1cfee49](https://github.com/nuasite/nuasite/commit/1cfee494bc6c1ba2fcdc7477ed6f39a627001c64))
+
 ## [0.4.0](https://github.com/nuasite/nuasite/compare/v0.3.1...v0.4.0) (2026-02-11)
 
 ### Features
