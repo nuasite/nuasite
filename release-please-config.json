@@ -1,0 +1,20 @@
+{
+	"packages": {
+		".": {
+			"release-type": "node",
+			"include-component-in-tag": false,
+			"bump-minor-pre-major": true,
+			"bootstrap-sha": "f52aeb6",
+			"extra-files": [
+				"packages/agent-summary/package.json",
+				"packages/cli/package.json",
+				"packages/cms/package.json",
+				"packages/components/package.json",
+				"packages/core/package.json",
+				"packages/llm-enhancements/package.json",
+				"packages/nua/package.json",
+				"packages/playground/package.json"
+			]
+		}
+	}
+}

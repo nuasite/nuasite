@@ -16,7 +16,7 @@
 		"ts:build": "tsc --build",
 		"ts:watch": "tsc --build --watch",
 		"ts:clean": "tsc --build --clean",
-		"tag-version": "./scripts/tag-version/run.sh $@"
+		"tag-version": "echo 'DEPRECATED: Releases are now automated via Release Please. Push conventional commits to main and merge the release PR.' && exit 1"
 	},
 	"devDependencies": {
 		"@actions/core": "catalog:build",
