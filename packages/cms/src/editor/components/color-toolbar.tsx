@@ -19,7 +19,13 @@ export interface ColorToolbarProps {
 	element: HTMLElement | null
 	availableColors: AvailableColors | undefined
 	currentClasses: Record<string, Attribute> | undefined
-	onColorChange?: (type: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText', oldClass: string, newClass: string, previousClassName: string, previousStyleCssText: string) => void
+	onColorChange?: (
+		type: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText',
+		oldClass: string,
+		newClass: string,
+		previousClassName: string,
+		previousStyleCssText: string,
+	) => void
 	onClose?: () => void
 }
 

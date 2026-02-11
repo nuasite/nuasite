@@ -32,7 +32,6 @@ import {
 	toggleShowOriginal,
 } from './editor'
 import { performRedo, performUndo } from './history'
-import CMS_STYLES from './styles.css?inline'
 import {
 	useAIHandlers,
 	useBlockEditorHandlers,
@@ -53,6 +52,7 @@ import {
 } from './signals'
 import * as signals from './signals'
 import { hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, saveSettingsToStorage } from './storage'
+import CMS_STYLES from './styles.css?inline'
 import { generateCSSVariables, resolveTheme } from './themes'
 
 const CmsUI = () => {
@@ -185,12 +185,21 @@ const CmsUI = () => {
 	}, [])
 
 	// Color toolbar handlers
-	const handleColorToolbarChange = useCallback((colorType: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText', oldClass: string, newClass: string, previousClassName: string, previousStyleCssText: string) => {
-		const targetId = signals.colorEditorState.value.targetElementId
-		if (!targetId) return
+	const handleColorToolbarChange = useCallback(
+		(
+			colorType: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText',
+			oldClass: string,
+			newClass: string,
+			previousClassName: string,
+			previousStyleCssText: string,
+		) => {
+			const targetId = signals.colorEditorState.value.targetElementId
+			if (!targetId) return
 
-		handleColorChange(config, targetId, colorType, oldClass, newClass, updateUI, previousClassName, previousStyleCssText)
-	}, [config, updateUI])
+			handleColorChange(config, targetId, colorType, oldClass, newClass, updateUI, previousClassName, previousStyleCssText)
+		},
+		[config, updateUI],
+	)
 
 	const handleColorToolbarClose = useCallback(() => {
 		signals.closeColorEditor()
