@@ -52,7 +52,7 @@ import {
 	updateSettings,
 } from './signals'
 import * as signals from './signals'
-import { hasPendingEntryNavigation, loadSettingsFromStorage, saveSettingsToStorage } from './storage'
+import { hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, saveSettingsToStorage } from './storage'
 import { generateCSSVariables, resolveTheme } from './themes'
 
 const CmsUI = () => {
@@ -79,6 +79,13 @@ const CmsUI = () => {
 			signals.setManifest(manifest)
 		}).catch(() => {})
 	}, [])
+
+	// Auto-restore edit mode if it was active before a page refresh (e.g. after save triggers HMR)
+	useEffect(() => {
+		if (loadEditingState() && !signals.isEditing.value) {
+			startEditMode(config, updateUI)
+		}
+	}, [config, updateUI])
 
 	// Auto-open markdown editor when there's a pending entry navigation from collections browser
 	useEffect(() => {

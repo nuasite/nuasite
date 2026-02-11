@@ -28,6 +28,7 @@ import {
 	saveAttributeEditsToStorage,
 	saveColorEditsToStorage,
 	saveEditsToStorage,
+	saveEditingState,
 	saveImageEditsToStorage,
 } from './storage'
 import type { AttributeChangePayload, ChangePayload, CmsConfig, DeploymentStatusResponse, ManifestEntry, SavedAttributeEdit } from './types'
@@ -92,6 +93,7 @@ export async function startEditMode(
 	onStateChange?: () => void,
 ): Promise<void> {
 	signals.setEditing(true)
+	saveEditingState(true)
 	disableAllInteractiveElements()
 	initHighlightSystem()
 	onStateChange?.()
@@ -310,6 +312,7 @@ export async function startEditMode(
  */
 export function stopEditMode(onStateChange?: () => void): void {
 	signals.setEditing(false)
+	saveEditingState(false)
 	signals.setShowingOriginal(false)
 	enableAllInteractiveElements()
 	cleanupHighlightSystem()

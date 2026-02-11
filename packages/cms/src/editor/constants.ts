@@ -89,6 +89,7 @@ export const STORAGE_KEYS = {
 	PENDING_ATTRIBUTE_EDITS: 'cms-pending-attribute-edits',
 	SETTINGS: 'cms-settings',
 	PENDING_ENTRY_NAVIGATION: 'cms-pending-entry-navigation',
+	IS_EDITING: 'cms-is-editing',
 } as const
 
 /**

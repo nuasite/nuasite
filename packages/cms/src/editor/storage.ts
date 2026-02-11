@@ -255,6 +255,30 @@ export function loadPendingEntryNavigation(): PendingEntryNavigation | null {
 }
 
 // ============================================================================
+// Editing State (persist edit mode across HMR/refresh)
+// ============================================================================
+
+export function saveEditingState(isEditing: boolean): void {
+	try {
+		if (isEditing) {
+			sessionStorage.setItem(STORAGE_KEYS.IS_EDITING, '1')
+		} else {
+			sessionStorage.removeItem(STORAGE_KEYS.IS_EDITING)
+		}
+	} catch (e) {
+		console.warn('[CMS] Failed to save editing state:', e)
+	}
+}
+
+export function loadEditingState(): boolean {
+	try {
+		return sessionStorage.getItem(STORAGE_KEYS.IS_EDITING) === '1'
+	} catch {
+		return false
+	}
+}
+
+// ============================================================================
 // Clear All
 // ============================================================================
 
