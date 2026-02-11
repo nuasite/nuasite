@@ -17,6 +17,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.pr }}
+
       - name: Update lockfile
         if: ${{ steps.release.outputs.pr }}
         env:
