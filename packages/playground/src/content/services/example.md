@@ -1,33 +1,38 @@
 ---
-title: Example
-subtitle: Speed, precision, and flexibility.
-heroImageDesktop: https://example.com/images/hero-desktop.jpg
-heroImageMobile: https://example.com/images/hero-mobile.jpg
+title: Visual Editing
+subtitle: Edit your site content directly on the page.
+heroImageDesktop: https://images.unsplash.com/photo-1542744094-3a31f272c490?w=2560&h=653&fit=crop
+heroImageMobile: https://images.unsplash.com/photo-1542744094-3a31f272c490?w=1000&h=1500&fit=crop
 stats:
-  - value: "30+"
-    label: years of experience
-  - value: "24/7"
-    label: continuous operation
-  - value: "95%"
-    label: first attempt success rate
+  - value: "0"
+    label: config lines needed
+  - value: "<1s"
+    label: save-to-preview
+  - value: "100%"
+    label: of text elements editable
 ctaText: >-
-  Need to quickly validate your mind?
-  Or just test a new idea in practice?
-  ...
-ctaLink: /contact/
+  Want to let editors update content
+  without touching code?
+  That's what the CMS is for.
+ctaLink: /cms/
 ---
 
-**Speed, precision, and flexibility.**
+**Edit your site content directly on the page.**
 
-### Advantages
+### How it works
 
-- Rapid prototyping on scaled samples – verify functionality and design before series production.
-- Material flexibility – working with various materials, including environmentally friendly variants.
-- Scaled models for presentation – displays, POS materials, and packaging for design approval.
-- Dimensional and functional testing – finding the most efficient solutions before production.
-- Small batch production or auxiliary assembly materials – ideal for testing individual solutions.
-- No shape limitations – our technology enables creation of complex shapes that are difficult to achieve with other methods.
+- Run your Astro site in dev mode — the CMS overlay loads automatically.
+- Click any text, heading, or image on the page.
+- Edit the value in the inline panel and hit save.
+- Changes are written back to the source file immediately.
 
-### Technology That Saves Time and Costs
+### No admin panel
 
-With automated processes and a wide portfolio of materials, we can significantly reduce development time and lower costs for prototypes and test series production.
+There's no separate dashboard to learn. The editing interface lives on the page itself. Editors see exactly what visitors will see, with editable regions highlighted on hover.
+
+### What you can edit
+
+- Text content and headings
+- Image sources and alt text
+- Link URLs
+- Markdown frontmatter fields in collection entries

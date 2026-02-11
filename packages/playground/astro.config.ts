@@ -1,4 +1,4 @@
 import { defineConfig } from '@nuasite/nua/config'
 
 // https://astro.build/config
-export default defineConfig()
+export default defineConfig({})
