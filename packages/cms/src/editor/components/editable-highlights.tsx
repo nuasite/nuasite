@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
+import { getOutlineColor } from '../dom'
 import * as signals from '../signals'
 
 export interface EditableHighlightsProps {
@@ -224,6 +225,7 @@ function collectEditableElements(): HighlightRect[] {
  * Render highlight overlays efficiently by reusing DOM elements
  */
 function renderHighlights(container: HTMLDivElement, highlights: HighlightRect[]): void {
+	const outlineColor = getOutlineColor()
 	// Get existing overlay elements
 	const existingOverlays = container.querySelectorAll('.highlight-overlay')
 	const existingCount = existingOverlays.length
@@ -246,11 +248,12 @@ function renderHighlights(container: HTMLDivElement, highlights: HighlightRect[]
 		// Update class based on type
 		overlay.className = `highlight-overlay ${highlight.type}`
 
-		// Update position
+		// Update position and color
 		overlay.style.left = `${highlight.rect.left - 6}px`
 		overlay.style.top = `${highlight.rect.top - 6}px`
 		overlay.style.width = `${highlight.rect.width + 12}px`
 		overlay.style.height = `${highlight.rect.height + 12}px`
+		overlay.style.borderColor = outlineColor
 	})
 
 	// Remove extra overlays

@@ -8,6 +8,49 @@ import {
 import { CSS } from './constants'
 import type { ChildCmsElement } from './types'
 
+/**
+ * Parse an rgb/rgba color string into r, g, b components.
+ */
+function parseRgb(color: string): { r: number; g: number; b: number } | null {
+	const match = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/)
+	if (!match) return null
+	return { r: Number(match[1]), g: Number(match[2]), b: Number(match[3]) }
+}
+
+/**
+ * Calculate relative luminance of an sRGB color (0 = black, 1 = white).
+ */
+function relativeLuminance(r: number, g: number, b: number): number {
+	const toLinear = (c: number) => {
+		const s = c / 255
+		return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+	}
+	return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
+}
+
+/**
+ * Detect whether the page has a dark background by checking the computed
+ * background color of the body and html elements.
+ */
+export function isPageDark(): boolean {
+	if (typeof document === 'undefined') return false
+	for (const el of [document.body, document.documentElement]) {
+		if (!el) continue
+		const bg = getComputedStyle(el).backgroundColor
+		if (!bg || bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') continue
+		const parsed = parseRgb(bg)
+		if (parsed) return relativeLuminance(parsed.r, parsed.g, parsed.b) < 0.4
+	}
+	return false
+}
+
+/**
+ * Get an outline color that contrasts with the page background.
+ */
+export function getOutlineColor(): string {
+	return isPageDark() ? '#FFFFFF' : '#1A1A1A'
+}
+
 /** Style element for contenteditable focus styles injected into the host page */
 let focusStyleElement: HTMLStyleElement | null = null
 
@@ -253,11 +296,13 @@ export function cleanupHighlightSystem(): void {
  */
 function injectFocusStyles(): void {
 	if (focusStyleElement) return
+	const dark = isPageDark()
+	const focusColor = dark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(26, 26, 26, 0.15)'
 	focusStyleElement = document.createElement('style')
 	focusStyleElement.id = 'cms-focus-styles'
 	focusStyleElement.textContent = `
 		[contenteditable="true"][data-cms-id]:focus {
-			outline: 2px solid rgba(26, 26, 26, 0.15);
+			outline: 2px solid ${focusColor};
 			outline-offset: 6px;
 			border-radius: 4px;
 		}

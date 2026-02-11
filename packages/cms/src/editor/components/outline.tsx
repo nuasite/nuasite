@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks'
 import { getColorPreview, parseColorClass } from '../color-utils'
 import { Z_INDEX } from '../constants'
+import { isPageDark } from '../dom'
 import * as signals from '../signals'
 
 export interface OutlineProps {
@@ -226,14 +227,18 @@ export function Outline(
 		overlayRef.current.style.width = `${width}px`
 		overlayRef.current.style.height = `${height}px`
 
+		// Detect page brightness for contrast-aware outline colors
+		const dark = isPageDark()
+		const outlineColor = dark ? '#FFFFFF' : '#1A1A1A'
+
 		// Different styling for components vs text elements
 		if (isComponent) {
-			overlayRef.current.style.border = `2px solid #1A1A1A` // Dark border
-			overlayRef.current.style.backgroundColor = 'rgba(0, 0, 0, 0.03)'
-			overlayRef.current.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.08)'
+			overlayRef.current.style.border = `2px solid ${outlineColor}`
+			overlayRef.current.style.backgroundColor = dark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)'
+			overlayRef.current.style.boxShadow = dark ? '0 4px 16px rgba(255, 255, 255, 0.08)' : '0 4px 16px rgba(0, 0, 0, 0.08)'
 			labelRef.current.style.display = 'flex'
-			labelRef.current.style.backgroundColor = '#1A1A1A'
-			labelRef.current.style.color = 'white'
+			labelRef.current.style.backgroundColor = dark ? '#FFFFFF' : '#1A1A1A'
+			labelRef.current.style.color = dark ? '#1A1A1A' : 'white'
 			toolbarRef.current.className = 'element-toolbar hidden' // Hide toolbar for components
 
 			// Build label content
@@ -280,7 +285,7 @@ export function Outline(
 				labelRef.current.style.left = `${labelLeft}px`
 			}
 		} else {
-			overlayRef.current.style.border = `2px dashed #1A1A1A`
+			overlayRef.current.style.border = `2px dashed ${outlineColor}`
 			overlayRef.current.style.backgroundColor = 'transparent'
 			overlayRef.current.style.boxShadow = 'none'
 			labelRef.current.style.display = 'none'
