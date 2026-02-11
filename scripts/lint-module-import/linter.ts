@@ -17,6 +17,12 @@ const processPackage = async (dir: string, projectList: ProjectList) => {
 	const excludeGlob = new Glob(`${dir}/**/src/generated/**`)
 	const allFiles = Array.from(glob.scanSync())
 	const excludedFiles = new Set(Array.from(excludeGlob.scanSync()))
+	// Exclude pre-bundled editor source (bundled into dist/editor.js)
+	if (dir.endsWith('/cms')) {
+		for (const f of allFiles) {
+			if (f.includes('/src/editor/')) excludedFiles.add(f)
+		}
+	}
 	const files = allFiles.filter(file => !excludedFiles.has(file))
 	const contents = await Promise.all(files.map(async (it): Promise<[file: string, content: string]> => [it, await fs.readFile(it, 'utf-8')]))
 	const imports = new Set<string>()
