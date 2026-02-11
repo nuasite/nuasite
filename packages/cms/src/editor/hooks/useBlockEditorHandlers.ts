@@ -1,8 +1,29 @@
 import { useCallback, useState } from 'preact/hooks'
 import { logDebug } from '../dom'
 import { startDeploymentPolling } from '../editor'
+import { getComponentInstances } from '../manifest'
 import * as signals from '../signals'
-import type { CmsConfig, InsertPosition } from '../types'
+import type { CmsConfig, ComponentInstance, CmsManifest, InsertPosition } from '../types'
+
+/**
+ * Detect whether a component is rendered from a data array via `.map()`.
+ * Heuristic: if multiple component instances share the same name AND the same
+ * invocationSourcePath, they are likely array-rendered.
+ */
+function isArrayRendered(manifest: CmsManifest, component: ComponentInstance): boolean {
+	const instances = getComponentInstances(manifest)
+	let count = 0
+	for (const c of Object.values(instances)) {
+		if (
+			c.componentName === component.componentName
+			&& c.invocationSourcePath === component.invocationSourcePath
+		) {
+			count++
+			if (count > 1) return true
+		}
+	}
+	return false
+}
 
 /** Collapse a DOM element with a smooth height transition */
 function collapseElement(el: Element) {
@@ -65,7 +86,7 @@ export function useBlockEditorHandlers({
 	)
 
 	/**
-	 * Insert a new component
+	 * Insert a new component (or add array item if array-rendered)
 	 */
 	const handleInsertComponent = useCallback(
 		async (
@@ -84,6 +105,11 @@ export function useBlockEditorHandlers({
 				props,
 			)
 
+			// Check if this is an array-rendered component
+			const currentManifest = signals.manifest.value
+			const refComponent = currentManifest.components[referenceComponentId]
+			const arrayMode = refComponent && isArrayRendered(currentManifest, refComponent)
+
 			// Clone the existing mock preview before the block editor unmounts and removes it
 			const existingMock = document.querySelector('[data-cms-preview-mock]') as HTMLElement | null
 			let previewEl: HTMLElement | null = null
@@ -96,30 +122,55 @@ export function useBlockEditorHandlers({
 				existingMock.parentNode?.insertBefore(previewEl, existingMock.nextSibling)
 			}
 
-			// Call API to insert the component in source code
 			try {
-				const response = await fetch(`${config.apiBase}/insert-component`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					credentials: 'include',
-					body: JSON.stringify({
-						position,
-						referenceComponentId,
-						componentName,
-						props,
-						meta: {
-							source: 'inline-editor',
-							url: window.location.href,
-						},
-					}),
-				})
+				if (arrayMode) {
+					// Route to array-item endpoint
+					const response = await fetch(`${config.apiBase}/add-array-item`, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						credentials: 'include',
+						body: JSON.stringify({
+							referenceComponentId,
+							position,
+							props,
+							meta: {
+								source: 'inline-editor',
+								url: window.location.href,
+							},
+						}),
+					})
 
-				if (!response.ok) {
-					const error = await response.text()
-					throw new Error(error || 'Failed to insert component')
+					if (!response.ok) {
+						const error = await response.text()
+						throw new Error(error || 'Failed to add array item')
+					}
+
+					showToast(`Item added ${position} current item`, 'success')
+				} else {
+					// Standard component insertion
+					const response = await fetch(`${config.apiBase}/insert-component`, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						credentials: 'include',
+						body: JSON.stringify({
+							position,
+							referenceComponentId,
+							componentName,
+							props,
+							meta: {
+								source: 'inline-editor',
+								url: window.location.href,
+							},
+						}),
+					})
+
+					if (!response.ok) {
+						const error = await response.text()
+						throw new Error(error || 'Failed to insert component')
+					}
+
+					showToast(`${componentName} inserted ${position} component`, 'success')
 				}
-
-				showToast(`${componentName} inserted ${position} component`, 'success')
 
 				// Trigger deployment polling after successful insert
 				startDeploymentPolling(config)
@@ -129,18 +180,23 @@ export function useBlockEditorHandlers({
 				// Remove the preview on failure
 				previewEl?.remove()
 
-				showToast('Failed to insert component', 'error')
+				showToast(arrayMode ? 'Failed to add array item' : 'Failed to insert component', 'error')
 			}
 		},
 		[config.apiBase, config.debug, config, showToast],
 	)
 
 	/**
-	 * Remove a block/component
+	 * Remove a block/component (or remove array item if array-rendered)
 	 */
 	const handleRemoveBlock = useCallback(
 		async (componentId: string) => {
 			logDebug(config.debug, 'Remove block:', componentId)
+
+			// Check if this is an array-rendered component
+			const currentManifest = signals.manifest.value
+			const component = currentManifest.components[componentId]
+			const arrayMode = component && isArrayRendered(currentManifest, component)
 
 			// Find the element in the DOM
 			const componentEl = document.querySelector(
@@ -154,7 +210,8 @@ export function useBlockEditorHandlers({
 			}
 
 			try {
-				const response = await fetch(`${config.apiBase}/remove-component`, {
+				const endpoint = arrayMode ? 'remove-array-item' : 'remove-component'
+				const response = await fetch(`${config.apiBase}/${endpoint}`, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					credentials: 'include',
@@ -169,10 +226,10 @@ export function useBlockEditorHandlers({
 
 				if (!response.ok) {
 					const error = await response.text()
-					throw new Error(error || 'Failed to remove component')
+					throw new Error(error || `Failed to ${arrayMode ? 'remove item' : 'remove component'}`)
 				}
 
-				showToast('Component removed', 'success')
+				showToast(arrayMode ? 'Item removed' : 'Component removed', 'success')
 
 				// Trigger deployment polling after successful remove
 				startDeploymentPolling(config)
@@ -183,7 +240,7 @@ export function useBlockEditorHandlers({
 				}
 			} catch (error) {
 				console.error('[CMS] Failed to remove component:', error)
-				showToast('Failed to remove component', 'error')
+				showToast(arrayMode ? 'Failed to remove item' : 'Failed to remove component', 'error')
 
 				// Restore the component's appearance on failure
 				if (componentEl) {

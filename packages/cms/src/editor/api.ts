@@ -247,6 +247,78 @@ export interface RemoveComponentResponse {
 	error?: string
 }
 
+export interface AddArrayItemResponse {
+	success: boolean
+	message?: string
+	sourceFile?: string
+	error?: string
+}
+
+export async function addArrayItem(
+	apiBase: string,
+	referenceComponentId: string,
+	position: 'before' | 'after',
+	props: Record<string, unknown>,
+): Promise<AddArrayItemResponse> {
+	const res = await fetchWithTimeout(`${apiBase}/add-array-item`, {
+		method: 'POST',
+		credentials: 'include',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({
+			referenceComponentId,
+			position,
+			props,
+			meta: {
+				source: 'inline-editor',
+				url: window.location.href,
+			},
+		}),
+	})
+
+	if (!res.ok) {
+		const text = await res.text().catch(() => '')
+		throw new Error(`Add array item failed (${res.status}): ${text || res.statusText}`)
+	}
+
+	return res.json()
+}
+
+export interface RemoveArrayItemResponse {
+	success: boolean
+	message?: string
+	sourceFile?: string
+	error?: string
+}
+
+export async function removeArrayItem(
+	apiBase: string,
+	componentId: string,
+): Promise<RemoveArrayItemResponse> {
+	const res = await fetchWithTimeout(`${apiBase}/remove-array-item`, {
+		method: 'POST',
+		credentials: 'include',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({
+			componentId,
+			meta: {
+				source: 'inline-editor',
+				url: window.location.href,
+			},
+		}),
+	})
+
+	if (!res.ok) {
+		const text = await res.text().catch(() => '')
+		throw new Error(`Remove array item failed (${res.status}): ${text || res.statusText}`)
+	}
+
+	return res.json()
+}
+
 export async function removeComponent(
 	apiBase: string,
 	componentId: string,

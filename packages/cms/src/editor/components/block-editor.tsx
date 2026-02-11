@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { manifest } from '../signals'
 import { LAYOUT } from '../constants'
-import { getComponentDefinition, getComponentDefinitions, getComponentInstance } from '../manifest'
+import { getComponentDefinition, getComponentDefinitions, getComponentInstance, getComponentInstances } from '../manifest'
 import type { ComponentProp, InsertPosition } from '../types'
 
 export interface BlockEditorProps {
@@ -37,10 +37,36 @@ export function BlockEditor({
 	const containerRef = useRef<HTMLDivElement>(null)
 	const mockPreviewRef = useRef<HTMLElement | null>(null)
 	const removeOverlayRef = useRef<HTMLElement | null>(null)
-	const [editorPosition, setEditorPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+	const [editorPosition, setEditorPosition] = useState<{ top: number; left: number; maxHeight: number }>({ top: 0, left: 0, maxHeight: 0 })
 	const componentDefinitions = getComponentDefinitions(manifest.value)
 	const currentInstance = componentId ? getComponentInstance(manifest.value, componentId) : null
 	const currentDefinition = currentInstance ? getComponentDefinition(manifest.value, currentInstance.componentName) : null
+
+	// Detect if this component is rendered from a data array (.map pattern)
+	const isArrayItem = useMemo(() => {
+		if (!currentInstance) return false
+		const instances = getComponentInstances(manifest.value)
+		let count = 0
+		for (const c of Object.values(instances)) {
+			if (
+				c.componentName === currentInstance.componentName
+				&& c.invocationSourcePath === currentInstance.invocationSourcePath
+			) {
+				count++
+				if (count > 1) return true
+			}
+		}
+		return false
+	}, [currentInstance])
+
+	// Reset internal state when modal opens or a different component is selected
+	useEffect(() => {
+		if (visible) {
+			setMode('edit')
+			setSelectedComponent(null)
+			setInsertPosition('after')
+		}
+	}, [visible, componentId])
 
 	useEffect(() => {
 		if (currentInstance) {
@@ -84,7 +110,11 @@ export function BlockEditor({
 				left = (viewportWidth - editorWidth) / 2
 			}
 
-			setEditorPosition({ top, left })
+			// Clamp top so the panel never extends past the viewport bottom
+			top = Math.max(padding, Math.min(top, viewportHeight - padding - 100))
+			const maxHeight = viewportHeight - top - padding
+
+			setEditorPosition({ top, left, maxHeight })
 		}
 
 		updatePosition()
@@ -217,6 +247,26 @@ export function BlockEditor({
 
 	const handleStartInsert = (position: InsertPosition) => {
 		setInsertPosition(position)
+
+		if (isArrayItem && currentInstance) {
+			// For array items, skip the component picker — use the same component type
+			const definition = componentDefinitions[currentInstance.componentName]
+			if (definition) {
+				const defaultProps: Record<string, any> = {}
+				for (const prop of definition.props) {
+					if (prop.defaultValue !== undefined) {
+						defaultProps[prop.name] = prop.defaultValue
+					} else if (prop.required) {
+						defaultProps[prop.name] = ''
+					}
+				}
+				setSelectedComponent(currentInstance.componentName)
+				setPropValues(defaultProps)
+				setMode('insert-props')
+				return
+			}
+		}
+
 		setMode('insert-picker')
 		setSelectedComponent(null)
 		setPropValues({})
@@ -272,10 +322,11 @@ export function BlockEditor({
 				data-cms-ui
 				onMouseDown={(e: MouseEvent) => e.stopPropagation()}
 				onClick={(e: MouseEvent) => e.stopPropagation()}
-				class="fixed z-2147483647 w-100 max-w-[calc(100vw-32px)] max-h-[calc(100vh-32px)] bg-cms-dark shadow-[0_8px_32px_rgba(0,0,0,0.4)] font-sans text-sm overflow-hidden flex flex-col rounded-cms-xl border border-white/10"
+				class="fixed z-2147483647 w-100 max-w-[calc(100vw-32px)] bg-cms-dark shadow-[0_8px_32px_rgba(0,0,0,0.4)] font-sans text-sm overflow-hidden flex flex-col rounded-cms-xl border border-white/10"
 				style={{
 					top: `${editorPosition.top}px`,
 					left: `${editorPosition.left}px`,
+					maxHeight: `${editorPosition.maxHeight}px`,
 				}}
 			>
 				{/* Header */}
@@ -283,18 +334,22 @@ export function BlockEditor({
 					<span class="font-semibold text-white">
 						{mode === 'edit'
 							? (
-								currentDefinition ? `Edit ${currentDefinition.name}` : 'Block Editor'
+								currentDefinition
+									? (isArrayItem ? `Edit ${currentDefinition.name} Item` : `Edit ${currentDefinition.name}`)
+									: 'Block Editor'
 							)
 							: mode === 'confirm-remove'
 							? (
-								`Remove ${currentDefinition?.name ?? 'Component'}`
+								isArrayItem
+									? `Remove ${currentDefinition?.name ?? ''} Item`
+									: `Remove ${currentDefinition?.name ?? 'Component'}`
 							)
 							: mode === 'insert-picker'
 							? (
 								`Insert ${insertPosition === 'before' ? 'Before' : 'After'}`
 							)
 							: (
-								`Add ${selectedComponent}`
+								isArrayItem ? `Add ${selectedComponent} Item` : `Add ${selectedComponent}`
 							)}
 					</span>
 					<button
@@ -316,13 +371,13 @@ export function BlockEditor({
 										onClick={() => handleStartInsert('before')}
 										class="flex-1 py-2.5 px-3 bg-white/10 text-white/80 rounded-cms-md cursor-pointer text-[13px] font-medium flex items-center justify-center gap-1.5 hover:bg-white/20 hover:text-white transition-colors"
 									>
-										<span class="text-base">↑</span> Insert before
+										<span class="text-base">↑</span> {isArrayItem ? 'Add item before' : 'Insert before'}
 									</button>
 									<button
 										onClick={() => handleStartInsert('after')}
 										class="flex-1 py-2.5 px-3 bg-white/10 text-white/80 rounded-cms-md cursor-pointer text-[13px] font-medium flex items-center justify-center gap-1.5 hover:bg-white/20 hover:text-white transition-colors"
 									>
-										<span class="text-base">↓</span> Insert after
+										<span class="text-base">↓</span> {isArrayItem ? 'Add item after' : 'Insert after'}
 									</button>
 								</div>
 
@@ -347,7 +402,7 @@ export function BlockEditor({
 										onClick={() => setMode('confirm-remove')}
 										class="px-4 py-2.5 bg-cms-error text-white rounded-cms-pill cursor-pointer hover:bg-red-600 transition-colors font-medium"
 									>
-										Remove
+										{isArrayItem ? 'Remove item' : 'Remove'}
 									</button>
 									<div class="flex gap-2">
 										<button
@@ -370,7 +425,10 @@ export function BlockEditor({
 						? (
 							<div class="text-center py-4">
 								<div class="px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-cms-md mb-5 text-[13px] text-white">
-									The <strong>{currentDefinition?.name}</strong> component highlighted in the page will be removed. This cannot be undone.
+									{isArrayItem
+										? <>This <strong>{currentDefinition?.name}</strong> item will be removed from the data array. This cannot be undone.</>
+										: <>The <strong>{currentDefinition?.name}</strong> component highlighted in the page will be removed. This cannot be undone.</>
+									}
 								</div>
 								<div class="flex gap-2 justify-end pt-4 border-t border-white/10 mt-4">
 									<button
@@ -388,7 +446,7 @@ export function BlockEditor({
 										}}
 										class="px-4 py-2.5 bg-cms-error text-white rounded-cms-pill cursor-pointer hover:bg-red-600 transition-colors font-medium"
 									>
-										Confirm remove
+										{isArrayItem ? 'Confirm remove item' : 'Confirm remove'}
 									</button>
 								</div>
 							</div>
@@ -399,7 +457,10 @@ export function BlockEditor({
 								{/* New component props */}
 								<div class="mb-5">
 									<div class="px-4 py-3 bg-white/10 rounded-cms-md mb-4 text-[13px] text-white">
-										Inserting <strong>{selectedComponent}</strong> {insertPosition} current component
+										{isArrayItem
+											? <>Adding new <strong>{selectedComponent}</strong> item {insertPosition} current item</>
+											: <>Inserting <strong>{selectedComponent}</strong> {insertPosition} current component</>
+										}
 									</div>
 									{componentDefinitions[selectedComponent]?.props.map((prop) => (
 										<PropEditor
@@ -413,7 +474,7 @@ export function BlockEditor({
 
 								<div class="flex gap-2 justify-end pt-4 border-t border-white/10 mt-4">
 									<button
-										onClick={() => setMode('insert-picker')}
+										onClick={() => isArrayItem ? handleBackToEdit() : setMode('insert-picker')}
 										class="px-4 py-2.5 bg-white/10 text-white/80 rounded-cms-pill cursor-pointer hover:bg-white/20 hover:text-white transition-colors font-medium"
 									>
 										Back
@@ -422,7 +483,7 @@ export function BlockEditor({
 										onClick={handleConfirmInsert}
 										class="px-4 py-2.5 bg-cms-primary text-cms-primary-text rounded-cms-pill cursor-pointer hover:bg-cms-primary-hover transition-all font-medium"
 									>
-										Insert component
+										{isArrayItem ? 'Add item' : 'Insert component'}
 									</button>
 								</div>
 							</>
