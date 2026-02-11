@@ -147,8 +147,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	// Single consolidated collections item
 	if (collectionDefinitions) {
 		const labels = Object.values(collectionDefinitions).map((d) => d.label)
-		const collectionsLabel =
-			labels.length <= 2 ? labels.join(', ') : `${labels.slice(0, 2).join(', ')}, ...`
+		const collectionsLabel = labels.length <= 2 ? labels.join(', ') : `${labels.slice(0, 2).join(', ')}, ...`
 		if (labels.length > 0) {
 			menuItems.push({
 				label: collectionsLabel,

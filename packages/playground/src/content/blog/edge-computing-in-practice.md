@@ -29,7 +29,7 @@ By default, all pages are included. You can exclude specific paths:
 
 ```ts
 llmEnhancements({
-  exclude: ['/admin/**', '/api/**']
+	exclude: ['/admin/**', '/api/**'],
 })
 ```
 

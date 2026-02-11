@@ -2,11 +2,10 @@
 
 ## [0.4.0](https://github.com/nuasite/nuasite/compare/v0.3.1...v0.4.0) (2026-02-11)
 
-
 ### Features
 
-* **cms:** discover pages from filesystem and include in manifest ([f43b662](https://github.com/nuasite/nuasite/commit/f43b662d13f0d118dec58b6ea6e2d486b79d7bcd))
-* **editor:** improve outline toolbar UX and unify color swatches ([4751990](https://github.com/nuasite/nuasite/commit/47519904acf6eb0a8ad88341b0393bbe3f9ebdc7))
+- **cms:** discover pages from filesystem and include in manifest ([f43b662](https://github.com/nuasite/nuasite/commit/f43b662d13f0d118dec58b6ea6e2d486b79d7bcd))
+- **editor:** improve outline toolbar UX and unify color swatches ([4751990](https://github.com/nuasite/nuasite/commit/47519904acf6eb0a8ad88341b0393bbe3f9ebdc7))
 
 ## [0.3.1](https://github.com/nuasite/nuasite/compare/v0.3.0...v0.3.1) (2026-02-11)
 
