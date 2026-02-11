@@ -18,6 +18,7 @@ export interface ToolbarCallbacks {
 	onToggleHighlights?: () => void
 	onSeoEditor?: () => void
 	onOpenCollection?: (name: string) => void
+	onOpenCollections?: () => void
 }
 
 export interface ToolbarProps {
@@ -143,11 +144,14 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		})
 	}
 
-	// Collection items from definitions
+	// Single consolidated collections item
 	if (collectionDefinitions) {
-		for (const def of Object.values(collectionDefinitions)) {
+		const labels = Object.values(collectionDefinitions).map((d) => d.label)
+		const collectionsLabel =
+			labels.length <= 2 ? labels.join(', ') : `${labels.slice(0, 2).join(', ')}, ...`
+		if (labels.length > 0) {
 			menuItems.push({
-				label: def.label,
+				label: collectionsLabel,
 				icon: (
 					<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<rect x="3" y="3" width="7" height="7" rx="1" />
@@ -156,7 +160,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 						<rect x="14" y="14" width="7" height="7" rx="1" />
 					</svg>
 				),
-				onClick: () => callbacks.onOpenCollection?.(def.name),
+				onClick: () => callbacks.onOpenCollections?.(),
 			})
 		}
 	}

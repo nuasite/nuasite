@@ -287,6 +287,7 @@ const CmsUI = () => {
 						onToggleHighlights: handleToggleHighlights,
 						onSeoEditor: hasSeoData ? handleSeoEditor : undefined,
 						onOpenCollection: handleOpenCollection,
+						onOpenCollections: openCollectionsBrowser,
 					}}
 					collectionDefinitions={Object.keys(collectionDefinitions).length > 0 ? collectionDefinitions : undefined}
 				/>
