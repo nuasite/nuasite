@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/nuasite/nuasite/compare/v0.2.2...v0.3.0) (2026-02-11)
+
+
+### Features
+
+* **cms:** add array item add/remove operations ([4d19aa7](https://github.com/nuasite/nuasite/commit/4d19aa7cf477b92d4effeef9a9c68c5c7bebace0))
+* **cms:** extract component props from source and improve component ops ([c13bc10](https://github.com/nuasite/nuasite/commit/c13bc10e64dfb397c255167334915e1705f51408))
+* **editor:** contrast-aware outline colors for dark backgrounds ([f8731dc](https://github.com/nuasite/nuasite/commit/f8731dcf167e90bc4423776a2739172c017fb85a))
+* **editor:** persist edit mode across HMR/page refresh ([47baf75](https://github.com/nuasite/nuasite/commit/47baf7579f71fc4a9bd834988c9b42ee68fdafee))
+* **editor:** track previous styles in color change handler ([5072c13](https://github.com/nuasite/nuasite/commit/5072c13b528d0d6f8edc6a68d24bc9823629463d))
+* **nua:** hide Astro dev toolbar in dev mode ([aafa519](https://github.com/nuasite/nuasite/commit/aafa519a784e9679f04e8ee485eba87301775f8b))
+
+
+### Bug Fixes
+
+* **cms:** extract inline comments from source line instead of Babel AST ([6ac0ab6](https://github.com/nuasite/nuasite/commit/6ac0ab6fbd28dd6c370670baf6df52dbed6dd544))
+
 ## [0.2.2](https://github.com/nuasite/nuasite/compare/v0.2.1...v0.2.2) (2026-02-11)
 
 
