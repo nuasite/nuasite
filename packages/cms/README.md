@@ -1,6 +1,10 @@
-# @nuasite/astro-cms
+# @nuasite/cms
 
 Astro integration that adds inline visual editing to any Astro site. Scans your components, marks editable elements with CMS IDs, and serves a live editor overlay during development. All write operations (text, images, colors, components, markdown) are handled locally via a built-in dev server — no external backend required.
+
+## Prerequisites
+
+- **Tailwind CSS v4** — Your site must use Tailwind. The CMS color editor, text styling, and class-based editing features all operate on Tailwind utility classes. Without Tailwind, those features won't work.
 
 ## Quick Start
 
@@ -13,7 +17,7 @@ export default defineConfig({
 })
 ```
 
-That's it. Run `astro dev` and the CMS editor loads automatically. Edits write directly to your source files, and Vite HMR picks up the changes instantly.
+Run `astro dev` and the CMS editor loads automatically. Edits write directly to your source files, and Vite HMR picks up the changes instantly.
 
 ## How It Works
 
@@ -104,26 +108,9 @@ Changes are grouped by source file, sorted by line number (descending to avoid o
 
 Media uploads use a pluggable adapter pattern. Three adapters are included:
 
-### Local Filesystem (default)
+### Contember (R2 + Database) — Recommended
 
-Stores files in `public/uploads/`. Served directly by Vite's static file server. Zero configuration needed.
-
-```typescript
-import nuaCms, { localMedia } from '@nuasite/astro-cms'
-
-nuaCms({
-  media: localMedia({
-    dir: 'public/uploads',   // default
-    urlPrefix: '/uploads',   // default
-  }),
-})
-```
-
-Files are named with UUIDs to avoid collisions. Listed by modification time (newest first).
-
-### Contember (R2 + Database)
-
-Proxies to the existing Contember worker API. Files are stored in Cloudflare R2, metadata in the Contember database. Includes AI-powered image annotation.
+Files are stored in Cloudflare R2 with metadata tracked in the Contember database. This is the only adapter that gives you proper asset IDs, metadata, and AI-powered image annotation. Use this for production sites.
 
 ```typescript
 import nuaCms, { contemberMedia } from '@nuasite/astro-cms'
@@ -139,9 +126,26 @@ nuaCms({
 
 This adapter calls the worker's `/cms/:projectSlug/media/*` endpoints, which handle R2 upload, Asset record creation, and image annotation. Authentication uses the `NUA_SITE_SESSION_TOKEN` cookie.
 
+### Local Filesystem (default)
+
+Stores files in `public/uploads/`. Served directly by Vite's static file server. Zero configuration needed. Files are committed to your repo alongside your source code.
+
+```typescript
+import nuaCms, { localMedia } from '@nuasite/astro-cms'
+
+nuaCms({
+  media: localMedia({
+    dir: 'public/uploads',   // default
+    urlPrefix: '/uploads',   // default
+  }),
+})
+```
+
+Files are named with UUIDs to avoid collisions. Listed by modification time (newest first).
+
 ### S3 / R2 Direct
 
-Direct S3-compatible storage. Works with AWS S3, Cloudflare R2, MinIO, or any S3-compatible provider. Requires `@aws-sdk/client-s3` as a peer dependency.
+Direct S3-compatible object storage. Works with AWS S3, Cloudflare R2, MinIO, or any S3-compatible provider. Listing, uploading, and deleting all work, but there is no database layer — content types are not preserved on list, and there are no image dimensions or annotations. Requires `@aws-sdk/client-s3` as a peer dependency.
 
 ```typescript
 import nuaCms, { s3Media } from '@nuasite/astro-cms'
