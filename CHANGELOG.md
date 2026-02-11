@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/nuasite/nuasite/compare/v0.2.1...v0.2.2) (2026-02-11)
+
+
+### Bug Fixes
+
+* **ci:** use workflow_dispatch so npm provenance sees publish.yaml ([ccdee24](https://github.com/nuasite/nuasite/commit/ccdee24fb78b408bb9c62fd01265be5192d40407))
+
 ## [0.2.1](https://github.com/nuasite/nuasite/compare/v0.2.0...v0.2.1) (2026-02-11)
 
 
