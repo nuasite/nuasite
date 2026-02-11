@@ -145,25 +145,37 @@ export class ComponentRegistry {
 				}
 			}
 
-			// Look for a leading comment (JSDoc or line comment) for description
+			// Look for description from comments
 			let description: string | undefined
-			if (member.leadingComments && member.leadingComments.length > 0) {
+
+			// First, check for inline trailing comment on the property's source line
+			// (Babel can misattach these as leading comments of the next property)
+			if (member.loc) {
+				const lineIdx = member.loc.end.line - 1
+				const sourceLine = lines[lineIdx]
+				if (sourceLine) {
+					const commentMatch = sourceLine.match(/\/\/\s*(.+?)\s*$/)
+					if (commentMatch?.[1]) {
+						description = commentMatch[1]
+					}
+				}
+			}
+
+			// If no inline comment, check for leading JSDoc or standalone line comments
+			if (!description && member.leadingComments && member.leadingComments.length > 0) {
 				const last = member.leadingComments[member.leadingComments.length - 1]!
-				if (last.type === 'CommentLine') {
-					description = last.value.trim()
-				} else if (last.type === 'CommentBlock') {
+				if (last.type === 'CommentBlock') {
 					description = last.value
 						.split('\n')
 						.map((l: string) => l.replace(/^\s*\*\s?/, '').trim())
 						.filter(Boolean)
 						.join(' ')
-				}
-			}
-			// Also check for trailing inline comment
-			if (!description && member.trailingComments && member.trailingComments.length > 0) {
-				const first = member.trailingComments[0]!
-				if (first.type === 'CommentLine') {
-					description = first.value.trim()
+				} else if (last.type === 'CommentLine' && last.loc && member.loc) {
+					// Only use line comments on their own line (not inline on previous property)
+					const commentLineContent = lines[last.loc.start.line - 1]?.trim()
+					if (commentLineContent?.startsWith('//')) {
+						description = last.value.trim()
+					}
 				}
 			}
 
