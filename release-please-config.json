@@ -12,9 +12,9 @@
 				"packages/components/package.json",
 				"packages/core/package.json",
 				"packages/llm-enhancements/package.json",
-				"packages/nua/package.json",
-				"packages/playground/package.json"
-			]
+				"packages/nua/package.json"
+			],
+			"exclude-paths": ["packages/playground"]
 		}
 	}
 }
