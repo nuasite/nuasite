@@ -110,6 +110,19 @@ export function Outline(
           box-shadow: 0 8px 32px rgba(0,0,0,0.3);
           pointer-events: auto;
           z-index: ${Z_INDEX.MODAL};
+          margin-top: 6px;
+        }
+
+        .element-toolbar::before {
+          content: '';
+          position: absolute;
+          top: -25px;
+          left: -50px;
+          right: -50px;
+          bottom: 0;
+          z-index: -1;
+          pointer-events: auto;
+          background: transparent;
         }
 
         .element-toolbar.hidden {
@@ -143,8 +156,8 @@ export function Outline(
         }
 
         .attr-button {
-          width: 24px;
-          height: 24px;
+          width: 32px;
+          height: 32px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -161,8 +174,8 @@ export function Outline(
         }
 
         .attr-button svg {
-          width: 14px;
-          height: 14px;
+          width: 18px;
+          height: 18px;
           color: rgba(255,255,255,0.7);
         }
 
@@ -325,41 +338,35 @@ export function Outline(
 					}
 				}
 
-				// Add color swatches
+				// Add unified color swatch
 				if (hasColorSwatches && colorClasses) {
-					// Create bg swatch
-					if (colorClasses.bg?.value) {
-						const parsed = parseColorClass(colorClasses.bg.value)
-						if (parsed) {
-							const preview = getColorPreview(parsed.colorName, parsed.shade)
-							const swatch = document.createElement('div')
-							swatch.className = `color-swatch${parsed.colorName === 'white' ? ' white' : ''}`
-							applySwatchStyle(swatch, parsed.colorName, preview)
-							swatch.title = `Background: ${colorClasses.bg.value}`
-							swatch.onclick = (e) => {
-								e.stopPropagation()
-								if (cmsId && onColorClick) onColorClick(cmsId, rect)
-							}
-							toolbarRef.current.appendChild(swatch)
-						}
+					const bgParsed = colorClasses.bg?.value ? parseColorClass(colorClasses.bg.value) : null
+					const textParsed = colorClasses.text?.value ? parseColorClass(colorClasses.text.value) : null
+					const bgPreview = bgParsed ? getColorPreview(bgParsed.colorName, bgParsed.shade) : null
+					const textPreview = textParsed ? getColorPreview(textParsed.colorName, textParsed.shade) : null
+
+					const swatch = document.createElement('div')
+					const isWhite = (bgParsed && !textParsed && bgParsed.colorName === 'white')
+						|| (!bgParsed && textParsed && textParsed.colorName === 'white')
+					swatch.className = `color-swatch${isWhite ? ' white' : ''}`
+
+					if (bgPreview && textPreview) {
+						// Split swatch: diagonal half bg, half text
+						swatch.style.background = `linear-gradient(135deg, ${bgPreview} 50%, ${textPreview} 50%)`
+						swatch.title = `Background: ${colorClasses.bg!.value} / Text: ${colorClasses.text!.value}`
+					} else if (bgParsed && bgPreview) {
+						applySwatchStyle(swatch, bgParsed.colorName, bgPreview)
+						swatch.title = `Background: ${colorClasses.bg!.value}`
+					} else if (textParsed && textPreview) {
+						applySwatchStyle(swatch, textParsed.colorName, textPreview)
+						swatch.title = `Text: ${colorClasses.text!.value}`
 					}
 
-					// Create text swatch
-					if (colorClasses.text?.value) {
-						const parsed = parseColorClass(colorClasses.text.value)
-						if (parsed) {
-							const preview = getColorPreview(parsed.colorName, parsed.shade)
-							const swatch = document.createElement('div')
-							swatch.className = `color-swatch${parsed.colorName === 'white' ? ' white' : ''}`
-							applySwatchStyle(swatch, parsed.colorName, preview)
-							swatch.title = `Text: ${colorClasses.text.value}`
-							swatch.onclick = (e) => {
-								e.stopPropagation()
-								if (cmsId && onColorClick) onColorClick(cmsId, rect)
-							}
-							toolbarRef.current.appendChild(swatch)
-						}
+					swatch.onclick = (e) => {
+						e.stopPropagation()
+						if (cmsId && onColorClick) onColorClick(cmsId, rect)
 					}
+					toolbarRef.current.appendChild(swatch)
 				}
 
 				// Add divider and attribute button if needed
