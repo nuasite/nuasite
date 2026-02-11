@@ -2,7 +2,16 @@ import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
-import { handleInsertComponent, handleRemoveComponent } from './handlers/component-ops'
+import { handleAddArrayItem, handleRemoveArrayItem } from './handlers/array-ops'
+import {
+	extractPropsFromSource,
+	findComponentInvocationLine,
+	getPageFileCandidates,
+	handleInsertComponent,
+	handleRemoveComponent,
+	normalizeFilePath,
+} from './handlers/component-ops'
+import { getProjectRoot } from './config'
 import {
 	handleCreateMarkdown,
 	handleGetMarkdownContent,
@@ -272,6 +281,22 @@ async function handleCmsApiRoute(
 		return
 	}
 
+	// POST /_nua/cms/add-array-item
+	if (route === 'add-array-item' && req.method === 'POST') {
+		const body = await parseJsonBody<Parameters<typeof handleAddArrayItem>[0]>(req)
+		const result = await handleAddArrayItem(body, manifestWriter)
+		sendJson(res, result)
+		return
+	}
+
+	// POST /_nua/cms/remove-array-item
+	if (route === 'remove-array-item' && req.method === 'POST') {
+		const body = await parseJsonBody<Parameters<typeof handleRemoveArrayItem>[0]>(req)
+		const result = await handleRemoveArrayItem(body, manifestWriter)
+		sendJson(res, result)
+		return
+	}
+
 	// GET /_nua/cms/markdown/content?filePath=...
 	if (route === 'markdown/content' && req.method === 'GET') {
 		const urlObj = new URL(req.url!, `http://${req.headers.host}`)
@@ -434,6 +459,53 @@ async function processHtmlForDev(
 		},
 		idGenerator,
 	)
+
+	// Populate component props from source invocations
+	const projectRoot = getProjectRoot()
+	const fileCache = new Map<string, string[] | null>()
+	const readLines = async (filePath: string): Promise<string[] | null> => {
+		if (fileCache.has(filePath)) return fileCache.get(filePath)!
+		try {
+			const content = await fs.readFile(filePath, 'utf-8')
+			const lines = content.split('\n')
+			fileCache.set(filePath, lines)
+			return lines
+		} catch {
+			fileCache.set(filePath, null)
+			return null
+		}
+	}
+
+	for (const comp of Object.values(result.components)) {
+		let found = false
+
+		// Try invocationSourcePath first (may point to a layout, not the page)
+		if (comp.invocationSourcePath) {
+			const filePath = normalizeFilePath(comp.invocationSourcePath)
+			const lines = await readLines(path.resolve(projectRoot, filePath))
+			if (lines) {
+				const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
+				if (invLine >= 0) {
+					comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
+					found = true
+				}
+			}
+		}
+
+		// Fallback: search page source file candidates
+		if (!found) {
+			for (const candidate of getPageFileCandidates(pagePath)) {
+				const lines = await readLines(path.resolve(projectRoot, candidate))
+				if (lines) {
+					const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
+					if (invLine >= 0) {
+						comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
+						break
+					}
+				}
+			}
+		}
+	}
 
 	// Build collection entry if this is a collection page
 	let collectionEntry: CollectionEntry | undefined

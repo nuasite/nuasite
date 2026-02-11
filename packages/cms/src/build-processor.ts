@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getProjectRoot } from './config'
+import { extractPropsFromSource, findComponentInvocationLine } from './handlers/component-ops'
 import { extractComponentName, processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import { generateComponentPreviews } from './preview-generator'
@@ -617,6 +618,32 @@ async function processFile(
 
 		// Re-serialize HTML with component markers
 		result.html = root.toString()
+	}
+
+	// Populate component props from page source invocations
+	if (Object.keys(result.components).length > 0) {
+		const pageSourcePath = await findPageSource(pagePath)
+		if (pageSourcePath) {
+			try {
+				const pageContent = await fs.readFile(pageSourcePath, 'utf-8')
+				const pageLines = pageContent.split('\n')
+
+				// Track per-component-name occurrence counter
+				const occurrenceCounts = new Map<string, number>()
+
+				for (const comp of Object.values(result.components)) {
+					const idx = occurrenceCounts.get(comp.componentName) ?? 0
+					occurrenceCounts.set(comp.componentName, idx + 1)
+
+					const invLine = findComponentInvocationLine(pageLines, comp.componentName, idx)
+					if (invLine >= 0) {
+						comp.props = extractPropsFromSource(pageLines, invLine, comp.componentName)
+					}
+				}
+			} catch {
+				// Could not read page source — leave props empty
+			}
+		}
 	}
 
 	// Remove CMS ID attributes from HTML for entries that were filtered out

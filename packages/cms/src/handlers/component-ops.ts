@@ -100,13 +100,10 @@ export async function handleInsertComponent(
 			} else {
 				const occurrenceIndex = getComponentOccurrenceIndex(manifest, referenceComponent)
 				refLineIndex = findComponentInvocationLine(lines, referenceComponent.componentName, occurrenceIndex)
-				if (refLineIndex < 0) {
-					refLineIndex = referenceComponent.sourceLine - 1
-				}
 			}
 
 			if (refLineIndex < 0 || refLineIndex >= lines.length) {
-				return { success: false, error: `Invalid source line for reference component: ${refLineIndex + 1}` }
+				return { success: false, error: `Could not find <${referenceComponent.componentName}> invocation in ${filePath}` }
 			}
 
 			const newComponentJsx = generateComponentJsx(componentName, props, componentDef)
@@ -126,6 +123,10 @@ export async function handleInsertComponent(
 				.join('\n')
 
 			lines.splice(insertIndex, 0, indentedJsx)
+
+			// Ensure the component is imported in the frontmatter
+			ensureComponentImport(lines, componentName, componentDef.file, filePath)
+
 			await fs.writeFile(fullPath, lines.join('\n'), 'utf-8')
 
 			return {
@@ -200,13 +201,10 @@ export async function handleRemoveComponent(
 			} else {
 				const occurrenceIndex = getComponentOccurrenceIndex(manifest, component)
 				refLineIndex = findComponentInvocationLine(lines, component.componentName, occurrenceIndex)
-				if (refLineIndex < 0) {
-					refLineIndex = component.sourceLine - 1
-				}
 			}
 
 			if (refLineIndex < 0 || refLineIndex >= lines.length) {
-				return { success: false, error: `Invalid source line for component: ${refLineIndex + 1}` }
+				return { success: false, error: `Could not find <${component.componentName}> invocation in ${filePath}` }
 			}
 
 			const { startLine, endLine } = findComponentBounds(
@@ -304,7 +302,7 @@ function findComponentBounds(
 	return { startLine, endLine }
 }
 
-function getPageFileCandidates(pageUrl: string): string[] {
+export function getPageFileCandidates(pageUrl: string): string[] {
 	let pathname: string
 	try {
 		const url = new URL(pageUrl)
@@ -330,7 +328,7 @@ function getPageFileCandidates(pageUrl: string): string[] {
 	]
 }
 
-function getComponentOccurrenceIndex(
+export function getComponentOccurrenceIndex(
 	manifest: CmsManifest,
 	referenceComponent: ComponentInstance,
 ): number {
@@ -350,7 +348,7 @@ function getComponentOccurrenceIndex(
 	return index >= 0 ? index : 0
 }
 
-async function findComponentInvocationFile(
+export async function findComponentInvocationFile(
 	projectRoot: string,
 	pageUrl: string,
 	manifest: CmsManifest,
@@ -401,20 +399,34 @@ async function findComponentInvocationFile(
 	return null
 }
 
-function findComponentInvocationLine(
+export function findComponentInvocationLine(
 	lines: string[],
 	componentName: string,
 	occurrenceIndex: number,
 ): number {
-	const pattern = new RegExp(`<${escapeRegex(componentName)}(?:\\s|>|/>)`)
+	const pattern = new RegExp(`<${escapeRegex(componentName)}(?:\\s|>|/>|$)`)
+	// Skip frontmatter section in .astro/.mdx files (code between --- delimiters)
+	const startLine = findFrontmatterEnd(lines)
 	let found = 0
-	for (let i = 0; i < lines.length; i++) {
+	for (let i = startLine; i < lines.length; i++) {
 		if (pattern.test(lines[i]!)) {
 			if (found === occurrenceIndex) return i
 			found++
 		}
 	}
 	return found > 0 ? findComponentInvocationLine(lines, componentName, 0) : -1
+}
+
+/**
+ * Find the line index after the frontmatter block (--- ... ---).
+ * Returns 0 if no frontmatter is found.
+ */
+export function findFrontmatterEnd(lines: string[]): number {
+	if (lines.length === 0 || lines[0]!.trim() !== '---') return 0
+	for (let i = 1; i < lines.length; i++) {
+		if (lines[i]!.trim() === '---') return i + 1
+	}
+	return 0
 }
 
 function generateComponentJsx(
@@ -452,12 +464,232 @@ function escapeHtml(str: string): string {
 		.replace(/>/g, '&gt;')
 }
 
-function getIndentation(line: string): string {
+export function getIndentation(line: string): string {
 	const match = line.match(/^(\s*)/)
 	return match ? match[1]! : ''
 }
 
-function normalizeFilePath(p: string): string {
-	return p.startsWith('/') ? p.slice(1) : p
+export function normalizeFilePath(p: string): string {
+	if (!p.startsWith('/')) return p
+	// Absolute filesystem paths (e.g. /Users/.../src/pages/index.astro) must stay intact
+	const projectRoot = path.resolve(getProjectRoot())
+	if (p.startsWith(projectRoot)) return p
+	// Project-relative paths with a leading slash (e.g. /src/pages/...) → strip it
+	return p.slice(1)
+}
+
+/**
+ * Extract prop values from a component invocation in source code.
+ * Parses the opening JSX tag starting at `lineIndex` and returns a map of prop names to values.
+ */
+export function extractPropsFromSource(
+	lines: string[],
+	lineIndex: number,
+	componentName: string,
+): Record<string, any> {
+	// Accumulate lines until we have the complete opening tag
+	let text = ''
+	for (let i = lineIndex; i < lines.length; i++) {
+		text += (i > lineIndex ? '\n' : '') + lines[i]!
+		if (findOpeningTagEnd(text) >= 0) break
+	}
+	return parseOpeningTagProps(text, componentName)
+}
+
+/**
+ * Find the position of `>` or `/>` that closes the opening tag,
+ * correctly skipping over braces and string literals.
+ * Returns -1 if the tag end is not found.
+ */
+function findOpeningTagEnd(text: string): number {
+	let braceDepth = 0
+	let inStr: string | null = null
+	let pastTagName = false
+
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i]!
+
+		if (!pastTagName) {
+			if (ch === '<') {
+				// Skip past `<ComponentName`
+				while (i < text.length && !/\s|\/|>/.test(text[i + 1] ?? '')) i++
+				pastTagName = true
+			}
+			continue
+		}
+
+		if (inStr) {
+			if (ch === '\\') { i++; continue }
+			if (ch === inStr) inStr = null
+			continue
+		}
+
+		if (ch === '"' || ch === '\'' || ch === '`') { inStr = ch; continue }
+		if (ch === '{') { braceDepth++; continue }
+		if (ch === '}') { braceDepth--; continue }
+
+		if (braceDepth === 0) {
+			if (ch === '/' && text[i + 1] === '>') return i + 1
+			if (ch === '>') return i
+		}
+	}
+
+	return -1
+}
+
+/**
+ * Parse JSX props from an opening tag string like `<Comp foo="bar" count={3} active />`.
+ */
+function parseOpeningTagProps(text: string, componentName: string): Record<string, any> {
+	const props: Record<string, any> = {}
+
+	// Find <ComponentName and skip past it
+	const tagIdx = text.indexOf('<' + componentName)
+	if (tagIdx < 0) return props
+
+	let pos = tagIdx + 1 + componentName.length
+
+	while (pos < text.length) {
+		// Skip whitespace
+		while (pos < text.length && /\s/.test(text[pos]!)) pos++
+
+		// End of tag?
+		if (pos >= text.length || text[pos] === '>' || text[pos] === '/') break
+
+		// Spread: {...expr} — skip it
+		if (text[pos] === '{') {
+			pos = skipBracedBlock(text, pos)
+			continue
+		}
+
+		// Parse attribute name
+		const nameStart = pos
+		while (pos < text.length && /[\w\-:.]/.test(text[pos]!)) pos++
+		const name = text.slice(nameStart, pos)
+		if (!name) { pos++; continue }
+
+		// Skip whitespace
+		while (pos < text.length && /\s/.test(text[pos]!)) pos++
+
+		// No `=` means boolean shorthand
+		if (text[pos] !== '=') {
+			props[name] = true
+			continue
+		}
+		pos++ // skip =
+
+		// Skip whitespace
+		while (pos < text.length && /\s/.test(text[pos]!)) pos++
+
+		const ch = text[pos]
+		if (ch === '"' || ch === '\'') {
+			// Quoted string: prop="value" or prop='value'
+			pos++
+			const start = pos
+			while (pos < text.length && text[pos] !== ch) {
+				if (text[pos] === '\\') pos++
+				pos++
+			}
+			props[name] = text.slice(start, pos)
+			pos++ // skip closing quote
+		} else if (ch === '{') {
+			// JSX expression: prop={...}
+			const inner = extractBracedContent(text, pos)
+			pos = skipBracedBlock(text, pos)
+
+			const trimmed = inner.trim()
+			if (trimmed === 'true') props[name] = true
+			else if (trimmed === 'false') props[name] = false
+			else if (/^-?\d+(\.\d+)?$/.test(trimmed)) props[name] = Number(trimmed)
+			else if (
+				(trimmed.startsWith('"') && trimmed.endsWith('"'))
+				|| (trimmed.startsWith('\'') && trimmed.endsWith('\''))
+			) {
+				props[name] = trimmed.slice(1, -1)
+			} else if (trimmed.startsWith('`') && trimmed.endsWith('`')) {
+				props[name] = trimmed.slice(1, -1)
+			} else {
+				props[name] = trimmed // raw expression
+			}
+		}
+	}
+
+	return props
+}
+
+/** Skip past a balanced `{ ... }` block, handling nested braces and string literals. */
+function skipBracedBlock(text: string, pos: number): number {
+	let depth = 0
+	let inStr: string | null = null
+	while (pos < text.length) {
+		const ch = text[pos]!
+		if (inStr) {
+			if (ch === '\\') { pos += 2; continue }
+			if (ch === inStr) inStr = null
+		} else {
+			if (ch === '{') depth++
+			else if (ch === '}') { depth--; if (depth === 0) return pos + 1 }
+			else if (ch === '"' || ch === '\'' || ch === '`') inStr = ch
+		}
+		pos++
+	}
+	return pos
+}
+
+/** Extract the text content between `{` and its matching `}`. */
+function extractBracedContent(text: string, pos: number): string {
+	const start = pos + 1
+	const end = skipBracedBlock(text, pos) - 1
+	return text.slice(start, end)
+}
+
+/**
+ * Ensure the component has an import statement in the file's frontmatter.
+ * If the component is already imported, this is a no-op.
+ * Mutates the `lines` array in place.
+ */
+export function ensureComponentImport(
+	lines: string[],
+	componentName: string,
+	componentFile: string,
+	targetFile: string,
+): void {
+	// Check if the component is already imported anywhere in the frontmatter
+	const importPattern = new RegExp(
+		`import\\s+${escapeRegex(componentName)}\\s+from\\s+['"]`,
+	)
+
+	const frontmatterEnd = findFrontmatterEnd(lines)
+
+	// Scan frontmatter for existing import
+	for (let i = 0; i < frontmatterEnd; i++) {
+		if (importPattern.test(lines[i]!)) {
+			return // Already imported
+		}
+	}
+
+	// Compute relative import path from target file to component file
+	const targetDir = path.dirname(targetFile)
+	let relativePath = path.relative(targetDir, componentFile)
+	if (!relativePath.startsWith('.')) {
+		relativePath = './' + relativePath
+	}
+
+	const importStatement = `import ${componentName} from '${relativePath}'`
+
+	if (frontmatterEnd > 0) {
+		// Has frontmatter — insert import before the closing ---
+		// Find the last import line or insert right after opening ---
+		let insertAt = 1 // After opening ---
+		for (let i = 1; i < frontmatterEnd - 1; i++) {
+			if (/^\s*import\s/.test(lines[i]!)) {
+				insertAt = i + 1
+			}
+		}
+		lines.splice(insertAt, 0, importStatement)
+	} else {
+		// No frontmatter — create one at the top
+		lines.splice(0, 0, '---', importStatement, '---')
+	}
 }
 

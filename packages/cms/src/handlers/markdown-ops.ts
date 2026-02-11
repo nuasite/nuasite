@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'yaml'
 import { getProjectRoot } from '../config'
-import { acquireFileLock, resolveAndValidatePath as sharedResolveAndValidatePath } from '../utils'
+import { acquireFileLock } from '../utils'
 
 export interface BlogFrontmatter {
 	title: string
@@ -143,11 +143,14 @@ export async function handleCreateMarkdown(
  */
 function resolveAndValidatePath(filePath: string): string {
 	const projectRoot = getProjectRoot()
-	const normalizedPath = filePath.startsWith('/') ? filePath.slice(1) : filePath
-	const fullPath = path.resolve(projectRoot, normalizedPath)
+	const resolvedRoot = path.resolve(projectRoot)
+	// Absolute filesystem paths (e.g. /Users/...) stay intact;
+	// project-relative paths with a leading slash (e.g. /src/content/...) get it stripped
+	const isAbsoluteFs = filePath.startsWith(resolvedRoot)
+	const normalizedPath = (!isAbsoluteFs && filePath.startsWith('/')) ? filePath.slice(1) : filePath
+	const fullPath = path.isAbsolute(normalizedPath) ? path.resolve(normalizedPath) : path.resolve(projectRoot, normalizedPath)
 
 	// Ensure the resolved path is within the project root
-	const resolvedRoot = path.resolve(projectRoot)
 	if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
 		throw new Error(`Path traversal detected: ${filePath}`)
 	}
