@@ -1,0 +1,45 @@
+---
+import { getCollection } from 'astro:content';
+import DocLayout from '../components/DocLayout.astro';
+
+const members = (await getCollection('team'))
+	.sort((a, b) => a.data.order - b.data.order);
+---
+
+<DocLayout title="Team" description="The people behind the work.">
+	<div class="mx-auto max-w-4xl px-6 py-16">
+		<h1 class="text-4xl font-bold tracking-tight text-white">Team</h1>
+		<p class="mt-2 text-lg text-slate-400">The people behind the work.</p>
+
+		<div class="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+			{members.map(async (member) => {
+				const { Content } = await member.render();
+				return (
+					<div class="rounded-2xl border border-slate-800 bg-slate-900/40 p-6">
+						<img
+							src={member.data.avatar}
+							alt={member.data.name}
+							class="mx-auto h-24 w-24 rounded-full object-cover"
+						/>
+						<div class="mt-4 text-center">
+							<h2 class="text-lg font-semibold text-white">{member.data.name}</h2>
+							<p class="text-sm text-indigo-300">{member.data.role}</p>
+						</div>
+						<p class="mt-3 text-sm text-slate-400">{member.data.bio}</p>
+						<div class="mt-4 flex justify-center gap-3">
+							{member.data.social.twitter && (
+								<a href={member.data.social.twitter} target="_blank" rel="noopener noreferrer" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">Twitter</a>
+							)}
+							{member.data.social.github && (
+								<a href={member.data.social.github} target="_blank" rel="noopener noreferrer" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">GitHub</a>
+							)}
+							{member.data.social.linkedin && (
+								<a href={member.data.social.linkedin} target="_blank" rel="noopener noreferrer" class="text-xs text-slate-500 hover:text-slate-300 transition-colors">LinkedIn</a>
+							)}
+						</div>
+					</div>
+				);
+			})}
+		</div>
+	</div>
+</DocLayout>

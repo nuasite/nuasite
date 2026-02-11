@@ -1,0 +1,70 @@
+---
+import { getCollection } from 'astro:content';
+import DocLayout from '../../components/DocLayout.astro';
+
+const projects = (await getCollection('projects'))
+	.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+const featured = projects.filter(p => p.data.featured);
+const other = projects.filter(p => !p.data.featured);
+---
+
+<DocLayout title="Projects" description="Key features and integrations built into the Nua ecosystem.">
+	<div class="mx-auto max-w-5xl px-6 py-16">
+		<h1 class="text-4xl font-bold tracking-tight text-white">Projects</h1>
+		<p class="mt-2 text-lg text-slate-400">Key features and integrations built into the Nua ecosystem.</p>
+
+		{featured.length > 0 && (
+			<section class="mt-12">
+				<h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Featured</h2>
+				<div class="mt-4 grid gap-6 lg:grid-cols-2">
+					{featured.map(project => (
+						<a href={`/projects/${project.slug}/`} class="group block rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden transition hover:border-slate-700 hover:bg-slate-900/70">
+							<img
+								src={project.data.coverImage}
+								alt={project.data.title}
+								class="h-48 w-full object-cover"
+							/>
+							<div class="p-6">
+								<p class="text-xs text-slate-500">{project.data.client}</p>
+								<h3 class="mt-1 text-lg font-semibold text-white group-hover:text-indigo-300 transition-colors">
+									{project.data.title}
+								</h3>
+								<div class="mt-3 flex flex-wrap gap-2">
+									{project.data.tags.map(tag => (
+										<span class="rounded-full border border-slate-700 bg-slate-800/50 px-2.5 py-0.5 text-xs text-slate-400">
+											{tag}
+										</span>
+									))}
+								</div>
+							</div>
+						</a>
+					))}
+				</div>
+			</section>
+		)}
+
+		{other.length > 0 && (
+			<section class="mt-12">
+				<h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">More projects</h2>
+				<div class="mt-4 space-y-4">
+					{other.map(project => (
+						<a href={`/projects/${project.slug}/`} class="group flex items-center gap-6 rounded-xl border border-slate-800 bg-slate-900/40 p-4 transition hover:border-slate-700 hover:bg-slate-900/70">
+							<img
+								src={project.data.coverImage}
+								alt={project.data.title}
+								class="h-16 w-24 shrink-0 rounded-lg object-cover"
+							/>
+							<div>
+								<p class="text-xs text-slate-500">{project.data.client}</p>
+								<h3 class="text-sm font-semibold text-white group-hover:text-indigo-300 transition-colors">
+									{project.data.title}
+								</h3>
+							</div>
+						</a>
+					))}
+				</div>
+			</section>
+		)}
+	</div>
+</DocLayout>

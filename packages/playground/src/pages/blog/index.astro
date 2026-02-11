@@ -1,0 +1,55 @@
+---
+import { getCollection } from 'astro:content';
+import DocLayout from '../../components/DocLayout.astro';
+
+const posts = (await getCollection('blog'))
+	.filter(post => !post.data.draft)
+	.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+---
+
+<DocLayout title="Blog" description="Articles on design, engineering, and content strategy.">
+	<div class="mx-auto max-w-4xl px-6 py-16">
+		<h1 class="text-4xl font-bold tracking-tight text-white">Blog</h1>
+		<p class="mt-2 text-lg text-slate-400">Articles on design, engineering, and content strategy.</p>
+
+		<div class="mt-12 space-y-10">
+			{posts.map(post => (
+				<article class="group">
+					<a href={`/blog/${post.slug}/`} class="block rounded-2xl border border-slate-800 bg-slate-900/40 p-6 transition hover:border-slate-700 hover:bg-slate-900/70">
+						<div class="flex flex-col gap-4 sm:flex-row sm:gap-6">
+							<img
+								src={post.data.coverImage}
+								alt={post.data.title}
+								class="h-40 w-full rounded-lg object-cover sm:w-48 sm:shrink-0"
+							/>
+							<div class="flex flex-col justify-between">
+								<div>
+									<div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+										<time datetime={post.data.date.toISOString().slice(0, 10)}>
+											{post.data.date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+										</time>
+										<span>&middot;</span>
+										<span>{post.data.author}</span>
+									</div>
+									<h2 class="mt-2 text-xl font-semibold text-white group-hover:text-indigo-300 transition-colors">
+										{post.data.title}
+									</h2>
+									<p class="mt-2 text-sm text-slate-400 line-clamp-2">
+										{post.data.excerpt}
+									</p>
+								</div>
+								<div class="mt-3 flex flex-wrap gap-2">
+									{post.data.tags.map(tag => (
+										<span class="rounded-full border border-slate-700 bg-slate-800/50 px-2.5 py-0.5 text-xs text-slate-400">
+											{tag}
+										</span>
+									))}
+								</div>
+							</div>
+						</div>
+					</a>
+				</article>
+			))}
+		</div>
+	</div>
+</DocLayout>

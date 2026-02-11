@@ -1,0 +1,35 @@
+---
+import { getCollection } from 'astro:content';
+import DocLayout from '../../components/DocLayout.astro';
+
+const services = await getCollection('services');
+---
+
+<DocLayout title="Services" description="What we do — prototyping, packaging, and logistics.">
+	<div class="mx-auto max-w-4xl px-6 py-16">
+		<h1 class="text-4xl font-bold tracking-tight text-white">Services</h1>
+		<p class="mt-2 text-lg text-slate-400">What we do — prototyping, packaging, and logistics.</p>
+
+		<div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+			{services.map(service => (
+				<a href={`/services/${service.slug}/`} class="group rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden transition hover:border-slate-700 hover:bg-slate-900/70">
+					{service.data.heroImageDesktop && (
+						<img
+							src={service.data.heroImageDesktop}
+							alt={service.data.title || 'Service'}
+							class="h-36 w-full object-cover"
+						/>
+					)}
+					<div class="p-5">
+						<h2 class="text-lg font-semibold text-white group-hover:text-indigo-300 transition-colors">
+							{service.data.title}
+						</h2>
+						{service.data.subtitle && (
+							<p class="mt-1 text-sm text-slate-400">{service.data.subtitle}</p>
+						)}
+					</div>
+				</a>
+			))}
+		</div>
+	</div>
+</DocLayout>
