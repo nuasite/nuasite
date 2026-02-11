@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader.astro'
 import SectionHeading from '../components/SectionHeading.astro'
 import CodeBlock from '../components/CodeBlock.astro'
 import PackageCard from '../components/PackageCard.astro'
+import UpcomingComponents from '../components/UpcomingComponents.astro'
 
 const packages = [
 	{
@@ -44,7 +45,7 @@ const packages = [
 		slug: 'cli',
 		description: 'Build, dev, and preview with automatic agent-summary injection.',
 		icon: '>_',
-	},
+	}
 ]
 ---
 
@@ -61,7 +62,6 @@ const packages = [
 			</div>
 		</div>
 	</PageHeader>
-
 	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
 
 		<section class="space-y-8">
@@ -96,7 +96,7 @@ const packages = [
 						{[
 							{ label: 'nua build', sub: 'CLI with auto-injection' },
 							{ label: 'AGENTS.md', sub: 'Agent summary output' },
-							{ label: 'cms-manifest.json', sub: 'CMS output' },
+							{ label: 'cms-manifest.json', sub: 'CMS output' }
 						].map(({ label, sub }) => (
 							<div class="rounded-lg border border-slate-700 bg-slate-950/60 px-4 py-3 text-center">
 								<p class="font-medium text-slate-200">{label}</p>
