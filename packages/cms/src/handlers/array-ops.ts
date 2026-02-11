@@ -131,7 +131,7 @@ function extractElementBounds(
 ): ArrayElementBounds[] {
 	const bounds: ArrayElementBounds[] = []
 	for (const el of elements) {
-		if (el && el.loc) {
+		if (el?.loc) {
 			bounds.push({
 				// Babel loc is 1-indexed; convert to 0-indexed file lines
 				startLine: el.loc.start.line - 1 + frontmatterStartLine,
@@ -273,7 +273,7 @@ export async function handleRemoveArrayItem(
 			const freshLines = freshContent.split('\n')
 
 			const bounds = elementBounds[arrayIndex]!
-			let removeStart = bounds.startLine
+			const removeStart = bounds.startLine
 			let removeEnd = bounds.endLine
 
 			// Clean up trailing comma on the line after the element, or leading comma
@@ -298,7 +298,7 @@ export async function handleRemoveArrayItem(
 			if (removeStart > 0 && removeStart <= freshLines.length) {
 				const prevLine = freshLines[removeStart - 1]!
 				const nextLine = freshLines[removeStart]
-				if (nextLine !== undefined && nextLine.trim().startsWith(']') && prevLine.trimEnd().endsWith(',')) {
+				if (nextLine?.trim().startsWith(']') && prevLine.trimEnd().endsWith(',')) {
 					freshLines[removeStart - 1] = prevLine.replace(/,\s*$/, '')
 				}
 			}
@@ -397,7 +397,7 @@ export async function handleAddArrayItem(
 			for (let i = freshLines.length - 1; i >= 0; i--) {
 				if (freshLines[i]!.trim().startsWith(']')) {
 					const prev = freshLines[i - 1]
-					if (prev && prev.trimEnd().endsWith(',')) {
+					if (prev?.trimEnd().endsWith(',')) {
 						// Check if this is the array we're editing by scanning backwards
 						// to find the array variable
 						freshLines[i - 1] = prev.replace(/,(\s*)$/, '$1')

@@ -66,7 +66,7 @@ export function BlockEditor({
 			setSelectedComponent(null)
 			setInsertPosition('after')
 		}
-	}, [visible, componentId])
+	}, [visible])
 
 	useEffect(() => {
 		if (currentInstance) {

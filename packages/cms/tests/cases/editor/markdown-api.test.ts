@@ -352,6 +352,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
+		// biome-ignore lint/complexity/useArrowFunction: must be function for constructor mock
 		global.XMLHttpRequest = function() {
 			return mockXhr
 		}
@@ -396,6 +397,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
+		// biome-ignore lint/complexity/useArrowFunction: must be function for constructor mock
 		global.XMLHttpRequest = function() {
 			return mockXhr
 		}
@@ -429,6 +431,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
+		// biome-ignore lint/complexity/useArrowFunction: must be function for constructor mock
 		global.XMLHttpRequest = function() {
 			return mockXhr
 		}
@@ -457,6 +460,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
+		// biome-ignore lint/complexity/useArrowFunction: must be function for constructor mock
 		global.XMLHttpRequest = function() {
 			return mockXhr
 		}
@@ -485,6 +489,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
+		// biome-ignore lint/complexity/useArrowFunction: must be function for constructor mock
 		global.XMLHttpRequest = function() {
 			return mockXhr
 		}
@@ -517,6 +522,7 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
+		// biome-ignore lint/complexity/useArrowFunction: must be function for constructor mock
 		global.XMLHttpRequest = function() {
 			return mockXhr
 		}
