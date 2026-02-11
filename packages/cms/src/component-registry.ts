@@ -1,3 +1,4 @@
+import { parse as parseBabel } from '@babel/parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
@@ -88,98 +89,124 @@ export class ComponentRegistry {
 	}
 
 	/**
-	 * Parse Props content and extract individual property definitions
-	 * Handles multi-line properties with nested types
+	 * Parse Props content using @babel/parser AST for correct TypeScript handling.
+	 * Wraps the content in a synthetic interface and walks TSPropertySignature nodes.
 	 */
 	private parsePropsContent(propsContent: string): ComponentProp[] {
 		const props: ComponentProp[] = []
-		let i = 0
-		const content = propsContent.trim()
 
-		while (i < content.length) {
-			// Skip whitespace and newlines
-			while (i < content.length && /\s/.test(content[i] ?? '')) i++
-			if (i >= content.length) break
+		// Wrap in an interface so Babel can parse it as valid TypeScript
+		const synthetic = `interface _Props {\n${propsContent}\n}`
+		let ast: ReturnType<typeof parseBabel>
+		try {
+			ast = parseBabel(synthetic, {
+				sourceType: 'module',
+				plugins: ['typescript'],
+				errorRecovery: true,
+			})
+		} catch {
+			return props
+		}
 
-			// Skip comments
-			if (content[i] === '/' && content[i + 1] === '/') {
-				// Skip to end of line
-				while (i < content.length && content[i] !== '\n') i++
-				continue
+		const interfaceNode = ast.program.body[0]
+		if (!interfaceNode || interfaceNode.type !== 'TSInterfaceDeclaration') return props
+
+		// Collect leading comments per line for JSDoc / inline descriptions
+		const lines = synthetic.split('\n')
+
+		for (const member of interfaceNode.body.body) {
+			if (member.type !== 'TSPropertySignature') continue
+			if (member.key.type !== 'Identifier') continue
+
+			const name = member.key.name
+			const optional = !!member.optional
+
+			// Reconstruct the type string from source text
+			let type = 'unknown'
+			if (member.typeAnnotation?.typeAnnotation) {
+				const ta = member.typeAnnotation.typeAnnotation
+				if (ta.loc) {
+					// Extract the type text directly from the synthetic source
+					const startLine = ta.loc.start.line - 1
+					const endLine = ta.loc.end.line - 1
+					if (startLine === endLine) {
+						type = lines[startLine]!.slice(ta.loc.start.column, ta.loc.end.column).trim()
+					} else {
+						const parts: string[] = []
+						for (let l = startLine; l <= endLine; l++) {
+							if (l === startLine) parts.push(lines[l]!.slice(ta.loc.start.column))
+							else if (l === endLine) parts.push(lines[l]!.slice(0, ta.loc.end.column))
+							else parts.push(lines[l]!)
+						}
+						type = parts.join('\n').trim()
+					}
+				} else {
+					type = this.typeAnnotationToString(ta)
+				}
 			}
 
-			if (content[i] === '/' && content[i + 1] === '*') {
-				// Skip block comment
-				while (i < content.length - 1 && !(content[i] === '*' && content[i + 1] === '/')) i++
-				i += 2
-				continue
-			}
-
-			// Extract property name
-			const nameStart = i
-			while (i < content.length && /\w/.test(content[i] ?? '')) i++
-			const name = content.substring(nameStart, i)
-
-			if (!name) break
-
-			// Skip whitespace
-			while (i < content.length && /\s/.test(content[i] ?? '')) i++
-
-			// Check for optional marker
-			const optional = content[i] === '?'
-			if (optional) i++
-
-			// Skip whitespace
-			while (i < content.length && /\s/.test(content[i] ?? '')) i++
-
-			// Expect colon
-			if (content[i] !== ':') break
-			i++
-
-			// Skip whitespace
-			while (i < content.length && /\s/.test(content[i] ?? '')) i++
-
-			// Extract type (up to semicolon, handling nested braces)
-			const typeStart = i
-			let braceDepth = 0
-			let angleDepth = 0
-			while (i < content.length) {
-				if (content[i] === '{') braceDepth++
-				else if (content[i] === '}') braceDepth--
-				else if (content[i] === '<') angleDepth++
-				else if (content[i] === '>') angleDepth--
-				else if (content[i] === ';' && braceDepth === 0 && angleDepth === 0) break
-				i++
-			}
-
-			const type = content.substring(typeStart, i).trim()
-
-			// Skip the semicolon
-			if (content[i] === ';') i++
-
-			// Skip whitespace
-			while (i < content.length && /[ \t]/.test(content[i] ?? '')) i++
-
-			// Check for inline comment
+			// Look for a leading comment (JSDoc or line comment) for description
 			let description: string | undefined
-			if (content[i] === '/' && content[i + 1] === '/') {
-				i += 2
-				const commentStart = i
-				while (i < content.length && content[i] !== '\n') i++
-				description = content.substring(commentStart, i).trim()
+			if (member.leadingComments && member.leadingComments.length > 0) {
+				const last = member.leadingComments[member.leadingComments.length - 1]!
+				if (last.type === 'CommentLine') {
+					description = last.value.trim()
+				} else if (last.type === 'CommentBlock') {
+					description = last.value
+						.split('\n')
+						.map((l: string) => l.replace(/^\s*\*\s?/, '').trim())
+						.filter(Boolean)
+						.join(' ')
+				}
+			}
+			// Also check for trailing inline comment
+			if (!description && member.trailingComments && member.trailingComments.length > 0) {
+				const first = member.trailingComments[0]!
+				if (first.type === 'CommentLine') {
+					description = first.value.trim()
+				}
 			}
 
 			if (name && type) {
-				props.push({
-					name,
-					type,
-					required: !optional,
-					description,
-				})
+				props.push({ name, type, required: !optional, description })
 			}
 		}
 
 		return props
+	}
+
+	/**
+	 * Fallback: convert a Babel TSType node to a human-readable string
+	 */
+	private typeAnnotationToString(node: any): string {
+		switch (node.type) {
+			case 'TSStringKeyword': return 'string'
+			case 'TSNumberKeyword': return 'number'
+			case 'TSBooleanKeyword': return 'boolean'
+			case 'TSAnyKeyword': return 'any'
+			case 'TSVoidKeyword': return 'void'
+			case 'TSNullKeyword': return 'null'
+			case 'TSUndefinedKeyword': return 'undefined'
+			case 'TSUnknownKeyword': return 'unknown'
+			case 'TSNeverKeyword': return 'never'
+			case 'TSObjectKeyword': return 'object'
+			case 'TSArrayType':
+				return `${this.typeAnnotationToString(node.elementType)}[]`
+			case 'TSUnionType':
+				return node.types.map((t: any) => this.typeAnnotationToString(t)).join(' | ')
+			case 'TSIntersectionType':
+				return node.types.map((t: any) => this.typeAnnotationToString(t)).join(' & ')
+			case 'TSLiteralType':
+				if (node.literal.type === 'StringLiteral') return `'${node.literal.value}'`
+				return String(node.literal.value)
+			case 'TSTypeReference':
+				if (node.typeName?.type === 'Identifier') return node.typeName.name
+				return 'unknown'
+			case 'TSParenthesizedType':
+				return `(${this.typeAnnotationToString(node.typeAnnotation)})`
+			default:
+				return 'unknown'
+		}
 	}
 
 	/**
