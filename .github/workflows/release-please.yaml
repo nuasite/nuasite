@@ -11,6 +11,9 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -45,3 +48,10 @@ jobs:
             git commit -m "chore: update bun.lock"
             git push origin "HEAD:$PR_BRANCH"
           fi
+
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    uses: ./.github/workflows/publish.yaml
+    with:
+      tag_name: ${{ needs.release-please.outputs.tag_name }}

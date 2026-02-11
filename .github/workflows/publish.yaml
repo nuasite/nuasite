@@ -1,12 +1,14 @@
 name: Publish
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
 
 permissions:
-  id-token: write  # Required for OIDC
+  id-token: write
   contents: read
 
 jobs:
@@ -34,7 +36,7 @@ jobs:
         id: versions
         uses: ./.github/actions/extract-version
         with:
-          version: ${{ github.ref }}
+          version: ${{ inputs.tag_name }}
 
       - name: "Build app"
         run: bun run build
