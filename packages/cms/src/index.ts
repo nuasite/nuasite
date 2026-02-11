@@ -1,5 +1,5 @@
-import tailwindcss from '@tailwindcss/vite'
 import type { AstroIntegration } from 'astro'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -133,6 +133,11 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				}
 
 				const vitePlugins: any[] = [...(createVitePlugin(pluginContext) as any)]
+				const cmsDir = !src ? dirname(fileURLToPath(import.meta.url)) : undefined
+
+				// Detect pre-built editor bundle (present when installed from npm)
+				const editorBundlePath = cmsDir ? join(cmsDir, '../dist/editor.js') : undefined
+				const hasPrebuiltBundle = editorBundlePath ? existsSync(editorBundlePath) : false
 
 				// --- CMS Editor setup (dev only) ---
 				if (command === 'dev') {
@@ -156,33 +161,51 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					`,
 					)
 
-					// Resolve the virtual CMS editor path to the actual source file.
-					// Vite's dev server transforms the TSX, resolves imports, and serves it.
 					if (!src) {
-						const __dirname = dirname(fileURLToPath(import.meta.url))
+						if (hasPrebuiltBundle) {
+							// Pre-built bundle exists (npm install case):
+							// Serve it via a virtual module — no JSX pragma, Tailwind, or aliases needed.
+							const bundleContent = readFileSync(editorBundlePath!, 'utf-8')
+							vitePlugins.push({
+								name: 'nuasite-cms-editor',
+								resolveId(id: string) {
+									if (id === VIRTUAL_CMS_PATH) {
+										return VIRTUAL_CMS_PATH
+									}
+								},
+								load(id: string) {
+									if (id === VIRTUAL_CMS_PATH) {
+										return bundleContent
+									}
+								},
+							})
+						} else {
+							// No pre-built bundle (monorepo dev case):
+							// Serve source files directly — Vite transforms TSX, resolves imports, HMR works.
+							vitePlugins.push({
+								name: 'nuasite-cms-editor',
+								resolveId(id: string) {
+									if (id === VIRTUAL_CMS_PATH) {
+										return join(cmsDir!, 'editor/index.tsx')
+									}
+								},
+							})
 
-						vitePlugins.push({
-							name: 'nuasite-cms-editor',
-							resolveId(id: string) {
-								if (id === VIRTUAL_CMS_PATH) {
-									return join(__dirname, 'editor/index.tsx')
-								}
-							},
-						})
+							// Prepend @jsxImportSource pragma for editor .tsx files
+							// so Vite's esbuild uses Preact's h function
+							vitePlugins.push({
+								name: 'nuasite-cms-preact-jsx',
+								transform(code: string, id: string) {
+									if (id.includes('/src/editor/') && id.endsWith('.tsx') && !code.includes('@jsxImportSource')) {
+										return `/** @jsxImportSource preact */\n${code}`
+									}
+								},
+							})
 
-						// Prepend @jsxImportSource pragma for editor .tsx files
-						// so Vite's esbuild uses Preact's h function
-						vitePlugins.push({
-							name: 'nuasite-cms-preact-jsx',
-							transform(code: string, id: string) {
-								if (id.includes('/src/editor/') && id.endsWith('.tsx') && !code.includes('@jsxImportSource')) {
-									return `/** @jsxImportSource preact */\n${code}`
-								}
-							},
-						})
-
-						// Add Tailwind CSS Vite plugin for editor styles
-						vitePlugins.push(tailwindcss())
+							// Add Tailwind CSS Vite plugin for editor styles
+							const tailwindcss = (await import('@tailwindcss/vite')).default
+							vitePlugins.push(tailwindcss())
+						}
 					}
 				}
 
@@ -195,10 +218,13 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					}
 				}
 
+				// Only add react->preact aliases when serving source files (not pre-built bundle)
+				const needsAliases = !src && !hasPrebuiltBundle
+
 				updateConfig({
 					vite: {
 						plugins: vitePlugins,
-						resolve: !src
+						resolve: needsAliases
 							? {
 								alias: {
 									'react': 'preact/compat',
