@@ -12,7 +12,7 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 	return {
 		name: '@nuasite/nua',
 		hooks: {
-			'astro:config:setup': ({ updateConfig, logger }) => {
+			'astro:config:setup': ({ updateConfig, command, injectScript, logger }) => {
 				const integrations: AstroIntegration[] = []
 				const vitePlugins = []
 
@@ -42,6 +42,24 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				if (resolved.sitemap !== false) {
 					integrations.push(sitemap(resolved.sitemap))
 					logger.info('Sitemap enabled')
+				}
+
+				// Hide Astro's dev toolbar in dev mode.
+				// We cannot set devToolbar.enabled = false because Astro ties
+				// source file annotations (data-astro-source-file) to that flag,
+				// and the CMS needs those annotations to map elements to source files.
+				if (command === 'dev') {
+					injectScript('page', `
+						const tb = document.querySelector('astro-dev-toolbar');
+						if (tb) tb.style.display = 'none';
+						else {
+							const o = new MutationObserver((_, obs) => {
+								const el = document.querySelector('astro-dev-toolbar');
+								if (el) { el.style.display = 'none'; obs.disconnect(); }
+							});
+							o.observe(document.documentElement, { childList: true, subtree: true });
+						}
+					`)
 				}
 
 				// Inject Vite plugins and integrations
