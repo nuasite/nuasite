@@ -2,10 +2,9 @@
 
 ## [0.3.1](https://github.com/nuasite/nuasite/compare/v0.3.0...v0.3.1) (2026-02-11)
 
-
 ### Bug Fixes
 
-* **cms:** resolve biome lint errors ([149b7f0](https://github.com/nuasite/nuasite/commit/149b7f0820acf2ee79181a724b76b5cb51a49c4f))
+- **cms:** resolve biome lint errors ([149b7f0](https://github.com/nuasite/nuasite/commit/149b7f0820acf2ee79181a724b76b5cb51a49c4f))
 
 ## [0.3.0](https://github.com/nuasite/nuasite/compare/v0.2.2...v0.3.0) (2026-02-11)
 
