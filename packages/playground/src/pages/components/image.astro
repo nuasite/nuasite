@@ -1,0 +1,85 @@
+---
+import DocLayout from '../../components/DocLayout.astro'
+import PageHeader from '../../components/PageHeader.astro'
+import SectionHeading from '../../components/SectionHeading.astro'
+import CodeBlock from '../../components/CodeBlock.astro'
+import ConfigTable from '../../components/ConfigTable.astro'
+import ImagePreview from '../../components/ImagePreview.astro'
+
+const props = [
+	{ name: 'src', required: true, type: 'string', description: 'Original image path or absolute URL to transform.' },
+	{ name: 'widths', type: 'number[]', default: '[480,768,1024,1400,1920]', description: 'Breakpoints used to generate the srcset.' },
+	{ name: 'sizes', type: 'string', description: 'Value for the sizes attribute controlling how browsers pick srcset entries.' },
+	{ name: 'transformOptions', type: 'TransformOptions', description: 'Cloudflare Image Transform options merged into every generated URL (fit, dpr, quality, etc.).' },
+	{ name: 'deliveryBase', type: 'string', default: '/cdn-cgi/image', description: 'Prefix for the transform endpoint.' },
+	{ name: 'allowedDomains', type: 'string[]', description: 'Hostnames allowed for transforms. Falls back to plain src when not matched.' },
+]
+---
+
+<DocLayout title="Image Component | Nua Playground" description="Responsive srcset URLs for Cloudflare Image Transform with a simple Astro component.">
+	<PageHeader
+		badge="Component"
+		title="Responsive Image"
+		description="Generate responsive srcset URLs for Cloudflare Image Transform with a simple Astro component and typed options."
+	/>
+
+	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
+
+		<section class="space-y-8">
+			<SectionHeading title="Live preview" id="preview" />
+			<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-8">
+				<ImagePreview />
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="How it works"
+				description="The Image component generates Cloudflare /cdn-cgi/image URLs for each width breakpoint."
+				id="how-it-works"
+			/>
+			<div class="grid gap-6 sm:grid-cols-3">
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">1</div>
+					<h4 class="text-sm font-semibold text-white">Width breakpoints</h4>
+					<p class="text-sm text-slate-400">Provide an array of widths and the component generates a srcset entry for each one.</p>
+				</div>
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">2</div>
+					<h4 class="text-sm font-semibold text-white">Transform URLs</h4>
+					<p class="text-sm text-slate-400">Each srcset entry is a /cdn-cgi/image URL with width, quality, format, and fit parameters baked in.</p>
+				</div>
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">3</div>
+					<h4 class="text-sm font-semibold text-white">Domain safety</h4>
+					<p class="text-sm text-slate-400">Only transforms images from allowed domains — falls back gracefully to the original src for everything else.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Usage" id="usage" />
+			<CodeBlock
+				filename="src/pages/index.astro"
+				code={`---
+import Image from '@nuasite/components/Image.astro'
+---
+
+<Image
+  src="/uploads/hero.jpg"
+  alt="Hero image"
+  widths={[480, 768, 1024, 1400, 1920]}
+  sizes="(min-width: 1024px) 64vw, 100vw"
+  transformOptions={{ fit: 'cover', quality: 80 }}
+  allowedDomains={['cdn.example.com']}
+/>`}
+			/>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Props reference" id="props" />
+			<ConfigTable title="Image Props" rows={props} />
+		</section>
+
+	</div>
+</DocLayout>

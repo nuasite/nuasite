@@ -1,0 +1,102 @@
+---
+import DocLayout from '../components/DocLayout.astro'
+import PageHeader from '../components/PageHeader.astro'
+import SectionHeading from '../components/SectionHeading.astro'
+import CodeBlock from '../components/CodeBlock.astro'
+import ConfigTable from '../components/ConfigTable.astro'
+
+const commands = [
+	{ name: 'nua build', description: 'Run the Astro build with Nua defaults and agent-summary auto-injection.' },
+	{ name: 'nua dev', description: 'Start the Astro dev server with all Nua integrations active.' },
+	{ name: 'nua preview', description: 'Preview the built site locally.' },
+	{ name: 'nua help', description: 'Show available commands and usage information.' },
+]
+---
+
+<DocLayout title="CLI | Nua Playground" description="The nua CLI — build, dev, and preview with automatic agent-summary injection.">
+	<PageHeader
+		badge="@nuasite/cli"
+		title="Build with one command."
+		description="The nua CLI wraps the Astro CLI with smart integration detection and automatic agent-summary injection."
+	/>
+
+	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
+
+		<section class="space-y-8">
+			<SectionHeading title="Commands" id="commands" />
+			<ConfigTable title="Available commands" rows={commands} />
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="How it works"
+				description="The CLI detects your project configuration and adapts its behavior."
+				id="how-it-works"
+			/>
+			<div class="grid gap-6 lg:grid-cols-2">
+				<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
+					<h3 class="text-sm font-semibold text-white">Smart proxy mode</h3>
+					<p class="text-sm text-slate-400">If your <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">astro.config</code> already imports <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">@nuasite/agent-summary</code> or uses <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">agentsSummary()</code>, the CLI proxies directly to Astro — no extra overhead.</p>
+				</div>
+				<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
+					<h3 class="text-sm font-semibold text-white">Auto-injection mode</h3>
+					<p class="text-sm text-slate-400">Otherwise, the CLI runs Astro programmatically and injects the <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">agentsSummary()</code> integration automatically — no config changes needed.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Usage" id="usage" />
+			<CodeBlock
+				filename="Terminal"
+				lang="bash"
+				code={`# Install
+npm install @nuasite/cli
+
+# Or use via the nua meta-package (recommended)
+npm install @nuasite/nua
+
+# Build your site
+nua build
+
+# Development server
+nua dev
+
+# Preview built site
+nua preview
+
+# All Astro CLI flags are supported
+nua dev --port 3000 --host 0.0.0.0`}
+			/>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="Auto-injection flow"
+				description="How the CLI decides whether to proxy or inject."
+				id="flow"
+			/>
+			<div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+				<div class="space-y-4 text-sm">
+					<div class="flex items-start gap-4">
+						<span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-xs font-bold text-indigo-300">1</span>
+						<p class="text-slate-300">CLI reads your <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">astro.config.ts</code> file.</p>
+					</div>
+					<div class="flex items-start gap-4">
+						<span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-xs font-bold text-indigo-300">2</span>
+						<p class="text-slate-300">Searches for <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">@nuasite/agent-summary</code> or <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">agentsSummary</code> in the source.</p>
+					</div>
+					<div class="flex items-start gap-4">
+						<span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-bold text-emerald-300">A</span>
+						<p class="text-slate-300"><strong class="text-slate-100">Found:</strong> Proxies to <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">npx astro &lt;command&gt;</code> directly.</p>
+					</div>
+					<div class="flex items-start gap-4">
+						<span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-300">B</span>
+						<p class="text-slate-300"><strong class="text-slate-100">Not found:</strong> Runs Astro programmatically with <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">agentsSummary()</code> injected into integrations.</p>
+					</div>
+				</div>
+			</div>
+		</section>
+
+	</div>
+</DocLayout>

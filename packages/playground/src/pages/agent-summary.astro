@@ -1,0 +1,121 @@
+---
+import DocLayout from '../components/DocLayout.astro'
+import PageHeader from '../components/PageHeader.astro'
+import SectionHeading from '../components/SectionHeading.astro'
+import CodeBlock from '../components/CodeBlock.astro'
+import OutputViewer from '../components/OutputViewer.astro'
+
+import fs from 'node:fs'
+import path from 'node:path'
+
+let agentsMd = ''
+try {
+	agentsMd = fs.readFileSync(path.resolve('AGENTS.md'), 'utf-8').slice(0, 5000)
+} catch {
+	agentsMd = '# AGENTS.md will be generated after build\n# Run `nua build` to generate this file.'
+}
+
+const exampleJsonl = `{"kind":"page","route":"/","title":"Nua Playground","description":"A living showcase of the Nua ecosystem.","headlines":["The Nua Ecosystem","Packages"]}
+{"kind":"page","route":"/components/","title":"Components","description":"Browse reusable Astro components.","headlines":["Available components","Up next"]}
+{"kind":"redirect","route":"/old-page","to":"/new-page","status":"302"}`
+---
+
+<DocLayout title="Agent Summary | Nua Playground" description="Automatic AGENTS.md generation with page metadata for LLM agents.">
+	<PageHeader
+		badge="@nuasite/agent-summary"
+		title="AGENTS.md, auto-generated."
+		description="Hooks into the Astro build to extract page metadata and generate a machine-readable AGENTS.md — making your project instantly navigable by AI coding agents."
+	/>
+
+	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="This playground's AGENTS.md"
+				description="The live output of @nuasite/agent-summary, generated on every build."
+				id="live-output"
+			/>
+			<OutputViewer title="Live output" filename="AGENTS.md" content={agentsMd} maxHeight="28rem" />
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="JSONL format"
+				description="Each page and redirect is a single JSON line inside <page_summary> markers."
+				id="format"
+			/>
+			<CodeBlock
+				filename="AGENTS.md excerpt"
+				lang="json"
+				code={exampleJsonl}
+			/>
+			<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
+				<h4 class="text-sm font-semibold text-white mb-4">Record fields</h4>
+				<div class="grid gap-4 sm:grid-cols-2">
+					<div class="space-y-1">
+						<p class="text-sm font-medium text-slate-200">Page records</p>
+						<ul class="space-y-1 text-sm text-slate-400">
+							<li><code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">kind</code> — always "page"</li>
+							<li><code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">route</code> — URL path</li>
+							<li><code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">title</code> — from &lt;title&gt; tag</li>
+							<li><code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">description</code> — meta or first paragraph</li>
+							<li><code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">headlines</code> — all H1-H6 text</li>
+						</ul>
+					</div>
+					<div class="space-y-1">
+						<p class="text-sm font-medium text-slate-200">Redirect records</p>
+						<ul class="space-y-1 text-sm text-slate-400">
+							<li><code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">kind</code> — always "redirect"</li>
+							<li><code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">route</code> — source URL</li>
+							<li><code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">to</code> — destination URL</li>
+							<li><code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">status</code> — HTTP status code</li>
+						</ul>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="How it works"
+				description="The integration hooks into the Astro build lifecycle."
+				id="how-it-works"
+			/>
+			<div class="grid gap-6 lg:grid-cols-3">
+				<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
+					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-lg text-indigo-300">1</div>
+					<h3 class="text-sm font-semibold text-white">Route collection</h3>
+					<p class="text-sm text-slate-400">During <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">astro:routes:resolved</code>, collects and normalizes all redirect routes.</p>
+				</div>
+				<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
+					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-lg text-indigo-300">2</div>
+					<h3 class="text-sm font-semibold text-white">HTML extraction</h3>
+					<p class="text-sm text-slate-400">After <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">astro:build:done</code>, parses each built HTML page to extract title, description, and headlines.</p>
+				</div>
+				<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
+					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-lg text-indigo-300">3</div>
+					<h3 class="text-sm font-semibold text-white">AGENTS.md update</h3>
+					<p class="text-sm text-slate-400">Finds or creates <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">&lt;page_summary&gt;</code> markers in AGENTS.md and replaces the block with fresh JSONL data.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="CLI auto-injection"
+				description="The nua CLI automatically injects agent-summary into your build pipeline."
+				id="cli-injection"
+			/>
+			<CodeBlock
+				filename="Terminal"
+				lang="bash"
+				code={`# If your astro.config already imports agent-summary, nua proxies directly:
+nua build    # → npx astro build
+
+# Otherwise, nua injects the integration automatically:
+nua build    # → astro.build({ integrations: [agentsSummary()] })`}
+			/>
+		</section>
+
+	</div>
+</DocLayout>

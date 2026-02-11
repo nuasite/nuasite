@@ -1,0 +1,83 @@
+---
+import DocLayout from '../../components/DocLayout.astro'
+import PageHeader from '../../components/PageHeader.astro'
+import SectionHeading from '../../components/SectionHeading.astro'
+import UpcomingComponents from '../../components/UpcomingComponents.astro'
+
+const components = [
+	{
+		name: 'Form',
+		slug: 'form',
+		description: 'Progressive enhancement layer with spam protection, async submission, and status messaging.',
+		status: 'Ready',
+		statusClass: 'border-indigo-500/40 bg-indigo-500/15 text-indigo-200',
+	},
+	{
+		name: 'Image',
+		slug: 'image',
+		description: 'Responsive srcset URLs for Cloudflare Image Transform with typed options.',
+		status: 'Ready',
+		statusClass: 'border-indigo-500/40 bg-indigo-500/15 text-indigo-200',
+	},
+]
+
+const upcoming = [
+	{ name: 'Toast', description: 'Snack-bar notifications with stacked layouts, focus return, and auto-dismiss timers.' },
+	{ name: 'Modal', description: 'Accessible dialog with focus trapping and scroll locking handled for you.' },
+	{ name: 'Tabs', description: 'ARIA-compliant tab interface with keyboard navigation baked in.' },
+]
+---
+
+<DocLayout title="Components | Nua Playground" description="Browse reusable Astro components from @nuasite/components.">
+	<PageHeader
+		badge="@nuasite/components"
+		title="Composable UI for Astro."
+		description="Production-ready components built for product teams that value speed, accessibility, and a refined developer experience."
+	/>
+
+	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
+
+		<section class="space-y-8">
+			<SectionHeading title="Available components" />
+			<div class="grid gap-6 sm:grid-cols-2">
+				{components.map((comp) => (
+					<a
+						href={`/components/${comp.slug}/`}
+						class="group flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6 transition hover:border-indigo-500/40 hover:bg-slate-900 hover:shadow-lg hover:shadow-indigo-500/5"
+					>
+						<div class="flex items-center justify-between">
+							<h3 class="text-lg font-semibold text-white group-hover:text-indigo-100">{comp.name}</h3>
+							<span class:list={[
+								'rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest',
+								comp.statusClass,
+							]}>
+								{comp.status}
+							</span>
+						</div>
+						<p class="text-sm text-slate-400 group-hover:text-slate-300">{comp.description}</p>
+						<span class="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-indigo-300 opacity-0 transition group-hover:opacity-100">
+							View docs & demo
+							<svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+							</svg>
+						</span>
+					</a>
+				))}
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="Up next"
+				description="Focused drops of reusable UI shipping every cycle."
+				id="upcoming"
+			/>
+			<div class="grid gap-6 md:grid-cols-3">
+				{upcoming.map(({ name, description }) => (
+					<UpcomingComponents name={name} description={description} />
+				))}
+			</div>
+		</section>
+
+	</div>
+</DocLayout>

@@ -1,0 +1,28 @@
+---
+import Layout from '../layouts/layout.astro'
+import Navigation from './Navigation.astro'
+
+interface Props {
+	title: string
+	description: string
+	currentPath?: string
+}
+
+const { title, description, currentPath } = Astro.props
+---
+
+<Layout title={title} description={description}>
+	<Navigation currentPath={currentPath} />
+	<main class="min-h-screen bg-slate-950 text-slate-100">
+		<slot />
+	</main>
+	<footer class="border-t border-slate-800/60 bg-slate-950">
+		<div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
+			<p class="text-xs text-slate-500">Nua Playground &mdash; a living showcase of the Nua ecosystem.</p>
+			<div class="flex items-center gap-4">
+				<a href="https://github.com/nuasite/nua" target="_blank" rel="noopener noreferrer" class="text-xs text-slate-500 transition hover:text-slate-300">GitHub</a>
+				<a href="/llms.txt" class="text-xs text-slate-500 transition hover:text-slate-300">llms.txt</a>
+			</div>
+		</div>
+	</footer>
+</Layout>

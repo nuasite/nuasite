@@ -1,0 +1,132 @@
+---
+import DocLayout from '../components/DocLayout.astro'
+import PageHeader from '../components/PageHeader.astro'
+import SectionHeading from '../components/SectionHeading.astro'
+import CodeBlock from '../components/CodeBlock.astro'
+import ConfigTable from '../components/ConfigTable.astro'
+
+import fs from 'node:fs'
+import path from 'node:path'
+
+let playgroundConfig = ''
+try {
+	playgroundConfig = fs.readFileSync(path.resolve('astro.config.ts'), 'utf-8')
+} catch {}
+
+const configRows = [
+	{ name: 'cms', type: 'boolean | CmsMarkerOptions', default: 'true', description: 'Enable CMS integration with visual editing, HTML marking, and media uploads.' },
+	{ name: 'pageMarkdown', type: 'boolean | PageMarkdownOptions', default: 'true', description: 'Enable LLM enhancements — .md endpoints, llms.txt, and /.well-known/llm.md.' },
+	{ name: 'mdx', type: 'boolean | MdxOptions', default: 'true', description: 'Enable MDX support for Markdown pages with components.' },
+	{ name: 'sitemap', type: 'boolean | SitemapOptions', default: 'true', description: 'Auto-generate a sitemap.xml at build time.' },
+	{ name: 'tailwindcss', type: 'boolean', default: 'true', description: 'Enable the Tailwind CSS v4 Vite plugin.' },
+]
+
+const enabledByDefault = [
+	'CMS with visual editing and media uploads',
+	'LLM enhancements (.md endpoints, llms.txt)',
+	'MDX content authoring',
+	'Sitemap generation',
+	'Tailwind CSS v4',
+	'Vite sourcemaps',
+]
+---
+
+<DocLayout title="@nuasite/nua | Nua Playground" description="The meta-integration that bundles the entire Nua ecosystem into a single import.">
+	<PageHeader
+		badge="@nuasite/nua"
+		title="One import. Everything enabled."
+		description="The meta-integration that bundles CMS, LLM enhancements, MDX, sitemap, and Tailwind into a single defineConfig() call."
+	/>
+
+	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="Before & After"
+				description="What your Astro config looks like with and without Nua."
+				id="before-after"
+			/>
+			<div class="grid gap-6 lg:grid-cols-2">
+				<div class="space-y-3">
+					<p class="text-xs font-semibold uppercase tracking-[0.3em] text-red-400">Without Nua — 6+ imports</p>
+					<CodeBlock
+						filename="astro.config.ts"
+						code={`import { defineConfig } from 'astro/config'
+import mdx from '@astrojs/mdx'
+import sitemap from '@astrojs/sitemap'
+import tailwindcss from '@tailwindcss/vite'
+import cms from '@nuasite/cms'
+import pageMarkdown from '@nuasite/llm-enhancements'
+
+export default defineConfig({
+  integrations: [mdx(), sitemap(), cms(), pageMarkdown()],
+  vite: { plugins: [tailwindcss()] },
+})`}
+					/>
+				</div>
+				<div class="space-y-3">
+					<p class="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-400">With Nua — 1 line</p>
+					<CodeBlock
+						filename="astro.config.ts"
+						code={`import { defineConfig } from '@nuasite/nua/config'
+
+export default defineConfig()`}
+					/>
+				</div>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="What defineConfig() enables"
+				description="Everything you get out of the box with zero configuration."
+				id="defaults"
+			/>
+			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+				{enabledByDefault.map((feature) => (
+					<div class="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+						<span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
+							<svg class="h-3 w-3" fill="none" viewBox="0 0 16 16">
+								<path d="M4 8.5L6.5 11 12 5.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+							</svg>
+						</span>
+						<span class="text-sm text-slate-200">{feature}</span>
+					</div>
+				))}
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="Configuration reference"
+				description="Pass options to defineConfig() to customize behavior."
+				id="config"
+			/>
+			<CodeBlock
+				filename="astro.config.ts"
+				code={`import { defineConfig } from '@nuasite/nua/config'
+
+export default defineConfig({
+  cms: { generateManifest: true, seo: { trackSeo: true } },
+  pageMarkdown: { llmsTxt: { siteName: 'My Site' } },
+  mdx: true,
+  sitemap: true,
+  tailwindcss: true,
+})`}
+			/>
+			<ConfigTable title="NuaIntegrationOptions" rows={configRows} />
+		</section>
+
+		{playgroundConfig && (
+			<section class="space-y-8">
+				<SectionHeading
+					title="This playground's config"
+					description="The actual Astro config powering this site — using the defaults."
+					id="playground-config"
+				/>
+				<CodeBlock filename="astro.config.ts" code={playgroundConfig} />
+			</section>
+		)}
+
+	</div>
+</DocLayout>

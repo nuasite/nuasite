@@ -1,0 +1,93 @@
+---
+import DocLayout from '../../components/DocLayout.astro'
+import PageHeader from '../../components/PageHeader.astro'
+import SectionHeading from '../../components/SectionHeading.astro'
+import CodeBlock from '../../components/CodeBlock.astro'
+import ConfigTable from '../../components/ConfigTable.astro'
+import FormPreview from '../../components/FormPreview.astro'
+
+const props = [
+	{ name: 'formId', required: true, type: 'string', description: 'Unique identifier wiring the client widget to your _nua endpoint and status messages.' },
+	{ name: 'action', type: 'string', default: '/_nua/form/{formId}', description: 'Override the default endpoint when you need a custom backend.' },
+	{ name: 'successMessage', type: 'string', default: '"Success!"', description: 'Message shown when the submission succeeds.' },
+	{ name: 'errorMessage', type: 'string', default: '"Something went wrong!"', description: 'Message shown when the submission fails.' },
+	{ name: 'submittingMessage', type: 'string', default: '"Submitting..."', description: 'Message shown while the submission is in progress.' },
+	{ name: 'networkErrorMessage', type: 'string', default: '"Network error!"', description: 'Message shown when the submission fails due to a network error.' },
+	{ name: 'tryAgainMessage', type: 'string', default: '"Try again"', description: 'Text for the retry action after an error.' },
+]
+---
+
+<DocLayout title="Form Component | Nua Playground" description="Progressive enhancement for HTML forms — spam protection, async submission, and friendly status messaging.">
+	<PageHeader
+		badge="Component"
+		title="Form"
+		description="Wrap any HTML form in a progressive enhancement layer to get spam protection, resilient fetch submissions, and friendly status messaging out of the box."
+	/>
+
+	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
+
+		<section class="space-y-8">
+			<SectionHeading title="Live preview" id="preview" />
+			<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-8">
+				<FormPreview />
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="How it works"
+				description="The Form component wraps your existing HTML form with progressive enhancement — no imposed styles, no layout opinions."
+				id="how-it-works"
+			/>
+			<div class="grid gap-6 sm:grid-cols-3">
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">1</div>
+					<h4 class="text-sm font-semibold text-white">Honeypot injection</h4>
+					<p class="text-sm text-slate-400">A hidden field is generated automatically to discourage bot submissions without CAPTCHAs.</p>
+				</div>
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">2</div>
+					<h4 class="text-sm font-semibold text-white">Async submission</h4>
+					<p class="text-sm text-slate-400">Intercepts the native form submit, sends via fetch, and shows loading state — falls back to standard POST if JS is unavailable.</p>
+				</div>
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">3</div>
+					<h4 class="text-sm font-semibold text-white">Status messaging</h4>
+					<p class="text-sm text-slate-400">Success, error, and retry banners are rendered automatically based on the server response.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Usage" id="usage" />
+			<CodeBlock
+				filename="src/pages/contact.astro"
+				code={`---
+import Form from '@nuasite/components/Form.astro'
+---
+
+<Form
+  formId="contact"
+  successMessage="Thanks! We'll be in touch."
+  errorMessage="Something went wrong — please try again."
+>
+  <label>
+    Email
+    <input type="email" name="email" required />
+  </label>
+  <label>
+    Message
+    <textarea name="message" required></textarea>
+  </label>
+  <button type="submit">Send</button>
+</Form>`}
+			/>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Props reference" id="props" />
+			<ConfigTable title="Form Props" rows={props} />
+		</section>
+
+	</div>
+</DocLayout>

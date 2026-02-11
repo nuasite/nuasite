@@ -1,0 +1,40 @@
+---
+import { Code } from 'astro:components'
+
+interface Props {
+	code: string
+	lang?: string
+	filename?: string
+}
+
+const { code, lang = 'typescript', filename } = Astro.props
+---
+
+<div class="rounded-2xl border border-slate-800 bg-slate-950/80 shadow-lg overflow-hidden">
+	{filename && (
+		<div class="flex items-center justify-between border-b border-slate-800 bg-slate-900/60 px-4 py-2.5">
+			<span class="text-xs font-medium text-slate-400">{filename}</span>
+			<button
+				class="copy-btn rounded-md border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-xs text-slate-400 transition hover:border-slate-600 hover:text-slate-200"
+				data-code={code}
+			>
+				Copy
+			</button>
+		</div>
+	)}
+	<div class="overflow-x-auto p-4 text-sm [&_pre]:!bg-transparent [&_pre]:!p-0">
+		<Code code={code.trim()} lang={lang} theme="github-dark-default" />
+	</div>
+</div>
+
+<script>
+	document.querySelectorAll('.copy-btn').forEach((btn) => {
+		btn.addEventListener('click', async () => {
+			const code = (btn as HTMLElement).dataset.code ?? ''
+			await navigator.clipboard.writeText(code)
+			const original = btn.textContent
+			btn.textContent = 'Copied!'
+			setTimeout(() => { btn.textContent = original }, 1500)
+		})
+	})
+</script>

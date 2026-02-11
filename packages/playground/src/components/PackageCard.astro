@@ -1,0 +1,48 @@
+---
+interface Props {
+	name: string
+	slug: string
+	description: string
+	icon: string
+	badge?: string
+	badgeClass?: string
+}
+
+const {
+	name,
+	slug,
+	description,
+	icon,
+	badge,
+	badgeClass = 'border-indigo-400/30 bg-indigo-500/10 text-indigo-200',
+} = Astro.props
+---
+
+<a
+	href={`/${slug}/`}
+	class="group flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6 transition hover:border-indigo-500/40 hover:bg-slate-900 hover:shadow-lg hover:shadow-indigo-500/5"
+>
+	<div class="flex items-start justify-between">
+		<span class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-lg text-indigo-300 transition group-hover:bg-indigo-500/20">
+			{icon}
+		</span>
+		{badge && (
+			<span class:list={[
+				'rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest',
+				badgeClass,
+			]}>
+				{badge}
+			</span>
+		)}
+	</div>
+	<div class="space-y-1.5">
+		<h3 class="text-sm font-semibold text-white group-hover:text-indigo-100">{name}</h3>
+		<p class="text-sm text-slate-400 group-hover:text-slate-300">{description}</p>
+	</div>
+	<span class="mt-auto inline-flex items-center gap-1.5 text-xs font-medium text-indigo-300 opacity-0 transition group-hover:opacity-100">
+		Explore
+		<svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+			<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+		</svg>
+	</span>
+</a>

@@ -1,0 +1,188 @@
+---
+import DocLayout from '../components/DocLayout.astro'
+import PageHeader from '../components/PageHeader.astro'
+import SectionHeading from '../components/SectionHeading.astro'
+import CodeBlock from '../components/CodeBlock.astro'
+import ConfigTable from '../components/ConfigTable.astro'
+import OutputViewer from '../components/OutputViewer.astro'
+
+import fs from 'node:fs'
+import path from 'node:path'
+
+let manifest = ''
+try {
+	const raw = fs.readFileSync(path.resolve('dist/cms-manifest.json'), 'utf-8')
+	manifest = JSON.stringify(JSON.parse(raw), null, 2).slice(0, 3000)
+} catch {
+	try {
+		const raw = fs.readFileSync(path.resolve('public/cms-manifest.json'), 'utf-8')
+		manifest = JSON.stringify(JSON.parse(raw), null, 2).slice(0, 3000)
+	} catch {
+		manifest = '// cms-manifest.json will be generated after build'
+	}
+}
+
+const configRows = [
+	{ name: 'attributeName', type: 'string', default: '"data-cms-id"', description: 'HTML attribute name used to mark editable elements.' },
+	{ name: 'includeTags', type: 'string[] | null', description: 'Limit marking to specific HTML tags. Null marks all eligible tags.' },
+	{ name: 'excludeTags', type: 'string[]', default: 'html, head, body, script, style', description: 'Tags to exclude from CMS marking.' },
+	{ name: 'generateManifest', type: 'boolean', default: 'true', description: 'Generate a cms-manifest.json describing all editable regions.' },
+	{ name: 'manifestFile', type: 'string', default: '"cms-manifest.json"', description: 'Output filename for the CMS manifest.' },
+	{ name: 'markComponents', type: 'boolean', default: 'true', description: 'Mark component boundaries in the HTML output.' },
+	{ name: 'componentDirs', type: 'string[]', default: '["src/components"]', description: 'Directories to scan for component definitions.' },
+	{ name: 'contentDir', type: 'string', default: '"src/content"', description: 'Directory for content collections.' },
+	{ name: 'media', type: 'MediaStorageAdapter', description: 'Media storage adapter — local filesystem, S3/R2, or Contember.' },
+]
+
+const seoRows = [
+	{ name: 'trackSeo', type: 'boolean', default: 'true', description: 'Track SEO elements (title, meta description, OpenGraph) in the manifest.' },
+	{ name: 'markTitle', type: 'boolean', default: 'true', description: 'Mark the page title as an editable CMS field.' },
+	{ name: 'parseJsonLd', type: 'boolean', default: 'true', description: 'Parse and track JSON-LD structured data.' },
+]
+
+const apiEndpoints = [
+	{ name: 'POST /_nua/cms/update', description: 'Update element content in an Astro source file.' },
+	{ name: 'POST /_nua/cms/insert-component', description: 'Insert a component into a page.' },
+	{ name: 'POST /_nua/cms/remove-component', description: 'Remove a component from a page.' },
+	{ name: 'GET /_nua/cms/markdown/content', description: 'Fetch markdown file content by filePath query param.' },
+	{ name: 'POST /_nua/cms/markdown/update', description: 'Update an existing markdown file.' },
+	{ name: 'POST /_nua/cms/markdown/create', description: 'Create a new markdown content file.' },
+	{ name: 'GET /_nua/cms/media/list', description: 'List uploaded media with pagination support.' },
+	{ name: 'POST /_nua/cms/media/upload', description: 'Upload a new media file.' },
+	{ name: 'DELETE /_nua/cms/media/:id', description: 'Delete a media file by ID.' },
+	{ name: 'GET /cms-manifest.json', description: 'Full manifest of editable regions, components, and collections.' },
+]
+
+const mediaAdapters = [
+	{
+		name: 'Local filesystem',
+		description: 'Default adapter. Stores uploads in public/uploads and serves them via the dev server.',
+		config: `import { createLocalStorageAdapter } from '@nuasite/cms'
+
+defineConfig({
+  cms: {
+    media: createLocalStorageAdapter({
+      dir: 'public/uploads',
+      urlPrefix: '/uploads',
+    })
+  }
+})`,
+	},
+	{
+		name: 'S3 / Cloudflare R2',
+		description: 'Store uploads in any S3-compatible bucket. Works with AWS S3, Cloudflare R2, MinIO, and others.',
+		config: `import { createS3StorageAdapter } from '@nuasite/cms'
+
+defineConfig({
+  cms: {
+    media: createS3StorageAdapter({
+      bucket: 'my-uploads',
+      region: 'auto',
+      endpoint: 'https://account.r2.cloudflarestorage.com',
+      cdnPrefix: 'https://cdn.example.com',
+    })
+  }
+})`,
+	},
+	{
+		name: 'Contember',
+		description: 'Use Contember as the storage backend for tighter integration with the Contember headless CMS.',
+		config: `import { createContemberStorageAdapter } from '@nuasite/cms'
+
+defineConfig({
+  cms: {
+    media: createContemberStorageAdapter({ /* options */ })
+  }
+})`,
+	},
+]
+---
+
+<DocLayout title="CMS | Nua Playground" description="Inline visual editing with built-in dev server, media uploads, and SEO tracking.">
+	<PageHeader
+		badge="@nuasite/cms"
+		title="Visual editing, built in."
+		description="Inline CMS with HTML marking, a dev middleware for live editing, media uploads, and SEO tracking — all integrated into the Astro build pipeline."
+	/>
+
+	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="Architecture"
+				description="The CMS integration works in three layers during development."
+				id="architecture"
+			/>
+			<div class="grid gap-6 lg:grid-cols-3">
+				<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
+					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-lg text-indigo-300">1</div>
+					<h3 class="text-sm font-semibold text-white">HTML Processor</h3>
+					<p class="text-sm text-slate-400">Parses built HTML and injects <code class="rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-xs">data-cms-id</code> attributes on editable elements. Generates per-page and global manifests.</p>
+				</div>
+				<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
+					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-lg text-indigo-300">2</div>
+					<h3 class="text-sm font-semibold text-white">Dev Middleware</h3>
+					<p class="text-sm text-slate-400">Express-style middleware serving API endpoints for content updates, component insertion, markdown editing, and media management.</p>
+				</div>
+				<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-3">
+					<div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-lg text-indigo-300">3</div>
+					<h3 class="text-sm font-semibold text-white">Editor Overlay</h3>
+					<p class="text-sm text-slate-400">Client-side UI injected in dev mode that highlights editable regions, provides inline editing, and communicates with the middleware.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="CMS manifest"
+				description="The playground's own cms-manifest.json, generated at build time."
+				id="manifest"
+			/>
+			<OutputViewer title="Live output" filename="cms-manifest.json" content={manifest} lang="json" maxHeight="20rem" />
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Configuration" id="config" />
+			<ConfigTable title="CmsMarkerOptions" rows={configRows} />
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="SEO tracking" description="CMS automatically tracks SEO metadata and makes it editable." id="seo" />
+			<ConfigTable title="SeoOptions" rows={seoRows} />
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="Media adapters"
+				description="Choose where uploaded media is stored. Swap adapters without changing your templates."
+				id="media"
+			/>
+			<div class="grid gap-6 lg:grid-cols-3">
+				{mediaAdapters.map((adapter) => (
+					<div class="flex flex-col rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
+						<div class="p-6 space-y-2">
+							<h3 class="text-sm font-semibold text-white">{adapter.name}</h3>
+							<p class="text-sm text-slate-400">{adapter.description}</p>
+						</div>
+						<div class="mt-auto border-t border-slate-800 bg-slate-950/60 p-4 overflow-x-auto">
+							<pre class="text-xs text-slate-300 leading-relaxed"><code>{adapter.config}</code></pre>
+						</div>
+					</div>
+				))}
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="API endpoints"
+				description="All endpoints are served by the dev middleware under /_nua/cms/."
+				id="api"
+			/>
+			<ConfigTable
+				title="Dev Server API"
+				rows={apiEndpoints.map(e => ({ name: e.name, description: e.description }))}
+			/>
+		</section>
+
+	</div>
+</DocLayout>

@@ -1,0 +1,59 @@
+---
+interface ConfigRow {
+	name: string
+	required?: boolean
+	type?: string
+	default?: string
+	description: string
+}
+
+interface Props {
+	title?: string
+	rows: ConfigRow[]
+}
+
+const { title = 'Props', rows } = Astro.props
+---
+
+<div class="rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+	<div class="border-b border-slate-800 px-5 py-4">
+		<h3 class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">{title}</h3>
+	</div>
+	<div class="overflow-x-auto">
+		<table class="w-full text-sm">
+			<thead>
+				<tr class="border-b border-slate-800 text-left text-xs uppercase tracking-wider text-slate-500">
+					<th class="px-5 py-3 font-semibold">Name</th>
+					{rows.some(r => r.type) && <th class="px-5 py-3 font-semibold">Type</th>}
+					{rows.some(r => r.default) && <th class="px-5 py-3 font-semibold">Default</th>}
+					<th class="px-5 py-3 font-semibold">Description</th>
+				</tr>
+			</thead>
+			<tbody class="divide-y divide-slate-800">
+				{rows.map((row) => (
+					<tr>
+						<td class="whitespace-nowrap px-5 py-3.5 font-medium text-slate-100">
+							<code class="rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 text-xs">{row.name}</code>
+							{row.required && (
+								<span class="ml-2 rounded-full border border-indigo-400/40 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-indigo-200">
+									Required
+								</span>
+							)}
+						</td>
+						{rows.some(r => r.type) && (
+							<td class="whitespace-nowrap px-5 py-3.5 text-slate-400">
+								{row.type && <code class="text-xs">{row.type}</code>}
+							</td>
+						)}
+						{rows.some(r => r.default) && (
+							<td class="whitespace-nowrap px-5 py-3.5 text-slate-400">
+								{row.default && <code class="text-xs">{row.default}</code>}
+							</td>
+						)}
+						<td class="px-5 py-3.5 text-slate-300">{row.description}</td>
+					</tr>
+				))}
+			</tbody>
+		</table>
+	</div>
+</div>
