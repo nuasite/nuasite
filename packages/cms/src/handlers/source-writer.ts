@@ -66,10 +66,10 @@ export async function handleUpdate(
 	const pageData = manifestWriter.getPageManifest(pagePath)
 	const manifest: CmsManifest = pageData
 		? {
-				entries: pageData.entries,
-				components: pageData.components,
-				componentDefinitions: manifestWriter.getComponentDefinitions(),
-			}
+			entries: pageData.entries,
+			components: pageData.components,
+			componentDefinitions: manifestWriter.getComponentDefinitions(),
+		}
 		: manifestWriter.getGlobalManifest()
 
 	// Group changes by source file
@@ -646,4 +646,3 @@ function findExpressionSrcAttribute(text: string): { index: number; length: numb
 function escapeRegExp(string: string): string {
 	return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
-

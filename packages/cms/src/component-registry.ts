@@ -180,16 +180,26 @@ export class ComponentRegistry {
 	 */
 	private typeAnnotationToString(node: any): string {
 		switch (node.type) {
-			case 'TSStringKeyword': return 'string'
-			case 'TSNumberKeyword': return 'number'
-			case 'TSBooleanKeyword': return 'boolean'
-			case 'TSAnyKeyword': return 'any'
-			case 'TSVoidKeyword': return 'void'
-			case 'TSNullKeyword': return 'null'
-			case 'TSUndefinedKeyword': return 'undefined'
-			case 'TSUnknownKeyword': return 'unknown'
-			case 'TSNeverKeyword': return 'never'
-			case 'TSObjectKeyword': return 'object'
+			case 'TSStringKeyword':
+				return 'string'
+			case 'TSNumberKeyword':
+				return 'number'
+			case 'TSBooleanKeyword':
+				return 'boolean'
+			case 'TSAnyKeyword':
+				return 'any'
+			case 'TSVoidKeyword':
+				return 'void'
+			case 'TSNullKeyword':
+				return 'null'
+			case 'TSUndefinedKeyword':
+				return 'undefined'
+			case 'TSUnknownKeyword':
+				return 'unknown'
+			case 'TSNeverKeyword':
+				return 'never'
+			case 'TSObjectKeyword':
+				return 'object'
 			case 'TSArrayType':
 				return `${this.typeAnnotationToString(node.elementType)}[]`
 			case 'TSUnionType':

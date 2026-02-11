@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { manifest } from '../signals'
 import { LAYOUT } from '../constants'
 import { getComponentDefinition, getComponentDefinitions, getComponentInstance, getComponentInstances } from '../manifest'
+import { manifest } from '../signals'
 import type { ComponentProp, InsertPosition } from '../types'
 
 export interface BlockEditorProps {
@@ -426,9 +426,16 @@ export function BlockEditor({
 							<div class="text-center py-4">
 								<div class="px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-cms-md mb-5 text-[13px] text-white">
 									{isArrayItem
-										? <>This <strong>{currentDefinition?.name}</strong> item will be removed from the data array. This cannot be undone.</>
-										: <>The <strong>{currentDefinition?.name}</strong> component highlighted in the page will be removed. This cannot be undone.</>
-									}
+										? (
+											<>
+												This <strong>{currentDefinition?.name}</strong> item will be removed from the data array. This cannot be undone.
+											</>
+										)
+										: (
+											<>
+												The <strong>{currentDefinition?.name}</strong> component highlighted in the page will be removed. This cannot be undone.
+											</>
+										)}
 								</div>
 								<div class="flex gap-2 justify-end pt-4 border-t border-white/10 mt-4">
 									<button
@@ -458,9 +465,16 @@ export function BlockEditor({
 								<div class="mb-5">
 									<div class="px-4 py-3 bg-white/10 rounded-cms-md mb-4 text-[13px] text-white">
 										{isArrayItem
-											? <>Adding new <strong>{selectedComponent}</strong> item {insertPosition} current item</>
-											: <>Inserting <strong>{selectedComponent}</strong> {insertPosition} current component</>
-										}
+											? (
+												<>
+													Adding new <strong>{selectedComponent}</strong> item {insertPosition} current item
+												</>
+											)
+											: (
+												<>
+													Inserting <strong>{selectedComponent}</strong> {insertPosition} current component
+												</>
+											)}
 									</div>
 									{componentDefinitions[selectedComponent]?.props.map((prop) => (
 										<PropEditor

@@ -38,7 +38,6 @@ beforeEach(() => {
 		components: {},
 		componentDefinitions: {},
 	} satisfies CmsManifest
-
 	;(global as any).fetch = async (url: string | Request) => {
 		const urlStr = url.toString()
 		// Handle both page-specific manifest (/index.json) and global manifest (/cms-manifest.json)

@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { createMarkdownPage, deleteMedia, fetchMarkdownContent, fetchMediaLibrary, updateMarkdownPage, uploadMedia } from '../../../src/editor/markdown-api'
+import {
+	createMarkdownPage,
+	deleteMedia,
+	fetchMarkdownContent,
+	fetchMediaLibrary,
+	updateMarkdownPage,
+	uploadMedia,
+} from '../../../src/editor/markdown-api'
 import type { CmsConfig } from '../../../src/editor/types'
 
 const mockConfig: CmsConfig = {
@@ -16,7 +23,6 @@ afterEach(() => {
 describe('createMarkdownPage', () => {
 	test('sends POST request to /markdown/create endpoint', async () => {
 		let capturedRequest: any = null
-
 		;(global as any).fetch = async (url: string | Request, options?: RequestInit) => {
 			capturedRequest = {
 				url: url.toString(),
@@ -85,7 +91,6 @@ describe('createMarkdownPage', () => {
 
 	test('handles frontmatter in request', async () => {
 		let capturedBody: any = null
-
 		;(global as any).fetch = async (_url: string | Request, options?: RequestInit) => {
 			capturedBody = JSON.parse(options?.body as string)
 			return new Response(JSON.stringify({ success: true }), { status: 200 })
@@ -111,7 +116,6 @@ describe('createMarkdownPage', () => {
 describe('updateMarkdownPage', () => {
 	test('sends POST request to /markdown/update endpoint', async () => {
 		let capturedRequest: any = null
-
 		;(global as any).fetch = async (url: string | Request, options?: RequestInit) => {
 			capturedRequest = {
 				url: url.toString(),
@@ -167,7 +171,6 @@ describe('updateMarkdownPage', () => {
 
 	test('supports updating frontmatter', async () => {
 		let capturedBody: any = null
-
 		;(global as any).fetch = async (_url: string | Request, options?: RequestInit) => {
 			capturedBody = JSON.parse(options?.body as string)
 			return new Response(JSON.stringify({ success: true }), { status: 200 })
@@ -185,7 +188,6 @@ describe('updateMarkdownPage', () => {
 describe('fetchMarkdownContent', () => {
 	test('fetches markdown content from /markdown/content endpoint', async () => {
 		let fetchedUrl = ''
-
 		;(global as any).fetch = async (url: string | Request) => {
 			fetchedUrl = url.toString()
 			return new Response(
@@ -232,7 +234,6 @@ describe('fetchMarkdownContent', () => {
 
 	test('encodes file path in URL', async () => {
 		let fetchedUrl = ''
-
 		;(global as any).fetch = async (url: string | Request) => {
 			fetchedUrl = url.toString()
 			return new Response(JSON.stringify({ content: '', frontmatter: {} }), { status: 200 })
@@ -247,7 +248,6 @@ describe('fetchMarkdownContent', () => {
 describe('fetchMediaLibrary', () => {
 	test('fetches media list from /media/list endpoint', async () => {
 		let fetchedUrl = ''
-
 		;(global as any).fetch = async (url: string | Request) => {
 			fetchedUrl = url.toString()
 			return new Response(
@@ -266,7 +266,6 @@ describe('fetchMediaLibrary', () => {
 
 	test('includes cursor when provided', async () => {
 		let fetchedUrl = ''
-
 		;(global as any).fetch = async (url: string | Request) => {
 			fetchedUrl = url.toString()
 			return new Response(JSON.stringify({ items: [], hasMore: false }), { status: 200 })
@@ -279,7 +278,6 @@ describe('fetchMediaLibrary', () => {
 
 	test('respects custom limit', async () => {
 		let fetchedUrl = ''
-
 		;(global as any).fetch = async (url: string | Request) => {
 			fetchedUrl = url.toString()
 			return new Response(JSON.stringify({ items: [], hasMore: false }), { status: 200 })
@@ -354,7 +352,9 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = function () { return mockXhr }
+		global.XMLHttpRequest = function() {
+			return mockXhr
+		}
 
 		const file = new File(['test content'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
@@ -396,7 +396,9 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = function () { return mockXhr }
+		global.XMLHttpRequest = function() {
+			return mockXhr
+		}
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		await uploadMedia(mockConfig, file, percent => progressValues.push(percent))
@@ -427,7 +429,9 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = function () { return mockXhr }
+		global.XMLHttpRequest = function() {
+			return mockXhr
+		}
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
@@ -453,7 +457,9 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = function () { return mockXhr }
+		global.XMLHttpRequest = function() {
+			return mockXhr
+		}
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
@@ -479,7 +485,9 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = function () { return mockXhr }
+		global.XMLHttpRequest = function() {
+			return mockXhr
+		}
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
@@ -509,7 +517,9 @@ describe('uploadMedia', () => {
 		}
 
 		// @ts-expect-error - mock constructor
-		global.XMLHttpRequest = function () { return mockXhr }
+		global.XMLHttpRequest = function() {
+			return mockXhr
+		}
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
 		const result = await uploadMedia(mockConfig, file)
@@ -522,7 +532,6 @@ describe('uploadMedia', () => {
 describe('deleteMedia', () => {
 	test('sends DELETE request to /media/:id endpoint', async () => {
 		let capturedRequest: any = null
-
 		;(global as any).fetch = async (url: string | Request, options?: RequestInit) => {
 			capturedRequest = {
 				url: url.toString(),

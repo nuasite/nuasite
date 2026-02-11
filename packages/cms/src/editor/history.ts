@@ -1,11 +1,6 @@
 import { computed, signal } from '@preact/signals'
 import * as signals from './signals'
-import {
-	saveAttributeEditsToStorage,
-	saveColorEditsToStorage,
-	saveEditsToStorage,
-	saveImageEditsToStorage,
-} from './storage'
+import { saveAttributeEditsToStorage, saveColorEditsToStorage, saveEditsToStorage, saveImageEditsToStorage } from './storage'
 import type { Attribute, UndoAction, UndoTextAction } from './types'
 
 // ============================================================================

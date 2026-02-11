@@ -1,7 +1,7 @@
+import tailwindcss from '@tailwindcss/vite'
 import type { AstroIntegration } from 'astro'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import tailwindcss from '@tailwindcss/vite'
 
 import { processBuildOutput } from './build-processor'
 import { scanCollections } from './collection-scanner'
@@ -142,7 +142,9 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 						? `window.NuaCmsConfig = ${JSON.stringify(resolvedCmsConfig)};`
 						: ''
 
-					injectScript('page', `
+					injectScript(
+						'page',
+						`
 						${configScript}
 						if (!document.querySelector('script[data-nuasite-cms]')) {
 							const s = document.createElement('script');
@@ -151,7 +153,8 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 							s.dataset.nuasiteCms = '';
 							document.head.appendChild(s);
 						}
-					`)
+					`,
+					)
 
 					// Resolve the virtual CMS editor path to the actual source file.
 					// Vite's dev server transforms the TSX, resolves imports, and serves it.
@@ -195,13 +198,15 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				updateConfig({
 					vite: {
 						plugins: vitePlugins,
-						resolve: !src ? {
-							alias: {
-								'react': 'preact/compat',
-								'react-dom': 'preact/compat',
-								'react/jsx-runtime': 'preact/jsx-runtime',
-							},
-						} : undefined,
+						resolve: !src
+							? {
+								alias: {
+									'react': 'preact/compat',
+									'react-dom': 'preact/compat',
+									'react/jsx-runtime': 'preact/jsx-runtime',
+								},
+							}
+							: undefined,
 						server: {
 							proxy: proxyConfig,
 						},

@@ -99,7 +99,7 @@ export function parseMultipartFile(body: Buffer, contentTypeHeader: string): Par
 
 		// Sanitize filename: strip path separators and dots prefix to prevent traversal
 		const rawFilename = dispositionMatch[1] ?? 'upload'
-		const filename = rawFilename.replace(/[/\\]/g, '_').replace(/^\.+/, '')  || 'upload'
+		const filename = rawFilename.replace(/[/\\]/g, '_').replace(/^\.+/, '') || 'upload'
 		const ctMatch = headerSection.match(/Content-Type:\s*(\S+)/)
 		const contentType = ctMatch?.[1] ?? 'application/octet-stream'
 

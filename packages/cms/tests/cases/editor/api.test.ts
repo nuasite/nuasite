@@ -199,7 +199,6 @@ describe('saveBatchChanges', () => {
 
 	test('sends POST request to /update endpoint', async () => {
 		let capturedRequest: any = null
-
 		;(global as any).fetch = async (url: string | Request, options?: RequestInit) => {
 			capturedRequest = {
 				url: url.toString(),
@@ -214,7 +213,14 @@ describe('saveBatchChanges', () => {
 
 		const request: SaveBatchRequest = {
 			changes: [
-				{ cmsId: 'entry-1', newValue: 'New content 1', originalValue: 'Old 1', sourcePath: '/test.astro', sourceLine: 1, sourceSnippet: '<h1>Old 1</h1>' },
+				{
+					cmsId: 'entry-1',
+					newValue: 'New content 1',
+					originalValue: 'Old 1',
+					sourcePath: '/test.astro',
+					sourceLine: 1,
+					sourceSnippet: '<h1>Old 1</h1>',
+				},
 				{ cmsId: 'entry-2', newValue: 'New content 2', originalValue: 'Old 2', sourcePath: '/test.astro', sourceLine: 2, sourceSnippet: '<p>Old 2</p>' },
 			],
 			meta: { source: 'test', url: '/test' },
@@ -270,7 +276,6 @@ describe('insertComponent', () => {
 
 	test('sends POST request to /insert-component endpoint', async () => {
 		let capturedBody: any = null
-
 		;(global as any).fetch = async (_url: string | Request, options?: RequestInit) => {
 			capturedBody = JSON.parse(options?.body as string)
 			return new Response(
@@ -372,7 +377,6 @@ describe('getChatHistory', () => {
 			],
 			hasMore: true,
 		}
-
 		;(global as any).fetch = async () => {
 			return new Response(JSON.stringify(mockHistory), { status: 200 })
 		}
@@ -406,7 +410,6 @@ describe('streamAiChat', () => {
 			'data: {"type":"token","token":" World","fullText":"Hello World"}\n\n',
 			'data: {"type":"done"}\n\n',
 		]
-
 		;(global as any).fetch = async () => {
 			const encoder = new TextEncoder()
 			const stream = new ReadableStream({
@@ -444,7 +447,6 @@ describe('streamAiChat', () => {
 			'data: {"type":"status","status":"coding"}\n\n',
 			'data: {"type":"done"}\n\n',
 		]
-
 		;(global as any).fetch = async () => {
 			const encoder = new TextEncoder()
 			const stream = new ReadableStream({
@@ -481,7 +483,6 @@ describe('streamAiChat', () => {
 			'data: {"type":"action","action":{"name":"refresh"}}\n\n',
 			'data: {"type":"done"}\n\n',
 		]
-
 		;(global as any).fetch = async () => {
 			const encoder = new TextEncoder()
 			const stream = new ReadableStream({
@@ -514,7 +515,6 @@ describe('streamAiChat', () => {
 		const errors: Array<{ error: string; code?: string }> = []
 
 		const sseData = ['data: {"type":"error","error":"Something went wrong","code":"ERR_500"}\n\n']
-
 		;(global as any).fetch = async () => {
 			const encoder = new TextEncoder()
 			const stream = new ReadableStream({
@@ -548,7 +548,6 @@ describe('streamAiChat', () => {
 		let doneSummary: string | undefined
 
 		const sseData = ['data: {"type":"done","summary":"Completed successfully"}\n\n']
-
 		;(global as any).fetch = async () => {
 			const encoder = new TextEncoder()
 			const stream = new ReadableStream({
@@ -582,7 +581,6 @@ describe('streamAiChat', () => {
 
 	test('calls onError for non-ok response', async () => {
 		const errors: string[] = []
-
 		;(global as any).fetch = async () => {
 			return new Response('Unauthorized', { status: 401 })
 		}
@@ -603,7 +601,6 @@ describe('streamAiChat', () => {
 
 	test('calls onError when response has no body', async () => {
 		const errors: string[] = []
-
 		;(global as any).fetch = async () => {
 			return new Response(null, { status: 200 })
 		}

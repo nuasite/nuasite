@@ -49,7 +49,9 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				// source file annotations (data-astro-source-file) to that flag,
 				// and the CMS needs those annotations to map elements to source files.
 				if (command === 'dev') {
-					injectScript('page', `
+					injectScript(
+						'page',
+						`
 						const tb = document.querySelector('astro-dev-toolbar');
 						if (tb) tb.style.display = 'none';
 						else {
@@ -59,7 +61,8 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 							});
 							o.observe(document.documentElement, { childList: true, subtree: true });
 						}
-					`)
+					`,
+					)
 				}
 
 				// Inject Vite plugins and integrations

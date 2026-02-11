@@ -6,9 +6,9 @@ import type { CmsManifest, ComponentInstance } from '../types'
 import { acquireFileLock, normalizePagePath, resolveAndValidatePath } from '../utils'
 import {
 	findComponentInvocationFile,
+	findComponentInvocationLine,
 	findFrontmatterEnd,
 	getComponentOccurrenceIndex,
-	findComponentInvocationLine,
 	getIndentation,
 	normalizeFilePath,
 } from './component-ops'
@@ -209,7 +209,7 @@ async function resolveArrayContext(
 	const sameSourceComponents = Object.values(manifest.components)
 		.filter(c =>
 			c.componentName === component.componentName
-			&& c.invocationSourcePath === component.invocationSourcePath,
+			&& c.invocationSourcePath === component.invocationSourcePath
 		)
 	const arrayIndex = sameSourceComponents.findIndex(c => c.id === component.id)
 

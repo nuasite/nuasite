@@ -2,12 +2,12 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
+import { escapeRegex } from '../utils'
 import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
 import { findComponentProp, findExpressionProp, findSpreadProp } from './element-finder'
 import { normalizeText } from './snippet-utils'
 import type { ImportInfo, SourceLocation, VariableDefinition } from './types'
-import { escapeRegex } from '../utils'
 import { getExportedDefinitions, resolveImportPath } from './variable-extraction'
 
 // ============================================================================

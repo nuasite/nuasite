@@ -3,7 +3,7 @@ import { logDebug } from '../dom'
 import { startDeploymentPolling } from '../editor'
 import { getComponentInstances } from '../manifest'
 import * as signals from '../signals'
-import type { CmsConfig, ComponentInstance, CmsManifest, InsertPosition } from '../types'
+import type { CmsConfig, CmsManifest, ComponentInstance, InsertPosition } from '../types'
 
 /**
  * Detect whether a component is rendered from a data array via `.map()`.

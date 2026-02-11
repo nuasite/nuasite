@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
+import { escapeRegex } from '../utils'
 import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
 import {
@@ -14,7 +15,6 @@ import {
 	isSearchIndexInitialized,
 	setSearchIndexInitialized,
 } from './cache'
-import { escapeRegex } from '../utils'
 import { extractImageSnippet, extractInnerHtmlFromSnippet, normalizeText } from './snippet-utils'
 import type { CachedParsedFile, SourceLocation } from './types'
 

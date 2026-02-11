@@ -341,7 +341,7 @@ export function getComponentOccurrenceIndex(
 	const sameNameComponents = Object.values(manifest.components)
 		.filter(c =>
 			c.componentName === componentName
-			&& (!invocationSource || c.invocationSourcePath === invocationSource),
+			&& (!invocationSource || c.invocationSourcePath === invocationSource)
 		)
 
 	const index = sameNameComponents.findIndex(c => c.id === referenceComponent.id)
@@ -519,14 +519,26 @@ function findOpeningTagEnd(text: string): number {
 		}
 
 		if (inStr) {
-			if (ch === '\\') { i++; continue }
+			if (ch === '\\') {
+				i++
+				continue
+			}
 			if (ch === inStr) inStr = null
 			continue
 		}
 
-		if (ch === '"' || ch === '\'' || ch === '`') { inStr = ch; continue }
-		if (ch === '{') { braceDepth++; continue }
-		if (ch === '}') { braceDepth--; continue }
+		if (ch === '"' || ch === "'" || ch === '`') {
+			inStr = ch
+			continue
+		}
+		if (ch === '{') {
+			braceDepth++
+			continue
+		}
+		if (ch === '}') {
+			braceDepth--
+			continue
+		}
 
 		if (braceDepth === 0) {
 			if (ch === '/' && text[i + 1] === '>') return i + 1
@@ -566,7 +578,10 @@ function parseOpeningTagProps(text: string, componentName: string): Record<strin
 		const nameStart = pos
 		while (pos < text.length && /[\w\-:.]/.test(text[pos]!)) pos++
 		const name = text.slice(nameStart, pos)
-		if (!name) { pos++; continue }
+		if (!name) {
+			pos++
+			continue
+		}
 
 		// Skip whitespace
 		while (pos < text.length && /\s/.test(text[pos]!)) pos++
@@ -582,7 +597,7 @@ function parseOpeningTagProps(text: string, componentName: string): Record<strin
 		while (pos < text.length && /\s/.test(text[pos]!)) pos++
 
 		const ch = text[pos]
-		if (ch === '"' || ch === '\'') {
+		if (ch === '"' || ch === "'") {
 			// Quoted string: prop="value" or prop='value'
 			pos++
 			const start = pos
@@ -603,7 +618,7 @@ function parseOpeningTagProps(text: string, componentName: string): Record<strin
 			else if (/^-?\d+(\.\d+)?$/.test(trimmed)) props[name] = Number(trimmed)
 			else if (
 				(trimmed.startsWith('"') && trimmed.endsWith('"'))
-				|| (trimmed.startsWith('\'') && trimmed.endsWith('\''))
+				|| (trimmed.startsWith("'") && trimmed.endsWith("'"))
 			) {
 				props[name] = trimmed.slice(1, -1)
 			} else if (trimmed.startsWith('`') && trimmed.endsWith('`')) {
@@ -624,12 +639,17 @@ function skipBracedBlock(text: string, pos: number): number {
 	while (pos < text.length) {
 		const ch = text[pos]!
 		if (inStr) {
-			if (ch === '\\') { pos += 2; continue }
+			if (ch === '\\') {
+				pos += 2
+				continue
+			}
 			if (ch === inStr) inStr = null
 		} else {
 			if (ch === '{') depth++
-			else if (ch === '}') { depth--; if (depth === 0) return pos + 1 }
-			else if (ch === '"' || ch === '\'' || ch === '`') inStr = ch
+			else if (ch === '}') {
+				depth--
+				if (depth === 0) return pos + 1
+			} else if (ch === '"' || ch === "'" || ch === '`') inStr = ch
 		}
 		pos++
 	}
@@ -692,4 +712,3 @@ export function ensureComponentImport(
 		lines.splice(0, 0, '---', importStatement, '---')
 	}
 }
-

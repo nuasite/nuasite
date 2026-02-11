@@ -89,7 +89,6 @@ describe('AIService', () => {
 				'data: {"type":"token","token":" World","fullText":"Hello World"}\n\n',
 				'data: {"type":"done"}\n\n',
 			]
-
 			;(global as any).fetch = async () => {
 				const encoder = new TextEncoder()
 				const stream = new ReadableStream({
@@ -124,7 +123,6 @@ describe('AIService', () => {
 				'data: {"type":"token","token":" World","fullText":"Hello World"}\n\n',
 				'data: {"type":"done"}\n\n',
 			]
-
 			;(global as any).fetch = async () => {
 				const encoder = new TextEncoder()
 				const stream = new ReadableStream({
@@ -160,7 +158,6 @@ describe('AIService', () => {
 				'data: {"type":"status","status":"coding"}\n\n',
 				'data: {"type":"done"}\n\n',
 			]
-
 			;(global as any).fetch = async () => {
 				const encoder = new TextEncoder()
 				const stream = new ReadableStream({
@@ -195,7 +192,6 @@ describe('AIService', () => {
 				'data: {"type":"action","action":{"name":"apply-edit","elementId":"el-1","content":"New content"}}\n\n',
 				'data: {"type":"done"}\n\n',
 			]
-
 			;(global as any).fetch = async () => {
 				const encoder = new TextEncoder()
 				const stream = new ReadableStream({
@@ -229,7 +225,6 @@ describe('AIService', () => {
 			let errorReceived: any = null
 
 			const sseData = ['data: {"type":"error","error":"Something went wrong"}\n\n']
-
 			;(global as any).fetch = async () => {
 				const encoder = new TextEncoder()
 				const stream = new ReadableStream({
@@ -259,7 +254,6 @@ describe('AIService', () => {
 
 		test('sends correct request body', async () => {
 			let capturedBody: any = null
-
 			;(global as any).fetch = async (_url: string | Request, options?: RequestInit) => {
 				capturedBody = JSON.parse(options?.body as string)
 				const encoder = new TextEncoder()
@@ -298,7 +292,6 @@ describe('AIService', () => {
 		test('isStreaming returns false after abort is called', async () => {
 			// Mock a quick stream that we can abort
 			let abortSignalReceived = false
-
 			;(global as any).fetch = async (_url: string | Request, options?: RequestInit) => {
 				// Check if abort signal is present
 				if (options?.signal) {
@@ -357,7 +350,6 @@ describe('AIService', () => {
 	describe('generateBlockProps', () => {
 		test('sends POST request to /ai/generate-props endpoint', async () => {
 			let capturedRequest: any = null
-
 			;(global as any).fetch = async (url: string | Request, options?: RequestInit) => {
 				capturedRequest = {
 					url: url.toString(),
@@ -439,7 +431,6 @@ describe('AIService', () => {
 
 		test('includes context in request', async () => {
 			let capturedBody: any = null
-
 			;(global as any).fetch = async (_url: string | Request, options?: RequestInit) => {
 				capturedBody = JSON.parse(options?.body as string)
 				return new Response(JSON.stringify({ props: {} }), { status: 200 })
@@ -460,7 +451,6 @@ describe('AIService', () => {
 	describe('suggestComponent', () => {
 		test('sends POST request to /ai/suggest-component endpoint', async () => {
 			let capturedRequest: any = null
-
 			;(global as any).fetch = async (url: string | Request, options?: RequestInit) => {
 				capturedRequest = {
 					url: url.toString(),
@@ -528,7 +518,6 @@ describe('AIService', () => {
 
 		test('includes pageUrl in request', async () => {
 			let capturedBody: any = null
-
 			;(global as any).fetch = async (_url: string | Request, options?: RequestInit) => {
 				capturedBody = JSON.parse(options?.body as string)
 				return new Response(JSON.stringify({ suggestion: null }), { status: 200 })

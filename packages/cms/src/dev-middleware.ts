@@ -2,6 +2,7 @@ import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
+import { getProjectRoot } from './config'
 import { handleAddArrayItem, handleRemoveArrayItem } from './handlers/array-ops'
 import {
 	extractPropsFromSource,
@@ -11,20 +12,8 @@ import {
 	handleRemoveComponent,
 	normalizeFilePath,
 } from './handlers/component-ops'
-import { getProjectRoot } from './config'
-import {
-	handleCreateMarkdown,
-	handleGetMarkdownContent,
-	handleUpdateMarkdown,
-} from './handlers/markdown-ops'
-import {
-	handleCors,
-	parseJsonBody,
-	parseMultipartFile,
-	readBody,
-	sendError,
-	sendJson,
-} from './handlers/request-utils'
+import { handleCreateMarkdown, handleGetMarkdownContent, handleUpdateMarkdown } from './handlers/markdown-ops'
+import { handleCors, parseJsonBody, parseMultipartFile, readBody, sendError, sendJson } from './handlers/request-utils'
 import { handleUpdate } from './handlers/source-writer'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
@@ -197,7 +186,9 @@ export function createDevMiddleware(
 				return originalWrite.call(res, chunk, encodingOrCb, cb)
 			}
 			if (chunk) {
-				chunks!.push(typeof chunk === 'string' ? Buffer.from(chunk, typeof encodingOrCb === 'string' ? encodingOrCb as BufferEncoding : 'utf-8') : Buffer.from(chunk))
+				chunks!.push(
+					typeof chunk === 'string' ? Buffer.from(chunk, typeof encodingOrCb === 'string' ? encodingOrCb as BufferEncoding : 'utf-8') : Buffer.from(chunk),
+				)
 			}
 			if (typeof encodingOrCb === 'function') encodingOrCb()
 			else if (typeof cb === 'function') cb()
@@ -366,8 +357,14 @@ async function handleCmsApiRoute(
 
 		// Validate file content type — allow images, videos, PDFs, and common web assets
 		const allowedTypes = [
-			'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/x-icon',
-			'video/mp4', 'video/webm',
+			'image/jpeg',
+			'image/png',
+			'image/gif',
+			'image/webp',
+			'image/avif',
+			'image/x-icon',
+			'video/mp4',
+			'video/webm',
 			'application/pdf',
 		]
 		// Block SVG (can contain scripts) unless explicitly served with safe headers

@@ -161,7 +161,7 @@ export class ManifestWriter {
 				this.writePageManifest(pagePath, entries, components, collection, seo)
 					.catch((err) => {
 						console.error(`[astro-cms] Failed to write manifest for ${pagePath}:`, err)
-					}),
+					})
 			)
 		}
 	}

@@ -1,7 +1,5 @@
-import type { Attribute } from './types'
 import { fetchManifest, getDeploymentStatus, getMarkdownContent, saveBatchChanges } from './api'
 import { CSS, TIMING } from './constants'
-import { clearHistory, isApplyingUndoRedo, recordChange, recordTextChange } from './history'
 import {
 	cleanupHighlightSystem,
 	disableAllInteractiveElements,
@@ -16,6 +14,7 @@ import {
 	makeElementEditable,
 	makeElementNonEditable,
 } from './dom'
+import { clearHistory, isApplyingUndoRedo, recordChange, recordTextChange } from './history'
 import { getManifestEntryCount, hasManifestEntry } from './manifest'
 import * as signals from './signals'
 import {
@@ -27,10 +26,11 @@ import {
 	loadPendingEntryNavigation,
 	saveAttributeEditsToStorage,
 	saveColorEditsToStorage,
-	saveEditsToStorage,
 	saveEditingState,
+	saveEditsToStorage,
 	saveImageEditsToStorage,
 } from './storage'
+import type { Attribute } from './types'
 import type { AttributeChangePayload, ChangePayload, CmsConfig, DeploymentStatusResponse, ManifestEntry, SavedAttributeEdit } from './types'
 
 // CSS attribute for markdown content elements
