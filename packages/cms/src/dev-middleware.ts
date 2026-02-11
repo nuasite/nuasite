@@ -98,18 +98,50 @@ export function createDevMiddleware(
 	}
 
 	// Serve global CMS manifest (component definitions, available colors, collection definitions, and settings)
-	server.middlewares.use((req, res, next) => {
+	server.middlewares.use(async (req, res, next) => {
 		const pathname = (req.url || '').split('?')[0]
 		if (pathname === '/cms-manifest.json') {
 			res.setHeader('Content-Type', 'application/json')
 			res.setHeader('Access-Control-Allow-Origin', '*')
 			res.setHeader('Cache-Control', 'no-store')
+
+			// Build pages from visited pages (have titles from SEO) + filesystem scan
+			const pageMap = new Map<string, { pathname: string; title?: string }>()
+
+			// 1. Add pages discovered from filesystem (src/pages)
+			const discoveredPages = await discoverPagesFromFilesystem()
+			for (const pagePath of discoveredPages) {
+				pageMap.set(pagePath, { pathname: pagePath })
+			}
+
+			// 2. Add collection entry pages from collection definitions
+			const collectionDefs = manifestWriter.getCollectionDefinitions()
+			for (const def of Object.values(collectionDefs)) {
+				if (def.entries) {
+					for (const entry of def.entries) {
+						if (entry.pathname) {
+							pageMap.set(entry.pathname, { pathname: entry.pathname, title: entry.title })
+						}
+					}
+				}
+			}
+
+			// 3. Overlay visited pages (they have SEO titles)
+			for (const [pagePath, data] of manifestWriter.getPageDataForPreviews()) {
+				const existing = pageMap.get(pagePath)
+				const title = data.seo?.title?.content || existing?.title
+				pageMap.set(pagePath, { pathname: pagePath, ...(title ? { title } : {}) })
+			}
+
+			const pages = Array.from(pageMap.values())
+				.sort((a, b) => a.pathname.localeCompare(b.pathname))
+
 			const manifest: Record<string, unknown> = {
 				componentDefinitions,
 				availableColors: manifestWriter.getAvailableColors(),
 				availableTextStyles: manifestWriter.getAvailableTextStyles(),
+				pages,
 			}
-			const collectionDefs = manifestWriter.getCollectionDefinitions()
 			if (Object.keys(collectionDefs).length > 0) {
 				manifest.collectionDefinitions = collectionDefs
 			}
@@ -575,6 +607,54 @@ async function processHtmlForDev(
 		collection: collectionEntry,
 		seo: result.seo,
 	}
+}
+
+/** Page file extensions recognized by Astro */
+const PAGE_EXTENSIONS = new Set(['.astro', '.md', '.mdx'])
+
+/**
+ * Scan src/pages directory to discover all static page routes.
+ * Skips dynamic routes (files with [ in the name) and API routes (.ts/.js).
+ */
+async function discoverPagesFromFilesystem(): Promise<string[]> {
+	const projectRoot = getProjectRoot()
+	const pagesDir = path.join(projectRoot, 'src', 'pages')
+
+	try {
+		await fs.access(pagesDir)
+	} catch {
+		return []
+	}
+
+	const pages: string[] = []
+
+	async function walk(dir: string, urlPrefix: string) {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+		for (const entry of entries) {
+			if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue
+
+			const fullPath = path.join(dir, entry.name)
+			if (entry.isDirectory()) {
+				// Skip directories with dynamic segments
+				if (entry.name.includes('[')) continue
+				await walk(fullPath, `${urlPrefix}${entry.name}/`)
+			} else {
+				const ext = path.extname(entry.name)
+				if (!PAGE_EXTENSIONS.has(ext)) continue
+				// Skip dynamic routes
+				if (entry.name.includes('[')) continue
+
+				const baseName = path.basename(entry.name, ext)
+				const pagePath = baseName === 'index'
+					? urlPrefix.replace(/\/$/, '') || '/'
+					: `${urlPrefix}${baseName}`
+				pages.push(pagePath)
+			}
+		}
+	}
+
+	await walk(pagesDir, '/')
+	return pages
 }
 
 function mediaMimeFromExt(ext: string): string {
