@@ -28,23 +28,24 @@
 	"dependencies": {
 		"@astrojs/compiler": "catalog:astro",
 		"@babel/parser": "catalog:parsers",
-		"node-html-parser": "catalog:parsers",
-		"yaml": "catalog:parsers"
-	},
-	"devDependencies": {
-		"@types/bun": "catalog:build",
 		"@milkdown/core": "catalog:editor",
-		"@milkdown/ctx": "catalog:editor",
 		"@milkdown/plugin-listener": "catalog:editor",
 		"@milkdown/preset-commonmark": "catalog:editor",
 		"@milkdown/preset-gfm": "catalog:editor",
-		"@milkdown/prose": "catalog:editor",
 		"@milkdown/utils": "catalog:editor",
 		"@preact/signals": "catalog:editor",
 		"@tailwindcss/vite": "catalog:ui",
 		"clsx": "catalog:editor",
 		"marked": "catalog:editor",
+		"node-html-parser": "catalog:parsers",
 		"preact": "catalog:editor",
+		"tailwind-merge": "catalog:editor",
+		"yaml": "catalog:parsers"
+	},
+	"devDependencies": {
+		"@types/bun": "catalog:build",
+		"@milkdown/ctx": "catalog:editor",
+		"@milkdown/prose": "catalog:editor",
 		"prosemirror-commands": "catalog:editor",
 		"prosemirror-inputrules": "catalog:editor",
 		"prosemirror-keymap": "catalog:editor",
@@ -53,8 +54,7 @@
 		"prosemirror-schema-list": "catalog:editor",
 		"prosemirror-state": "catalog:editor",
 		"prosemirror-transform": "catalog:editor",
-		"prosemirror-view": "catalog:editor",
-		"tailwind-merge": "catalog:editor"
+		"prosemirror-view": "catalog:editor"
 	},
 	"peerDependencies": {
 		"astro": "catalog:astro",

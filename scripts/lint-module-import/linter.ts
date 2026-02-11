@@ -10,7 +10,7 @@ const allowedUnused = new Set([
 	'stacktracey',
 ])
 
-const allowedDirectoryImports = new Set(['@astrojs/compiler/types'])
+const allowedDirectoryImports = new Set(['@astrojs/compiler/types', 'preact/hooks'])
 
 const processPackage = async (dir: string, projectList: ProjectList) => {
 	const glob = new Glob(`${dir}/src/**/*.{ts,tsx}`)
