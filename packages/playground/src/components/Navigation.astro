@@ -6,8 +6,14 @@ interface Props {
 const { currentPath = '' } = Astro.props
 const path = currentPath || Astro.url.pathname
 
-const links = [
-	{ href: '/', label: 'Home' },
+const contentLinks = [
+	{ href: '/blog/', label: 'Blog' },
+	{ href: '/projects/', label: 'Projects' },
+	{ href: '/team/', label: 'Team' },
+	{ href: '/services/', label: 'Services' },
+]
+
+const packageLinks = [
 	{ href: '/components/', label: 'Components' },
 	{ href: '/cms/', label: 'CMS' },
 	{ href: '/llm-enhancements/', label: 'LLM' },
@@ -16,9 +22,15 @@ const links = [
 	{ href: '/cli/', label: 'CLI' },
 ]
 
+const allLinks = [{ href: '/', label: 'Home' }, ...contentLinks, ...packageLinks]
+
 function isActive(href: string) {
 	if (href === '/') return path === '/' || path === ''
 	return path.startsWith(href)
+}
+
+function isGroupActive(links: { href: string }[]) {
+	return links.some(l => isActive(l.href))
 }
 ---
 
@@ -41,25 +53,121 @@ function isActive(href: string) {
 			</svg>
 		</button>
 
-		<div id="nav-links" class="hidden lg:flex lg:items-center lg:gap-1">
-			{links.map(({ href, label }) => (
-				<a
-					href={href}
+		<!-- Desktop nav -->
+		<div class="hidden lg:flex lg:items-center lg:gap-1">
+			<a
+				href="/"
+				class:list={[
+					'rounded-md px-3 py-1.5 text-sm transition',
+					isActive('/')
+						? 'bg-indigo-500/15 font-medium text-indigo-200'
+						: 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200',
+				]}
+			>
+				Home
+			</a>
+
+			<!-- Content dropdown -->
+			<div class="nav-dropdown relative">
+				<button
 					class:list={[
-						'rounded-md px-3 py-1.5 text-sm transition',
-						isActive(href)
+						'nav-dropdown-trigger flex items-center gap-1 rounded-md px-3 py-1.5 text-sm transition',
+						isGroupActive(contentLinks)
 							? 'bg-indigo-500/15 font-medium text-indigo-200'
 							: 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200',
 					]}
 				>
-					{label}
-				</a>
-			))}
+					Content
+					<svg class="h-3 w-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+					</svg>
+				</button>
+				<div class="nav-dropdown-menu absolute left-0 top-full hidden pt-1">
+					<div class="min-w-[10rem] rounded-lg border border-slate-800 bg-slate-950 p-1 shadow-xl shadow-black/40">
+						{contentLinks.map(({ href, label }) => (
+							<a
+								href={href}
+								class:list={[
+									'block rounded-md px-3 py-1.5 text-sm transition',
+									isActive(href)
+										? 'bg-indigo-500/15 font-medium text-indigo-200'
+										: 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200',
+								]}
+							>
+								{label}
+							</a>
+						))}
+					</div>
+				</div>
+			</div>
+
+			<!-- Packages dropdown -->
+			<div class="nav-dropdown relative">
+				<button
+					class:list={[
+						'nav-dropdown-trigger flex items-center gap-1 rounded-md px-3 py-1.5 text-sm transition',
+						isGroupActive(packageLinks)
+							? 'bg-indigo-500/15 font-medium text-indigo-200'
+							: 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200',
+					]}
+				>
+					Packages
+					<svg class="h-3 w-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+					</svg>
+				</button>
+				<div class="nav-dropdown-menu absolute left-0 top-full hidden pt-1">
+					<div class="min-w-[10rem] rounded-lg border border-slate-800 bg-slate-950 p-1 shadow-xl shadow-black/40">
+						{packageLinks.map(({ href, label }) => (
+							<a
+								href={href}
+								class:list={[
+									'block rounded-md px-3 py-1.5 text-sm transition',
+									isActive(href)
+										? 'bg-indigo-500/15 font-medium text-indigo-200'
+										: 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200',
+								]}
+							>
+								{label}
+							</a>
+						))}
+					</div>
+				</div>
+			</div>
 		</div>
 	</div>
 
+	<!-- Mobile nav -->
 	<div id="nav-mobile" class="hidden border-t border-slate-800/60 px-6 pb-4 pt-2 lg:hidden">
-		{links.map(({ href, label }) => (
+		<a
+			href="/"
+			class:list={[
+				'block rounded-md px-3 py-2 text-sm transition',
+				isActive('/')
+					? 'bg-indigo-500/15 font-medium text-indigo-200'
+					: 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200',
+			]}
+		>
+			Home
+		</a>
+
+		<div class="mt-2 mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-600">Content</div>
+		{contentLinks.map(({ href, label }) => (
+			<a
+				href={href}
+				class:list={[
+					'block rounded-md px-3 py-2 text-sm transition',
+					isActive(href)
+						? 'bg-indigo-500/15 font-medium text-indigo-200'
+						: 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200',
+				]}
+			>
+				{label}
+			</a>
+		))}
+
+		<div class="mt-2 mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-600">Packages</div>
+		{packageLinks.map(({ href, label }) => (
 			<a
 				href={href}
 				class:list={[
@@ -76,6 +184,7 @@ function isActive(href: string) {
 </nav>
 
 <script>
+	// Mobile toggle
 	const toggle = document.getElementById('nav-toggle')!
 	const mobile = document.getElementById('nav-mobile')!
 	const iconOpen = document.getElementById('nav-icon-open')!
@@ -86,5 +195,21 @@ function isActive(href: string) {
 		iconOpen.classList.toggle('hidden', !open)
 		iconClose.classList.toggle('hidden', open)
 		toggle.setAttribute('aria-expanded', String(!open))
+	})
+
+	// Desktop dropdowns
+	document.querySelectorAll('.nav-dropdown').forEach(dropdown => {
+		const trigger = dropdown.querySelector('.nav-dropdown-trigger')!
+		const menu = dropdown.querySelector('.nav-dropdown-menu')!
+		let timeout: ReturnType<typeof setTimeout>
+
+		const show = () => { clearTimeout(timeout); menu.classList.remove('hidden') }
+		const hide = () => { timeout = setTimeout(() => menu.classList.add('hidden'), 150) }
+
+		trigger.addEventListener('mouseenter', show)
+		trigger.addEventListener('mouseleave', hide)
+		menu.addEventListener('mouseenter', show)
+		menu.addEventListener('mouseleave', hide)
+		trigger.addEventListener('click', () => menu.classList.toggle('hidden'))
 	})
 </script>
