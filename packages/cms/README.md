@@ -13,7 +13,7 @@ Astro integration that adds inline visual editing to any Astro site. Scans your 
 import nuaCms from '@nuasite/astro-cms'
 
 export default defineConfig({
-  integrations: [nuaCms()],
+	integrations: [nuaCms()],
 })
 ```
 
@@ -31,32 +31,32 @@ The integration operates in two phases:
 
 ```typescript
 nuaCms({
-  // --- Editor ---
-  src: undefined,         // Custom editor script URL (default: built-in @app/cms bundle)
-  cmsConfig: {            // Passed to window.NuaCmsConfig
-    apiBase: '/_nua/cms', // API endpoint base (auto-set when using local dev server)
-    highlightColor: undefined,
-    debug: false,
-    theme: undefined,
-    themePreset: undefined,
-  },
+	// --- Editor ---
+	src: undefined, // Custom editor script URL (default: built-in @app/cms bundle)
+	cmsConfig: { // Passed to window.NuaCmsConfig
+		apiBase: '/_nua/cms', // API endpoint base (auto-set when using local dev server)
+		highlightColor: undefined,
+		debug: false,
+		theme: undefined,
+		themePreset: undefined,
+	},
 
-  // --- Backend ---
-  proxy: undefined,       // Proxy /_nua requests to a remote backend (e.g. 'http://localhost:8787')
-                          // When set, the local dev server API is disabled
-  media: undefined,       // Media storage adapter (default: localMedia() when no proxy)
+	// --- Backend ---
+	proxy: undefined, // Proxy /_nua requests to a remote backend (e.g. 'http://localhost:8787')
+	// When set, the local dev server API is disabled
+	media: undefined, // Media storage adapter (default: localMedia() when no proxy)
 
-  // --- Marker ---
-  attributeName: 'data-cms-id',
-  includeTags: null,                                       // null = all tags
-  excludeTags: ['html', 'head', 'body', 'script', 'style'],
-  includeEmptyText: false,
-  generateManifest: true,
-  manifestFile: 'cms-manifest.json',
-  markComponents: true,
-  componentDirs: ['src/components'],
-  contentDir: 'src/content',
-  seo: { trackSeo: true, markTitle: true, parseJsonLd: true },
+	// --- Marker ---
+	attributeName: 'data-cms-id',
+	includeTags: null, // null = all tags
+	excludeTags: ['html', 'head', 'body', 'script', 'style'],
+	includeEmptyText: false,
+	generateManifest: true,
+	manifestFile: 'cms-manifest.json',
+	markComponents: true,
+	componentDirs: ['src/components'],
+	contentDir: 'src/content',
+	seo: { trackSeo: true, markTitle: true, parseJsonLd: true },
 })
 ```
 
@@ -64,19 +64,19 @@ nuaCms({
 
 When no `proxy` is configured, the integration spins up a local API at `/_nua/cms/`. This handles all CMS operations without needing the Cloudflare Worker backend.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/_nua/cms/update` | Save text, image, color, and attribute changes |
-| POST | `/_nua/cms/insert-component` | Insert a component before/after a reference |
-| POST | `/_nua/cms/remove-component` | Remove a component from the page |
-| GET | `/_nua/cms/markdown/content` | Read markdown file content + frontmatter |
-| POST | `/_nua/cms/markdown/update` | Update markdown file (partial frontmatter merge) |
-| POST | `/_nua/cms/markdown/create` | Create a new markdown file in a collection |
-| GET | `/_nua/cms/media/list` | List uploaded media files |
-| POST | `/_nua/cms/media/upload` | Upload a file (multipart/form-data) |
-| DELETE | `/_nua/cms/media/:id` | Delete an uploaded file |
-| GET | `/_nua/cms/deployment/status` | Returns `{ currentDeployment: null, pendingCount: 0 }` |
-| OPTIONS | `/_nua/cms/*` | CORS preflight |
+| Method  | Path                          | Description                                            |
+| ------- | ----------------------------- | ------------------------------------------------------ |
+| POST    | `/_nua/cms/update`            | Save text, image, color, and attribute changes         |
+| POST    | `/_nua/cms/insert-component`  | Insert a component before/after a reference            |
+| POST    | `/_nua/cms/remove-component`  | Remove a component from the page                       |
+| GET     | `/_nua/cms/markdown/content`  | Read markdown file content + frontmatter               |
+| POST    | `/_nua/cms/markdown/update`   | Update markdown file (partial frontmatter merge)       |
+| POST    | `/_nua/cms/markdown/create`   | Create a new markdown file in a collection             |
+| GET     | `/_nua/cms/media/list`        | List uploaded media files                              |
+| POST    | `/_nua/cms/media/upload`      | Upload a file (multipart/form-data)                    |
+| DELETE  | `/_nua/cms/media/:id`         | Delete an uploaded file                                |
+| GET     | `/_nua/cms/deployment/status` | Returns `{ currentDeployment: null, pendingCount: 0 }` |
+| OPTIONS | `/_nua/cms/*`                 | CORS preflight                                         |
 
 ### Update Payload
 
@@ -116,11 +116,11 @@ Files are stored in Cloudflare R2 with metadata tracked in the Contember databas
 import nuaCms, { contemberMedia } from '@nuasite/astro-cms'
 
 nuaCms({
-  media: contemberMedia({
-    apiBaseUrl: 'https://api.example.com',
-    projectSlug: 'my-project',
-    sessionToken: process.env.NUA_SESSION_TOKEN,
-  }),
+	media: contemberMedia({
+		apiBaseUrl: 'https://api.example.com',
+		projectSlug: 'my-project',
+		sessionToken: process.env.NUA_SESSION_TOKEN,
+	}),
 })
 ```
 
@@ -134,10 +134,10 @@ Stores files in `public/uploads/`. Served directly by Vite's static file server.
 import nuaCms, { localMedia } from '@nuasite/astro-cms'
 
 nuaCms({
-  media: localMedia({
-    dir: 'public/uploads',   // default
-    urlPrefix: '/uploads',   // default
-  }),
+	media: localMedia({
+		dir: 'public/uploads', // default
+		urlPrefix: '/uploads', // default
+	}),
 })
 ```
 
@@ -151,16 +151,16 @@ Direct S3-compatible object storage. Works with AWS S3, Cloudflare R2, MinIO, or
 import nuaCms, { s3Media } from '@nuasite/astro-cms'
 
 nuaCms({
-  media: s3Media({
-    bucket: 'my-bucket',
-    region: 'us-east-1',
-    // Optional:
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    endpoint: 'https://account.r2.cloudflarestorage.com', // for R2
-    cdnPrefix: 'https://cdn.example.com',                 // public URL prefix
-    prefix: 'uploads',                                     // key prefix in bucket
-  }),
+	media: s3Media({
+		bucket: 'my-bucket',
+		region: 'us-east-1',
+		// Optional:
+		accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+		secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+		endpoint: 'https://account.r2.cloudflarestorage.com', // for R2
+		cdnPrefix: 'https://cdn.example.com', // public URL prefix
+		prefix: 'uploads', // key prefix in bucket
+	}),
 })
 ```
 
@@ -178,15 +178,15 @@ Implement the `MediaStorageAdapter` interface to use any storage backend:
 import type { MediaStorageAdapter } from '@nuasite/astro-cms'
 
 const myAdapter: MediaStorageAdapter = {
-  async list(options) {
-    // Return { items: MediaItem[], hasMore: boolean, cursor?: string }
-  },
-  async upload(file: Buffer, filename: string, contentType: string) {
-    // Return { success: boolean, url?: string, filename?: string, id?: string, error?: string }
-  },
-  async delete(id: string) {
-    // Return { success: boolean, error?: string }
-  },
+	async list(options) {
+		// Return { items: MediaItem[], hasMore: boolean, cursor?: string }
+	},
+	async upload(file: Buffer, filename: string, contentType: string) {
+		// Return { success: boolean, url?: string, filename?: string, id?: string, error?: string }
+	},
+	async delete(id: string) {
+		// Return { success: boolean, error?: string }
+	},
 }
 
 nuaCms({ media: myAdapter })
@@ -198,7 +198,7 @@ To use the Contember worker backend for all CMS operations (not just media), set
 
 ```typescript
 nuaCms({
-  proxy: 'http://localhost:8787',  // Worker dev server
+	proxy: 'http://localhost:8787', // Worker dev server
 })
 ```
 
@@ -229,13 +229,21 @@ Both operations find the invocation site (the page file, not the component file 
 import nuaCms from '@nuasite/astro-cms'
 
 // Media adapters
-import { localMedia, s3Media, contemberMedia } from '@nuasite/astro-cms'
+import { contemberMedia, localMedia, s3Media } from '@nuasite/astro-cms'
 
 // Types
-import type { MediaStorageAdapter, MediaItem } from '@nuasite/astro-cms'
-import type { CmsManifest, ManifestEntry, ComponentDefinition } from '@nuasite/astro-cms'
+import type { MediaItem, MediaStorageAdapter } from '@nuasite/astro-cms'
+import type {
+	CmsManifest,
+	ComponentDefinition,
+	ManifestEntry,
+} from '@nuasite/astro-cms'
 
 // Utilities
-import { scanCollections, getProjectRoot, setProjectRoot } from '@nuasite/astro-cms'
+import {
+	getProjectRoot,
+	scanCollections,
+	setProjectRoot,
+} from '@nuasite/astro-cms'
 import { findCollectionSource, parseMarkdownContent } from '@nuasite/astro-cms'
 ```
