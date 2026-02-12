@@ -3,6 +3,7 @@ import {
 	closeCollectionsBrowser,
 	isCollectionsBrowserOpen,
 	manifest,
+	openMarkdownEditorForEntry,
 	openMarkdownEditorForNewPage,
 	selectBrowserCollection,
 	selectedBrowserCollection,
@@ -16,7 +17,7 @@ export function CollectionsBrowser() {
 	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}
 
 	const collections = useMemo(() => {
-		return Object.values(collectionDefinitions)
+		return Object.values(collectionDefinitions).sort((a, b) => a.label.localeCompare(b.label))
 	}, [collectionDefinitions])
 
 	if (!visible) return null
@@ -38,11 +39,14 @@ export function CollectionsBrowser() {
 
 		const handleEntryClick = (slug: string, sourcePath: string, pathname?: string) => {
 			closeCollectionsBrowser()
-			// Navigate to the collection detail page to edit inline.
-			// Use known pathname or construct one from collection/slug.
-			const targetPath = pathname || `/${selected}/${slug}`
-			savePendingEntryNavigation({ collectionName: selected, slug, sourcePath, pathname: targetPath })
-			window.location.href = targetPath
+			if (pathname) {
+				// Navigate to the collection detail page to edit inline.
+				savePendingEntryNavigation({ collectionName: selected, slug, sourcePath, pathname })
+				window.location.href = pathname
+			} else {
+				// No detail page exists for this entry — open the markdown editor inline.
+				openMarkdownEditorForEntry(selected, slug, sourcePath, def)
+			}
 		}
 
 		const handleAddNew = () => {
