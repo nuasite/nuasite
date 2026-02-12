@@ -1126,10 +1126,23 @@ export interface DeploymentPollingOptions {
  * Start polling for deployment status after a save operation.
  * Polls the API every 3 seconds until deployment completes or fails.
  * Waits for deployment to appear for up to 30 seconds before giving up.
+ * Skips polling entirely when deployment is not available (e.g. local dev).
  */
-export function startDeploymentPolling(config: CmsConfig, options?: DeploymentPollingOptions): void {
+export async function startDeploymentPolling(config: CmsConfig, options?: DeploymentPollingOptions): Promise<void> {
 	// Clear any existing timers
 	stopDeploymentPolling()
+
+	// Do a preflight check to see if deployment is available
+	try {
+		const preflight = await getDeploymentStatus(config.apiBase)
+		if (preflight.deploymentEnabled === false) {
+			// Deployment not available (e.g. local dev) — skip polling entirely
+			return
+		}
+	} catch {
+		// If we can't even reach the endpoint, skip polling
+		return
+	}
 
 	// Reset wait attempts counter and store the timestamp when we started
 	deploymentWaitAttempts = 0

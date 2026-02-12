@@ -429,7 +429,7 @@ async function handleCmsApiRoute(
 
 	// GET /_nua/cms/deployment/status
 	if (route === 'deployment/status' && req.method === 'GET') {
-		sendJson(res, { currentDeployment: null, pendingCount: 0 })
+		sendJson(res, { currentDeployment: null, pendingCount: 0, deploymentEnabled: false })
 		return
 	}
 

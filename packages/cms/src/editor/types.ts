@@ -418,6 +418,8 @@ export interface DeploymentStatusResponse {
 		publishedUrl: string
 	} | null
 	pendingCount: number
+	/** When false, deployment is not available (e.g. local dev) and polling should be skipped */
+	deploymentEnabled?: boolean
 }
 
 export interface DeploymentState {
