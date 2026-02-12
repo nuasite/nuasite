@@ -353,7 +353,7 @@ export function findSpreadProp(
 	ast: AstroNode,
 	componentName: string,
 ): SpreadPropMatch | null {
-	function visit(node: AstroNode): SpreadPropMatch | null {
+	function visit(node: AstroNode, parentExpression: AstroNode | null): SpreadPropMatch | null {
 		// Check component nodes matching the name
 		if (node.type === 'component') {
 			const compNode = node as ComponentNode
@@ -362,20 +362,34 @@ export function findSpreadProp(
 					// Check for spread attributes: {...cardProps}
 					// In Astro AST: type='attribute', kind='spread', name=variable name
 					if (attr.type === 'attribute' && attr.kind === 'spread' && attr.name) {
-						return {
+						const match: SpreadPropMatch = {
 							componentName,
 							spreadVarName: attr.name,
 							line: attr.position?.start.line ?? compNode.position?.start.line ?? 0,
 						}
+
+						// Check if this spread is inside a .map() call by examining parent expression
+						if (parentExpression) {
+							const exprText = getTextContent(parentExpression)
+							const mapMatch = exprText.match(/(\w+(?:\.\w+)*)\.map\s*\(\s*\(?(\w+)\)?\s*=>/)
+							if (mapMatch && mapMatch[2] === attr.name) {
+								match.mapSourceArray = mapMatch[1]
+							}
+						}
+
+						return match
 					}
 				}
 			}
 		}
 
+		// Track the nearest ancestor expression node
+		const nextParentExpression = node.type === 'expression' ? node : parentExpression
+
 		// Recursively visit children
 		if ('children' in node && Array.isArray(node.children)) {
 			for (const child of node.children) {
-				const result = visit(child)
+				const result = visit(child, nextParentExpression)
 				if (result) return result
 			}
 		}
@@ -383,5 +397,5 @@ export function findSpreadProp(
 		return null
 	}
 
-	return visit(ast)
+	return visit(ast, null)
 }

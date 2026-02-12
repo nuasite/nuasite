@@ -184,6 +184,9 @@ export interface SpreadPropMatch {
 	/** The variable name being spread (e.g., 'cardProps' from {...cardProps}) */
 	spreadVarName: string
 	line: number
+	/** Source array name when spread is inside a .map() call
+	 *  e.g., 'packages' from packages.map((pkg) => <Card {...pkg} />) */
+	mapSourceArray?: string
 }
 
 export interface ImageMatch {

@@ -158,6 +158,28 @@ async function searchDirForExpressionProp(
 					// we look for cardProps.title in the definitions
 					const spreadPropPath = `${spreadVarName}.${propName}`
 
+					// When spread is inside a .map() call, search for array element definitions
+					// e.g., packages.map(pkg => <Card {...pkg} />) -> look for packages[N].propName
+					if (spreadMatch.mapSourceArray) {
+						const mapSourceArray = spreadMatch.mapSourceArray
+						for (const def of cached.variableDefinitions) {
+							if (
+								def.name === propName
+								&& def.parentName?.startsWith(mapSourceArray + '[')
+								&& normalizeText(def.value) === normalizedSearch
+							) {
+								return {
+									file: path.relative(getProjectRoot(), fullPath),
+									line: def.line,
+									snippet: cached.lines[def.line - 1] || '',
+									type: 'variable',
+									variableName: buildDefinitionPath(def),
+									definitionLine: def.line,
+								}
+							}
+						}
+					}
+
 					for (const def of cached.variableDefinitions) {
 						const defPath = buildDefinitionPath(def)
 						if (defPath === spreadPropPath) {
@@ -671,6 +693,26 @@ async function searchDirForAttributeProp(
 				// Try spread prop usage
 				const spreadMatch = findSpreadProp(cached.ast, componentName)
 				if (spreadMatch) {
+					// When spread is inside a .map() call, search for array element definitions
+					if (spreadMatch.mapSourceArray) {
+						const mapSourceArray = spreadMatch.mapSourceArray
+						for (const def of cached.variableDefinitions) {
+							if (
+								def.name === propName
+								&& def.parentName?.startsWith(mapSourceArray + '[')
+							) {
+								return {
+									file: path.relative(getProjectRoot(), fullPath),
+									line: def.line,
+									snippet: cached.lines[def.line - 1] || '',
+									type: 'variable',
+									variableName: buildDefinitionPath(def),
+									definitionLine: def.line,
+								}
+							}
+						}
+					}
+
 					const spreadPropPath = `${spreadMatch.spreadVarName}.${propName}`
 					for (const def of cached.variableDefinitions) {
 						const defPath = buildDefinitionPath(def)
