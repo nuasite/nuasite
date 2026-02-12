@@ -175,7 +175,8 @@ export function SeoEditor() {
 			})
 
 			if (result.errors && result.errors.length > 0) {
-				showToast(`Saved ${result.updated} SEO changes, ${result.errors.length} failed`, 'error')
+				const details = result.errors.map(e => e.error).join('; ')
+				showToast(`SEO save failed: ${details}`, 'error')
 			} else {
 				showToast(`Saved ${result.updated} SEO change(s) successfully!`, 'success')
 				clearPendingSeoChanges()

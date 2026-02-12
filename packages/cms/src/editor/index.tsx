@@ -142,10 +142,12 @@ const CmsUI = () => {
 			if (result.success) {
 				signals.showToast(`Saved ${result.updated} change(s) successfully!`, 'success')
 			} else if (result.errors) {
-				signals.showToast(`Saved ${result.updated}, ${result.errors.length} failed`, 'error')
+				const details = result.errors.map(e => e.error).join('; ')
+				signals.showToast(`Save failed: ${details}`, 'error')
 			}
 		} catch (err) {
-			signals.showToast('Save failed – see console', 'error')
+			const message = err instanceof Error ? err.message : 'Unknown error'
+			signals.showToast(`Save failed: ${message}`, 'error')
 		}
 	}, [config, updateUI])
 
