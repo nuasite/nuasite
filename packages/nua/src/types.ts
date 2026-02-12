@@ -9,7 +9,7 @@ export type { CmsMarkerOptions } from '../../cms/src'
 export type { PageMarkdownOptions } from '../../llm-enhancements/src'
 
 export interface NuaIntegrationOptions {
-	/** Enable/disable or configure @nuasite/astro-cms (default: true) */
+	/** Enable/disable or configure @nuasite/cms (default: true) */
 	cms?: boolean | CmsMarkerOptions
 	/** Enable/disable or configure @nuasite/llm-enhancements (default: true) */
 	pageMarkdown?: boolean | PageMarkdownOptions

@@ -8,7 +8,7 @@ export default function pageMarkdown(options: PageMarkdownOptions = {}): AstroIn
 	let config: AstroConfig
 
 	return {
-		name: 'astro-llm-enhancements',
+		name: '@nuasite/llm-enhancements',
 		hooks: {
 			'astro:config:done': ({ config: cfg }) => {
 				config = cfg

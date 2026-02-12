@@ -93,7 +93,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 	}
 
 	return {
-		name: '@nuasite/astro-cms',
+		name: '@nuasite/cms',
 		hooks: {
 			'astro:config:setup': async ({ updateConfig, command, injectScript, logger }) => {
 				// --- CMS Marker setup ---

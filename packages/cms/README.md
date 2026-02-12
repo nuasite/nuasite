@@ -10,7 +10,7 @@ Astro integration that adds inline visual editing to any Astro site. Scans your 
 
 ```typescript
 // astro.config.mjs
-import nuaCms from '@nuasite/astro-cms'
+import nuaCms from '@nuasite/cms'
 
 export default defineConfig({
 	integrations: [nuaCms()],
@@ -113,7 +113,7 @@ Media uploads use a pluggable adapter pattern. Three adapters are included:
 Files are stored in Cloudflare R2 with metadata tracked in the Contember database. This is the only adapter that gives you proper asset IDs, metadata, and AI-powered image annotation. Use this for production sites.
 
 ```typescript
-import nuaCms, { contemberMedia } from '@nuasite/astro-cms'
+import nuaCms, { contemberMedia } from '@nuasite/cms'
 
 nuaCms({
 	media: contemberMedia({
@@ -131,7 +131,7 @@ This adapter calls the worker's `/cms/:projectSlug/media/*` endpoints, which han
 Stores files in `public/uploads/`. Served directly by Vite's static file server. Zero configuration needed. Files are committed to your repo alongside your source code.
 
 ```typescript
-import nuaCms, { localMedia } from '@nuasite/astro-cms'
+import nuaCms, { localMedia } from '@nuasite/cms'
 
 nuaCms({
 	media: localMedia({
@@ -148,7 +148,7 @@ Files are named with UUIDs to avoid collisions. Listed by modification time (new
 Direct S3-compatible object storage. Works with AWS S3, Cloudflare R2, MinIO, or any S3-compatible provider. Listing, uploading, and deleting all work, but there is no database layer — content types are not preserved on list, and there are no image dimensions or annotations. Requires `@aws-sdk/client-s3` as a peer dependency.
 
 ```typescript
-import nuaCms, { s3Media } from '@nuasite/astro-cms'
+import nuaCms, { s3Media } from '@nuasite/cms'
 
 nuaCms({
 	media: s3Media({
@@ -175,7 +175,7 @@ npm install @aws-sdk/client-s3
 Implement the `MediaStorageAdapter` interface to use any storage backend:
 
 ```typescript
-import type { MediaStorageAdapter } from '@nuasite/astro-cms'
+import type { MediaStorageAdapter } from '@nuasite/cms'
 
 const myAdapter: MediaStorageAdapter = {
 	async list(options) {
@@ -226,24 +226,24 @@ Both operations find the invocation site (the page file, not the component file 
 
 ```typescript
 // Default export
-import nuaCms from '@nuasite/astro-cms'
+import nuaCms from '@nuasite/cms'
 
 // Media adapters
-import { contemberMedia, localMedia, s3Media } from '@nuasite/astro-cms'
+import { contemberMedia, localMedia, s3Media } from '@nuasite/cms'
 
 // Types
-import type { MediaItem, MediaStorageAdapter } from '@nuasite/astro-cms'
+import type { MediaItem, MediaStorageAdapter } from '@nuasite/cms'
 import type {
 	CmsManifest,
 	ComponentDefinition,
 	ManifestEntry,
-} from '@nuasite/astro-cms'
+} from '@nuasite/cms'
 
 // Utilities
 import {
 	getProjectRoot,
 	scanCollections,
 	setProjectRoot,
-} from '@nuasite/astro-cms'
-import { findCollectionSource, parseMarkdownContent } from '@nuasite/astro-cms'
+} from '@nuasite/cms'
+import { findCollectionSource, parseMarkdownContent } from '@nuasite/cms'
 ```
