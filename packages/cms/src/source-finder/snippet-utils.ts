@@ -6,7 +6,7 @@ import type { Attribute, ManifestEntry } from '../types'
 import { escapeRegex, generateSourceHash } from '../utils'
 import { buildDefinitionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
-import { findAttributeSourceLocation } from './cross-file-tracker'
+import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
 
 // ============================================================================
@@ -639,6 +639,67 @@ export async function enhanceManifestWithSourceSnippets(
 							colorClasses,
 							sourceHash,
 						}] as const
+					}
+
+					// Cross-file search for prop-driven dynamic text
+					// When text comes from a prop (e.g., {title} where title = Astro.props.title),
+					// trace it to where the prop value is actually defined in a parent component
+					if (cached) {
+						// Extract expression variables from the snippet to find props
+						const exprPattern = /\{(\w+(?:\.\w+|\[\d+\])*)\}/g
+						let exprMatch: RegExpExecArray | null
+						while ((exprMatch = exprPattern.exec(sourceSnippet)) !== null) {
+							const exprPath = exprMatch[1]!
+							const baseVar = exprPath.match(/^(\w+)/)?.[1]
+							if (baseVar && cached.propAliases.has(baseVar)) {
+								const propName = cached.propAliases.get(baseVar)!
+								const componentFileName = path.basename(filePath)
+								const result = await searchForExpressionProp(
+									componentFileName, propName, exprPath, entry.text!,
+								)
+								if (result) {
+									const propSnippet = result.snippet ?? trimmedText
+									const propSourceHash = generateSourceHash(propSnippet)
+									return [id, {
+										...entry,
+										sourcePath: result.file,
+										sourceLine: result.line,
+										sourceSnippet: propSnippet,
+										variableName: result.variableName,
+										attributes,
+										colorClasses,
+										sourceHash: propSourceHash,
+									}] as const
+								}
+							}
+						}
+
+						// Search for quoted prop values in parent components
+						// (handles <Component title="literal text" />)
+						const srcDir = path.join(getProjectRoot(), 'src')
+						for (const searchDir of ['pages', 'components', 'layouts']) {
+							try {
+								const result = await searchForPropInParents(
+									path.join(srcDir, searchDir), trimmedText,
+								)
+								if (result) {
+									const parentSnippet = result.snippet ?? trimmedText
+									const propSourceHash = generateSourceHash(parentSnippet)
+									return [id, {
+										...entry,
+										sourcePath: result.file,
+										sourceLine: result.line,
+										sourceSnippet: parentSnippet,
+										variableName: result.variableName,
+										attributes,
+										colorClasses,
+										sourceHash: propSourceHash,
+									}] as const
+								}
+							} catch {
+								// Directory doesn't exist
+							}
+						}
 					}
 				}
 
