@@ -79,32 +79,45 @@ export function BlockEditor({
 
 		const updatePosition = () => {
 			const editorWidth = LAYOUT.BLOCK_EDITOR_WIDTH
+			const editorHeight = LAYOUT.BLOCK_EDITOR_HEIGHT
 			const padding = LAYOUT.VIEWPORT_PADDING
 			const viewportWidth = window.innerWidth
 			const viewportHeight = window.innerHeight
 
 			let top: number
 			let left: number
+			let maxHeight: number
 
 			if (cursor) {
-				top = cursor.y
 				left = cursor.x
 
-				// Keep within viewport bounds
+				// Keep within viewport bounds horizontally
 				if (left + editorWidth > viewportWidth - padding) {
 					left = viewportWidth - editorWidth - padding
 				}
 				if (left < padding) {
 					left = padding
 				}
+
+				const spaceBelow = viewportHeight - cursor.y - padding
+				const spaceAbove = cursor.y - padding
+
+				if (spaceBelow >= editorHeight || spaceBelow >= spaceAbove) {
+					// Open below cursor
+					top = Math.max(padding, Math.min(cursor.y, viewportHeight - padding - 100))
+					maxHeight = viewportHeight - top - padding
+				} else {
+					// Open above cursor — anchor bottom of panel to cursor position
+					const panelHeight = Math.min(spaceAbove, editorHeight)
+					top = cursor.y - panelHeight
+					top = Math.max(padding, top)
+					maxHeight = cursor.y - top
+				}
 			} else {
 				top = viewportHeight / 2
 				left = (viewportWidth - editorWidth) / 2
+				maxHeight = viewportHeight - top - padding
 			}
-
-			// Clamp top so the panel never extends past the viewport bottom
-			top = Math.max(padding, Math.min(top, viewportHeight - padding - 100))
-			const maxHeight = viewportHeight - top - padding
 
 			setEditorPosition({ top, left, maxHeight })
 		}
