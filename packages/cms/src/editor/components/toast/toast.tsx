@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useState } from 'preact/hooks'
 import { TIMING } from '../../constants'
 import type { ToastMessage } from './types'
 
@@ -8,8 +8,16 @@ interface ToastProps extends ToastMessage {
 
 export const Toast = ({ id, message, type, onRemove }: ToastProps) => {
 	const [isVisible, setIsVisible] = useState(true)
+	const persistent = type === 'error'
+
+	const dismiss = useCallback(() => {
+		setIsVisible(false)
+		setTimeout(() => onRemove(id), TIMING.TOAST_FADE_DURATION_MS)
+	}, [id, onRemove])
 
 	useEffect(() => {
+		if (persistent) return
+
 		const hideTimer = setTimeout(() => {
 			setIsVisible(false)
 		}, TIMING.TOAST_VISIBLE_DURATION_MS)
@@ -22,7 +30,7 @@ export const Toast = ({ id, message, type, onRemove }: ToastProps) => {
 			clearTimeout(hideTimer)
 			clearTimeout(removeTimer)
 		}
-	}, [id, onRemove])
+	}, [id, onRemove, persistent])
 
 	const typeClasses = {
 		error: 'bg-cms-dark border-l-4 border-l-cms-error text-white',
@@ -44,6 +52,15 @@ export const Toast = ({ id, message, type, onRemove }: ToastProps) => {
 			{type === 'error' && <span class="text-cms-error text-lg">✕</span>}
 			{type === 'info' && <span class="w-2.5 h-2.5 rounded-full bg-white/50 shrink-0" />}
 			{message}
+			{persistent && (
+				<button
+					onClick={dismiss}
+					class="ml-1 text-white/60 hover:text-white transition-colors text-lg leading-none cursor-pointer"
+					aria-label="Dismiss"
+				>
+					✕
+				</button>
+			)}
 		</div>
 	)
 }
