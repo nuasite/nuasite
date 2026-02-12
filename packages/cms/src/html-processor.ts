@@ -716,7 +716,8 @@ export async function processHtml(
 		const hasDescendants = hasCandidateDescendants(node)
 
 		// Skip pure containers - they have no direct text and all content comes from children
-		if (!directText && hasDescendants) {
+		// Exempt <a> elements - they have editable attributes (href)
+		if (!directText && hasDescendants && candidate.tag !== 'a') {
 			candidateNodes.delete(node) // Remove from candidates so nested checks stay accurate
 			continue
 		}

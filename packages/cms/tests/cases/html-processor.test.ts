@@ -91,6 +91,24 @@ cmsDescribe('processHtml', { generateManifest: true }, (ctx) => {
 		expect(result.entries['cms-0']).toBeDefined()
 		expectNotMarked(result, 'div')
 	})
+
+	test('marks <a> wrapping bare span with href captured', async () => {
+		const input = '<a href="/about"><span>About Us</span></a>'
+		const result = await ctx.process(input)
+
+		expectMarked(result, 'a')
+		expectNotMarked(result, 'span')
+		const aEntry = getEntryByTag(result, 'a')
+		expect(aEntry).toBeDefined()
+		expect(aEntry?.attributes?.href).toBeDefined()
+	})
+
+	test('marks <a> as pure container exempt when it has child elements', async () => {
+		const input = '<a href="/home"><div><p>Home</p></div></a>'
+		const result = await ctx.process(input)
+
+		expectMarked(result, 'a')
+	})
 })
 
 cmsDescribe('styled spans', { markStyledSpans: true }, (ctx) => {
