@@ -1,7 +1,7 @@
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import { processSeoFromHtml } from './seo-processor'
 import { enhanceManifestWithSourceSnippets } from './source-finder'
-import { extractColorClasses } from './tailwind-colors'
+import { extractColorClasses, extractTextStyleClasses } from './tailwind-colors'
 import type { Attribute, ComponentInstance, ImageMetadata, ManifestEntry, PageSeoData, SeoOptions } from './types'
 import { generateStableId } from './utils'
 
@@ -830,9 +830,13 @@ export async function processHtml(
 			// Generate stable ID based on content and context
 			const stableId = generateStableId(tag, entryText, entrySourcePath)
 
-			// Extract color classes for buttons and other elements
+			// Extract color classes and text style classes for buttons and other elements
 			const classAttr = node.getAttribute('class')
 			const colorClasses = extractColorClasses(classAttr)
+			const textStyleClasses = extractTextStyleClasses(classAttr)
+			const allTrackedClasses = colorClasses || textStyleClasses
+				? { ...colorClasses, ...textStyleClasses }
+				: undefined
 
 			// Extract all relevant attributes for git diff tracking
 			const attributes = extractAllAttributes(node)
@@ -856,8 +860,8 @@ export async function processHtml(
 				stableId,
 				// Image metadata for image entries
 				imageMetadata: imageInfo?.metadata,
-				// Color classes for buttons/styled elements
-				colorClasses,
+				// Color and text style classes for buttons/styled elements
+				colorClasses: allTrackedClasses,
 				// All attributes with resolved values (isStatic will be updated later from source)
 				attributes,
 			}

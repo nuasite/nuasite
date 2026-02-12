@@ -161,6 +161,9 @@ export interface ManifestEntry {
 	colorClasses?: Record<string, Attribute>
 	/** All HTML attributes with source information */
 	attributes?: Record<string, Attribute>
+	/** Whether inline text styling (bold, italic, etc.) can be applied.
+	 *  False when text comes from a string variable/prop that cannot contain HTML markup. */
+	allowStyling?: boolean
 }
 
 export interface ComponentInstance {

@@ -403,6 +403,9 @@ async function processFile(
 				entry.variableName = mdSource.variableName
 				entry.collectionName = mdSource.collectionName
 				entry.collectionSlug = mdSource.collectionSlug
+				if (mdSource.variableName) {
+					entry.allowStyling = false
+				}
 				return
 			}
 		}
@@ -414,6 +417,9 @@ async function processFile(
 			entry.sourceLine = sourceLocation.line
 			entry.sourceSnippet = sourceLocation.snippet
 			entry.variableName = sourceLocation.variableName
+			if (sourceLocation.variableName) {
+				entry.allowStyling = false
+			}
 
 			// Update attribute and colorClasses source information if we have an opening tag
 			if (sourceLocation.openingTagSnippet) {

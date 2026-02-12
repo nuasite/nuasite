@@ -777,6 +777,39 @@ export function extractColorClasses(classAttr: string | null | undefined): Recor
 }
 
 /**
+ * Regex patterns for matching text style classes on elements.
+ */
+const TEXT_STYLE_CLASS_PATTERNS: Record<string, RegExp> = {
+	fontWeight: /^font-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)$/,
+	fontStyle: /^(italic|not-italic)$/,
+	textDecoration: /^(underline|overline|line-through|no-underline)$/,
+	fontSize: /^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/,
+}
+
+/**
+ * Extract text style classes from an element's class attribute.
+ * Returns a Record<string, Attribute> with keys: fontWeight, fontStyle, textDecoration, fontSize.
+ * Pattern: same as extractColorClasses — scan classes, match patterns, return first match per category.
+ */
+export function extractTextStyleClasses(classAttr: string | null | undefined): Record<string, Attribute> | undefined {
+	if (!classAttr) return undefined
+
+	const classes = classAttr.split(/\s+/).filter(Boolean)
+	const result: Record<string, Attribute> = {}
+
+	for (const cls of classes) {
+		for (const [key, pattern] of Object.entries(TEXT_STYLE_CLASS_PATTERNS)) {
+			if (pattern.test(cls) && !(key in result)) {
+				result[key] = { value: cls }
+				break
+			}
+		}
+	}
+
+	return Object.keys(result).length > 0 ? result : undefined
+}
+
+/**
  * Check if a class is a color class (including gradient colors).
  */
 export function isColorClass(className: string): boolean {
