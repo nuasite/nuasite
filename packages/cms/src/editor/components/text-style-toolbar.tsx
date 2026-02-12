@@ -196,7 +196,7 @@ export function TextStyleToolbar({ visible, rect, element, onStyleChange }: Text
 	return (
 		<div
 			data-cms-ui
-			onMouseDown={(e) => e.stopPropagation()}
+			onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
 			onClick={(e) => e.stopPropagation()}
 			style={{
 				position: 'fixed',
