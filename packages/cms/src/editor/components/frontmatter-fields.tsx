@@ -1,3 +1,4 @@
+import { useState } from 'preact/hooks'
 import { markdownEditorState, openMediaLibraryWithCallback, updateMarkdownFrontmatter } from '../signals'
 import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
 import { ComboBoxField, ImageField, NumberField, TextField, ToggleField } from './fields'
@@ -84,6 +85,17 @@ export function FrontmatterField({
 					data-cms-ui
 				/>
 			</div>
+		)
+	}
+
+	// Object field - render nested fields with add/remove
+	if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+		return (
+			<ObjectFields
+				label={label}
+				value={value as Record<string, unknown>}
+				onChange={onChange}
+			/>
 		)
 	}
 
@@ -415,6 +427,32 @@ export function SchemaFrontmatterField({
 			)
 		}
 
+		case 'object': {
+			const obj = (value ?? {}) as Record<string, unknown>
+			const nestedFields = field.fields ?? []
+			if (nestedFields.length > 0) {
+				// Schema-defined nested fields + any extra keys from the actual value
+				const schemaNames = new Set(nestedFields.map((f) => f.name))
+				const extraKeys = Object.keys(obj).filter((k) => !schemaNames.has(k))
+				return (
+					<ObjectFields
+						label={label}
+						value={obj}
+						onChange={onChange}
+						schemaFields={nestedFields}
+						extraKeys={extraKeys}
+					/>
+				)
+			}
+			return (
+				<ObjectFields
+					label={label}
+					value={obj}
+					onChange={onChange}
+				/>
+			)
+		}
+
 		default:
 			return (
 				<div class="flex flex-col gap-1" data-cms-ui>
@@ -429,6 +467,129 @@ export function SchemaFrontmatterField({
 				</div>
 			)
 	}
+}
+
+// ============================================================================
+// Object Fields — renders nested fields with add/remove key support
+// ============================================================================
+
+interface ObjectFieldsProps {
+	label: string
+	value: Record<string, unknown>
+	onChange: (value: unknown) => void
+	schemaFields?: FieldDefinition[]
+	extraKeys?: string[]
+}
+
+function ObjectFields({ label, value, onChange, schemaFields, extraKeys }: ObjectFieldsProps) {
+	const [newKey, setNewKey] = useState('')
+	const obj = value ?? {}
+
+	const handleRemoveKey = (key: string) => {
+		const { [key]: _, ...rest } = obj
+		onChange(rest)
+	}
+
+	const handleAddKey = () => {
+		const trimmed = newKey.trim()
+		if (!trimmed || trimmed in obj) return
+		onChange({ ...obj, [trimmed]: '' })
+		setNewKey('')
+	}
+
+	return (
+		<div class="flex flex-col gap-2 col-span-2" data-cms-ui>
+			<label class="text-xs text-white/60 font-medium">{label}</label>
+			<div class="space-y-2 pl-3 border-l-2 border-white/10">
+				{schemaFields
+					? (
+						<>
+							{schemaFields.map((subField) => (
+								<div key={subField.name} class="flex items-end gap-2">
+									<div class="flex-1 min-w-0">
+										<SchemaFrontmatterField
+											field={subField}
+											value={obj[subField.name]}
+											onChange={(newValue) => onChange({ ...obj, [subField.name]: newValue })}
+										/>
+									</div>
+								</div>
+							))}
+							{(extraKeys ?? []).map((key) => (
+								<div key={key} class="flex items-end gap-2">
+									<div class="flex-1 min-w-0">
+										<FrontmatterField
+											fieldKey={key}
+											value={obj[key]}
+											onChange={(newValue) => onChange({ ...obj, [key]: newValue })}
+										/>
+									</div>
+									<button
+										type="button"
+										onClick={() => handleRemoveKey(key)}
+										class="p-1 mb-1 text-white/30 hover:text-red-400 transition-colors shrink-0"
+										title={`Remove ${key}`}
+										data-cms-ui
+									>
+										<RemoveIcon />
+									</button>
+								</div>
+							))}
+						</>
+					)
+					: Object.entries(obj).map(([key, subValue]) => (
+						<div key={key} class="flex items-end gap-2">
+							<div class="flex-1 min-w-0">
+								<FrontmatterField
+									fieldKey={key}
+									value={subValue}
+									onChange={(newValue) => onChange({ ...obj, [key]: newValue })}
+								/>
+							</div>
+							<button
+								type="button"
+								onClick={() => handleRemoveKey(key)}
+								class="p-1 mb-1 text-white/30 hover:text-red-400 transition-colors shrink-0"
+								title={`Remove ${key}`}
+								data-cms-ui
+							>
+								<RemoveIcon />
+							</button>
+						</div>
+					))
+				}
+				{/* Add new key */}
+				<div class="flex items-center gap-2 pt-1">
+					<input
+						type="text"
+						value={newKey}
+						onInput={(e) => setNewKey((e.target as HTMLInputElement).value)}
+						onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddKey() } }}
+						placeholder="New field name..."
+						class="flex-1 px-2 py-1 text-xs bg-white/5 border border-white/10 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-white/30"
+						data-cms-ui
+					/>
+					<button
+						type="button"
+						onClick={handleAddKey}
+						disabled={!newKey.trim() || newKey.trim() in obj}
+						class="px-2 py-1 text-xs font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-cms-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+						data-cms-ui
+					>
+						+ Add
+					</button>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+function RemoveIcon() {
+	return (
+		<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+		</svg>
+	)
 }
 
 // ============================================================================
