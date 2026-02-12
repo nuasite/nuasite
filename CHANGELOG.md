@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/nuasite/nuasite/compare/v0.5.0...v0.5.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **cms:** handle Enter key with &lt;br&gt; instead of browser-default &lt;div&gt; blocks ([e33eda4](https://github.com/nuasite/nuasite/commit/e33eda41bd9b5cea8cda14897dc2b9b801f70762))
+* **cms:** trace prop-driven text to parent component source ([66704bb](https://github.com/nuasite/nuasite/commit/66704bbae6b6e25e313b7b4df5413f852f03a3e7))
+
 ## [0.5.0](https://github.com/nuasite/nuasite/compare/v0.4.0...v0.5.0) (2026-02-11)
 
 
