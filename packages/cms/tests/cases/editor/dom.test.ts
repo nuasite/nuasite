@@ -8,6 +8,7 @@ import {
 	getAllCmsElements,
 	getChildCmsElements,
 	getCmsElementFromEvent,
+	getEditableHtmlFromElement,
 	getEditableTextFromElement,
 	initHighlightSystem,
 	logDebug,
@@ -122,6 +123,54 @@ test('getEditableTextFromElement handles multiple nested cms elements', () => {
 // 	const result = getEditableTextFromElement(element)
 // 	expect(result).toBe('Start level1 level2 {{cms:cms-1}} text more End')
 // })
+
+test('getEditableHtmlFromElement strips editor attributes from styled spans', () => {
+	const element = document.createElement('h3')
+	element.innerHTML = 'od 150 <span data-cms-styled="true" class="bg-green-200" style="background-color: rgb(187, 247, 208);">000</span> Kč'
+
+	const result = getEditableHtmlFromElement(element)
+	expect(result).toBe('od 150 <span class="bg-green-200">000</span> Kč')
+})
+
+test('getEditableHtmlFromElement strips hover preview attributes from styled spans', () => {
+	const element = document.createElement('div')
+	element.innerHTML = '<span data-cms-styled="true" class="hover:bg-red-500" data-cms-hover-bg="" style="--cms-hover-bg: #ef4444;">text</span>'
+
+	const result = getEditableHtmlFromElement(element)
+	expect(result).toBe('<span class="hover:bg-red-500">text</span>')
+})
+
+test('getEditableHtmlFromElement strips data-cms-hover-text from styled spans', () => {
+	const element = document.createElement('div')
+	element.innerHTML = '<span data-cms-styled="true" class="hover:text-blue-500" data-cms-hover-text="" style="--cms-hover-text: #3b82f6;">text</span>'
+
+	const result = getEditableHtmlFromElement(element)
+	expect(result).toBe('<span class="hover:text-blue-500">text</span>')
+})
+
+test('getEditableHtmlFromElement preserves non-styled span attributes', () => {
+	const element = document.createElement('div')
+	element.innerHTML = 'before <span data-cms-styled="true" class="font-bold text-red-500" style="font-weight: 700; color: red;">styled</span> after'
+
+	const result = getEditableHtmlFromElement(element)
+	expect(result).toBe('before <span class="font-bold text-red-500">styled</span> after')
+})
+
+test('getEditableHtmlFromElement does not strip styles from non-styled elements', () => {
+	const element = document.createElement('div')
+	element.innerHTML = '<span style="color: red;">not a cms span</span>'
+
+	const result = getEditableHtmlFromElement(element)
+	expect(result).toBe('<span style="color: red;">not a cms span</span>')
+})
+
+test('getEditableHtmlFromElement removes contenteditable attributes', () => {
+	const element = document.createElement('div')
+	element.innerHTML = '<span contenteditable="true">editable</span>'
+
+	const result = getEditableHtmlFromElement(element)
+	expect(result).toBe('<span>editable</span>')
+})
 
 test('getChildCmsElements returns array of child cms elements', () => {
 	const element = document.createElement('div')

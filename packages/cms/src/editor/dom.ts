@@ -231,6 +231,15 @@ export function getEditableHtmlFromElement(el: HTMLElement): string {
 		child.removeAttribute('contenteditable')
 	})
 
+	// Clean up styled spans — strip editor-only attributes and inline preview styles
+	// (Tailwind classes are the source of truth for styling)
+	clone.querySelectorAll('[data-cms-styled]').forEach(span => {
+		span.removeAttribute('style')
+		span.removeAttribute('data-cms-styled')
+		span.removeAttribute('data-cms-hover-bg')
+		span.removeAttribute('data-cms-hover-text')
+	})
+
 	return clone.innerHTML
 }
 
