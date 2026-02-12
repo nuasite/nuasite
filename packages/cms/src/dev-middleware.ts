@@ -3,10 +3,11 @@ import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { getProjectRoot } from './config'
-import { handleAddArrayItem, handleRemoveArrayItem } from './handlers/array-ops'
+import { detectArrayPattern, extractArrayElementProps, handleAddArrayItem, handleRemoveArrayItem } from './handlers/array-ops'
 import {
 	extractPropsFromSource,
 	findComponentInvocationLine,
+	findFrontmatterEnd,
 	getPageFileCandidates,
 	handleInsertComponent,
 	handleRemoveComponent,
@@ -532,6 +533,50 @@ async function processHtmlForDev(
 						break
 					}
 				}
+			}
+		}
+	}
+
+	// Resolve spread props for array-rendered components.
+	// Group components by (name, invocationSourcePath) to detect array patterns.
+	const componentGroups = new Map<string, typeof result.components[string][]>()
+	for (const comp of Object.values(result.components)) {
+		const key = `${comp.componentName}::${comp.invocationSourcePath ?? ''}`
+		if (!componentGroups.has(key)) componentGroups.set(key, [])
+		componentGroups.get(key)!.push(comp)
+	}
+
+	for (const group of componentGroups.values()) {
+		if (group.length <= 1) continue
+		// Only process groups where at least one component has empty props (spread case)
+		if (!group.some(c => Object.keys(c.props).length === 0)) continue
+
+		const firstComp = group[0]!
+		const filePath = normalizeFilePath(firstComp.invocationSourcePath ?? firstComp.sourcePath)
+		const lines = await readLines(path.resolve(projectRoot, filePath))
+		if (!lines) continue
+
+		// Find the invocation line (occurrence 0, since .map() has a single <Component> tag)
+		const invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
+		if (invLine < 0) continue
+
+		const pattern = detectArrayPattern(lines, invLine)
+		if (!pattern) continue
+
+		const fmEnd = findFrontmatterEnd(lines)
+		if (fmEnd === 0) continue
+
+		const frontmatterContent = lines.slice(1, fmEnd - 1).join('\n')
+
+		// Sort group by invocationIndex to match array element order
+		const sorted = [...group].sort((a, b) => (a.invocationIndex ?? 0) - (b.invocationIndex ?? 0))
+		for (let i = 0; i < sorted.length; i++) {
+			const comp = sorted[i]!
+			if (Object.keys(comp.props).length > 0) continue
+
+			const arrayProps = extractArrayElementProps(frontmatterContent, pattern.arrayVarName, i)
+			if (arrayProps) {
+				comp.props = arrayProps
 			}
 		}
 	}

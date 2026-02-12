@@ -4,7 +4,8 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getProjectRoot } from './config'
-import { extractPropsFromSource, findComponentInvocationLine } from './handlers/component-ops'
+import { detectArrayPattern, extractArrayElementProps } from './handlers/array-ops'
+import { extractPropsFromSource, findComponentInvocationLine, findFrontmatterEnd } from './handlers/component-ops'
 import { extractComponentName, processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import { generateComponentPreviews } from './preview-generator'
@@ -638,6 +639,42 @@ async function processFile(
 					const invLine = findComponentInvocationLine(pageLines, comp.componentName, idx)
 					if (invLine >= 0) {
 						comp.props = extractPropsFromSource(pageLines, invLine, comp.componentName)
+					}
+				}
+
+				// Resolve spread props for array-rendered components
+				const componentGroups = new Map<string, typeof result.components[string][]>()
+				for (const comp of Object.values(result.components)) {
+					const key = `${comp.componentName}::${comp.invocationSourcePath ?? ''}`
+					if (!componentGroups.has(key)) componentGroups.set(key, [])
+					componentGroups.get(key)!.push(comp)
+				}
+
+				for (const group of componentGroups.values()) {
+					if (group.length <= 1) continue
+					if (!group.some(c => Object.keys(c.props).length === 0)) continue
+
+					const firstComp = group[0]!
+					const invLine = findComponentInvocationLine(pageLines, firstComp.componentName, 0)
+					if (invLine < 0) continue
+
+					const pattern = detectArrayPattern(pageLines, invLine)
+					if (!pattern) continue
+
+					const fmEnd = findFrontmatterEnd(pageLines)
+					if (fmEnd === 0) continue
+
+					const frontmatterContent = pageLines.slice(1, fmEnd - 1).join('\n')
+
+					const sorted = [...group].sort((a, b) => (a.invocationIndex ?? 0) - (b.invocationIndex ?? 0))
+					for (let i = 0; i < sorted.length; i++) {
+						const comp = sorted[i]!
+						if (Object.keys(comp.props).length > 0) continue
+
+						const arrayProps = extractArrayElementProps(frontmatterContent, pattern.arrayVarName, i)
+						if (arrayProps) {
+							comp.props = arrayProps
+						}
 					}
 				}
 			} catch {
