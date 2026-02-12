@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.6.0](https://github.com/nuasite/nuasite/compare/v0.5.1...v0.6.0) (2026-02-12)
+
+
+### Features
+
+* **cms:** add array element prop extraction utilities ([2bbb918](https://github.com/nuasite/nuasite/commit/2bbb918e4c0156979a0671ce2ae81df8883f8c35))
+* **cms:** add object field support in frontmatter editor ([4475d6f](https://github.com/nuasite/nuasite/commit/4475d6ff844e30abc9538f8565c41c024fd3907c))
+* **cms:** make error toasts persistent with dismiss button ([2886ee4](https://github.com/nuasite/nuasite/commit/2886ee47ee529fb31f23fe628fdf40b34f3582f4))
+* **cms:** open markdown editor for entries without detail pages ([efcf1b3](https://github.com/nuasite/nuasite/commit/efcf1b3d809d311a046bfb27e58289599f0b3977))
+* **cms:** resolve spread props for array-rendered components ([c7605f3](https://github.com/nuasite/nuasite/commit/c7605f30c261422a2efbebc1b7ea26c41e62ee19))
+* **cms:** track spread props from .map() loops in source-finder ([8e97379](https://github.com/nuasite/nuasite/commit/8e973791f4785fefd87c7884f02e18fb9b6b7667))
+
+
+### Bug Fixes
+
+* **cms:** prevent Enter and Shift+Enter in inline contentEditable ([132d61f](https://github.com/nuasite/nuasite/commit/132d61f08be4324f53cf27f389c87375ce9fbf53))
+* **cms:** show error details in save failure toasts ([603abbd](https://github.com/nuasite/nuasite/commit/603abbd4400746370188de6669dbfb5654103ff1))
+* **cms:** use fs.stat for import resolution instead of fs.access ([4eb2c41](https://github.com/nuasite/nuasite/commit/4eb2c416a86fc470b9800bcf13deeaefe8ec3f61))
+
+
+### Performance Improvements
+
+* **cms:** skip deployment polling when deployment is unavailable ([564cc30](https://github.com/nuasite/nuasite/commit/564cc302dcf35956c72370a0902d5de259df7abf))
+
 ## [0.5.1](https://github.com/nuasite/nuasite/compare/v0.5.0...v0.5.1) (2026-02-12)
 
 
