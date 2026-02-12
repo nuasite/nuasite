@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/nuasite/nuasite/compare/v0.7.0...v0.7.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **cms:** position block editor above cursor when space below is insufficient ([19c7a39](https://github.com/nuasite/nuasite/commit/19c7a39f0d983e65058a6ae1ca95117fa3a18960))
+* **cms:** reduce element toolbar hover hitbox overshoot ([9b00675](https://github.com/nuasite/nuasite/commit/9b006751c23df1ad8d0489e3e696afc7c6d49210))
+
 ## [0.7.0](https://github.com/nuasite/nuasite/compare/v0.6.0...v0.7.0) (2026-02-12)
 
 
