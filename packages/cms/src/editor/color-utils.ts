@@ -1,42 +1,27 @@
-import type { Attribute, AvailableColors, TailwindColor } from './types'
+import {
+	buildColorClass,
+	COLOR_CLASS_PATTERNS,
+	DEFAULT_TAILWIND_COLORS,
+	extractColorClasses,
+	isColorClass,
+	parseColorClass,
+	SPECIAL_COLORS,
+	STANDARD_SHADES,
+} from '../color-patterns'
+import type { Attribute, AvailableColors } from './types'
 
-/**
- * Default Tailwind CSS v4 color names.
- */
-export const DEFAULT_TAILWIND_COLORS = [
-	'slate',
-	'gray',
-	'zinc',
-	'neutral',
-	'stone',
-	'red',
-	'orange',
-	'amber',
-	'yellow',
-	'lime',
-	'green',
-	'emerald',
-	'teal',
-	'cyan',
-	'sky',
-	'blue',
-	'indigo',
-	'violet',
-	'purple',
-	'fuchsia',
-	'pink',
-	'rose',
-] as const
-
-/**
- * Standard Tailwind color shades.
- */
-export const STANDARD_SHADES = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'] as const
-
-/**
- * Special color values that don't have shades.
- */
-export const SPECIAL_COLORS = ['transparent', 'current', 'inherit', 'white', 'black'] as const
+// Re-export shared detection logic for consumers
+export {
+	buildColorClass,
+	COLOR_CLASS_PATTERNS,
+	DEFAULT_TAILWIND_COLORS,
+	extractColorClasses,
+	getColorType,
+	isColorClass,
+	parseColorClass,
+	SPECIAL_COLORS,
+	STANDARD_SHADES,
+} from '../color-patterns'
 
 /**
  * Map of Tailwind color names to their CSS color values for preview.
@@ -98,139 +83,11 @@ export const SHADE_LIGHTNESS: Record<string, number> = {
 }
 
 /**
- * Non-color text-* utility classes that should NOT be treated as color classes.
- * These are Tailwind utilities like text alignment, sizing, wrapping, etc.
- */
-const NON_COLOR_TEXT_CLASSES = new Set([
-	// Text alignment
-	'text-left',
-	'text-center',
-	'text-right',
-	'text-justify',
-	'text-start',
-	'text-end',
-	// Text wrapping
-	'text-wrap',
-	'text-nowrap',
-	'text-balance',
-	'text-pretty',
-	// Text overflow
-	'text-ellipsis',
-	'text-clip',
-	// Text transform (these don't start with text- but just in case)
-])
-
-/**
- * Regex patterns to match Tailwind color classes.
- */
-const COLOR_CLASS_PATTERNS = {
-	bg: /^bg-([a-z]+)(?:-(\d+))?$/,
-	text: /^text-([a-z]+)(?:-(\d+))?$/,
-	border: /^border-([a-z]+)(?:-(\d+))?$/,
-	hoverBg: /^hover:bg-([a-z]+)(?:-(\d+))?$/,
-	hoverText: /^hover:text-([a-z]+)(?:-(\d+))?$/,
-}
-
-/**
- * Check if a class is a text color class (not a non-color text utility).
- */
-function isTextColorClass(className: string): boolean {
-	if (NON_COLOR_TEXT_CLASSES.has(className)) {
-		return false
-	}
-	return COLOR_CLASS_PATTERNS.text.test(className)
-}
-
-/**
- * Parse a color class into its components.
- */
-export function parseColorClass(colorClass: string): {
-	prefix: string
-	colorName: string
-	shade?: string
-	isHover: boolean
-} | undefined {
-	// Exclude non-color text utility classes
-	if (NON_COLOR_TEXT_CLASSES.has(colorClass)) {
-		return undefined
-	}
-
-	const isHover = colorClass.startsWith('hover:')
-	const classWithoutHover = isHover ? colorClass.slice(6) : colorClass
-
-	// Also check hover variants of non-color text classes
-	if (isHover && NON_COLOR_TEXT_CLASSES.has(`text-${classWithoutHover.slice(5)}`)) {
-		return undefined
-	}
-
-	const match = classWithoutHover.match(/^(bg|text|border)-([a-z]+)(?:-(\d+))?$/)
-
-	if (!match) return undefined
-
-	return {
-		prefix: isHover ? `hover:${match[1]}` : match[1]!,
-		colorName: match[2]!,
-		shade: match[3],
-		isHover,
-	}
-}
-
-/**
- * Build a color class from components.
- */
-export function buildColorClass(
-	prefix: string,
-	colorName: string,
-	shade?: string,
-): string {
-	if (shade) {
-		return `${prefix}-${colorName}-${shade}`
-	}
-	return `${prefix}-${colorName}`
-}
-
-/**
- * Get the color type from a color class.
- */
-export function getColorType(colorClass: string): keyof typeof COLOR_CLASS_PATTERNS | undefined {
-	for (const [key, pattern] of Object.entries(COLOR_CLASS_PATTERNS)) {
-		// For text type, use the helper to exclude non-color text utilities
-		if (key === 'text' || key === 'hoverText') {
-			if (key === 'text' && isTextColorClass(colorClass)) {
-				return key as keyof typeof COLOR_CLASS_PATTERNS
-			}
-			if (key === 'hoverText' && colorClass.startsWith('hover:') && isTextColorClass(colorClass.slice(6))) {
-				return key as keyof typeof COLOR_CLASS_PATTERNS
-			}
-		} else if (pattern.test(colorClass)) {
-			return key as keyof typeof COLOR_CLASS_PATTERNS
-		}
-	}
-	return undefined
-}
-
-/**
- * Check if a class is a color class.
- */
-export function isColorClass(className: string): boolean {
-	// Check text color separately to exclude non-color text utilities
-	if (COLOR_CLASS_PATTERNS.text.test(className)) {
-		return isTextColorClass(className)
-	}
-	if (COLOR_CLASS_PATTERNS.hoverText.test(className)) {
-		return isTextColorClass(className.slice(6)) // Remove 'hover:' prefix
-	}
-	return Object.entries(COLOR_CLASS_PATTERNS)
-		.filter(([key]) => key !== 'text' && key !== 'hoverText')
-		.some(([, pattern]) => pattern.test(className))
-}
-
-/**
  * Get a preview CSS color for a Tailwind color.
  */
 export function getColorPreview(colorName: string, shade?: string): string {
 	// Special colors without shades
-	if (SPECIAL_COLORS.includes(colorName as any)) {
+	if ((SPECIAL_COLORS as readonly string[]).includes(colorName)) {
 		return COLOR_PREVIEW_MAP[colorName] || colorName
 	}
 
@@ -293,27 +150,19 @@ export function replaceColorClass(
 	const classes = element.className.split(/\s+/).filter(Boolean)
 	const pattern = COLOR_CLASS_PATTERNS[colorType]
 
+	const prefix = colorType === 'hoverBg'
+		? 'hover:bg'
+		: colorType === 'hoverText'
+			? 'hover:text'
+			: colorType
+	const newClass = buildColorClass(prefix, newColorName, newShade)
+
 	let oldClass: string | undefined
 	const newClasses: string[] = []
 
 	for (const cls of classes) {
-		// For text types, use the helper to exclude non-color text utilities
-		let isColorMatch: boolean
-		if (colorType === 'text') {
-			isColorMatch = isTextColorClass(cls)
-		} else if (colorType === 'hoverText') {
-			isColorMatch = cls.startsWith('hover:') && isTextColorClass(cls.slice(6))
-		} else {
-			isColorMatch = pattern.test(cls)
-		}
-		if (isColorMatch) {
+		if (pattern.test(cls)) {
 			oldClass = cls
-			// Build the new class with the same prefix
-			const isHover = colorType.startsWith('hover')
-			const prefix = isHover
-				? colorType.replace('hover', 'hover:').toLowerCase().replace('hover:bg', 'hover:bg').replace('hover:text', 'hover:text')
-				: colorType
-			const newClass = buildColorClass(prefix, newColorName, newShade)
 			newClasses.push(newClass)
 		} else {
 			newClasses.push(cls)
@@ -324,12 +173,6 @@ export function replaceColorClass(
 		return undefined
 	}
 
-	const newClass = buildColorClass(
-		colorType.startsWith('hover') ? `hover:${colorType.slice(5).toLowerCase()}` : colorType,
-		newColorName,
-		newShade,
-	)
-
 	element.className = newClasses.join(' ')
 
 	return { oldClass, newClass }
@@ -339,30 +182,7 @@ export function replaceColorClass(
  * Get the current color classes from an element as Record<string, Attribute>.
  */
 export function getElementColorClasses(element: HTMLElement): Record<string, Attribute> {
-	const classes = element.className.split(/\s+/).filter(Boolean)
-	const colorClasses: Record<string, Attribute> = {}
-
-	for (const cls of classes) {
-		for (const [key, pattern] of Object.entries(COLOR_CLASS_PATTERNS)) {
-			// For text types, use the helper to exclude non-color text utilities
-			let isColorMatch: boolean
-			if (key === 'text') {
-				isColorMatch = isTextColorClass(cls)
-			} else if (key === 'hoverText') {
-				isColorMatch = cls.startsWith('hover:') && isTextColorClass(cls.slice(6))
-			} else {
-				isColorMatch = pattern.test(cls)
-			}
-			if (isColorMatch) {
-				if (!(key in colorClasses)) {
-					colorClasses[key] = { value: cls }
-				}
-				break
-			}
-		}
-	}
-
-	return colorClasses
+	return extractColorClasses(element.className) ?? {}
 }
 
 /**
@@ -401,30 +221,20 @@ export function applyColorChange(
 	const classes = element.className.split(/\s+/).filter(Boolean)
 	const pattern = COLOR_CLASS_PATTERNS[colorType]
 
-	let oldClass: string | undefined
-	const newClasses: string[] = []
-
 	// Determine the new class prefix
 	const prefix = colorType === 'hoverBg'
 		? 'hover:bg'
 		: colorType === 'hoverText'
-		? 'hover:text'
-		: colorType
+			? 'hover:text'
+			: colorType
 	const newClass = buildColorClass(prefix, newColorName, newShade)
 
+	let oldClass: string | undefined
+	const newClasses: string[] = []
+
 	for (const cls of classes) {
-		// For text types, use the helper to exclude non-color text utilities
-		let isColorMatch: boolean
-		if (colorType === 'text') {
-			isColorMatch = isTextColorClass(cls)
-		} else if (colorType === 'hoverText') {
-			isColorMatch = cls.startsWith('hover:') && isTextColorClass(cls.slice(6))
-		} else {
-			isColorMatch = pattern.test(cls)
-		}
-		if (isColorMatch) {
+		if (pattern.test(cls)) {
 			oldClass = cls
-			// Replace with new class
 			newClasses.push(newClass)
 		} else {
 			newClasses.push(cls)
@@ -456,10 +266,10 @@ export function applyColorChange(
 			const styleProperty = colorType === 'bg'
 				? 'backgroundColor'
 				: colorType === 'text'
-				? 'color'
-				: colorType === 'border'
-				? 'borderColor'
-				: 'color'
+					? 'color'
+					: colorType === 'border'
+						? 'borderColor'
+						: 'color'
 			element.style[styleProperty] = cssValue
 		}
 	}
@@ -540,7 +350,7 @@ export function getAllColorsWithShades(availableColors: AvailableColors | undefi
 
 	return availableColors.colors.map(color => {
 		const shades = Object.keys(color.values)
-		const isSpecial = SPECIAL_COLORS.includes(color.name as any)
+		const isSpecial = (SPECIAL_COLORS as readonly string[]).includes(color.name)
 
 		return {
 			name: color.name,
