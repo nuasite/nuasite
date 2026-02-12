@@ -645,7 +645,12 @@ export async function processHtml(
 		// Only apply when includeTags is null or doesn't include 'span'
 		if (skipInlineStyleTags && (includeTags === null || !includeTags.includes('span')) && tag === 'span') {
 			const classAttr = node.getAttribute('class')
-			if (classAttr && hasOnlyTextStyleClasses(classAttr)) {
+			// Skip bare spans (no classes) - they're just text wrappers
+			if (!classAttr || !classAttr.trim()) {
+				return
+			}
+			// Skip styled spans (only text styling classes)
+			if (hasOnlyTextStyleClasses(classAttr)) {
 				return
 			}
 		}

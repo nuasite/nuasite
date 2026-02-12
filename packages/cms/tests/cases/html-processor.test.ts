@@ -76,7 +76,7 @@ cmsDescribe('processHtml', { generateManifest: true }, (ctx) => {
 	})
 
 	test('handles nested CMS elements with placeholders', async () => {
-		const input = '<h1>Start <span>nested</span> end</h1>'
+		const input = '<h1>Start <span class="flex">nested</span> end</h1>'
 		const result = await ctx.process(input)
 
 		expect(result.entries['cms-0']?.text).toContain('{{cms:cms-1}}')
@@ -376,11 +376,12 @@ cmsDescribe('inline style tags', { generateManifest: true }, (ctx) => {
 		expect(result.html).toMatch(/<span[^>]*data-cms-id/)
 	})
 
-	test('marks spans without any classes', async () => {
+	test('skips bare spans without any classes', async () => {
 		const input = '<p>Hello <span>plain span</span> text</p>'
 		const result = await ctx.process(input)
 
-		expectAllMarked(result, ['p', 'span'])
+		expectMarked(result, 'p')
+		expectNotMarked(result, 'span')
 	})
 
 	test('preserves inline elements in parent text for manifest', async () => {
