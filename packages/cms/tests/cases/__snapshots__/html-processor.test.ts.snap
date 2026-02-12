@@ -178,6 +178,9 @@ exports[`processHtml Snapshots elements with color classes: entries 1`] = `
       "text": {
         "value": "text-blue-600",
       },
+      "textDecoration": {
+        "value": "underline",
+      },
     },
     "contentPath": undefined,
     "html": undefined,

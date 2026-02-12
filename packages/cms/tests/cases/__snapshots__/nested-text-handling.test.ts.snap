@@ -16,7 +16,11 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
     ],
     "collectionName": undefined,
     "collectionSlug": undefined,
-    "colorClasses": undefined,
+    "colorClasses": {
+      "fontSize": {
+        "value": "text-4xl",
+      },
+    },
     "contentPath": undefined,
     "html": 
 "

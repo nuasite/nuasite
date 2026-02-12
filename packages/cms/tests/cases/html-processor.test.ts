@@ -456,7 +456,7 @@ cmsDescribe('color class extraction', { generateManifest: true }, (ctx) => {
 	})
 
 	test('does not include colorClasses for elements without color classes', async () => {
-		const result = await ctx.process(html.p('Text without colors', 'text-lg font-bold'))
+		const result = await ctx.process(html.p('Text without colors', 'p-4 mx-auto'))
 
 		const pEntry = getEntryByTag(result, 'p')
 		expect(pEntry?.colorClasses).toBeUndefined()
