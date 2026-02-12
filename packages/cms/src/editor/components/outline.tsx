@@ -121,7 +121,7 @@ export function Outline(
         .element-toolbar::before {
           content: '';
           position: absolute;
-          top: -25px;
+          top: -13px;
           left: -50px;
           right: -50px;
           bottom: 0;
