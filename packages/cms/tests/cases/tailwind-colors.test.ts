@@ -3,6 +3,7 @@ import {
 	buildColorClass,
 	DEFAULT_TAILWIND_COLORS,
 	extractColorClasses,
+	extractTextStyleClasses,
 	getColorType,
 	isColorClass,
 	parseColorClass,
@@ -573,6 +574,86 @@ describe('tailwind-colors', () => {
 			expect(SPECIAL_COLORS).toContain('white')
 			expect(SPECIAL_COLORS).toContain('black')
 			expect(SPECIAL_COLORS).toContain('transparent')
+		})
+	})
+
+	describe('extractTextStyleClasses', () => {
+		test('extracts font-weight classes', () => {
+			for (const weight of ['thin', 'extralight', 'light', 'normal', 'medium', 'semibold', 'bold', 'extrabold', 'black']) {
+				const result = extractTextStyleClasses(`font-${weight}`)
+				expect(result?.fontWeight?.value).toBe(`font-${weight}`)
+			}
+		})
+
+		test('extracts font-style classes', () => {
+			expect(extractTextStyleClasses('italic')?.fontStyle?.value).toBe('italic')
+			expect(extractTextStyleClasses('not-italic')?.fontStyle?.value).toBe('not-italic')
+		})
+
+		test('extracts text-decoration classes', () => {
+			for (const decoration of ['underline', 'overline', 'line-through', 'no-underline']) {
+				const result = extractTextStyleClasses(decoration)
+				expect(result?.textDecoration?.value).toBe(decoration)
+			}
+		})
+
+		test('extracts font-size classes', () => {
+			for (const size of ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl', '7xl', '8xl', '9xl']) {
+				const result = extractTextStyleClasses(`text-${size}`)
+				expect(result?.fontSize?.value).toBe(`text-${size}`)
+			}
+		})
+
+		test('extracts multiple categories at once', () => {
+			const result = extractTextStyleClasses('font-bold italic underline text-lg')
+			expect(result?.fontWeight?.value).toBe('font-bold')
+			expect(result?.fontStyle?.value).toBe('italic')
+			expect(result?.textDecoration?.value).toBe('underline')
+			expect(result?.fontSize?.value).toBe('text-lg')
+		})
+
+		test('keeps first match per category', () => {
+			const result = extractTextStyleClasses('font-bold font-thin underline line-through text-sm text-xl')
+			expect(result?.fontWeight?.value).toBe('font-bold')
+			expect(result?.textDecoration?.value).toBe('underline')
+			expect(result?.fontSize?.value).toBe('text-sm')
+		})
+
+		test('returns undefined for null input', () => {
+			expect(extractTextStyleClasses(null)).toBeUndefined()
+		})
+
+		test('returns undefined for undefined input', () => {
+			expect(extractTextStyleClasses(undefined)).toBeUndefined()
+		})
+
+		test('returns undefined for empty string', () => {
+			expect(extractTextStyleClasses('')).toBeUndefined()
+		})
+
+		test('returns undefined when no text style classes present', () => {
+			expect(extractTextStyleClasses('px-4 py-2 rounded flex')).toBeUndefined()
+		})
+
+		test('does not match non-style text utilities', () => {
+			const result = extractTextStyleClasses('text-center text-left text-right text-justify text-wrap')
+			expect(result).toBeUndefined()
+		})
+
+		test('does not match font-family classes', () => {
+			const result = extractTextStyleClasses('font-sans font-serif font-mono')
+			expect(result).toBeUndefined()
+		})
+
+		test('does not match color classes as font-size', () => {
+			const result = extractTextStyleClasses('text-red-500 text-white text-black')
+			expect(result).toBeUndefined()
+		})
+
+		test('ignores non-matching classes alongside matches', () => {
+			const result = extractTextStyleClasses('px-4 font-bold flex text-center rounded')
+			expect(result?.fontWeight?.value).toBe('font-bold')
+			expect(Object.keys(result!)).toEqual(['fontWeight'])
 		})
 	})
 })
