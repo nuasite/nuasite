@@ -3,6 +3,7 @@ import { getColorPreview, parseColorClass } from '../color-utils'
 import { Z_INDEX } from '../constants'
 import { isPageDark } from '../dom'
 import * as signals from '../signals'
+import type { Attribute } from '../../types'
 
 export interface OutlineProps {
 	visible: boolean
@@ -14,10 +15,14 @@ export interface OutlineProps {
 	element?: HTMLElement | null
 	/** CMS ID of the hovered element */
 	cmsId?: string | null
+	/** Current text style classes from pending changes (reactive) */
+	textStyleClasses?: Record<string, Attribute>
 	/** Callback when a color swatch is clicked */
 	onColorClick?: (cmsId: string, rect: DOMRect) => void
 	/** Callback when an attribute indicator is clicked */
 	onAttributeClick?: (cmsId: string, rect: DOMRect) => void
+	/** Callback when a text style toggle is clicked */
+	onTextStyleChange?: (cmsId: string, styleType: string, oldClass: string, newClass: string) => void
 }
 
 // Minimum space needed to show label outside the element
@@ -30,7 +35,7 @@ const STICKY_PADDING = 8
  * Uses a custom element with Shadow DOM to avoid style conflicts.
  */
 export function Outline(
-	{ visible, rect, isComponent = false, componentName, tagName, element, cmsId, onColorClick, onAttributeClick }: OutlineProps,
+	{ visible, rect, isComponent = false, componentName, tagName, element, cmsId, textStyleClasses, onColorClick, onAttributeClick, onTextStyleChange }: OutlineProps,
 ) {
 	const containerRef = useRef<HTMLDivElement>(null)
 	const shadowRootRef = useRef<ShadowRoot | null>(null)
@@ -182,6 +187,60 @@ export function Outline(
         .attr-button:hover svg {
           color: #DFFF40;
         }
+
+        .text-style-btn {
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: transparent;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 150ms ease;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 13px;
+          color: rgba(255,255,255,0.7);
+          padding: 0;
+          line-height: 1;
+        }
+
+        .text-style-btn:hover {
+          background: rgba(255,255,255,0.1);
+          color: #DFFF40;
+        }
+
+        .text-style-btn.active {
+          background: rgba(223, 255, 64, 0.15);
+          border-color: rgba(223, 255, 64, 0.4);
+          color: #DFFF40;
+        }
+
+        .text-size-select {
+          height: 28px;
+          background: transparent;
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 6px;
+          color: rgba(255,255,255,0.7);
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 11px;
+          padding: 0 4px;
+          cursor: pointer;
+          transition: all 150ms ease;
+          -webkit-appearance: none;
+          appearance: none;
+        }
+
+        .text-size-select:hover {
+          border-color: rgba(223, 255, 64, 0.4);
+          color: #DFFF40;
+        }
+
+        .text-size-select:focus {
+          outline: none;
+          border-color: #DFFF40;
+        }
       `
 
 			overlayRef.current = document.createElement('div')
@@ -305,15 +364,15 @@ export function Outline(
 
 			// Check for color swatches and attribute button
 			const manifest = signals.manifest.value
-			const pendingColorChange = cmsId ? signals.pendingColorChanges.value.get(cmsId) : null
 			const entry = cmsId ? manifest.entries[cmsId] : null
-			const colorClasses = pendingColorChange?.newClasses ?? entry?.colorClasses
+			const colorClasses = textStyleClasses ?? entry?.colorClasses
 
 			const hasColorSwatches = colorClasses && (colorClasses.bg?.value || colorClasses.text?.value) && onColorClick
 			const hasEditableAttributes = entry?.attributes && Object.keys(entry.attributes).length > 0
+			const needsElementLevelStyling = entry?.allowStyling === false && onTextStyleChange
 
-			// Show unified toolbar if there are swatches or attribute button
-			if ((hasColorSwatches || hasEditableAttributes) && (onColorClick || onAttributeClick)) {
+			// Show unified toolbar if there are swatches, attribute button, or element-level text styling
+			if ((hasColorSwatches || hasEditableAttributes || needsElementLevelStyling) && (onColorClick || onAttributeClick || onTextStyleChange)) {
 				toolbarRef.current.className = 'element-toolbar'
 				toolbarRef.current.innerHTML = ''
 
@@ -390,11 +449,111 @@ export function Outline(
 					}
 					toolbarRef.current.appendChild(attrButton)
 				}
+
+				// Add text style buttons for elements where inline styling is unavailable
+				if (needsElementLevelStyling && cmsId) {
+					// Add divider if there are other toolbar items before
+					if (hasColorSwatches || hasEditableAttributes) {
+						const divider = document.createElement('div')
+						divider.className = 'toolbar-divider'
+						toolbarRef.current.appendChild(divider)
+					}
+
+					const currentClasses = textStyleClasses ?? colorClasses ?? {}
+
+					// Bold toggle
+					const boldBtn = document.createElement('button')
+					const isBold = currentClasses.fontWeight?.value === 'font-bold'
+					boldBtn.className = `text-style-btn${isBold ? ' active' : ''}`
+					boldBtn.innerHTML = '<strong>B</strong>'
+					boldBtn.title = isBold ? 'Remove bold' : 'Bold'
+					boldBtn.onclick = (e) => {
+						e.stopPropagation()
+						const oldClass = currentClasses.fontWeight?.value || ''
+						const newClass = isBold ? 'font-normal' : 'font-bold'
+						onTextStyleChange!(cmsId!, 'fontWeight', oldClass, newClass)
+					}
+					toolbarRef.current.appendChild(boldBtn)
+
+					// Italic toggle
+					const italicBtn = document.createElement('button')
+					const isItalic = currentClasses.fontStyle?.value === 'italic'
+					italicBtn.className = `text-style-btn${isItalic ? ' active' : ''}`
+					italicBtn.innerHTML = '<em>I</em>'
+					italicBtn.title = isItalic ? 'Remove italic' : 'Italic'
+					italicBtn.onclick = (e) => {
+						e.stopPropagation()
+						const oldClass = currentClasses.fontStyle?.value || ''
+						const newClass = isItalic ? 'not-italic' : 'italic'
+						onTextStyleChange!(cmsId!, 'fontStyle', oldClass, newClass)
+					}
+					toolbarRef.current.appendChild(italicBtn)
+
+					// Underline toggle
+					const underlineBtn = document.createElement('button')
+					const isUnderline = currentClasses.textDecoration?.value === 'underline'
+					underlineBtn.className = `text-style-btn${isUnderline ? ' active' : ''}`
+					underlineBtn.innerHTML = '<span style="text-decoration:underline">U</span>'
+					underlineBtn.title = isUnderline ? 'Remove underline' : 'Underline'
+					underlineBtn.onclick = (e) => {
+						e.stopPropagation()
+						const oldClass = currentClasses.textDecoration?.value || ''
+						const newClass = isUnderline ? 'no-underline' : 'underline'
+						onTextStyleChange!(cmsId!, 'textDecoration', oldClass, newClass)
+					}
+					toolbarRef.current.appendChild(underlineBtn)
+
+					// Strikethrough toggle
+					const strikeBtn = document.createElement('button')
+					const isStrike = currentClasses.textDecoration?.value === 'line-through'
+					strikeBtn.className = `text-style-btn${isStrike ? ' active' : ''}`
+					strikeBtn.innerHTML = '<span style="text-decoration:line-through">S</span>'
+					strikeBtn.title = isStrike ? 'Remove strikethrough' : 'Strikethrough'
+					strikeBtn.onclick = (e) => {
+						e.stopPropagation()
+						const oldClass = currentClasses.textDecoration?.value || ''
+						const newClass = isStrike ? 'no-underline' : 'line-through'
+						onTextStyleChange!(cmsId!, 'textDecoration', oldClass, newClass)
+					}
+					toolbarRef.current.appendChild(strikeBtn)
+
+					// Font size dropdown
+					const sizeSelect = document.createElement('select')
+					sizeSelect.className = 'text-size-select'
+					sizeSelect.title = 'Font size'
+					const sizeOptions = [
+						{ value: '', label: 'Size' },
+						{ value: 'text-xs', label: 'XS' },
+						{ value: 'text-sm', label: 'SM' },
+						{ value: 'text-base', label: 'Base' },
+						{ value: 'text-lg', label: 'LG' },
+						{ value: 'text-xl', label: 'XL' },
+						{ value: 'text-2xl', label: '2XL' },
+						{ value: 'text-3xl', label: '3XL' },
+					]
+					const currentSize = currentClasses.fontSize?.value || ''
+					for (const opt of sizeOptions) {
+						const option = document.createElement('option')
+						option.value = opt.value
+						option.textContent = opt.label
+						if (opt.value === currentSize) option.selected = true
+						sizeSelect.appendChild(option)
+					}
+					sizeSelect.onchange = (e) => {
+						e.stopPropagation()
+						const newClass = (e.target as HTMLSelectElement).value
+						if (newClass) {
+							const oldClass = currentClasses.fontSize?.value || ''
+							onTextStyleChange!(cmsId!, 'fontSize', oldClass, newClass)
+						}
+					}
+					toolbarRef.current.appendChild(sizeSelect)
+				}
 			} else {
 				toolbarRef.current.className = 'element-toolbar hidden'
 			}
 		}
-	}, [visible, rect, isComponent, componentName, tagName, cmsId, onColorClick, onAttributeClick])
+	}, [visible, rect, isComponent, componentName, tagName, cmsId, textStyleClasses, onColorClick, onAttributeClick, onTextStyleChange])
 
 	return (
 		<div

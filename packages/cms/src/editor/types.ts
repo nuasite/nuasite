@@ -138,8 +138,8 @@ export interface ColorChangePayload {
 	oldClass: string
 	/** The new color class (e.g., 'bg-red-500') */
 	newClass: string
-	/** Type of color change: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText' */
-	type: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText'
+	/** Type of color/style change */
+	type: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText' | 'fontWeight' | 'fontStyle' | 'textDecoration' | 'fontSize'
 	/** Path to the source file where the color class is defined */
 	sourcePath?: string
 	/** Line number where the color class is defined */

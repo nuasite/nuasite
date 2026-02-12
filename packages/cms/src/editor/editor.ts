@@ -619,14 +619,14 @@ export async function saveAllChanges(
 			// For each color type that changed, add a separate change entry
 			const { originalClasses, newClasses } = change
 			const entry = manifest.entries[cmsId]
-			const colorTypes = ['bg', 'text', 'border', 'hoverBg', 'hoverText'] as const
+			const classTypes = ['bg', 'text', 'border', 'hoverBg', 'hoverText', 'fontWeight', 'fontStyle', 'textDecoration', 'fontSize'] as const
 
 			// Find the best source info from any color type that has it
 			// (all color types share the same class attribute on the same element)
 			let sharedSourcePath: string | undefined
 			let sharedSourceLine: number | undefined
 			let sharedSourceSnippet: string | undefined
-			for (const ct of colorTypes) {
+			for (const ct of classTypes) {
 				const orig = originalClasses[ct]
 				const curr = newClasses[ct]
 				const sp = curr?.sourcePath ?? orig?.sourcePath
@@ -639,10 +639,10 @@ export async function saveAllChanges(
 				}
 			}
 
-			for (const colorType of colorTypes) {
-				const origAttr = originalClasses[colorType]
-				const newAttr = newClasses[colorType]
-				if (newAttr?.value && newAttr.value !== origAttr?.value) {
+			for (const classType of classTypes) {
+				const origAttr = originalClasses[classType]
+				const newAttr = newClasses[classType]
+				if (newAttr && newAttr.value !== (origAttr?.value ?? '')) {
 					const bestSourcePath = newAttr.sourcePath ?? origAttr?.sourcePath ?? sharedSourcePath
 					const bestSourceLine = newAttr.sourceLine ?? origAttr?.sourceLine ?? sharedSourceLine
 					const bestSourceSnippet = newAttr.sourceSnippet ?? origAttr?.sourceSnippet ?? sharedSourceSnippet
@@ -656,7 +656,7 @@ export async function saveAllChanges(
 						colorChange: {
 							oldClass: origAttr?.value || '',
 							newClass: newAttr.value,
-							type: colorType,
+							type: classType,
 							sourcePath: bestSourcePath,
 							sourceLine: bestSourceLine,
 							sourceSnippet: bestSourceSnippet,
@@ -1033,7 +1033,7 @@ function setupColorTracking(
 export function handleColorChange(
 	config: CmsConfig,
 	cmsId: string,
-	colorType: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText',
+	colorType: string,
 	oldClass: string,
 	newClass: string,
 	onStateChange?: () => void,

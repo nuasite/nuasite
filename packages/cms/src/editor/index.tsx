@@ -55,6 +55,26 @@ import { hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, s
 import CMS_STYLES from './styles.css?inline'
 import { generateCSSVariables, resolveTheme } from './themes'
 
+/** Inline CSS values for Tailwind text style classes (for preview before save) */
+const TEXT_STYLE_INLINE_CSS: Record<string, Record<string, string>> = {
+	'font-normal': { fontWeight: '400' },
+	'font-medium': { fontWeight: '500' },
+	'font-semibold': { fontWeight: '600' },
+	'font-bold': { fontWeight: '700' },
+	'italic': { fontStyle: 'italic' },
+	'not-italic': { fontStyle: 'normal' },
+	'underline': { textDecoration: 'underline' },
+	'line-through': { textDecoration: 'line-through' },
+	'no-underline': { textDecoration: 'none' },
+	'text-xs': { fontSize: '0.75rem', lineHeight: '1rem' },
+	'text-sm': { fontSize: '0.875rem', lineHeight: '1.25rem' },
+	'text-base': { fontSize: '1rem', lineHeight: '1.5rem' },
+	'text-lg': { fontSize: '1.125rem', lineHeight: '1.75rem' },
+	'text-xl': { fontSize: '1.25rem', lineHeight: '1.75rem' },
+	'text-2xl': { fontSize: '1.5rem', lineHeight: '2rem' },
+	'text-3xl': { fontSize: '1.875rem', lineHeight: '2.25rem' },
+}
+
 const CmsUI = () => {
 	const config = signals.config.value
 	const outlineState = useElementDetection()
@@ -218,6 +238,65 @@ const CmsUI = () => {
 		signals.openAttributeEditor(cmsId, rect)
 	}, [])
 
+	// Handle text style change from outline (element-level styling via class toggle)
+	const handleOutlineTextStyleChange = useCallback((cmsId: string, styleType: string, oldClass: string, newClass: string) => {
+		let change = signals.pendingColorChanges.value.get(cmsId)
+
+		// Create pending color change entry if it doesn't exist yet
+		// (elements with allowStyling=false may lack colorClasses but still need text style tracking)
+		if (!change) {
+			const el = document.querySelector(`[data-cms-id="${cmsId}"]`) as HTMLElement
+			if (!el) return
+
+			const entry = signals.manifest.value.entries[cmsId]
+			const originalClasses: Record<string, import('../types').Attribute> = {}
+			const newClasses: Record<string, import('../types').Attribute> = {}
+			if (entry?.colorClasses) {
+				for (const [key, attr] of Object.entries(entry.colorClasses)) {
+					originalClasses[key] = { ...attr }
+					newClasses[key] = { ...attr }
+				}
+			}
+
+			signals.setPendingColorChange(cmsId, {
+				element: el,
+				cmsId,
+				originalClasses,
+				newClasses,
+				isDirty: false,
+			})
+			change = signals.pendingColorChanges.value.get(cmsId)!
+		}
+
+		// Apply the class change on the DOM element
+		const el = change.element
+		const previousClassName = el.className
+		const previousStyleCssText = el.style.cssText
+
+		if (oldClass) {
+			el.classList.remove(oldClass)
+			const oldCss = TEXT_STYLE_INLINE_CSS[oldClass]
+			if (oldCss) {
+				for (const prop of Object.keys(oldCss)) {
+					;(el.style as any)[prop] = ''
+				}
+			}
+		}
+		el.classList.add(newClass)
+
+		// Apply inline styles for immediate visual preview
+		// (Tailwind classes not present in source won't be in the compiled CSS)
+		const newCss = TEXT_STYLE_INLINE_CSS[newClass]
+		if (newCss) {
+			for (const [prop, value] of Object.entries(newCss)) {
+				;(el.style as any)[prop] = value
+			}
+		}
+
+		// Delegate to handleColorChange (same class-replacement mechanism)
+		handleColorChange(config, cmsId, styleType, oldClass, newClass, updateUI, previousClassName, previousStyleCssText)
+	}, [config, updateUI])
+
 	// Handle attribute editor close
 	const handleAttributeEditorClose = useCallback(() => {
 		signals.closeAttributeEditor()
@@ -235,12 +314,24 @@ const CmsUI = () => {
 	const showEditableHighlights = signals.showEditableHighlights.value
 	const hasSeoData = !!(manifest as any).seo
 
+	// Check if selected text element allows inline styling
+	const selectedElementCmsId = textSelectionState.element?.getAttribute('data-cms-id')
+	const selectedEntry = selectedElementCmsId ? manifest.entries[selectedElementCmsId] : undefined
+	const isTextStylingAllowed = selectedEntry?.allowStyling !== false
+
 	// Get color toolbar data
+	const pendingColorChanges = signals.pendingColorChanges.value
 	const colorEditorElement = colorEditorState.targetElementId
-		? signals.pendingColorChanges.value.get(colorEditorState.targetElementId)?.element ?? null
+		? pendingColorChanges.get(colorEditorState.targetElementId)?.element ?? null
 		: null
 	const colorEditorCurrentClasses = colorEditorState.targetElementId
-		? signals.pendingColorChanges.value.get(colorEditorState.targetElementId)?.newClasses
+		? pendingColorChanges.get(colorEditorState.targetElementId)?.newClasses
+		: undefined
+
+	// Get current text style classes for the outlined element (reactive - triggers re-render on change)
+	const outlineCmsId = outlineState.cmsId
+	const outlineTextStyleClasses = outlineCmsId
+		? pendingColorChanges.get(outlineCmsId)?.newClasses
 		: undefined
 
 	return (
@@ -258,8 +349,10 @@ const CmsUI = () => {
 					tagName={outlineState.tagName}
 					element={outlineState.element}
 					cmsId={outlineState.cmsId}
+					textStyleClasses={outlineTextStyleClasses}
 					onColorClick={handleOutlineColorClick}
 					onAttributeClick={handleOutlineAttributeClick}
+					onTextStyleChange={handleOutlineTextStyleChange}
 				/>
 			</ErrorBoundary>
 
@@ -309,7 +402,7 @@ const CmsUI = () => {
 
 			<ErrorBoundary componentName="Text Style Toolbar">
 				<TextStyleToolbar
-					visible={textSelectionState.hasSelection && isEditing && !isAIProcessing}
+					visible={textSelectionState.hasSelection && isEditing && !isAIProcessing && isTextStylingAllowed}
 					rect={textSelectionState.rect}
 					element={textSelectionState.element}
 					onStyleChange={updateUI}

@@ -8,7 +8,7 @@ import { acquireFileLock, escapeReplacement, normalizePagePath, resolveAndValida
 export interface ColorChangePayload {
 	oldClass: string
 	newClass: string
-	type: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText'
+	type: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText' | 'fontWeight' | 'fontStyle' | 'textDecoration' | 'fontSize'
 	sourcePath?: string
 	sourceLine?: number
 	sourceSnippet?: string
@@ -360,7 +360,11 @@ function replaceClassInAttribute(
 		const idx = classes.indexOf(oldClass)
 		if (idx === -1) return null
 
-		classes[idx] = newClass
+		if (newClass) {
+			classes[idx] = newClass
+		} else {
+			classes.splice(idx, 1)
+		}
 		return line.replace(classAttrPattern, `${prefix}${quote}${classes.join(' ')}${quote}`)
 	}
 
