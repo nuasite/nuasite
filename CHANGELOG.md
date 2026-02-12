@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/nuasite/nuasite/compare/v0.7.1...v0.7.2) (2026-02-12)
+
+
+### Bug Fixes
+
+* **cms:** strip editor-only attributes from styled spans in editable HTML ([403ab6c](https://github.com/nuasite/nuasite/commit/403ab6c1b6d5b68eba6546fb5a88baa2128bca02))
+
 ## [0.7.1](https://github.com/nuasite/nuasite/compare/v0.7.0...v0.7.1) (2026-02-12)
 
 
