@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/nuasite/nuasite/compare/v0.6.0...v0.7.0) (2026-02-12)
+
+
+### Features
+
+* **cms:** add element-level text style controls in outline toolbar ([bf5bc50](https://github.com/nuasite/nuasite/commit/bf5bc50306b4e3811aa473767c21e1b93bf621dc))
+* **cms:** extract text style classes and add allowStyling flag ([bd77682](https://github.com/nuasite/nuasite/commit/bd776829d0e0273c7f48bc0c77254a30320058b5))
+
+
+### Bug Fixes
+
+* **cms:** prevent text deselection on style toolbar mousedown ([a6b6938](https://github.com/nuasite/nuasite/commit/a6b6938823e5c049d8bfbb3775853d0c4e646599))
+
 ## [0.6.0](https://github.com/nuasite/nuasite/compare/v0.5.1...v0.6.0) (2026-02-12)
 
 
