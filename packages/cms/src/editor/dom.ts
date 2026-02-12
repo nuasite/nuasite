@@ -161,16 +161,19 @@ export function isStyledSpan(element: HTMLElement): boolean {
 }
 
 /**
- * Helper function to recursively extract plain text from child nodes,
- * replacing CMS elements with their placeholders.
- * Note: This returns plain text only - for styled content, use innerHTML directly.
+ * Block-level elements that browsers may create inside contentEditable on Enter.
+ * These are treated as line breaks when extracting text.
  */
+const BLOCK_ELEMENTS = new Set(['div', 'p', 'section', 'article', 'header', 'footer', 'blockquote'])
+
 function extractTextFromChildNodes(parentNode: HTMLElement): string {
 	let text = ''
 
 	parentNode.childNodes.forEach(node => {
 		if (node.nodeType === Node.TEXT_NODE) {
-			text += node.nodeValue || ''
+			// Normalize non-breaking spaces (\u00a0) that browsers insert in
+			// contentEditable to regular spaces
+			text += (node.nodeValue || '').replace(/\u00a0/g, ' ')
 		} else if (node.nodeType === Node.ELEMENT_NODE) {
 			const element = node as HTMLElement
 			const tagName = element.tagName.toLowerCase()
@@ -186,9 +189,17 @@ function extractTextFromChildNodes(parentNode: HTMLElement): string {
 			if (directCmsId) {
 				// Element has CMS ID - replace with placeholder
 				text += `{{cms:${directCmsId}}}`
+			} else if (BLOCK_ELEMENTS.has(tagName)) {
+				// Block-level elements created by browser on Enter should be
+				// treated as line breaks, not collapsed into the text
+				const blockText = extractTextFromChildNodes(element)
+				if (blockText) {
+					// Only add <br> separator if there's already text before this block
+					text += (text ? '<br>' : '') + blockText
+				}
 			} else {
 				// For all other elements (including styled spans), just get their text content
-				text += element.textContent || ''
+				text += (element.textContent || '').replace(/\u00a0/g, ' ')
 			}
 		}
 	})

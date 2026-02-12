@@ -154,9 +154,27 @@ export async function startEditMode(
 		makeElementEditable(el)
 
 		// Suppress browser native contentEditable undo/redo (we handle it ourselves)
+		// Also convert Enter (insertParagraph) to <br> instead of the browser's
+		// default behavior which creates <div> elements with &nbsp; characters
 		el.addEventListener('beforeinput', (e) => {
 			if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
 				e.preventDefault()
+			}
+			if (e.inputType === 'insertParagraph') {
+				e.preventDefault()
+				const selection = window.getSelection()
+				if (selection && selection.rangeCount > 0) {
+					const range = selection.getRangeAt(0)
+					range.deleteContents()
+					const br = document.createElement('br')
+					range.insertNode(br)
+					range.setStartAfter(br)
+					range.collapse(true)
+					selection.removeAllRanges()
+					selection.addRange(range)
+					// Trigger input event for change tracking
+					el.dispatchEvent(new Event('input', { bubbles: true }))
+				}
 			}
 		})
 
