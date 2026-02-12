@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.3](https://github.com/nuasite/nuasite/compare/v0.7.2...v0.7.3) (2026-02-12)
+
+
+### Bug Fixes
+
+* **cms:** exempt &lt;a&gt; elements from pure container skip ([2dfca89](https://github.com/nuasite/nuasite/commit/2dfca89119edf48d4a2932616839b850d0bb3f48))
+* **cms:** skip bare spans without classes in editable HTML processing ([9ef4f87](https://github.com/nuasite/nuasite/commit/9ef4f87270bc2f2d7374e2b41e4fe6314a2f4e9f))
+
 ## [0.7.2](https://github.com/nuasite/nuasite/compare/v0.7.1...v0.7.2) (2026-02-12)
 
 
