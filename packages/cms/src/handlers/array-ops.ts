@@ -143,6 +143,108 @@ function extractElementBounds(
 }
 
 /**
+ * Extract property values from a specific array element in the frontmatter.
+ *
+ * Parses the frontmatter code with Babel, finds the array variable declaration,
+ * and returns the property values from the element at the given index.
+ * Used to resolve spread props for array-rendered components (e.g. `{...item}`).
+ */
+export function extractArrayElementProps(
+	frontmatterContent: string,
+	arrayVarName: string,
+	elementIndex: number,
+): Record<string, any> | null {
+	let ast: ReturnType<typeof parseBabel>
+	try {
+		ast = parseBabel(frontmatterContent, {
+			sourceType: 'module',
+			plugins: ['typescript'],
+			errorRecovery: true,
+		})
+	} catch {
+		return null
+	}
+
+	for (const node of ast.program.body) {
+		const arrayExpr = findArrayExpression(node, arrayVarName)
+		if (arrayExpr && elementIndex < arrayExpr.elements.length) {
+			const element = arrayExpr.elements[elementIndex]
+			if (element?.type === 'ObjectExpression') {
+				return extractObjectValues(element, frontmatterContent)
+			}
+		}
+	}
+
+	return null
+}
+
+function findArrayExpression(node: any, varName: string): any | null {
+	if (node.type === 'VariableDeclaration') {
+		for (const decl of node.declarations) {
+			if (
+				decl.id.type === 'Identifier'
+				&& decl.id.name === varName
+				&& decl.init?.type === 'ArrayExpression'
+			) {
+				return decl.init
+			}
+		}
+	}
+	if (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration') {
+		for (const decl of node.declaration.declarations) {
+			if (
+				decl.id.type === 'Identifier'
+				&& decl.id.name === varName
+				&& decl.init?.type === 'ArrayExpression'
+			) {
+				return decl.init
+			}
+		}
+	}
+	return null
+}
+
+function extractObjectValues(node: any, source: string): Record<string, any> {
+	const props: Record<string, any> = {}
+	for (const prop of node.properties) {
+		if (prop.type !== 'ObjectProperty') continue
+		const key = prop.key.type === 'Identifier' ? prop.key.name : prop.key.value
+		if (!key) continue
+		props[key] = extractAstValue(prop.value, source)
+	}
+	return props
+}
+
+function extractAstValue(node: any, source: string): any {
+	switch (node.type) {
+		case 'StringLiteral':
+			return node.value
+		case 'NumericLiteral':
+			return node.value
+		case 'BooleanLiteral':
+			return node.value
+		case 'NullLiteral':
+			return null
+		case 'TemplateLiteral':
+			if (node.expressions.length === 0 && node.quasis.length === 1) {
+				return node.quasis[0].value.cooked
+			}
+			return source.slice(node.start, node.end)
+		case 'ArrayExpression':
+			return node.elements.map((el: any) => el ? extractAstValue(el, source) : null)
+		case 'ObjectExpression':
+			return extractObjectValues(node, source)
+		case 'UnaryExpression':
+			if (node.operator === '-' && node.argument.type === 'NumericLiteral') {
+				return -node.argument.value
+			}
+			return source.slice(node.start, node.end)
+		default:
+			return source.slice(node.start, node.end)
+	}
+}
+
+/**
  * Resolve the file, lines, invocation index, and array info for a component.
  */
 async function resolveArrayContext(
