@@ -300,8 +300,8 @@ export async function resolveImportPath(source: string, fromFile: string): Promi
 	for (const ext of extensions) {
 		const fullPath = basePath + ext
 		try {
-			await fs.access(fullPath)
-			return fullPath
+			const stat = await fs.stat(fullPath)
+			if (stat.isFile()) return fullPath
 		} catch {
 			// File doesn't exist with this extension
 		}
