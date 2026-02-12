@@ -54,7 +54,7 @@ export function TextField({ label, value, placeholder, onChange, isDirty, onRese
 				placeholder={placeholder}
 				onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 				class={cn(
-					'w-full px-3 py-2 bg-white/10 border rounded-cms-md text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
+					'w-full px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
 					isDirty
 						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
 						: 'border-white/20 focus:border-white/40 focus:ring-white/10',
@@ -90,7 +90,7 @@ export function ImageField({ label, value, placeholder, onChange, onBrowse, isDi
 					placeholder={placeholder}
 					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 					class={cn(
-						'flex-1 px-3 py-2 bg-white/10 border rounded-cms-md text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
+						'flex-1 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
 						isDirty
 							? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
 							: 'border-white/20 focus:border-white/40 focus:ring-white/10',
@@ -100,7 +100,7 @@ export function ImageField({ label, value, placeholder, onChange, onBrowse, isDi
 				<button
 					type="button"
 					onClick={onBrowse}
-					class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-cms-md text-sm text-white transition-colors cursor-pointer"
+					class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-cms-sm text-sm text-white transition-colors cursor-pointer"
 					data-cms-ui
 				>
 					Browse
@@ -132,7 +132,7 @@ export function SelectField({ label, value, options, onChange, isDirty, onReset,
 				value={value ?? ''}
 				onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
 				class={cn(
-					'w-full px-3 py-2 bg-white/10 border rounded-cms-md text-sm text-white focus:outline-none focus:ring-1 transition-colors cursor-pointer',
+					'w-full px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white focus:outline-none focus:ring-1 transition-colors cursor-pointer',
 					isDirty
 						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
 						: 'border-white/20 focus:border-white/40 focus:ring-white/10',
@@ -220,7 +220,7 @@ export function NumberField({ label, value, placeholder, min, max, onChange, isD
 					onChange(val === '' ? undefined : Number(val))
 				}}
 				class={cn(
-					'w-full px-3 py-2 bg-white/10 border rounded-cms-md text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
+					'w-full px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
 					isDirty
 						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
 						: 'border-white/20 focus:border-white/40 focus:ring-white/10',
@@ -341,7 +341,7 @@ export function ComboBoxField({ label, value, placeholder, options, onChange, is
 				onKeyDown={handleKeyDown}
 				autocomplete="off"
 				class={cn(
-					'w-full px-3 py-2 bg-white/10 border rounded-cms-md text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
+					'w-full px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
 					isDirty
 						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
 						: 'border-white/20 focus:border-white/40 focus:ring-white/10',
@@ -351,7 +351,7 @@ export function ComboBoxField({ label, value, placeholder, options, onChange, is
 			{showDropdown && (
 				<div
 					ref={listRef}
-					class="absolute z-50 left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-cms-dark border border-white/15 rounded-cms-md shadow-lg"
+					class="absolute z-50 left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-cms-dark border border-white/15 rounded-cms-sm shadow-lg"
 					data-cms-ui
 				>
 					{filtered.map((opt, i) => (

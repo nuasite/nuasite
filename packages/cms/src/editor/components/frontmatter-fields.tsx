@@ -158,7 +158,7 @@ export function CreateModeFrontmatter({
 						}
 					}}
 					placeholder="url-friendly-slug"
-					class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-cms-md text-sm text-white placeholder-white/40 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10"
+					class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white placeholder-white/40 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10"
 					data-cms-ui
 				/>
 				<p class="mt-1 text-xs text-white/40">
@@ -214,7 +214,7 @@ export function EditModeFrontmatter({
 				<input
 					type="text"
 					value={page.slug}
-					class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-cms-md text-sm text-white/50 focus:outline-none cursor-not-allowed"
+					class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white/50 focus:outline-none cursor-not-allowed"
 					disabled
 					data-cms-ui
 				/>
