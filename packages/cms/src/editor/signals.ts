@@ -515,12 +515,16 @@ const _pendingSeoChangesDirty = createDirtyTracking(pendingSeoChanges)
 const _pendingAttributeChangesDirty = createDirtyTracking(pendingAttributeChanges)
 
 export const changeRegistry: Record<ChangeCategory, ChangeRegistryEntry> = {
-	text:      { mapSignal: pendingChanges,          dirtyCount: _pendingChangesDirty.dirtyCount,          hasDirty: _pendingChangesDirty.hasDirty },
-	image:     { mapSignal: pendingImageChanges,     dirtyCount: _pendingImageChangesDirty.dirtyCount,     hasDirty: _pendingImageChangesDirty.hasDirty },
-	color:     { mapSignal: pendingColorChanges,     dirtyCount: _pendingColorChangesDirty.dirtyCount,     hasDirty: _pendingColorChangesDirty.hasDirty },
-	bgImage:   { mapSignal: pendingBgImageChanges,   dirtyCount: _pendingBgImageChangesDirty.dirtyCount,   hasDirty: _pendingBgImageChangesDirty.hasDirty },
-	seo:       { mapSignal: pendingSeoChanges,       dirtyCount: _pendingSeoChangesDirty.dirtyCount,       hasDirty: _pendingSeoChangesDirty.hasDirty },
-	attribute: { mapSignal: pendingAttributeChanges, dirtyCount: _pendingAttributeChangesDirty.dirtyCount, hasDirty: _pendingAttributeChangesDirty.hasDirty },
+	text: { mapSignal: pendingChanges, dirtyCount: _pendingChangesDirty.dirtyCount, hasDirty: _pendingChangesDirty.hasDirty },
+	image: { mapSignal: pendingImageChanges, dirtyCount: _pendingImageChangesDirty.dirtyCount, hasDirty: _pendingImageChangesDirty.hasDirty },
+	color: { mapSignal: pendingColorChanges, dirtyCount: _pendingColorChangesDirty.dirtyCount, hasDirty: _pendingColorChangesDirty.hasDirty },
+	bgImage: { mapSignal: pendingBgImageChanges, dirtyCount: _pendingBgImageChangesDirty.dirtyCount, hasDirty: _pendingBgImageChangesDirty.hasDirty },
+	seo: { mapSignal: pendingSeoChanges, dirtyCount: _pendingSeoChangesDirty.dirtyCount, hasDirty: _pendingSeoChangesDirty.hasDirty },
+	attribute: {
+		mapSignal: pendingAttributeChanges,
+		dirtyCount: _pendingAttributeChangesDirty.dirtyCount,
+		hasDirty: _pendingAttributeChangesDirty.hasDirty,
+	},
 }
 
 export const dirtyChangesCount = _pendingChangesDirty.dirtyCount
@@ -549,13 +553,9 @@ export const hasDirtyAttributeChanges = _pendingAttributeChangesDirty.hasDirty
 
 const _registryEntries = Object.values(changeRegistry)
 
-export const totalDirtyCount = computed(() =>
-	_registryEntries.reduce((sum, entry) => sum + entry.dirtyCount.value, 0),
-)
+export const totalDirtyCount = computed(() => _registryEntries.reduce((sum, entry) => sum + entry.dirtyCount.value, 0))
 
-export const hasAnyDirtyChanges = computed(() =>
-	_registryEntries.some((entry) => entry.hasDirty.value),
-)
+export const hasAnyDirtyChanges = computed(() => _registryEntries.some((entry) => entry.hasDirty.value))
 
 // Navigation index for cycling through dirty elements
 export const changeNavigationIndex = signal<number>(0)
