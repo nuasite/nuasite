@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/nuasite/nuasite/compare/v0.8.0...v0.8.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* **cms:** add undo/redo for background image editing ([cacc6af](https://github.com/nuasite/nuasite/commit/cacc6affafd7d713d80cd16284e56ad5a4d22eee))
+
 ## [0.8.0](https://github.com/nuasite/nuasite/compare/v0.7.3...v0.8.0) (2026-02-13)
 
 
