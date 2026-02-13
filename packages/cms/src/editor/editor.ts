@@ -701,7 +701,7 @@ export async function saveAllChanges(
 						sourcePath: bestSourcePath ?? entry?.sourcePath ?? '',
 						sourceLine: bestSourceLine ?? entry?.sourceLine ?? 0,
 						sourceSnippet: bestSourceSnippet ?? entry?.sourceSnippet ?? '',
-						colorChange: {
+						styleChange: {
 							oldClass: origAttr?.value || '',
 							newClass: newAttr.value,
 							type: classType,
@@ -740,7 +740,7 @@ export async function saveAllChanges(
 					sourcePath: entry?.sourcePath ?? '',
 					sourceLine: entry?.sourceLine ?? 0,
 					sourceSnippet: entry?.sourceSnippet ?? '',
-					colorChange: {
+					styleChange: {
 						oldClass: bgChange.oldClass,
 						newClass: bgChange.newClass,
 						type: bgChange.type,

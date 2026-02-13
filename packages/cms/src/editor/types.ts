@@ -170,13 +170,13 @@ export interface SavedBackgroundImageEdits {
 	[cmsId: string]: SavedBackgroundImageEdit
 }
 
-/** Color change details for updating element color classes */
-export interface ColorChangePayload {
-	/** The color class to replace (e.g., 'bg-blue-500') */
+/** Style change details for updating element classes (colors, text styles, bg images) */
+export interface StyleChangePayload {
+	/** The class to replace (e.g., 'bg-blue-500') */
 	oldClass: string
-	/** The new color class (e.g., 'bg-red-500') */
+	/** The new class (e.g., 'bg-red-500') */
 	newClass: string
-	/** Type of color/style change */
+	/** Type of style change */
 	type:
 		| 'bg'
 		| 'text'
@@ -220,8 +220,8 @@ export interface ChangePayload {
 		newSrc: string
 		newAlt?: string
 	}
-	/** Color class change (for buttons, etc.) */
-	colorChange?: ColorChangePayload
+	/** Style class change (colors, text styles, bg images) */
+	styleChange?: StyleChangePayload
 	/** Attribute changes (for links, forms, etc.) */
 	attributeChanges?: AttributeChangePayload[]
 }

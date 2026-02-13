@@ -1,52 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from '../config'
+import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
 import type { ManifestWriter } from '../manifest-writer'
 import type { CmsManifest, ManifestEntry } from '../types'
 import { acquireFileLock, escapeReplacement, normalizePagePath, resolveAndValidatePath } from '../utils'
-
-export interface ColorChangePayload {
-	oldClass: string
-	newClass: string
-	type: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText' | 'fontWeight' | 'fontStyle' | 'textDecoration' | 'fontSize'
-	sourcePath?: string
-	sourceLine?: number
-	sourceSnippet?: string
-}
-
-export interface ImageChangePayload {
-	newSrc: string
-	newAlt: string
-}
-
-export interface AttributeChangePayload {
-	attributeName: string
-	oldValue: string | undefined
-	newValue: string | undefined
-	sourcePath?: string
-	sourceLine?: number
-	sourceSnippet?: string
-}
-
-export interface ChangePayload {
-	cmsId: string
-	newValue: string
-	originalValue: string
-	sourcePath: string
-	sourceLine: number
-	sourceSnippet: string
-	htmlValue?: string
-	childCmsIds?: string[]
-	hasStyledContent?: boolean
-	colorChange?: ColorChangePayload
-	imageChange?: ImageChangePayload
-	attributeChanges?: AttributeChangePayload[]
-}
-
-export interface SaveBatchRequest {
-	changes: ChangePayload[]
-	meta: { source: string; url: string }
-}
 
 export interface SaveBatchResponse {
 	updated: number
@@ -157,8 +115,8 @@ function applyChanges(
 			continue
 		}
 
-		// Handle color class changes
-		if (change.colorChange) {
+		// Handle style class changes (colors, text styles, bg images)
+		if (change.styleChange) {
 			const result = applyColorChange(newContent, change)
 			if (result.success) {
 				newContent = result.content
@@ -323,10 +281,10 @@ function applyColorChange(
 	content: string,
 	change: ChangePayload,
 ): { success: true; content: string } | { success: false; error: string } {
-	const { oldClass, newClass } = change.colorChange!
-	// Prefer colorChange's own sourceLine (points to the class attribute)
+	const { oldClass, newClass } = change.styleChange!
+	// Prefer styleChange's own sourceLine (points to the class attribute)
 	// over the outer change.sourceLine (may point to a data declaration)
-	const sourceLine = change.colorChange!.sourceLine ?? change.sourceLine
+	const sourceLine = change.styleChange!.sourceLine ?? change.sourceLine
 
 	// When oldClass is empty, we're adding a new color class (not replacing)
 	if (!oldClass) {

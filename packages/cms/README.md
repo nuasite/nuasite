@@ -93,7 +93,7 @@ The `POST /update` endpoint accepts a batch of changes:
       sourceLine: 42,
       sourceSnippet: '<h1>Original heading text</h1>',
       // Optional for specific change types:
-      colorChange: { oldClass: 'bg-blue-500', newClass: 'bg-red-500', type: 'bg' },
+      styleChange: { oldClass: 'bg-blue-500', newClass: 'bg-red-500', type: 'bg' },
       imageChange: { newSrc: '/uploads/photo.webp', newAlt: 'A photo' },
       attributeChanges: [{ attributeName: 'href', oldValue: '/old', newValue: '/new' }],
     }
