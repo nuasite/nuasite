@@ -20,7 +20,8 @@
 	"excludes": [
 		"**/node_modules",
 		"**/*-lock.json",
-		"client/src/**"
+		"client/src/**",
+		"CHANGELOG.md"
 	],
 	"plugins": [
 		"https://plugins.dprint.dev/typescript-0.95.11.wasm",
