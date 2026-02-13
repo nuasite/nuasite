@@ -346,10 +346,12 @@ function replaceClassInAttribute(
 	newClass: string,
 	sourceLine?: number,
 ): { success: true; content: string } | { success: false; error: string } {
-	const classAttrPattern = /(class\s*=\s*)(["'])([^"']*)\2/
-
 	const replaceOnLine = (line: string): string | null => {
-		const match = line.match(classAttrPattern)
+		// Build pattern dynamically to only exclude the actual quote character used,
+		// so bg-[url('/path')] works inside class="..." (single quotes allowed in double-quoted attr)
+		const dqMatch = line.match(/(class\s*=\s*)(")([^"]*)"/)
+		const sqMatch = line.match(/(class\s*=\s*)(')([^']*)'/)
+		const match = dqMatch || sqMatch
 		if (!match) return null
 
 		const prefix = match[1]!
@@ -365,7 +367,7 @@ function replaceClassInAttribute(
 		} else {
 			classes.splice(idx, 1)
 		}
-		return line.replace(classAttrPattern, `${prefix}${quote}${classes.join(' ')}${quote}`)
+		return line.replace(match[0], `${prefix}${quote}${classes.join(' ')}${quote}`)
 	}
 
 	if (sourceLine) {
@@ -403,12 +405,23 @@ function appendClassToAttribute(
 	newClass: string,
 	sourceLine?: number,
 ): { success: true; content: string } | { success: false; error: string } {
-	const appendPattern = /(class\s*=\s*["'])([^"']*)(["'])/
+	// Match class attribute with either quote, only excluding the actual quote used
+	// so bg-[url('/path')] works inside class="..."
+	const matchClassAttr = (line: string) => {
+		return line.match(/(class\s*=\s*")(([^"]*))(")/)
+			|| line.match(/(class\s*=\s*')(([^']*))(')/)
+	}
 
-	const doAppend = (_: string, open: string, classes: string, close: string) => {
+	const doAppendOnLine = (line: string): string | null => {
+		const match = matchClassAttr(line)
+		if (!match) return null
+		const open = match[1]!
+		const classes = match[2]!
+		const close = match[4]!
 		const trimmed = classes.trimEnd()
 		const separator = trimmed ? ' ' : ''
-		return `${open}${trimmed}${separator}${escapeReplacement(newClass)}${close}`
+		const replacement = `${open}${trimmed}${separator}${escapeReplacement(newClass)}${close}`
+		return line.replace(match[0], replacement)
 	}
 
 	if (sourceLine) {
@@ -416,9 +429,9 @@ function appendClassToAttribute(
 		const lineIndex = sourceLine - 1
 
 		if (lineIndex >= 0 && lineIndex < lines.length) {
-			const line = lines[lineIndex]!
-			if (appendPattern.test(line)) {
-				lines[lineIndex] = line.replace(appendPattern, doAppend)
+			const result = doAppendOnLine(lines[lineIndex]!)
+			if (result !== null) {
+				lines[lineIndex] = result
 				return { success: true, content: lines.join('\n') }
 			}
 			return { success: false, error: `No class attribute found on line ${sourceLine}` }
@@ -426,10 +439,13 @@ function appendClassToAttribute(
 		return { success: false, error: `Invalid source line ${sourceLine}` }
 	}
 
-	if (appendPattern.test(content)) {
-		return {
-			success: true,
-			content: content.replace(appendPattern, doAppend),
+	// Fallback: find the first class attribute in the content
+	const lines = content.split('\n')
+	for (let i = 0; i < lines.length; i++) {
+		const result = doAppendOnLine(lines[i]!)
+		if (result !== null) {
+			lines[i] = result
+			return { success: true, content: lines.join('\n') }
 		}
 	}
 	return { success: false, error: 'No class attribute found in source file' }
