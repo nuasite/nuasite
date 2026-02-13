@@ -494,7 +494,7 @@ function applyAttributeChanges(
 	return { content: newContent, appliedCount: attrApplied, failedChanges }
 }
 
-function applyTextChange(
+export function applyTextChange(
 	content: string,
 	change: ChangePayload,
 	manifest: CmsManifest,
@@ -525,6 +525,17 @@ function applyTextChange(
 			const updatedWithEntity = sourceSnippet.replace(matchedText, newText)
 			return { success: true, content: content.replace(sourceSnippet, updatedWithEntity) }
 		}
+		// Try inner content replacement for text spanning inline HTML elements
+		// (e.g., <h3>text part 1 <span class="...">text part 2</span></h3>)
+		const innerMatch = sourceSnippet.match(/^(\s*<(\w+)\b[^>]*>)([\s\S]*)(<\/\2>\s*)$/)
+		if (innerMatch) {
+			const [, openTag, , innerContent, closeTag] = innerMatch
+			const textOnly = innerContent.replace(/<[^>]+>/g, '')
+			if (textOnly === originalValue) {
+				return { success: true, content: content.replace(sourceSnippet, openTag + newText + closeTag) }
+			}
+		}
+
 		return {
 			success: false,
 			error: `Original text "${originalValue.substring(0, 50)}..." not found in source snippet`,
