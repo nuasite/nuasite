@@ -1,6 +1,12 @@
 import { computed, signal } from '@preact/signals'
 import * as signals from './signals'
-import { saveAttributeEditsToStorage, saveBgImageEditsToStorage, saveColorEditsToStorage, saveEditsToStorage, saveImageEditsToStorage } from './storage'
+import {
+	saveAttributeEditsToStorage,
+	saveBgImageEditsToStorage,
+	saveColorEditsToStorage,
+	saveEditsToStorage,
+	saveImageEditsToStorage,
+} from './storage'
 import type { Attribute, UndoAction, UndoTextAction } from './types'
 
 // ============================================================================
@@ -202,11 +208,31 @@ const undoRegistry: UndoHandlers = {
 	bgImage: {
 		applyReverse: (action) => {
 			scrollToElement(action.element)
-			applyBgImageState(action.cmsId, action.element, action.previousClassName, action.previousStyleCssText, action.previousBgImageClass, action.previousBgSize, action.previousBgPosition, action.previousBgRepeat, action.wasDirty)
+			applyBgImageState(
+				action.cmsId,
+				action.element,
+				action.previousClassName,
+				action.previousStyleCssText,
+				action.previousBgImageClass,
+				action.previousBgSize,
+				action.previousBgPosition,
+				action.previousBgRepeat,
+				action.wasDirty,
+			)
 		},
 		applyForward: (action) => {
 			scrollToElement(action.element)
-			applyBgImageState(action.cmsId, action.element, action.currentClassName, action.currentStyleCssText, action.currentBgImageClass, action.currentBgSize, action.currentBgPosition, action.currentBgRepeat, true)
+			applyBgImageState(
+				action.cmsId,
+				action.element,
+				action.currentClassName,
+				action.currentStyleCssText,
+				action.currentBgImageClass,
+				action.currentBgSize,
+				action.currentBgPosition,
+				action.currentBgRepeat,
+				true,
+			)
 		},
 	},
 	attribute: {
