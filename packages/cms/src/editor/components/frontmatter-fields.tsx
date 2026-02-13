@@ -556,15 +556,19 @@ function ObjectFields({ label, value, onChange, schemaFields, extraKeys }: Objec
 								<RemoveIcon />
 							</button>
 						</div>
-					))
-				}
+					))}
 				{/* Add new key */}
 				<div class="flex items-center gap-2 pt-1">
 					<input
 						type="text"
 						value={newKey}
 						onInput={(e) => setNewKey((e.target as HTMLInputElement).value)}
-						onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddKey() } }}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter') {
+								e.preventDefault()
+								handleAddKey()
+							}
+						}}
 						placeholder="New field name..."
 						class="flex-1 px-2 py-1 text-xs bg-white/5 border border-white/10 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-white/30"
 						data-cms-ui

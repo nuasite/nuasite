@@ -240,10 +240,6 @@ import type {
 } from '@nuasite/cms'
 
 // Utilities
-import {
-	getProjectRoot,
-	scanCollections,
-	setProjectRoot,
-} from '@nuasite/cms'
+import { getProjectRoot, scanCollections, setProjectRoot } from '@nuasite/cms'
 import { findCollectionSource, parseMarkdownContent } from '@nuasite/cms'
 ```

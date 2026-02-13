@@ -656,7 +656,10 @@ export async function enhanceManifestWithSourceSnippets(
 								const propName = cached.propAliases.get(baseVar)!
 								const componentFileName = path.basename(filePath)
 								const result = await searchForExpressionProp(
-									componentFileName, propName, exprPath, entry.text!,
+									componentFileName,
+									propName,
+									exprPath,
+									entry.text!,
 								)
 								if (result) {
 									const propSnippet = result.snippet ?? trimmedText
@@ -682,7 +685,8 @@ export async function enhanceManifestWithSourceSnippets(
 						for (const searchDir of ['pages', 'components', 'layouts']) {
 							try {
 								const result = await searchForPropInParents(
-									path.join(srcDir, searchDir), trimmedText,
+									path.join(srcDir, searchDir),
+									trimmedText,
 								)
 								if (result) {
 									const parentSnippet = result.snippet ?? trimmedText

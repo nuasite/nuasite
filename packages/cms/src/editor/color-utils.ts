@@ -153,8 +153,8 @@ export function replaceColorClass(
 	const prefix = colorType === 'hoverBg'
 		? 'hover:bg'
 		: colorType === 'hoverText'
-			? 'hover:text'
-			: colorType
+		? 'hover:text'
+		: colorType
 	const newClass = buildColorClass(prefix, newColorName, newShade)
 
 	let oldClass: string | undefined
@@ -225,8 +225,8 @@ export function applyColorChange(
 	const prefix = colorType === 'hoverBg'
 		? 'hover:bg'
 		: colorType === 'hoverText'
-			? 'hover:text'
-			: colorType
+		? 'hover:text'
+		: colorType
 	const newClass = buildColorClass(prefix, newColorName, newShade)
 
 	let oldClass: string | undefined
@@ -266,10 +266,10 @@ export function applyColorChange(
 			const styleProperty = colorType === 'bg'
 				? 'backgroundColor'
 				: colorType === 'text'
-					? 'color'
-					: colorType === 'border'
-						? 'borderColor'
-						: 'color'
+				? 'color'
+				: colorType === 'border'
+				? 'borderColor'
+				: 'color'
 			element.style[styleProperty] = cssValue
 		}
 	}

@@ -110,7 +110,7 @@ describe('extractArrayElementProps', () => {
 	})
 
 	test('handles template literals without expressions', () => {
-		const frontmatter = "const items = [\n\t{ name: `hello world` },\n]"
+		const frontmatter = 'const items = [\n\t{ name: `hello world` },\n]'
 		const result = extractArrayElementProps(frontmatter, 'items', 0)
 		expect(result).toEqual({ name: 'hello world' })
 	})

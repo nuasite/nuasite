@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'preact/hooks'
+import type { Attribute } from '../../types'
 import { getColorPreview, parseColorClass } from '../color-utils'
 import { Z_INDEX } from '../constants'
 import { isPageDark } from '../dom'
 import * as signals from '../signals'
-import type { Attribute } from '../../types'
 
 export interface OutlineProps {
 	visible: boolean
@@ -35,7 +35,8 @@ const STICKY_PADDING = 8
  * Uses a custom element with Shadow DOM to avoid style conflicts.
  */
 export function Outline(
-	{ visible, rect, isComponent = false, componentName, tagName, element, cmsId, textStyleClasses, onColorClick, onAttributeClick, onTextStyleChange }: OutlineProps,
+	{ visible, rect, isComponent = false, componentName, tagName, element, cmsId, textStyleClasses, onColorClick, onAttributeClick, onTextStyleChange }:
+		OutlineProps,
 ) {
 	const containerRef = useRef<HTMLDivElement>(null)
 	const shadowRootRef = useRef<ShadowRoot | null>(null)
