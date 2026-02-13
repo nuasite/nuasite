@@ -496,6 +496,16 @@ let toastIdCounter = 0
 // Computed Values - Dirty Tracking
 // ============================================================================
 
+/** All change categories that participate in dirty tracking.
+ *  Adding a new category forces a TypeScript error until it's added to changeRegistry. */
+type ChangeCategory = 'text' | 'image' | 'color' | 'bgImage' | 'seo' | 'attribute'
+
+interface ChangeRegistryEntry {
+	mapSignal: Signal<Map<string, any>>
+	dirtyCount: ReturnType<typeof computed<number>>
+	hasDirty: ReturnType<typeof computed<boolean>>
+}
+
 // Use factory for dirty tracking to reduce duplication
 const _pendingChangesDirty = createDirtyTracking(pendingChanges)
 const _pendingImageChangesDirty = createDirtyTracking(pendingImageChanges)
@@ -503,6 +513,15 @@ const _pendingColorChangesDirty = createDirtyTracking(pendingColorChanges)
 const _pendingBgImageChangesDirty = createDirtyTracking(pendingBgImageChanges)
 const _pendingSeoChangesDirty = createDirtyTracking(pendingSeoChanges)
 const _pendingAttributeChangesDirty = createDirtyTracking(pendingAttributeChanges)
+
+export const changeRegistry: Record<ChangeCategory, ChangeRegistryEntry> = {
+	text:      { mapSignal: pendingChanges,          dirtyCount: _pendingChangesDirty.dirtyCount,          hasDirty: _pendingChangesDirty.hasDirty },
+	image:     { mapSignal: pendingImageChanges,     dirtyCount: _pendingImageChangesDirty.dirtyCount,     hasDirty: _pendingImageChangesDirty.hasDirty },
+	color:     { mapSignal: pendingColorChanges,     dirtyCount: _pendingColorChangesDirty.dirtyCount,     hasDirty: _pendingColorChangesDirty.hasDirty },
+	bgImage:   { mapSignal: pendingBgImageChanges,   dirtyCount: _pendingBgImageChangesDirty.dirtyCount,   hasDirty: _pendingBgImageChangesDirty.hasDirty },
+	seo:       { mapSignal: pendingSeoChanges,       dirtyCount: _pendingSeoChangesDirty.dirtyCount,       hasDirty: _pendingSeoChangesDirty.hasDirty },
+	attribute: { mapSignal: pendingAttributeChanges, dirtyCount: _pendingAttributeChangesDirty.dirtyCount, hasDirty: _pendingAttributeChangesDirty.hasDirty },
+}
 
 export const dirtyChangesCount = _pendingChangesDirty.dirtyCount
 export const dirtyChanges = _pendingChangesDirty.dirtyItems
@@ -528,16 +547,14 @@ export const dirtyAttributeChangesCount = _pendingAttributeChangesDirty.dirtyCou
 export const dirtyAttributeChanges = _pendingAttributeChangesDirty.dirtyItems
 export const hasDirtyAttributeChanges = _pendingAttributeChangesDirty.hasDirty
 
-export const totalDirtyCount = computed(
-	() =>
-		dirtyChangesCount.value + dirtyImageChangesCount.value + dirtyColorChangesCount.value + dirtyBgImageChangesCount.value + dirtySeoChangesCount.value
-		+ dirtyAttributeChangesCount.value,
+const _registryEntries = Object.values(changeRegistry)
+
+export const totalDirtyCount = computed(() =>
+	_registryEntries.reduce((sum, entry) => sum + entry.dirtyCount.value, 0),
 )
 
-export const hasAnyDirtyChanges = computed(
-	() =>
-		hasDirtyChanges.value || hasDirtyImageChanges.value || hasDirtyColorChanges.value || hasDirtyBgImageChanges.value || hasDirtySeoChanges.value
-		|| hasDirtyAttributeChanges.value,
+export const hasAnyDirtyChanges = computed(() =>
+	_registryEntries.some((entry) => entry.hasDirty.value),
 )
 
 // Navigation index for cycling through dirty elements
@@ -1345,14 +1362,12 @@ export function resetAllState(): void {
 		showingOriginal.value = false
 		currentEditingId.value = null
 		currentComponentId.value = null
-		pendingChanges.value = new Map()
+		for (const entry of Object.values(changeRegistry)) {
+			entry.mapSignal.value = new Map()
+		}
+		// Non-dirty-tracked maps still cleared individually
 		pendingComponentChanges.value = new Map()
 		pendingInserts.value = new Map()
-		pendingImageChanges.value = new Map()
-		pendingColorChanges.value = new Map()
-		pendingBgImageChanges.value = new Map()
-		pendingSeoChanges.value = new Map()
-		pendingAttributeChanges.value = new Map()
 		manifest.value = { entries: {}, components: {}, componentDefinitions: {} }
 		aiState.value = createInitialAIState()
 		blockEditorState.value = createInitialBlockEditorState()

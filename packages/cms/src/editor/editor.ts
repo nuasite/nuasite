@@ -549,11 +549,9 @@ export function discardAllChanges(onStateChange?: () => void): void {
 	})
 
 	cleanupHighlightSystem()
-	signals.clearPendingChanges()
-	signals.clearPendingImageChanges()
-	signals.clearPendingColorChanges()
-	signals.clearPendingBgImageChanges()
-	signals.clearPendingAttributeChanges()
+	for (const entry of Object.values(signals.changeRegistry)) {
+		entry.mapSignal.value = new Map()
+	}
 	clearAllEditsFromStorage()
 	clearHistory()
 	stopEditMode(onStateChange)
