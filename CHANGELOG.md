@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/nuasite/nuasite/compare/v0.7.3...v0.8.0) (2026-02-13)
+
+
+### Features
+
+* **cms:** add background image editing support ([f90c94e](https://github.com/nuasite/nuasite/commit/f90c94e89c24bd813127a2071c61a04dfd842af1))
+
+
+### Bug Fixes
+
+* **cms:** handle bg-[url()] with quotes inside class attribute regex ([d6d5b48](https://github.com/nuasite/nuasite/commit/d6d5b48a840bc5f39a9dbcb68d154bb26c9dc005))
+
 ## [0.7.3](https://github.com/nuasite/nuasite/compare/v0.7.2...v0.7.3) (2026-02-12)
 
 
