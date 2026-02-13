@@ -630,12 +630,32 @@ export interface UndoSeoAction {
 	wasDirty: boolean
 }
 
+export interface UndoBgImageAction {
+	type: 'bgImage'
+	cmsId: string
+	element: HTMLElement
+	previousClassName: string
+	currentClassName: string
+	previousStyleCssText: string
+	currentStyleCssText: string
+	previousBgImageClass: string
+	currentBgImageClass: string
+	previousBgSize: string
+	currentBgSize: string
+	previousBgPosition: string
+	currentBgPosition: string
+	previousBgRepeat: string
+	currentBgRepeat: string
+	wasDirty: boolean
+}
+
 export type UndoAction =
 	| UndoTextAction
 	| UndoImageAction
 	| UndoColorAction
 	| UndoAttributeAction
 	| UndoSeoAction
+	| UndoBgImageAction
 
 declare global {
 	interface Window {

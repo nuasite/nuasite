@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
+import { isApplyingUndoRedo, recordChange } from '../history'
 import { cn } from '../lib/cn'
 import * as signals from '../signals'
 import { saveBgImageEditsToStorage } from '../storage'
@@ -410,6 +411,10 @@ function applyBgImageUpdate(
 	const change = signals.getPendingBgImageChange(cmsId)
 	if (!change) return
 
+	// Capture pre-mutation state for undo
+	const previousClassName = element.className
+	const previousStyleCssText = element.style.cssText
+
 	const newChange = { ...change }
 
 	// Apply bg image class change
@@ -450,6 +455,28 @@ function applyBgImageUpdate(
 		|| newChange.newBgSize !== newChange.originalBgSize
 		|| newChange.newBgPosition !== newChange.originalBgPosition
 		|| newChange.newBgRepeat !== newChange.originalBgRepeat
+
+	// Record undo action after DOM is mutated
+	if (!isApplyingUndoRedo) {
+		recordChange({
+			type: 'bgImage',
+			cmsId,
+			element,
+			previousClassName,
+			currentClassName: element.className,
+			previousStyleCssText,
+			currentStyleCssText: element.style.cssText,
+			previousBgImageClass: change.newBgImageClass,
+			currentBgImageClass: newChange.newBgImageClass,
+			previousBgSize: change.newBgSize,
+			currentBgSize: newChange.newBgSize,
+			previousBgPosition: change.newBgPosition,
+			currentBgPosition: newChange.newBgPosition,
+			previousBgRepeat: change.newBgRepeat,
+			currentBgRepeat: newChange.newBgRepeat,
+			wasDirty: change.isDirty,
+		})
+	}
 
 	signals.setPendingBgImageChange(cmsId, newChange)
 	saveBgImageEditsToStorage(signals.pendingBgImageChanges.value)

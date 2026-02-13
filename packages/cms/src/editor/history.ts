@@ -1,6 +1,6 @@
 import { computed, signal } from '@preact/signals'
 import * as signals from './signals'
-import { saveAttributeEditsToStorage, saveColorEditsToStorage, saveEditsToStorage, saveImageEditsToStorage } from './storage'
+import { saveAttributeEditsToStorage, saveBgImageEditsToStorage, saveColorEditsToStorage, saveEditsToStorage, saveImageEditsToStorage } from './storage'
 import type { Attribute, UndoAction, UndoTextAction } from './types'
 
 // ============================================================================
@@ -159,52 +159,84 @@ function scrollToElement(element: HTMLElement): void {
 	}
 }
 
-function applyReverse(action: UndoAction): void {
-	switch (action.type) {
-		case 'text':
-			scrollToElement(action.element)
-			applyTextState(action.cmsId, action.element, action.previousHTML, action.previousText, action.wasDirty)
-			break
-		case 'image':
-			scrollToElement(action.element)
-			applyImageState(action.cmsId, action.element, action.previousSrc, action.previousAlt, action.wasDirty)
-			break
-		case 'color':
-			scrollToElement(action.element)
-			applyColorState(action.cmsId, action.element, action.previousClassName, action.previousStyleCssText, action.previousClasses, action.wasDirty)
-			break
-		case 'attribute':
-			scrollToElement(action.element)
-			applyAttributeState(action.cmsId, action.element, action.previousAttributes, action.wasDirty)
-			break
-		case 'seo':
-			applySeoState(action.cmsId, action.previousValue, action.originalValue, action.wasDirty)
-			break
+/** Registry of undo/redo handlers keyed by action type.
+ *  Adding a new UndoAction variant forces a TypeScript error until its handlers are added here. */
+type UndoHandlers = {
+	[K in UndoAction['type']]: {
+		applyReverse: (action: Extract<UndoAction, { type: K }>) => void
+		applyForward: (action: Extract<UndoAction, { type: K }>) => void
 	}
 }
 
-function applyForward(action: UndoAction): void {
-	switch (action.type) {
-		case 'text':
+const undoRegistry: UndoHandlers = {
+	text: {
+		applyReverse: (action) => {
+			scrollToElement(action.element)
+			applyTextState(action.cmsId, action.element, action.previousHTML, action.previousText, action.wasDirty)
+		},
+		applyForward: (action) => {
 			scrollToElement(action.element)
 			applyTextState(action.cmsId, action.element, action.currentHTML, action.currentText, true)
-			break
-		case 'image':
+		},
+	},
+	image: {
+		applyReverse: (action) => {
+			scrollToElement(action.element)
+			applyImageState(action.cmsId, action.element, action.previousSrc, action.previousAlt, action.wasDirty)
+		},
+		applyForward: (action) => {
 			scrollToElement(action.element)
 			applyImageState(action.cmsId, action.element, action.currentSrc, action.currentAlt, true)
-			break
-		case 'color':
+		},
+	},
+	color: {
+		applyReverse: (action) => {
+			scrollToElement(action.element)
+			applyColorState(action.cmsId, action.element, action.previousClassName, action.previousStyleCssText, action.previousClasses, action.wasDirty)
+		},
+		applyForward: (action) => {
 			scrollToElement(action.element)
 			applyColorState(action.cmsId, action.element, action.currentClassName, action.currentStyleCssText, action.currentClasses, true)
-			break
-		case 'attribute':
+		},
+	},
+	bgImage: {
+		applyReverse: (action) => {
+			scrollToElement(action.element)
+			applyBgImageState(action.cmsId, action.element, action.previousClassName, action.previousStyleCssText, action.previousBgImageClass, action.previousBgSize, action.previousBgPosition, action.previousBgRepeat, action.wasDirty)
+		},
+		applyForward: (action) => {
+			scrollToElement(action.element)
+			applyBgImageState(action.cmsId, action.element, action.currentClassName, action.currentStyleCssText, action.currentBgImageClass, action.currentBgSize, action.currentBgPosition, action.currentBgRepeat, true)
+		},
+	},
+	attribute: {
+		applyReverse: (action) => {
+			scrollToElement(action.element)
+			applyAttributeState(action.cmsId, action.element, action.previousAttributes, action.wasDirty)
+		},
+		applyForward: (action) => {
 			scrollToElement(action.element)
 			applyAttributeState(action.cmsId, action.element, action.currentAttributes, true)
-			break
-		case 'seo':
+		},
+	},
+	seo: {
+		applyReverse: (action) => {
+			applySeoState(action.cmsId, action.previousValue, action.originalValue, action.wasDirty)
+		},
+		applyForward: (action) => {
 			applySeoState(action.cmsId, action.currentValue, action.originalValue, true)
-			break
-	}
+		},
+	},
+}
+
+function applyReverse(action: UndoAction): void {
+	const handlers = undoRegistry[action.type] as UndoHandlers[typeof action.type]
+	handlers.applyReverse(action as any)
+}
+
+function applyForward(action: UndoAction): void {
+	const handlers = undoRegistry[action.type] as UndoHandlers[typeof action.type]
+	handlers.applyForward(action as any)
 }
 
 // ============================================================================
@@ -321,6 +353,34 @@ function applySeoState(
 		newValue: value,
 		isDirty,
 	})
+}
+
+function applyBgImageState(
+	cmsId: string,
+	element: HTMLElement,
+	className: string,
+	styleCssText: string,
+	bgImageClass: string,
+	bgSize: string,
+	bgPosition: string,
+	bgRepeat: string,
+	isDirty: boolean,
+): void {
+	if (element.isConnected) {
+		element.className = className
+		element.style.cssText = styleCssText
+	}
+
+	signals.updatePendingBgImageChange(cmsId, (c) => ({
+		...c,
+		newBgImageClass: bgImageClass,
+		newBgSize: bgSize,
+		newBgPosition: bgPosition,
+		newBgRepeat: bgRepeat,
+		isDirty,
+	}))
+
+	saveBgImageEditsToStorage(signals.pendingBgImageChanges.value)
 }
 
 // ============================================================================
