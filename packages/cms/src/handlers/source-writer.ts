@@ -530,7 +530,7 @@ export function applyTextChange(
 		const innerMatch = sourceSnippet.match(/^(\s*<(\w+)\b[^>]*>)([\s\S]*)(<\/\2>\s*)$/)
 		if (innerMatch) {
 			const [, openTag, , innerContent, closeTag] = innerMatch
-			const textOnly = innerContent.replace(/<[^>]+>/g, '')
+			const textOnly = innerContent!.replace(/<[^>]+>/g, '')
 			if (textOnly === originalValue) {
 				return { success: true, content: content.replace(sourceSnippet, openTag + newText + closeTag) }
 			}

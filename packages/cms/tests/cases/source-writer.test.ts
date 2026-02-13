@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { applyTextChange } from '../../src/handlers/source-writer'
 import type { ChangePayload } from '../../src/editor/types'
+import { applyTextChange } from '../../src/handlers/source-writer'
 import type { CmsManifest } from '../../src/types'
 
 const emptyManifest: CmsManifest = { entries: {}, components: {}, componentDefinitions: {} }
