@@ -2,10 +2,12 @@ import { STORAGE_KEYS } from './constants'
 import type {
 	CmsSettings,
 	PendingAttributeChange,
+	PendingBackgroundImageChange,
 	PendingChange,
 	PendingColorChange,
 	PendingImageChange,
 	SavedAttributeEdits,
+	SavedBackgroundImageEdits,
 	SavedColorEdits,
 	SavedEdits,
 	SavedImageEdits,
@@ -181,6 +183,53 @@ export function clearAttributeEditsFromStorage(): void {
 }
 
 // ============================================================================
+// Background Image Edits
+// ============================================================================
+
+export function saveBgImageEditsToStorage(pendingBgImageChanges: Map<string, PendingBackgroundImageChange>): void {
+	const edits: SavedBackgroundImageEdits = {}
+
+	pendingBgImageChanges.forEach((change, cmsId) => {
+		if (change.isDirty) {
+			edits[cmsId] = {
+				originalBgImageClass: change.originalBgImageClass,
+				newBgImageClass: change.newBgImageClass,
+				originalBgSize: change.originalBgSize,
+				newBgSize: change.newBgSize,
+				originalBgPosition: change.originalBgPosition,
+				newBgPosition: change.newBgPosition,
+				originalBgRepeat: change.originalBgRepeat,
+				newBgRepeat: change.newBgRepeat,
+			}
+		}
+	})
+
+	try {
+		sessionStorage.setItem(STORAGE_KEYS.PENDING_BG_IMAGE_EDITS, JSON.stringify(edits))
+	} catch (e) {
+		console.warn('[CMS] Failed to save bg image edits to storage:', e)
+	}
+}
+
+export function loadBgImageEditsFromStorage(): SavedBackgroundImageEdits {
+	try {
+		const stored = sessionStorage.getItem(STORAGE_KEYS.PENDING_BG_IMAGE_EDITS)
+		return stored ? JSON.parse(stored) : {}
+	} catch (e) {
+		console.warn('[CMS] Failed to load bg image edits from storage:', e)
+		return {}
+	}
+}
+
+export function clearBgImageEditsFromStorage(): void {
+	try {
+		sessionStorage.removeItem(STORAGE_KEYS.PENDING_BG_IMAGE_EDITS)
+	} catch (e) {
+		console.warn('[CMS] Failed to clear bg image edits from storage:', e)
+	}
+}
+
+// ============================================================================
 // Settings
 // ============================================================================
 
@@ -287,4 +336,5 @@ export function clearAllEditsFromStorage(): void {
 	clearImageEditsFromStorage()
 	clearColorEditsFromStorage()
 	clearAttributeEditsFromStorage()
+	clearBgImageEditsFromStorage()
 }

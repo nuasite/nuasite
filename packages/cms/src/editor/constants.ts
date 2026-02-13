@@ -87,6 +87,7 @@ export const STORAGE_KEYS = {
 	PENDING_IMAGE_EDITS: 'cms-pending-image-edits',
 	PENDING_COLOR_EDITS: 'cms-pending-color-edits',
 	PENDING_ATTRIBUTE_EDITS: 'cms-pending-attribute-edits',
+	PENDING_BG_IMAGE_EDITS: 'cms-pending-bg-image-edits',
 	SETTINGS: 'cms-settings',
 	PENDING_ENTRY_NAVIGATION: 'cms-pending-entry-navigation',
 	IS_EDITING: 'cms-is-editing',
@@ -104,4 +105,6 @@ export const CSS = {
 	COMPONENT_ID_ATTRIBUTE: 'data-cms-component-id',
 	/** Custom element tag for highlight overlay */
 	HIGHLIGHT_ELEMENT: 'cms-highlight-overlay',
+	/** Data attribute for background image elements */
+	BG_IMAGE_ATTRIBUTE: 'data-cms-bg-img',
 } as const

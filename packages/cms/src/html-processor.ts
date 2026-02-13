@@ -1,8 +1,8 @@
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import { processSeoFromHtml } from './seo-processor'
 import { enhanceManifestWithSourceSnippets } from './source-finder'
-import { extractColorClasses, extractTextStyleClasses } from './tailwind-colors'
-import type { Attribute, ComponentInstance, ImageMetadata, ManifestEntry, PageSeoData, SeoOptions } from './types'
+import { extractBackgroundImageClasses, extractColorClasses, extractTextStyleClasses } from './tailwind-colors'
+import type { Attribute, BackgroundImageMetadata, ComponentInstance, ImageMetadata, ManifestEntry, PageSeoData, SeoOptions } from './types'
 import { generateStableId } from './utils'
 
 /** Type for parsed HTML element nodes from node-html-parser */
@@ -612,6 +612,68 @@ export async function processHtml(
 		})
 	})
 
+	// Background image detection pass: mark elements with bg-[url()] classes
+	interface BgImageEntry {
+		metadata: BackgroundImageMetadata
+		sourceFile?: string
+		sourceLine?: number
+	}
+	const bgImageEntries = new Map<string, BgImageEntry>()
+	root.querySelectorAll('*').forEach((node) => {
+		// Skip already-marked elements
+		if (node.getAttribute(attributeName)) return
+
+		// Skip elements inside markdown wrapper
+		if (isInsideMarkdownWrapper(node)) return
+
+		const classAttr = node.getAttribute('class')
+		const bgMeta = extractBackgroundImageClasses(classAttr)
+		if (!bgMeta) return
+
+		// When skipMarkdownContent is true, only mark elements with source file attributes
+		if (skipMarkdownContent) {
+			let hasSourceAttr = false
+			let current: HTMLNode | null = node
+			while (current) {
+				if (current.getAttribute?.('data-astro-source-file')) {
+					hasSourceAttr = true
+					break
+				}
+				current = current.parentNode as HTMLNode | null
+			}
+			if (!hasSourceAttr) return
+		}
+
+		const id = getNextId()
+		node.setAttribute(attributeName, id)
+		node.setAttribute('data-cms-bg-img', 'true')
+
+		// Try to get source location from the element itself or ancestors
+		let sourceFile: string | undefined
+		let sourceLine: number | undefined
+		let current: HTMLNode | null = node
+		while (current && !sourceFile) {
+			const file = current.getAttribute?.('data-astro-source-file')
+			const line = current.getAttribute?.('data-astro-source-loc') || current.getAttribute?.('data-astro-source-line')
+			if (file) {
+				sourceFile = file
+				if (line) {
+					const lineNum = parseInt(line.split(':')[0] ?? '1', 10)
+					if (!Number.isNaN(lineNum)) {
+						sourceLine = lineNum
+					}
+				}
+			}
+			current = current.parentNode as HTMLNode | null
+		}
+
+		bgImageEntries.set(id, {
+			metadata: bgMeta,
+			sourceFile,
+			sourceLine,
+		})
+	})
+
 	// Third pass: collect candidate text elements (don't mark yet)
 	// We collect candidates first to filter out pure containers before marking
 	interface TextCandidate {
@@ -826,12 +888,18 @@ export async function processHtml(
 			const imageInfo = imageEntries.get(id)
 			const isImage = !!imageInfo
 
+			// Check if this is a background image entry
+			const bgImageInfo = bgImageEntries.get(id)
+			// Also extract bg image classes fresh for elements marked for other reasons
+			const bgImageClassAttr = node.getAttribute('class')
+			const bgImageMetadata = bgImageInfo?.metadata ?? extractBackgroundImageClasses(bgImageClassAttr)
+
 			// Check if this is the collection wrapper
 			const isCollectionWrapper = id === collectionWrapperId
 
 			const entryText = isImage ? (imageInfo.metadata.alt || imageInfo.metadata.src) : textWithPlaceholders.trim()
-			// For images, use the source file we captured from ancestors if not in sourceLocationMap
-			const entrySourcePath = sourceLocation?.file || imageInfo?.sourceFile || sourcePath
+			// For images/bg-images, use the source file we captured from ancestors if not in sourceLocationMap
+			const entrySourcePath = sourceLocation?.file || imageInfo?.sourceFile || bgImageInfo?.sourceFile || sourcePath
 
 			// Generate stable ID based on content and context
 			const stableId = generateStableId(tag, entryText, entrySourcePath)
@@ -854,7 +922,7 @@ export async function processHtml(
 				html: htmlContent,
 				sourcePath: entrySourcePath,
 				childCmsIds: childCmsIds.length > 0 ? childCmsIds : undefined,
-				sourceLine: sourceLocation?.line ?? imageInfo?.sourceLine,
+				sourceLine: sourceLocation?.line ?? imageInfo?.sourceLine ?? bgImageInfo?.sourceLine,
 				sourceSnippet: undefined,
 				variableName: undefined,
 				parentComponentId,
@@ -866,6 +934,8 @@ export async function processHtml(
 				stableId,
 				// Image metadata for image entries
 				imageMetadata: imageInfo?.metadata,
+				// Background image metadata for bg-[url()] elements
+				backgroundImage: bgImageMetadata,
 				// Color and text style classes for buttons/styled elements
 				colorClasses: allTrackedClasses,
 				// All attributes with resolved values (isStatic will be updated later from source)

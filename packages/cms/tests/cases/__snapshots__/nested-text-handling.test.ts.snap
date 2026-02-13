@@ -11,6 +11,7 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
 {
   "cms-0": {
     "attributes": undefined,
+    "backgroundImage": undefined,
     "childCmsIds": [
       "cms-1",
     ],
@@ -44,6 +45,7 @@ exports[`Nested Text Handling h1 with br elements and mixed span types: manifest
   },
   "cms-1": {
     "attributes": undefined,
+    "backgroundImage": undefined,
     "childCmsIds": undefined,
     "collectionName": undefined,
     "collectionSlug": undefined,

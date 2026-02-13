@@ -17,3 +17,6 @@ export type { TextSelectionState } from './useTextSelection'
 
 export { useImageHoverDetection } from './useImageHoverDetection'
 export type { ImageHoverState } from './useImageHoverDetection'
+
+export { useBgImageHoverDetection } from './useBgImageHoverDetection'
+export type { BgImageHoverState } from './useBgImageHoverDetection'

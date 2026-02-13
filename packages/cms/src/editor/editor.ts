@@ -20,11 +20,13 @@ import * as signals from './signals'
 import {
 	clearAllEditsFromStorage,
 	loadAttributeEditsFromStorage,
+	loadBgImageEditsFromStorage,
 	loadColorEditsFromStorage,
 	loadEditsFromStorage,
 	loadImageEditsFromStorage,
 	loadPendingEntryNavigation,
 	saveAttributeEditsToStorage,
+	saveBgImageEditsToStorage,
 	saveColorEditsToStorage,
 	saveEditingState,
 	saveEditsToStorage,
@@ -37,6 +39,8 @@ import type { AttributeChangePayload, ChangePayload, CmsConfig, DeploymentStatus
 const MARKDOWN_ATTRIBUTE = 'data-cms-markdown'
 // CSS attribute for image elements
 const IMAGE_ATTRIBUTE = 'data-cms-img'
+// CSS attribute for background image elements
+const BG_IMAGE_ATTRIBUTE = 'data-cms-bg-img'
 
 /**
  * Inline HTML elements that indicate styled/formatted content.
@@ -112,6 +116,7 @@ export async function startEditMode(
 	const savedImageEdits = loadImageEditsFromStorage()
 	const savedColorEdits = loadColorEditsFromStorage()
 	const savedAttributeEdits = loadAttributeEditsFromStorage()
+	const savedBgImageEdits = loadBgImageEditsFromStorage()
 	const currentManifest = signals.manifest.value
 
 	getAllCmsElements().forEach(el => {
@@ -148,6 +153,15 @@ export async function startEditMode(
 			logDebug(config.debug, 'Image element detected:', cmsId)
 			makeElementNonEditable(el)
 			setupImageClickHandler(config, el as HTMLImageElement, cmsId, savedImageEdits[cmsId], onStateChange)
+			return
+		}
+
+		// Check if this is a background image element
+		// Background image elements are edited via the bg image overlay panel
+		if (el.hasAttribute(BG_IMAGE_ATTRIBUTE)) {
+			logDebug(config.debug, 'Background image element detected:', cmsId)
+			makeElementNonEditable(el)
+			setupBgImageTracking(config, el, cmsId, savedBgImageEdits[cmsId])
 			return
 		}
 
@@ -502,10 +516,43 @@ export function discardAllChanges(onStateChange?: () => void): void {
 		applyAttributesToElement(element, originalAttributes)
 	})
 
+	// Restore original background image classes
+	signals.pendingBgImageChanges.value.forEach((change) => {
+		const {
+			element,
+			originalBgImageClass,
+			newBgImageClass,
+			originalBgSize,
+			newBgSize,
+			originalBgPosition,
+			newBgPosition,
+			originalBgRepeat,
+			newBgRepeat,
+		} = change
+		const classes = element.className.split(/\s+/).filter(Boolean)
+		const newClassValues = new Set([newBgImageClass, newBgSize, newBgPosition, newBgRepeat].filter(Boolean))
+		const originalClassValues = [originalBgImageClass, originalBgSize, originalBgPosition, originalBgRepeat].filter(Boolean)
+
+		const filtered = classes.filter(c => !newClassValues.has(c))
+		for (const c of originalClassValues) {
+			if (!filtered.includes(c)) {
+				filtered.push(c)
+			}
+		}
+		element.className = filtered.join(' ')
+
+		// Clear inline bg style overrides
+		element.style.backgroundImage = ''
+		element.style.backgroundSize = ''
+		element.style.backgroundPosition = ''
+		element.style.backgroundRepeat = ''
+	})
+
 	cleanupHighlightSystem()
 	signals.clearPendingChanges()
 	signals.clearPendingImageChanges()
 	signals.clearPendingColorChanges()
+	signals.clearPendingBgImageChanges()
 	signals.clearPendingAttributeChanges()
 	clearAllEditsFromStorage()
 	clearHistory()
@@ -550,12 +597,13 @@ export async function saveAllChanges(
 	const dirtyChanges = signals.dirtyChanges.value
 	const dirtyImageChanges = signals.dirtyImageChanges.value
 	const dirtyColorChanges = signals.dirtyColorChanges.value
+	const dirtyBgImageChanges = signals.dirtyBgImageChanges.value
 	const dirtyAttributeChanges = signals.dirtyAttributeChanges.value
 	const dirtySeoChanges = signals.dirtySeoChanges.value
 
 	if (
-		dirtyChanges.length === 0 && dirtyImageChanges.length === 0 && dirtyColorChanges.length === 0 && dirtyAttributeChanges.length === 0
-		&& dirtySeoChanges.length === 0
+		dirtyChanges.length === 0 && dirtyImageChanges.length === 0 && dirtyColorChanges.length === 0 && dirtyBgImageChanges.length === 0
+		&& dirtyAttributeChanges.length === 0 && dirtySeoChanges.length === 0
 	) {
 		return { success: true, updated: 0 }
 	}
@@ -666,6 +714,44 @@ export async function saveAllChanges(
 			}
 		})
 
+		// Add background image changes to the payload
+		dirtyBgImageChanges.forEach(([cmsId, change]) => {
+			const entry = manifest.entries[cmsId]
+			const bgChanges: Array<{ oldClass: string; newClass: string; type: 'bgImage' | 'bgSize' | 'bgPosition' | 'bgRepeat' }> = []
+
+			if (change.newBgImageClass !== change.originalBgImageClass) {
+				bgChanges.push({ oldClass: change.originalBgImageClass, newClass: change.newBgImageClass, type: 'bgImage' })
+			}
+			if (change.newBgSize !== change.originalBgSize) {
+				bgChanges.push({ oldClass: change.originalBgSize, newClass: change.newBgSize, type: 'bgSize' })
+			}
+			if (change.newBgPosition !== change.originalBgPosition) {
+				bgChanges.push({ oldClass: change.originalBgPosition, newClass: change.newBgPosition, type: 'bgPosition' })
+			}
+			if (change.newBgRepeat !== change.originalBgRepeat) {
+				bgChanges.push({ oldClass: change.originalBgRepeat, newClass: change.newBgRepeat, type: 'bgRepeat' })
+			}
+
+			for (const bgChange of bgChanges) {
+				changes.push({
+					cmsId,
+					newValue: '',
+					originalValue: '',
+					sourcePath: entry?.sourcePath ?? '',
+					sourceLine: entry?.sourceLine ?? 0,
+					sourceSnippet: entry?.sourceSnippet ?? '',
+					colorChange: {
+						oldClass: bgChange.oldClass,
+						newClass: bgChange.newClass,
+						type: bgChange.type,
+						sourcePath: entry?.sourcePath,
+						sourceLine: entry?.sourceLine,
+						sourceSnippet: entry?.sourceSnippet,
+					},
+				})
+			}
+		})
+
 		// Add attribute changes to the payload
 		dirtyAttributeChanges.forEach(([cmsId, change]) => {
 			const { originalAttributes, newAttributes } = change
@@ -740,6 +826,18 @@ export async function saveAllChanges(
 				}))
 			})
 
+			// Update all dirty bg image changes to mark as saved
+			dirtyBgImageChanges.forEach(([cmsId, change]) => {
+				signals.updatePendingBgImageChange(cmsId, (c) => ({
+					...c,
+					originalBgImageClass: c.newBgImageClass,
+					originalBgSize: c.newBgSize,
+					originalBgPosition: c.newBgPosition,
+					originalBgRepeat: c.newBgRepeat,
+					isDirty: false,
+				}))
+			})
+
 			// Update all dirty attribute changes to mark as saved
 			dirtyAttributeChanges.forEach(([cmsId, change]) => {
 				signals.updatePendingAttributeChange(cmsId, (c) => ({
@@ -786,6 +884,7 @@ export async function saveAllChanges(
 		saveEditsToStorage(signals.pendingChanges.value)
 		saveImageEditsToStorage(signals.pendingImageChanges.value)
 		saveColorEditsToStorage(signals.pendingColorChanges.value)
+		saveBgImageEditsToStorage(signals.pendingBgImageChanges.value)
 		saveAttributeEditsToStorage(signals.pendingAttributeChanges.value)
 		throw err
 	} finally {
@@ -1020,6 +1119,75 @@ function setupColorTracking(
 				cmsId,
 				originalClasses,
 				newClasses: deepCopyColorClasses(entry.colorClasses),
+				isDirty: false,
+			})
+		}
+	}
+}
+
+/**
+ * Initialize background image change tracking for elements with bg-[url()] classes.
+ * Background image editing is triggered via the bg image overlay panel.
+ */
+function setupBgImageTracking(
+	config: CmsConfig,
+	el: HTMLElement,
+	cmsId: string,
+	savedEdit: import('./types').SavedBackgroundImageEdit | undefined,
+): void {
+	const manifest = signals.manifest.value
+	const entry = manifest.entries[cmsId]
+
+	if (!entry?.backgroundImage) {
+		return
+	}
+
+	logDebug(config.debug, 'Setting up bg image tracking for:', cmsId, entry.backgroundImage)
+
+	if (!signals.pendingBgImageChanges.value.has(cmsId)) {
+		if (savedEdit) {
+			// Restore saved bg image classes on the element
+			const classes = el.className.split(/\s+/).filter(Boolean)
+			const originals = [savedEdit.originalBgImageClass, savedEdit.originalBgSize, savedEdit.originalBgPosition, savedEdit.originalBgRepeat].filter(
+				Boolean,
+			)
+			const news = [savedEdit.newBgImageClass, savedEdit.newBgSize, savedEdit.newBgPosition, savedEdit.newBgRepeat].filter(Boolean)
+
+			const filtered = classes.filter(c => !originals.includes(c))
+			for (const c of news) {
+				if (!filtered.includes(c)) {
+					filtered.push(c)
+				}
+			}
+			el.className = filtered.join(' ')
+
+			signals.setPendingBgImageChange(cmsId, {
+				element: el,
+				cmsId,
+				originalBgImageClass: savedEdit.originalBgImageClass,
+				newBgImageClass: savedEdit.newBgImageClass,
+				originalBgSize: savedEdit.originalBgSize,
+				newBgSize: savedEdit.newBgSize,
+				originalBgPosition: savedEdit.originalBgPosition,
+				newBgPosition: savedEdit.newBgPosition,
+				originalBgRepeat: savedEdit.originalBgRepeat,
+				newBgRepeat: savedEdit.newBgRepeat,
+				isDirty: true,
+			})
+			logDebug(config.debug, 'Restored saved bg image edit:', cmsId, savedEdit)
+		} else {
+			const bg = entry.backgroundImage
+			signals.setPendingBgImageChange(cmsId, {
+				element: el,
+				cmsId,
+				originalBgImageClass: bg.bgImageClass,
+				newBgImageClass: bg.bgImageClass,
+				originalBgSize: bg.bgSize ?? '',
+				newBgSize: bg.bgSize ?? '',
+				originalBgPosition: bg.bgPosition ?? '',
+				newBgPosition: bg.bgPosition ?? '',
+				originalBgRepeat: bg.bgRepeat ?? '',
+				newBgRepeat: bg.bgRepeat ?? '',
 				isDirty: false,
 			})
 		}

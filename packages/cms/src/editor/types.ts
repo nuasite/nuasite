@@ -5,6 +5,7 @@ export type {
 	Attribute,
 	AvailableColors,
 	AvailableTextStyles,
+	BackgroundImageMetadata,
 	CanonicalUrl,
 	CmsManifest,
 	CollectionDefinition,
@@ -94,6 +95,28 @@ export interface PendingColorChange {
 	isDirty: boolean
 }
 
+export interface PendingBackgroundImageChange {
+	element: HTMLElement
+	cmsId: string
+	/** Original bg-[url()] class */
+	originalBgImageClass: string
+	/** Current bg-[url()] class */
+	newBgImageClass: string
+	/** Original bg-size class (or empty) */
+	originalBgSize: string
+	/** Current bg-size class */
+	newBgSize: string
+	/** Original bg-position class (or empty) */
+	originalBgPosition: string
+	/** Current bg-position class */
+	newBgPosition: string
+	/** Original bg-repeat class (or empty) */
+	originalBgRepeat: string
+	/** Current bg-repeat class */
+	newBgRepeat: string
+	isDirty: boolean
+}
+
 export interface ColorEditorState {
 	isOpen: boolean
 	targetElementId: string | null
@@ -132,6 +155,21 @@ export interface SavedColorEdits {
 	[cmsId: string]: SavedColorEdit
 }
 
+export interface SavedBackgroundImageEdit {
+	originalBgImageClass: string
+	newBgImageClass: string
+	originalBgSize: string
+	newBgSize: string
+	originalBgPosition: string
+	newBgPosition: string
+	originalBgRepeat: string
+	newBgRepeat: string
+}
+
+export interface SavedBackgroundImageEdits {
+	[cmsId: string]: SavedBackgroundImageEdit
+}
+
 /** Color change details for updating element color classes */
 export interface ColorChangePayload {
 	/** The color class to replace (e.g., 'bg-blue-500') */
@@ -139,7 +177,20 @@ export interface ColorChangePayload {
 	/** The new color class (e.g., 'bg-red-500') */
 	newClass: string
 	/** Type of color/style change */
-	type: 'bg' | 'text' | 'border' | 'hoverBg' | 'hoverText' | 'fontWeight' | 'fontStyle' | 'textDecoration' | 'fontSize'
+	type:
+		| 'bg'
+		| 'text'
+		| 'border'
+		| 'hoverBg'
+		| 'hoverText'
+		| 'fontWeight'
+		| 'fontStyle'
+		| 'textDecoration'
+		| 'fontSize'
+		| 'bgImage'
+		| 'bgSize'
+		| 'bgPosition'
+		| 'bgRepeat'
 	/** Path to the source file where the color class is defined */
 	sourcePath?: string
 	/** Line number where the color class is defined */

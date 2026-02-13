@@ -1,4 +1,4 @@
-import type { Attribute } from './types'
+import type { Attribute, BackgroundImageMetadata } from './types'
 
 /**
  * Default Tailwind CSS v4 color names.
@@ -309,4 +309,71 @@ export function buildColorClass(
 		return `${prefix}-${colorName}-${shade}`
 	}
 	return `${prefix}-${colorName}`
+}
+
+// ============================================================================
+// Background Image Class Extraction
+// ============================================================================
+
+/** Regex to match bg-[url('...')] classes (single quotes, double quotes, or no quotes) */
+const BG_IMAGE_CLASS_PATTERN = /^bg-\[url\(['"]?([^'")\]]+)['"]?\)\]$/
+
+/** Regex to match bg-size utility classes */
+const BG_SIZE_PATTERN = /^bg-(auto|cover|contain)$/
+
+/** Regex to match bg-position utility classes */
+const BG_POSITION_PATTERN = /^bg-(center|top|bottom|left|right|top-left|top-right|bottom-left|bottom-right)$/
+
+/** Regex to match bg-repeat utility classes */
+const BG_REPEAT_PATTERN = /^bg-(repeat|no-repeat|repeat-x|repeat-y|repeat-round|repeat-space)$/
+
+/**
+ * Extract background image classes from an element's class attribute.
+ * Only returns metadata if a bg-[url()] class is found.
+ * Standalone bg-size/position/repeat without a bg image are ignored.
+ */
+export function extractBackgroundImageClasses(classAttr: string | null | undefined): BackgroundImageMetadata | undefined {
+	if (!classAttr) return undefined
+
+	const classes = classAttr.split(/\s+/).filter(Boolean)
+
+	let bgImageClass: string | undefined
+	let imageUrl: string | undefined
+	let bgSize: string | undefined
+	let bgPosition: string | undefined
+	let bgRepeat: string | undefined
+
+	for (const cls of classes) {
+		const imgMatch = cls.match(BG_IMAGE_CLASS_PATTERN)
+		if (imgMatch) {
+			bgImageClass = cls
+			imageUrl = imgMatch[1]!
+			continue
+		}
+
+		if (BG_SIZE_PATTERN.test(cls)) {
+			bgSize = cls
+			continue
+		}
+
+		if (BG_POSITION_PATTERN.test(cls)) {
+			bgPosition = cls
+			continue
+		}
+
+		if (BG_REPEAT_PATTERN.test(cls)) {
+			bgRepeat = cls
+		}
+	}
+
+	// Only return metadata if a bg-[url()] class was found
+	if (!bgImageClass || !imageUrl) return undefined
+
+	return {
+		bgImageClass,
+		imageUrl,
+		bgSize,
+		bgPosition,
+		bgRepeat,
+	}
 }

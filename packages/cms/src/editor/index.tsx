@@ -4,6 +4,7 @@ import { fetchManifest } from './api'
 import { AIChat } from './components/ai-chat'
 import { AITooltip } from './components/ai-tooltip'
 import { AttributeEditor } from './components/attribute-editor'
+import { BgImageOverlay } from './components/bg-image-overlay'
 import { BlockEditor } from './components/block-editor'
 import { CollectionsBrowser } from './components/collections-browser'
 import { ColorToolbar } from './components/color-toolbar'
@@ -34,6 +35,7 @@ import {
 import { performRedo, performUndo } from './history'
 import {
 	useAIHandlers,
+	useBgImageHoverDetection,
 	useBlockEditorHandlers,
 	useComponentClickHandler,
 	useElementDetection,
@@ -79,6 +81,7 @@ const CmsUI = () => {
 	const config = signals.config.value
 	const outlineState = useElementDetection()
 	const imageHoverState = useImageHoverDetection()
+	const bgImageHoverState = useBgImageHoverDetection()
 	const textSelectionState = useTextSelection()
 	const { tooltipState, showTooltipForElement, hideTooltip } = useTooltipState()
 	const updateUI = useCallback(() => {
@@ -362,6 +365,15 @@ const CmsUI = () => {
 					rect={imageHoverState.rect}
 					element={imageHoverState.element}
 					cmsId={imageHoverState.cmsId}
+				/>
+			</ErrorBoundary>
+
+			<ErrorBoundary componentName="BgImageOverlay">
+				<BgImageOverlay
+					visible={bgImageHoverState.visible && isEditing}
+					rect={bgImageHoverState.rect}
+					element={bgImageHoverState.element}
+					cmsId={bgImageHoverState.cmsId}
 				/>
 			</ErrorBoundary>
 

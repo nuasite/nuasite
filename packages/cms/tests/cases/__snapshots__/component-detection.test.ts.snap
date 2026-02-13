@@ -13,6 +13,7 @@ exports[`Component Detection Snapshots nested component with text elements: entr
 {
   "cms-1": {
     "attributes": undefined,
+    "backgroundImage": undefined,
     "childCmsIds": undefined,
     "collectionName": undefined,
     "collectionSlug": undefined,
@@ -32,6 +33,7 @@ exports[`Component Detection Snapshots nested component with text elements: entr
   },
   "cms-2": {
     "attributes": undefined,
+    "backgroundImage": undefined,
     "childCmsIds": undefined,
     "collectionName": undefined,
     "collectionSlug": undefined,
@@ -84,6 +86,7 @@ exports[`Component Detection Snapshots multiple components with various content:
 {
   "cms-2": {
     "attributes": undefined,
+    "backgroundImage": undefined,
     "childCmsIds": undefined,
     "collectionName": undefined,
     "collectionSlug": undefined,
@@ -103,6 +106,7 @@ exports[`Component Detection Snapshots multiple components with various content:
   },
   "cms-3": {
     "attributes": undefined,
+    "backgroundImage": undefined,
     "childCmsIds": undefined,
     "collectionName": undefined,
     "collectionSlug": undefined,
@@ -122,6 +126,7 @@ exports[`Component Detection Snapshots multiple components with various content:
   },
   "cms-4": {
     "attributes": undefined,
+    "backgroundImage": undefined,
     "childCmsIds": undefined,
     "collectionName": undefined,
     "collectionSlug": undefined,
@@ -141,6 +146,7 @@ exports[`Component Detection Snapshots multiple components with various content:
   },
   "cms-5": {
     "attributes": undefined,
+    "backgroundImage": undefined,
     "childCmsIds": undefined,
     "collectionName": undefined,
     "collectionSlug": undefined,

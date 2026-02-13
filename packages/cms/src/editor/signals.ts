@@ -27,6 +27,7 @@ import type {
 	MediaItem,
 	MediaLibraryState,
 	PendingAttributeChange,
+	PendingBackgroundImageChange,
 	PendingChange,
 	PendingColorChange,
 	PendingComponentInsert,
@@ -231,6 +232,9 @@ export const pendingImageChanges = signal<Map<string, PendingImageChange>>(
 export const pendingColorChanges = signal<Map<string, PendingColorChange>>(
 	new Map(),
 )
+export const pendingBgImageChanges = signal<Map<string, PendingBackgroundImageChange>>(
+	new Map(),
+)
 export const manifest = signal<CmsManifest>({
 	entries: {},
 	components: {},
@@ -252,6 +256,7 @@ const _pendingComponentChangesHelpers = createMapHelpers(pendingComponentChanges
 const _pendingInsertsHelpers = createMapHelpers(pendingInserts)
 const _pendingImageChangesHelpers = createMapHelpers(pendingImageChanges)
 const _pendingColorChangesHelpers = createMapHelpers(pendingColorChanges)
+const _pendingBgImageChangesHelpers = createMapHelpers(pendingBgImageChanges)
 
 // ============================================================================
 // AI State Signals
@@ -495,6 +500,7 @@ let toastIdCounter = 0
 const _pendingChangesDirty = createDirtyTracking(pendingChanges)
 const _pendingImageChangesDirty = createDirtyTracking(pendingImageChanges)
 const _pendingColorChangesDirty = createDirtyTracking(pendingColorChanges)
+const _pendingBgImageChangesDirty = createDirtyTracking(pendingBgImageChanges)
 const _pendingSeoChangesDirty = createDirtyTracking(pendingSeoChanges)
 const _pendingAttributeChangesDirty = createDirtyTracking(pendingAttributeChanges)
 
@@ -510,6 +516,10 @@ export const dirtyColorChangesCount = _pendingColorChangesDirty.dirtyCount
 export const dirtyColorChanges = _pendingColorChangesDirty.dirtyItems
 export const hasDirtyColorChanges = _pendingColorChangesDirty.hasDirty
 
+export const dirtyBgImageChangesCount = _pendingBgImageChangesDirty.dirtyCount
+export const dirtyBgImageChanges = _pendingBgImageChangesDirty.dirtyItems
+export const hasDirtyBgImageChanges = _pendingBgImageChangesDirty.hasDirty
+
 export const dirtySeoChangesCount = _pendingSeoChangesDirty.dirtyCount
 export const dirtySeoChanges = _pendingSeoChangesDirty.dirtyItems
 export const hasDirtySeoChanges = _pendingSeoChangesDirty.hasDirty
@@ -520,13 +530,14 @@ export const hasDirtyAttributeChanges = _pendingAttributeChangesDirty.hasDirty
 
 export const totalDirtyCount = computed(
 	() =>
-		dirtyChangesCount.value + dirtyImageChangesCount.value + dirtyColorChangesCount.value + dirtySeoChangesCount.value
+		dirtyChangesCount.value + dirtyImageChangesCount.value + dirtyColorChangesCount.value + dirtyBgImageChangesCount.value + dirtySeoChangesCount.value
 		+ dirtyAttributeChangesCount.value,
 )
 
 export const hasAnyDirtyChanges = computed(
 	() =>
-		hasDirtyChanges.value || hasDirtyImageChanges.value || hasDirtyColorChanges.value || hasDirtySeoChanges.value || hasDirtyAttributeChanges.value,
+		hasDirtyChanges.value || hasDirtyImageChanges.value || hasDirtyColorChanges.value || hasDirtyBgImageChanges.value || hasDirtySeoChanges.value
+		|| hasDirtyAttributeChanges.value,
 )
 
 // Navigation index for cycling through dirty elements
@@ -614,6 +625,13 @@ export const updatePendingColorChange = _pendingColorChangesHelpers.update
 export const deletePendingColorChange = _pendingColorChangesHelpers.delete
 export const clearPendingColorChanges = _pendingColorChangesHelpers.clear
 export const getPendingColorChange = _pendingColorChangesHelpers.get
+
+// Background image changes mutations - using helpers
+export const setPendingBgImageChange = _pendingBgImageChangesHelpers.set
+export const updatePendingBgImageChange = _pendingBgImageChangesHelpers.update
+export const deletePendingBgImageChange = _pendingBgImageChangesHelpers.delete
+export const clearPendingBgImageChanges = _pendingBgImageChangesHelpers.clear
+export const getPendingBgImageChange = _pendingBgImageChangesHelpers.get
 
 // SEO changes mutations - using helpers
 export const setPendingSeoChange = _pendingSeoChangesHelpers.set
@@ -1332,6 +1350,7 @@ export function resetAllState(): void {
 		pendingInserts.value = new Map()
 		pendingImageChanges.value = new Map()
 		pendingColorChanges.value = new Map()
+		pendingBgImageChanges.value = new Map()
 		pendingSeoChanges.value = new Map()
 		pendingAttributeChanges.value = new Map()
 		manifest.value = { entries: {}, components: {}, componentDefinitions: {} }

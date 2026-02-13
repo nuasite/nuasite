@@ -9,6 +9,7 @@ export {
 	buildColorClass,
 	COLOR_CLASS_PATTERNS,
 	DEFAULT_TAILWIND_COLORS,
+	extractBackgroundImageClasses,
 	extractColorClasses,
 	extractTextStyleClasses,
 	getColorType,

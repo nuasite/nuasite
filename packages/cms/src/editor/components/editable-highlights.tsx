@@ -168,6 +168,7 @@ function collectEditableElements(): HighlightRect[] {
 	const textElements = document.querySelectorAll('[data-cms-id]')
 	const componentElements = document.querySelectorAll('[data-cms-component-id]')
 	const imageElements = document.querySelectorAll('img[data-cms-img]')
+	const bgImageElements = document.querySelectorAll('[data-cms-bg-img]')
 
 	// Process text elements
 	textElements.forEach((el) => {
@@ -208,6 +209,19 @@ function collectEditableElements(): HighlightRect[] {
 	// Process image elements
 	imageElements.forEach((el) => {
 		const cmsId = el.getAttribute('data-cms-img')
+		if (!cmsId) return
+
+		const rect = el.getBoundingClientRect()
+		if (rect.width < 10 || rect.height < 10) return
+		if (rect.bottom < 0 || rect.top > window.innerHeight) return
+		if (rect.right < 0 || rect.left > window.innerWidth) return
+
+		highlights.push({ cmsId, type: 'image', rect })
+	})
+
+	// Process background image elements
+	bgImageElements.forEach((el) => {
+		const cmsId = el.getAttribute('data-cms-id')
 		if (!cmsId) return
 
 		const rect = el.getBoundingClientRect()

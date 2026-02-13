@@ -42,6 +42,20 @@ export interface ComponentDefinition {
 	previewWidth?: number
 }
 
+/** Background image metadata for elements using bg-[url()] */
+export interface BackgroundImageMetadata {
+	/** Full Tailwind class, e.g. bg-[url('/path.png')] */
+	bgImageClass: string
+	/** Extracted image URL, e.g. /path.png */
+	imageUrl: string
+	/** Background size class: bg-auto | bg-cover | bg-contain */
+	bgSize?: string
+	/** Background position class: bg-center | bg-top | bg-bottom-left | ... */
+	bgPosition?: string
+	/** Background repeat class: bg-repeat | bg-no-repeat | bg-repeat-x | bg-repeat-y */
+	bgRepeat?: string
+}
+
 /** Image metadata for better tracking and integrity */
 export interface ImageMetadata {
 	/** Image source URL */
@@ -155,6 +169,8 @@ export interface ManifestEntry {
 	sourceHash?: string
 	/** Image metadata for img elements (replaces imageSrc/imageAlt) */
 	imageMetadata?: ImageMetadata
+	/** Background image metadata for elements using bg-[url()] */
+	backgroundImage?: BackgroundImageMetadata
 	/** Content validation constraints */
 	constraints?: ContentConstraints
 	/** Color classes applied to this element (for buttons, etc.) */
