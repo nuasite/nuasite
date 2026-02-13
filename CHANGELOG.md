@@ -9,23 +9,20 @@
 
 ## [0.8.0](https://github.com/nuasite/nuasite/compare/v0.7.3...v0.8.0) (2026-02-13)
 
-
 ### Features
 
-* **cms:** add background image editing support ([f90c94e](https://github.com/nuasite/nuasite/commit/f90c94e89c24bd813127a2071c61a04dfd842af1))
-
+- **cms:** add background image editing support ([f90c94e](https://github.com/nuasite/nuasite/commit/f90c94e89c24bd813127a2071c61a04dfd842af1))
 
 ### Bug Fixes
 
-* **cms:** handle bg-[url()] with quotes inside class attribute regex ([d6d5b48](https://github.com/nuasite/nuasite/commit/d6d5b48a840bc5f39a9dbcb68d154bb26c9dc005))
+- **cms:** handle bg-[url()] with quotes inside class attribute regex ([d6d5b48](https://github.com/nuasite/nuasite/commit/d6d5b48a840bc5f39a9dbcb68d154bb26c9dc005))
 
 ## [0.7.3](https://github.com/nuasite/nuasite/compare/v0.7.2...v0.7.3) (2026-02-12)
 
-
 ### Bug Fixes
 
-* **cms:** exempt &lt;a&gt; elements from pure container skip ([2dfca89](https://github.com/nuasite/nuasite/commit/2dfca89119edf48d4a2932616839b850d0bb3f48))
-* **cms:** skip bare spans without classes in editable HTML processing ([9ef4f87](https://github.com/nuasite/nuasite/commit/9ef4f87270bc2f2d7374e2b41e4fe6314a2f4e9f))
+- **cms:** exempt &lt;a&gt; elements from pure container skip ([2dfca89](https://github.com/nuasite/nuasite/commit/2dfca89119edf48d4a2932616839b850d0bb3f48))
+- **cms:** skip bare spans without classes in editable HTML processing ([9ef4f87](https://github.com/nuasite/nuasite/commit/9ef4f87270bc2f2d7374e2b41e4fe6314a2f4e9f))
 
 ## [0.7.2](https://github.com/nuasite/nuasite/compare/v0.7.1...v0.7.2) (2026-02-12)
 
