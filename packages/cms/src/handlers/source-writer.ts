@@ -501,17 +501,7 @@ export function applyTextChange(
 ): { success: true; content: string } | { success: false; error: string } {
 	const { sourceSnippet, originalValue, newValue, htmlValue } = change
 
-	let newText = htmlValue ?? newValue
-	newText = resolveCmsPlaceholders(newText, manifest)
-
-	// Resolve CMS placeholders in originalValue too — when a parent element has
-	// child CMS elements, originalValue contains {{cms:cms-N}} placeholders but
-	// the sourceSnippet contains the actual HTML for those children.
-	const resolvedOriginal = originalValue
-		? resolveCmsPlaceholders(originalValue, manifest)
-		: originalValue
-
-	if (!sourceSnippet || !resolvedOriginal) {
+	if (!sourceSnippet || !originalValue) {
 		if (change.attributeChanges && change.attributeChanges.length > 0) {
 			return { success: true, content }
 		}
@@ -522,14 +512,30 @@ export function applyTextChange(
 		return { success: false, error: 'Source snippet not found in file' }
 	}
 
-	// Replace resolvedOriginal with newText WITHIN the sourceSnippet
-	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, newText)
+	const newText = htmlValue ?? newValue
+
+	// When originalValue contains CMS placeholders (child elements like {{cms:cms-5}}),
+	// replace only the text segments between placeholders directly in the sourceSnippet.
+	// This avoids resolving placeholders via child sourceSnippets, which can be incorrect
+	// when multiple inline children share the same source line (extractCompleteTagSnippet
+	// returns the entire line, not just the individual child tag).
+	const placeholderPattern = /\{\{cms:[^}]+\}\}/g
+	if (placeholderPattern.test(originalValue)) {
+		return applyTextChangeWithPlaceholders(content, sourceSnippet, originalValue, newText)
+	}
+
+	// No placeholders — resolve and match directly
+	const resolvedNewText = resolveCmsPlaceholders(newText, manifest)
+	const resolvedOriginal = resolveCmsPlaceholders(originalValue, manifest)
+
+	// Replace resolvedOriginal with resolvedNewText WITHIN the sourceSnippet
+	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, resolvedNewText)
 
 	if (updatedSnippet === sourceSnippet) {
 		// resolvedOriginal wasn't found in snippet - try HTML entity handling
 		const matchedText = findTextInSnippet(sourceSnippet, resolvedOriginal)
 		if (matchedText) {
-			const updatedWithEntity = sourceSnippet.replace(matchedText, newText)
+			const updatedWithEntity = sourceSnippet.replace(matchedText, resolvedNewText)
 			return { success: true, content: content.replace(sourceSnippet, updatedWithEntity) }
 		}
 		// Try inner content replacement for text spanning inline HTML elements
@@ -539,7 +545,7 @@ export function applyTextChange(
 			const [, openTag, , innerContent, closeTag] = innerMatch
 			const textOnly = innerContent!.replace(/<[^>]+>/g, '')
 			if (textOnly === resolvedOriginal) {
-				return { success: true, content: content.replace(sourceSnippet, openTag + newText + closeTag) }
+				return { success: true, content: content.replace(sourceSnippet, openTag + resolvedNewText + closeTag) }
 			}
 		}
 
@@ -547,6 +553,60 @@ export function applyTextChange(
 			success: false,
 			error: `Original text "${resolvedOriginal.substring(0, 50)}..." not found in source snippet`,
 		}
+	}
+
+	return { success: true, content: content.replace(sourceSnippet, updatedSnippet) }
+}
+
+/**
+ * Apply text change when originalValue contains CMS placeholders.
+ * Splits by placeholder boundaries and replaces only the changed text segments.
+ */
+function applyTextChangeWithPlaceholders(
+	content: string,
+	sourceSnippet: string,
+	originalValue: string,
+	newText: string,
+): { success: true; content: string } | { success: false; error: string } {
+	const placeholderPattern = /\{\{cms:[^}]+\}\}/g
+
+	const originalParts = originalValue.split(placeholderPattern)
+	const newParts = newText.split(placeholderPattern)
+
+	if (originalParts.length !== newParts.length) {
+		return { success: false, error: 'Placeholder structure mismatch between original and new values' }
+	}
+
+	let updatedSnippet = sourceSnippet
+	let anyChange = false
+
+	for (let i = 0; i < originalParts.length; i++) {
+		const oldPart = originalParts[i]!
+		let newPart = newParts[i]!
+
+		if (oldPart === newPart || oldPart.length === 0) {
+			continue
+		}
+
+		// Try direct match first, then entity-aware match
+		const matchedText = findTextInSnippet(updatedSnippet, oldPart)
+		if (matchedText) {
+			// When entity-aware matching was needed, encode the same entities in the replacement
+			if (matchedText !== oldPart) {
+				newPart = encodeEntitiesLike(newPart, matchedText)
+			}
+			updatedSnippet = updatedSnippet.replace(matchedText, newPart)
+			anyChange = true
+		} else {
+			return {
+				success: false,
+				error: `Text segment "${oldPart.substring(0, 50)}..." not found in source snippet`,
+			}
+		}
+	}
+
+	if (!anyChange) {
+		return { success: false, error: 'No text changes detected between original and new values' }
 	}
 
 	return { success: true, content: content.replace(sourceSnippet, updatedSnippet) }
@@ -590,6 +650,32 @@ function findTextInSnippet(snippet: string, decodedText: string): string | null 
 	const brMatch = snippet.match(brRegex)
 
 	return brMatch && brMatch[0] !== decodedText ? brMatch[0] : null
+}
+
+/**
+ * Encode HTML entities in text to match the encoding used in a reference string.
+ * When entity-aware matching found entities in the source, the replacement text
+ * needs the same encoding to preserve valid HTML.
+ */
+function encodeEntitiesLike(text: string, reference: string): string {
+	let result = text
+	// & must be encoded first to avoid double-encoding other entities
+	if (reference.includes('&amp;')) {
+		result = result.replace(/&/g, '&amp;')
+	}
+	if (reference.includes('&lt;')) {
+		result = result.replace(/</g, '&lt;')
+	}
+	if (reference.includes('&gt;')) {
+		result = result.replace(/>/g, '&gt;')
+	}
+	if (reference.includes('&quot;')) {
+		result = result.replace(/"/g, '&quot;')
+	}
+	if (reference.includes('&#39;') || reference.includes('&apos;')) {
+		result = result.replace(/'/g, '&#39;')
+	}
+	return result
 }
 
 /**
