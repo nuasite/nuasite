@@ -139,6 +139,47 @@ describe('applyTextChange', () => {
 		}
 	})
 
+	test('resolves CMS placeholders in originalValue for parent with child elements', () => {
+		const content =
+			'<p class="text-lg">Contact us via <a href="mailto:hi@example.com">email</a> or <a href="https://twitter.com">Twitter</a>.</p>'
+		const manifest: CmsManifest = {
+			entries: {
+				'cms-1': {
+					tag: 'a',
+					text: 'email',
+					sourceSnippet: '<a href="mailto:hi@example.com">email</a>',
+					sourcePath: '/test.astro',
+					sourceLine: 1,
+				},
+				'cms-2': {
+					tag: 'a',
+					text: 'Twitter',
+					sourceSnippet: '<a href="https://twitter.com">Twitter</a>',
+					sourcePath: '/test.astro',
+					sourceLine: 1,
+				},
+			},
+			components: {},
+			componentDefinitions: {},
+		}
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet:
+					'<p class="text-lg">Contact us via <a href="mailto:hi@example.com">email</a> or <a href="https://twitter.com">Twitter</a>.</p>',
+				originalValue: 'Contact us via {{cms:cms-1}} or {{cms:cms-2}}.',
+				newValue: 'Reach out via {{cms:cms-1}} or {{cms:cms-2}}.',
+			}),
+			manifest,
+		)
+		expect(result.success).toBe(true)
+		if (result.success) {
+			expect(result.content).toBe(
+				'<p class="text-lg">Reach out via <a href="mailto:hi@example.com">email</a> or <a href="https://twitter.com">Twitter</a>.</p>',
+			)
+		}
+	})
+
 	test('preserves surrounding content when replacing snippet', () => {
 		const content = '<div>\n  <h3>Hello <span class="sm">world</span></h3>\n  <p>Other</p>\n</div>'
 		const result = applyTextChange(

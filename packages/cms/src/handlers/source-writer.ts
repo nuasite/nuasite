@@ -504,7 +504,14 @@ export function applyTextChange(
 	let newText = htmlValue ?? newValue
 	newText = resolveCmsPlaceholders(newText, manifest)
 
-	if (!sourceSnippet || !originalValue) {
+	// Resolve CMS placeholders in originalValue too — when a parent element has
+	// child CMS elements, originalValue contains {{cms:cms-N}} placeholders but
+	// the sourceSnippet contains the actual HTML for those children.
+	const resolvedOriginal = originalValue
+		? resolveCmsPlaceholders(originalValue, manifest)
+		: originalValue
+
+	if (!sourceSnippet || !resolvedOriginal) {
 		if (change.attributeChanges && change.attributeChanges.length > 0) {
 			return { success: true, content }
 		}
@@ -515,12 +522,12 @@ export function applyTextChange(
 		return { success: false, error: 'Source snippet not found in file' }
 	}
 
-	// Replace originalValue with newText WITHIN the sourceSnippet
-	const updatedSnippet = sourceSnippet.replace(originalValue, newText)
+	// Replace resolvedOriginal with newText WITHIN the sourceSnippet
+	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, newText)
 
 	if (updatedSnippet === sourceSnippet) {
-		// originalValue wasn't found in snippet - try HTML entity handling
-		const matchedText = findTextInSnippet(sourceSnippet, originalValue)
+		// resolvedOriginal wasn't found in snippet - try HTML entity handling
+		const matchedText = findTextInSnippet(sourceSnippet, resolvedOriginal)
 		if (matchedText) {
 			const updatedWithEntity = sourceSnippet.replace(matchedText, newText)
 			return { success: true, content: content.replace(sourceSnippet, updatedWithEntity) }
@@ -531,14 +538,14 @@ export function applyTextChange(
 		if (innerMatch) {
 			const [, openTag, , innerContent, closeTag] = innerMatch
 			const textOnly = innerContent!.replace(/<[^>]+>/g, '')
-			if (textOnly === originalValue) {
+			if (textOnly === resolvedOriginal) {
 				return { success: true, content: content.replace(sourceSnippet, openTag + newText + closeTag) }
 			}
 		}
 
 		return {
 			success: false,
-			error: `Original text "${originalValue.substring(0, 50)}..." not found in source snippet`,
+			error: `Original text "${resolvedOriginal.substring(0, 50)}..." not found in source snippet`,
 		}
 	}
 
