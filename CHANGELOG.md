@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.2](https://github.com/nuasite/nuasite/compare/v0.8.1...v0.8.2) (2026-02-14)
+
+
+### Bug Fixes
+
+* **cms:** add non-null assertion for innerContent in source-writer ([32dd2b2](https://github.com/nuasite/nuasite/commit/32dd2b29127ea43e9d8b0621e1ceccb321ba55df))
+* **cms:** complete bg image applyForward with full state and storage imports ([ff4c463](https://github.com/nuasite/nuasite/commit/ff4c463fa180f9e44e0336f52965e7e73aec8362))
+* **cms:** handle text edits spanning inline HTML elements ([56b67b6](https://github.com/nuasite/nuasite/commit/56b67b6aac83c93d600536f033adc8a2fcf16d8d))
+* **cms:** resolve CMS placeholders in originalValue before text replacement ([e7f1f37](https://github.com/nuasite/nuasite/commit/e7f1f377cda3b00c1f32e44e4a85d1c64d9f5023))
+* **lint:** allow unused tsconfig references for build-only dependencies ([516a7a8](https://github.com/nuasite/nuasite/commit/516a7a889377b8fa3bb39744b4bdd8c1cb826b63))
+* **llm-enhancements:** add project reference to cms for tsc --build ([b760ef9](https://github.com/nuasite/nuasite/commit/b760ef932ad443dffc4dd8b9c92f81432cc611bc))
+
 ## [0.8.1](https://github.com/nuasite/nuasite/compare/v0.8.0...v0.8.1) (2026-02-13)
 
 ### Bug Fixes
