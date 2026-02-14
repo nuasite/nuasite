@@ -140,11 +140,11 @@ describe('applyTextChange', () => {
 	})
 
 	test('resolves CMS placeholders in originalValue for parent with child elements', () => {
-		const content =
-			'<p class="text-lg">Contact us via <a href="mailto:hi@example.com">email</a> or <a href="https://twitter.com">Twitter</a>.</p>'
+		const content = '<p class="text-lg">Contact us via <a href="mailto:hi@example.com">email</a> or <a href="https://twitter.com">Twitter</a>.</p>'
 		const manifest: CmsManifest = {
 			entries: {
 				'cms-1': {
+					id: 'cms-1',
 					tag: 'a',
 					text: 'email',
 					sourceSnippet: '<a href="mailto:hi@example.com">email</a>',
@@ -152,6 +152,7 @@ describe('applyTextChange', () => {
 					sourceLine: 1,
 				},
 				'cms-2': {
+					id: 'cms-2',
 					tag: 'a',
 					text: 'Twitter',
 					sourceSnippet: '<a href="https://twitter.com">Twitter</a>',
@@ -165,8 +166,7 @@ describe('applyTextChange', () => {
 		const result = applyTextChange(
 			content,
 			makeChange({
-				sourceSnippet:
-					'<p class="text-lg">Contact us via <a href="mailto:hi@example.com">email</a> or <a href="https://twitter.com">Twitter</a>.</p>',
+				sourceSnippet: '<p class="text-lg">Contact us via <a href="mailto:hi@example.com">email</a> or <a href="https://twitter.com">Twitter</a>.</p>',
 				originalValue: 'Contact us via {{cms:cms-1}} or {{cms:cms-2}}.',
 				newValue: 'Reach out via {{cms:cms-1}} or {{cms:cms-2}}.',
 			}),
