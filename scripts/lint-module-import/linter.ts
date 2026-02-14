@@ -9,6 +9,9 @@ const globalModules = new Set(['vitest'])
 const allowedUnused = new Set([
 	'stacktracey',
 ])
+const allowedUnusedReferences = new Set([
+	'@nuasite/cms',
+])
 
 const allowedDirectoryImports = new Set(['@astrojs/compiler/types', 'preact/hooks'])
 
@@ -66,7 +69,7 @@ const processPackage = async (dir: string, projectList: ProjectList) => {
 		}
 	}
 	for (const referenced of referencedProjectNames) {
-		if (!imports.has(referenced)) {
+		if (!imports.has(referenced) && !allowedUnusedReferences.has(referenced)) {
 			errors.push({ file: dir, message: `Project ${referenced} referenced from tsconfig.json is not used`, type: 'tsconfig_unused' })
 		}
 	}
