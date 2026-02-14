@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/nuasite/nuasite/compare/v0.8.2...v0.8.3) (2026-02-14)
+
+
+### Bug Fixes
+
+* **cms:** replace text segments around CMS placeholders instead of resolving child snippets ([6a62e72](https://github.com/nuasite/nuasite/commit/6a62e726c72281172c16595d2a02fbf42b384ef9))
+
 ## [0.8.2](https://github.com/nuasite/nuasite/compare/v0.8.1...v0.8.2) (2026-02-14)
 
 
