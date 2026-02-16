@@ -1,17 +1,7 @@
 import { render } from 'preact'
 import { useCallback, useEffect, useRef } from 'preact/hooks'
 import type { CmsElementDeselectedMessage, CmsElementSelectedMessage } from '../types'
-import {
-	buildEditorState,
-	buildPageNavigatedMessage,
-	buildReadyMessage,
-	buildSelectedElement,
-	buildStateChangedMessage,
-	postToParent,
-} from './post-message'
 import { fetchManifest } from './api'
-import { AIChat } from './components/ai-chat'
-import { AITooltip } from './components/ai-tooltip'
 import { AttributeEditor } from './components/attribute-editor'
 import { BgImageOverlay } from './components/bg-image-overlay'
 import { BlockEditor } from './components/block-editor'
@@ -43,7 +33,6 @@ import {
 } from './editor'
 import { canRedo, canUndo, performRedo, performUndo } from './history'
 import {
-	useAIHandlers,
 	useBgImageHoverDetection,
 	useBlockEditorHandlers,
 	useComponentClickHandler,
@@ -52,6 +41,14 @@ import {
 	useTextSelection,
 	useTooltipState,
 } from './hooks'
+import {
+	buildEditorState,
+	buildPageNavigatedMessage,
+	buildReadyMessage,
+	buildSelectedElement,
+	buildStateChangedMessage,
+	postToParent,
+} from './post-message'
 import {
 	openCollectionsBrowser,
 	openMarkdownEditorForCurrentPage,
@@ -219,20 +216,6 @@ const CmsUI = () => {
 	})
 
 	const {
-		handleAIChatToggle,
-		handleChatClose,
-		handleChatCancel,
-		handleTooltipPromptSubmit,
-		handleChatSend,
-		handleApplyToElement,
-	} = useAIHandlers({
-		config,
-		showToast: signals.showToast,
-		onTooltipHide: hideTooltip,
-		onUIUpdate: updateUI,
-	})
-
-	const {
 		blockEditorCursor,
 		handleComponentSelect,
 		handleBlockEditorClose,
@@ -252,6 +235,7 @@ const CmsUI = () => {
 			hideTooltip()
 			stopEditMode(updateUI)
 		} else {
+			signals.isSelectMode.value = false
 			await startEditMode(config, updateUI)
 		}
 	}, [config, updateUI, hideTooltip])
@@ -308,6 +292,10 @@ const CmsUI = () => {
 
 	const handleSeoEditor = useCallback(() => {
 		openSeoEditor()
+	}, [])
+
+	const handleSelectElementToggle = useCallback(() => {
+		signals.isSelectMode.value = !signals.isSelectMode.value
 	}, [])
 
 	// Color toolbar handlers
@@ -409,7 +397,6 @@ const CmsUI = () => {
 	// Get reactive values from signals
 	const isEditing = signals.isEditing.value
 	const isAIProcessing = signals.isAIProcessing.value
-	const isChatOpen = signals.isChatOpen.value
 	const blockEditorState = signals.blockEditorState.value
 	const colorEditorState = signals.colorEditorState.value
 	const manifest = signals.manifest.value
@@ -485,6 +472,7 @@ const CmsUI = () => {
 						onCompare: handleCompare,
 						onSave: handleSave,
 						onDiscard: handleDiscard,
+						onSelectElement: handleSelectElementToggle,
 						onMediaLibrary: handleMediaLibrary,
 						onDismissDeployment: handleDismissDeployment,
 						onNavigateChange: () => {

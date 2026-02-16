@@ -10,7 +10,7 @@ export interface ToolbarCallbacks {
 	onCompare: () => void
 	onSave: () => void
 	onDiscard: () => void
-	onAIChat?: () => void
+	onSelectElement?: () => void
 	onMediaLibrary?: () => void
 	onDismissDeployment?: () => void
 	onNavigateChange?: () => void
@@ -97,7 +97,6 @@ const DeploymentStatusIndicator = ({ onDismiss }: { onDismiss?: () => void }) =>
 export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const isEditing = signals.isEditing.value
 	const showingOriginal = signals.showingOriginal.value
-	const isChatOpen = signals.isChatOpen.value
 	const dirtyCount = signals.totalDirtyCount.value
 	const isSaving = signals.isSaving.value
 	const deploymentStatus = signals.deploymentStatus.value
@@ -107,7 +106,6 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const [isMenuOpen, setIsMenuOpen] = useState(false)
 
 	if (isPreviewingMarkdown) return null
-	if (isChatOpen && !isEditing) return null
 
 	const showDeploymentStatus = deploymentStatus !== null
 
@@ -126,21 +124,23 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		}
 	}
 
-	const isToolbarOpen = isEditing
+	const isSelectMode = signals.isSelectMode.value
+	const isToolbarOpen = isEditing || isSelectMode
 
 	// Build menu items dynamically
 	const menuItems: Array<{ label: string; icon: ComponentChildren; onClick: () => void; isActive?: boolean }> = []
 
-	if (callbacks.onAIChat) {
+	if (callbacks.onSelectElement) {
 		menuItems.push({
-			label: 'AI Chat',
+			label: 'Select Element',
 			icon: (
 				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3z" />
+					<path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+					<path d="M13 13l6 6" />
 				</svg>
 			),
-			onClick: () => callbacks.onAIChat?.(),
-			isActive: isChatOpen,
+			onClick: () => callbacks.onSelectElement?.(),
+			isActive: isSelectMode,
 		})
 	}
 

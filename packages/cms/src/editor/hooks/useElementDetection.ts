@@ -58,9 +58,9 @@ export function useElementDetection(): OutlineState {
 	useEffect(() => {
 		const handleMouseMove = (ev: MouseEvent) => {
 			const isEditing = signals.isEditing.value
-			const chatOpen = signals.isChatOpen.value
+			const selectMode = signals.isSelectMode.value
 
-			if (!isEditing && !chatOpen) {
+			if (!isEditing && !selectMode) {
 				if (hideTimeoutRef.current) {
 					clearTimeout(hideTimeoutRef.current)
 					hideTimeoutRef.current = null
@@ -88,34 +88,6 @@ export function useElementDetection(): OutlineState {
 
 			const manifest = signals.manifest.value
 			const entries = manifest.entries
-
-			// When chat is open, only detect components (not text/image elements)
-			if (chatOpen) {
-				const componentEl = getComponentAtPosition(ev.clientX, ev.clientY)
-				if (componentEl) {
-					if (hideTimeoutRef.current) {
-						clearTimeout(hideTimeoutRef.current)
-						hideTimeoutRef.current = null
-					}
-					const rect = componentEl.getBoundingClientRect()
-					const componentId = componentEl.getAttribute(CSS.COMPONENT_ID_ATTRIBUTE)
-					const instance = componentId ? getComponentInstance(manifest, componentId) : null
-
-					setOutlineState({
-						visible: true,
-						rect,
-						isComponent: true,
-						componentName: instance?.componentName,
-						tagName: componentEl.tagName.toLowerCase(),
-						element: componentEl,
-						cmsId: null,
-					})
-					return
-				}
-
-				setOutlineState(INITIAL_STATE)
-				return
-			}
 
 			// Use the improved elementsFromPoint-based detection
 			const cmsEl = getCmsElementAtPosition(ev.clientX, ev.clientY, entries)
@@ -222,28 +194,14 @@ export function useComponentClickHandler({
 	useEffect(() => {
 		const handleClick = (ev: MouseEvent) => {
 			const isEditing = signals.isEditing.value
-			const chatOpen = signals.isChatOpen.value
-			if (!isEditing && !chatOpen) return
+			const selectMode = signals.isSelectMode.value
+			if (!isEditing && !selectMode) return
 
 			// Ignore clicks on CMS UI elements
 			if (isEventOnCmsUI(ev)) return
 
 			const manifest = signals.manifest.value
 			const entries = manifest.entries
-
-			if (chatOpen) {
-				// When chat is open, only select components
-				const componentEl = getComponentAtPosition(ev.clientX, ev.clientY)
-				if (componentEl) {
-					const componentId = componentEl.getAttribute(CSS.COMPONENT_ID_ATTRIBUTE)
-					if (componentId) {
-						ev.preventDefault()
-						ev.stopPropagation()
-						signals.setChatContextElement(componentId)
-					}
-				}
-				return
-			}
 
 			// Normal editing mode behavior
 			// Check for text element first

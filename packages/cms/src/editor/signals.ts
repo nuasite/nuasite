@@ -213,6 +213,7 @@ function createInitialAttributeEditorState(): AttributeEditorState {
 
 export const isEnabled = signal(false)
 export const isEditing = signal(false)
+export const isSelectMode = signal(false)
 export const isSaving = signal(false)
 export const showingOriginal = signal(false)
 export const currentEditingId = signal<string | null>(null)
