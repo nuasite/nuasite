@@ -36,7 +36,9 @@ test('postToParent does nothing when not in an iframe', () => {
 	// Default: window.parent === window (not in iframe)
 	const originalPostMessage = window.postMessage
 	let called = false
-	window.postMessage = () => { called = true }
+	window.postMessage = () => {
+		called = true
+	}
 
 	// postToParent should detect window.parent === window and skip
 	// (In a normal browser, window.parent === window when not framed)
