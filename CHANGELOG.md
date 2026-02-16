@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/nuasite/nuasite/compare/v0.9.0...v0.9.1) (2026-02-16)
+
+
+### Bug Fixes
+
+* **cms:** replace AI chat with select element mode in editor ([ec64606](https://github.com/nuasite/nuasite/commit/ec6460609ae8f559146c6404d0fc78222335822c))
+
 ## [0.9.0](https://github.com/nuasite/nuasite/compare/v0.8.3...v0.9.0) (2026-02-16)
 
 
