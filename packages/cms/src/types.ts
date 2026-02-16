@@ -423,3 +423,80 @@ export interface PageSeoData {
 	/** JSON-LD structured data blocks */
 	jsonLd?: JsonLdEntry[]
 }
+
+// ============================================================================
+// PostMessage Types (iframe communication)
+// ============================================================================
+
+/** Element data sent to parent when a CMS element is hovered/selected */
+export interface CmsSelectedElement {
+	/** CMS element ID (null for component-only selections) */
+	cmsId: string | null
+	/** Whether the selected element is a component root */
+	isComponent: boolean
+	/** Component name if applicable */
+	componentName?: string
+	/** Component instance ID */
+	componentId?: string
+	/** HTML tag name */
+	tagName?: string
+	/** Bounding rect relative to the iframe viewport */
+	rect: { x: number; y: number; width: number; height: number } | null
+
+	// --- Manifest entry data (text/image elements) ---
+
+	/** Plain text content */
+	text?: string
+	/** HTML content with inline styling */
+	html?: string
+	/** Source file path */
+	sourcePath?: string
+	/** Line number in source file */
+	sourceLine?: number
+	/** Parent component ID */
+	parentComponentId?: string
+	/** Nested CMS element IDs */
+	childCmsIds?: string[]
+	/** Image metadata for img elements */
+	imageMetadata?: ImageMetadata
+	/** Background image metadata */
+	backgroundImage?: BackgroundImageMetadata
+	/** Color classes (bg, text, border, etc.) */
+	colorClasses?: Record<string, Attribute>
+	/** HTML attributes with source info */
+	attributes?: Record<string, Attribute>
+	/** Content validation constraints */
+	constraints?: ContentConstraints
+	/** Whether inline text styling is allowed */
+	allowStyling?: boolean
+	/** Collection name if from a content collection */
+	collectionName?: string
+	/** Collection entry slug */
+	collectionSlug?: string
+
+	// --- Component instance data ---
+
+	/** Full component instance info (when isComponent is true) */
+	component?: {
+		name: string
+		file: string
+		sourcePath: string
+		sourceLine: number
+		props: Record<string, unknown>
+		slots?: Record<string, string>
+	}
+}
+
+/** Message sent when a CMS element is hovered/selected */
+export interface CmsElementSelectedMessage {
+	type: 'cms-element-selected'
+	element: CmsSelectedElement
+}
+
+/** Message sent when no element is hovered */
+export interface CmsElementDeselectedMessage {
+	type: 'cms-element-deselected'
+}
+
+/** All possible CMS postMessage types sent from the editor iframe to the parent */
+export type CmsPostMessage = CmsElementSelectedMessage | CmsElementDeselectedMessage

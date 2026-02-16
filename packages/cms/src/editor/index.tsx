@@ -1,5 +1,6 @@
 import { render } from 'preact'
-import { useCallback, useEffect } from 'preact/hooks'
+import { useCallback, useEffect, useRef } from 'preact/hooks'
+import type { CmsElementDeselectedMessage, CmsElementSelectedMessage } from '../types'
 import { fetchManifest } from './api'
 import { AIChat } from './components/ai-chat'
 import { AITooltip } from './components/ai-tooltip'
@@ -116,6 +117,71 @@ const CmsUI = () => {
 			openMarkdownEditorForCurrentPage()
 		}
 	}, [])
+
+	// Send selected element info to parent window via postMessage (when inside an iframe)
+	const prevOutlineRef = useRef<{ cmsId: string | null; isComponent: boolean }>({ cmsId: null, isComponent: false })
+	useEffect(() => {
+		if (window.parent === window) return // Not inside an iframe
+
+		const prev = prevOutlineRef.current
+		const changed = outlineState.cmsId !== prev.cmsId
+			|| outlineState.isComponent !== prev.isComponent
+			|| (!outlineState.visible && (prev.cmsId !== null || prev.isComponent))
+
+		if (!changed) return
+		prevOutlineRef.current = { cmsId: outlineState.cmsId, isComponent: outlineState.isComponent }
+
+		if (outlineState.visible && (outlineState.cmsId || outlineState.isComponent)) {
+			const manifestData = signals.manifest.value
+			const entry = outlineState.cmsId ? manifestData.entries[outlineState.cmsId] : undefined
+			const componentEl = outlineState.element
+			const componentId = componentEl?.getAttribute('data-cms-component-id') ?? undefined
+			const instance = componentId ? manifestData.components?.[componentId] : undefined
+			const rect = outlineState.rect
+
+			const msg: CmsElementSelectedMessage = {
+				type: 'cms-element-selected',
+				element: {
+					cmsId: outlineState.cmsId,
+					isComponent: outlineState.isComponent,
+					componentName: outlineState.componentName ?? instance?.componentName,
+					componentId,
+					tagName: outlineState.tagName ?? entry?.tag,
+					rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
+					...(entry && {
+						text: entry.text,
+						html: entry.html,
+						sourcePath: entry.sourcePath,
+						sourceLine: entry.sourceLine,
+						parentComponentId: entry.parentComponentId,
+						childCmsIds: entry.childCmsIds,
+						imageMetadata: entry.imageMetadata,
+						backgroundImage: entry.backgroundImage,
+						colorClasses: entry.colorClasses,
+						attributes: entry.attributes,
+						constraints: entry.constraints,
+						allowStyling: entry.allowStyling,
+						collectionName: entry.collectionName,
+						collectionSlug: entry.collectionSlug,
+					}),
+					...(instance && {
+						component: {
+							name: instance.componentName,
+							file: instance.file,
+							sourcePath: instance.sourcePath,
+							sourceLine: instance.sourceLine,
+							props: instance.props,
+							slots: instance.slots,
+						},
+					}),
+				},
+			}
+			window.parent.postMessage(msg, '*')
+		} else {
+			const msg: CmsElementDeselectedMessage = { type: 'cms-element-deselected' }
+			window.parent.postMessage(msg, '*')
+		}
+	}, [outlineState])
 
 	const {
 		handleAIChatToggle,
