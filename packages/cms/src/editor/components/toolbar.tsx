@@ -290,7 +290,22 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 								</svg>
 							</button>
 						)
-						: (
+						: isSelectMode
+							? (
+								<button
+									onClick={(e) => {
+										e.stopPropagation()
+										callbacks.onSelectElement?.()
+									}}
+									class="w-10 h-10 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all duration-150 cursor-pointer"
+									title="Done selecting"
+								>
+									<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+									</svg>
+								</button>
+							)
+							: (
 							<div class="relative">
 								<button
 									onClick={(e) => {
