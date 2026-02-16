@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/nuasite/nuasite/compare/v0.9.2...v0.9.3) (2026-02-16)
+
+
+### Bug Fixes
+
+* **cms:** add done button to exit select element mode ([bafdce3](https://github.com/nuasite/nuasite/commit/bafdce390fe34365f1a818c3d3c3414d9fac761f))
+
 ## [0.9.2](https://github.com/nuasite/nuasite/compare/v0.9.1...v0.9.2) (2026-02-16)
 
 
