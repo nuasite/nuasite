@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/nuasite/nuasite/compare/v0.9.1...v0.9.2) (2026-02-16)
+
+
+### Bug Fixes
+
+* **cms:** show outlines toggle in select element mode ([0c97ab1](https://github.com/nuasite/nuasite/commit/0c97ab1960eddf4a5ceb22c019da31b49719bd5b))
+
 ## [0.9.1](https://github.com/nuasite/nuasite/compare/v0.9.0...v0.9.1) (2026-02-16)
 
 
