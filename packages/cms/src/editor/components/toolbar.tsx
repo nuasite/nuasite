@@ -217,8 +217,8 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 			onClick={stopPropagation}
 		>
 			<div class="flex items-center justify-between sm:justify-start gap-2 sm:gap-1.5 px-2 sm:px-2 py-2 sm:py-2 bg-cms-dark rounded-cms-xl shadow-[0_8px_32px_rgba(0,0,0,0.3)] border border-white/10">
-				{/* Outlines toggle - visible in toolbar when editing */}
-				{isEditing && !showingOriginal && callbacks.onToggleHighlights && (
+				{/* Outlines toggle - visible in toolbar when editing or selecting */}
+				{isToolbarOpen && !showingOriginal && callbacks.onToggleHighlights && (
 					<ToolbarButton
 						onClick={() => callbacks.onToggleHighlights?.()}
 						class={'flex gap-2.5 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white py-2! pr-1.5!'}
