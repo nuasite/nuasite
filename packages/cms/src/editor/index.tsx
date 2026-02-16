@@ -1,6 +1,14 @@
 import { render } from 'preact'
 import { useCallback, useEffect, useRef } from 'preact/hooks'
 import type { CmsElementDeselectedMessage, CmsElementSelectedMessage } from '../types'
+import {
+	buildEditorState,
+	buildPageNavigatedMessage,
+	buildReadyMessage,
+	buildSelectedElement,
+	buildStateChangedMessage,
+	postToParent,
+} from './post-message'
 import { fetchManifest } from './api'
 import { AIChat } from './components/ai-chat'
 import { AITooltip } from './components/ai-tooltip'
@@ -33,7 +41,7 @@ import {
 	stopEditMode,
 	toggleShowOriginal,
 } from './editor'
-import { performRedo, performUndo } from './history'
+import { canRedo, canUndo, performRedo, performUndo } from './history'
 import {
 	useAIHandlers,
 	useBgImageHoverDetection,
@@ -104,6 +112,17 @@ const CmsUI = () => {
 		}).catch(() => {})
 	}, [])
 
+	// Re-fetch manifest on View Transitions navigation (astro:after-swap)
+	useEffect(() => {
+		const onNavigation = () => {
+			fetchManifest().then((manifest) => {
+				signals.setManifest(manifest)
+			}).catch(() => {})
+		}
+		document.addEventListener('astro:after-swap', onNavigation)
+		return () => document.removeEventListener('astro:after-swap', onNavigation)
+	}, [])
+
 	// Auto-restore edit mode if it was active before a page refresh (e.g. after save triggers HMR)
 	useEffect(() => {
 		if (loadEditingState() && !signals.isEditing.value) {
@@ -121,8 +140,6 @@ const CmsUI = () => {
 	// Send selected element info to parent window via postMessage (when inside an iframe)
 	const prevOutlineRef = useRef<{ cmsId: string | null; isComponent: boolean }>({ cmsId: null, isComponent: false })
 	useEffect(() => {
-		if (window.parent === window) return // Not inside an iframe
-
 		const prev = prevOutlineRef.current
 		const changed = outlineState.cmsId !== prev.cmsId
 			|| outlineState.isComponent !== prev.isComponent
@@ -141,47 +158,65 @@ const CmsUI = () => {
 
 			const msg: CmsElementSelectedMessage = {
 				type: 'cms-element-selected',
-				element: {
+				element: buildSelectedElement({
 					cmsId: outlineState.cmsId,
 					isComponent: outlineState.isComponent,
-					componentName: outlineState.componentName ?? instance?.componentName,
+					componentName: outlineState.componentName,
 					componentId,
-					tagName: outlineState.tagName ?? entry?.tag,
+					tagName: outlineState.tagName,
 					rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
-					...(entry && {
-						text: entry.text,
-						html: entry.html,
-						sourcePath: entry.sourcePath,
-						sourceLine: entry.sourceLine,
-						parentComponentId: entry.parentComponentId,
-						childCmsIds: entry.childCmsIds,
-						imageMetadata: entry.imageMetadata,
-						backgroundImage: entry.backgroundImage,
-						colorClasses: entry.colorClasses,
-						attributes: entry.attributes,
-						constraints: entry.constraints,
-						allowStyling: entry.allowStyling,
-						collectionName: entry.collectionName,
-						collectionSlug: entry.collectionSlug,
-					}),
-					...(instance && {
-						component: {
-							name: instance.componentName,
-							file: instance.file,
-							sourcePath: instance.sourcePath,
-							sourceLine: instance.sourceLine,
-							props: instance.props,
-							slots: instance.slots,
-						},
-					}),
-				},
+					entry,
+					instance,
+				}),
 			}
-			window.parent.postMessage(msg, '*')
+			postToParent(msg)
 		} else {
 			const msg: CmsElementDeselectedMessage = { type: 'cms-element-deselected' }
-			window.parent.postMessage(msg, '*')
+			postToParent(msg)
 		}
 	}, [outlineState])
+
+	// Send cms-ready + cms-page-navigated when manifest loads
+	const prevManifestRef = useRef<boolean>(false)
+	useEffect(() => {
+		const m = signals.manifest.value
+		// Only fire when manifest has entries (i.e. actually loaded)
+		if (Object.keys(m.entries).length === 0) return
+
+		if (!prevManifestRef.current) {
+			prevManifestRef.current = true
+			postToParent(buildReadyMessage(m, window.location.pathname))
+		} else {
+			postToParent(buildPageNavigatedMessage(m, window.location.pathname))
+		}
+	})
+
+	// Send cms-state-changed when editor state changes
+	const prevStateRef = useRef<string>('')
+	useEffect(() => {
+		const state = buildEditorState({
+			isEditing: signals.isEditing.value,
+			dirtyCount: {
+				text: signals.dirtyChangesCount.value,
+				image: signals.dirtyImageChangesCount.value,
+				color: signals.dirtyColorChangesCount.value,
+				bgImage: signals.dirtyBgImageChangesCount.value,
+				attribute: signals.dirtyAttributeChangesCount.value,
+				seo: signals.dirtySeoChangesCount.value,
+				total: signals.totalDirtyCount.value,
+			},
+			deploymentStatus: signals.deploymentStatus.value,
+			lastDeployedAt: signals.lastDeployedAt.value,
+			canUndo: canUndo.value,
+			canRedo: canRedo.value,
+		})
+
+		const key = JSON.stringify(state)
+		if (key === prevStateRef.current) return
+		prevStateRef.current = key
+
+		postToParent(buildStateChangedMessage(state))
+	})
 
 	const {
 		handleAIChatToggle,
