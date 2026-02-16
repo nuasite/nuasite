@@ -222,6 +222,82 @@ Components in `componentDirs` (default: `src/components/`) are scanned for props
 
 Both operations find the invocation site (the page file, not the component file itself), locate the correct JSX tag using occurrence indexing, and modify the source with proper indentation.
 
+## PostMessage API (Iframe Communication)
+
+When the editor runs inside an iframe, it sends `postMessage` events to the parent window. Listen for them with:
+
+```typescript
+window.addEventListener('message', (event) => {
+	const msg = event.data // CmsPostMessage
+	switch (msg.type) {
+		case 'cms-ready': /* ... */ break
+		case 'cms-state-changed': /* ... */ break
+		case 'cms-page-navigated': /* ... */ break
+		case 'cms-element-selected': /* ... */ break
+		case 'cms-element-deselected': /* ... */ break
+	}
+})
+```
+
+All message types are exported as TypeScript interfaces:
+
+```typescript
+import type { CmsPostMessage, CmsReadyMessage, CmsStateChangedMessage } from '@nuasite/cms'
+```
+
+### `cms-ready`
+
+Sent once when the manifest loads for the first time. Contains the full page context:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data.pathname` | `string` | Current page URL pathname |
+| `data.pageTitle` | `string?` | Page title from SEO data or pages array |
+| `data.seo` | `PageSeoData?` | Full SEO metadata (title, description, OG, etc.) |
+| `data.pages` | `PageEntry[]?` | All site pages with pathname and title |
+| `data.collectionDefinitions` | `Record<string, CollectionDefinition>?` | Content collections with inferred schemas |
+| `data.componentDefinitions` | `Record<string, ComponentDefinition>?` | Registered component definitions |
+| `data.availableColors` | `AvailableColors?` | Tailwind color palette |
+| `data.availableTextStyles` | `AvailableTextStyles?` | Tailwind text style options |
+| `data.metadata` | `ManifestMetadata?` | Manifest version, build ID, content hash |
+
+### `cms-state-changed`
+
+Sent whenever editor state changes (editing mode, dirty counts, deployment, undo/redo):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state.isEditing` | `boolean` | Whether edit mode is active |
+| `state.hasChanges` | `boolean` | Whether any unsaved changes exist |
+| `state.dirtyCount.text` | `number` | Pending text changes |
+| `state.dirtyCount.image` | `number` | Pending image changes |
+| `state.dirtyCount.color` | `number` | Pending color changes |
+| `state.dirtyCount.bgImage` | `number` | Pending background image changes |
+| `state.dirtyCount.attribute` | `number` | Pending attribute changes |
+| `state.dirtyCount.seo` | `number` | Pending SEO changes |
+| `state.dirtyCount.total` | `number` | Total pending changes |
+| `state.deployment.status` | `DeploymentStatusType \| null` | Current deployment status |
+| `state.deployment.lastDeployedAt` | `string \| null` | ISO timestamp of last deployment |
+| `state.canUndo` | `boolean` | Whether undo is available |
+| `state.canRedo` | `boolean` | Whether redo is available |
+
+### `cms-page-navigated`
+
+Sent when the manifest reloads after navigating to a different page:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `page.pathname` | `string` | New page pathname |
+| `page.title` | `string?` | Page title |
+
+### `cms-element-selected`
+
+Sent when the user hovers or clicks a CMS element. Contains full element metadata from the manifest including `sourcePath`, `sourceLine`, `sourceSnippet`, `sourceHash`, `stableId`, `contentPath`, image/color/attribute data, and component instance info.
+
+### `cms-element-deselected`
+
+Sent when no element is hovered. No additional data.
+
 ## Exports
 
 ```typescript
