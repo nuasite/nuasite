@@ -473,6 +473,14 @@ export interface CmsSelectedElement {
 	collectionName?: string
 	/** Collection entry slug */
 	collectionSlug?: string
+	/** Full element snippet from source */
+	sourceSnippet?: string
+	/** SHA256 hash of sourceSnippet for conflict detection */
+	sourceHash?: string
+	/** Stable ID derived from content + context hash */
+	stableId?: string
+	/** Path to the markdown content file */
+	contentPath?: string
 
 	// --- Component instance data ---
 
@@ -498,5 +506,65 @@ export interface CmsElementDeselectedMessage {
 	type: 'cms-element-deselected'
 }
 
+/** Data sent with the cms-ready message when the manifest first loads */
+export interface CmsReadyData {
+	pathname: string
+	pageTitle?: string
+	seo?: PageSeoData
+	pages?: PageEntry[]
+	collectionDefinitions?: Record<string, CollectionDefinition>
+	componentDefinitions?: Record<string, ComponentDefinition>
+	availableColors?: AvailableColors
+	availableTextStyles?: AvailableTextStyles
+	metadata?: ManifestMetadata
+}
+
+/** Message sent when the CMS manifest has loaded and the editor is ready */
+export interface CmsReadyMessage {
+	type: 'cms-ready'
+	data: CmsReadyData
+}
+
+/** Snapshot of editor state sent on every meaningful change */
+export interface CmsEditorState {
+	isEditing: boolean
+	hasChanges: boolean
+	dirtyCount: {
+		text: number
+		image: number
+		color: number
+		bgImage: number
+		attribute: number
+		seo: number
+		total: number
+	}
+	deployment: {
+		status: 'pending' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | null
+		lastDeployedAt: string | null
+	}
+	canUndo: boolean
+	canRedo: boolean
+}
+
+/** Message sent when editor state changes (dirty counts, deployment, editing mode, undo/redo) */
+export interface CmsStateChangedMessage {
+	type: 'cms-state-changed'
+	state: CmsEditorState
+}
+
+/** Message sent when the user navigates to a different page (manifest reload) */
+export interface CmsPageNavigatedMessage {
+	type: 'cms-page-navigated'
+	page: {
+		pathname: string
+		title?: string
+	}
+}
+
 /** All possible CMS postMessage types sent from the editor iframe to the parent */
-export type CmsPostMessage = CmsElementSelectedMessage | CmsElementDeselectedMessage
+export type CmsPostMessage =
+	| CmsElementSelectedMessage
+	| CmsElementDeselectedMessage
+	| CmsReadyMessage
+	| CmsStateChangedMessage
+	| CmsPageNavigatedMessage
