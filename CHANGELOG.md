@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.0](https://github.com/nuasite/nuasite/compare/v0.8.3...v0.9.0) (2026-02-16)
+
+
+### Features
+
+* **cms:** add postMessage types for ready, state-changed, and page-navigated events ([f33b884](https://github.com/nuasite/nuasite/commit/f33b884be43d8e7a5fa6d2c576faaf4b8771f4fd))
+* **cms:** extract postMessage utilities and add ready/state/navigation messages ([010720b](https://github.com/nuasite/nuasite/commit/010720b85b8124b38405445f1a53f828b7f401d4))
+* **cms:** send postMessage to parent when CMS element is selected ([6d54d5b](https://github.com/nuasite/nuasite/commit/6d54d5bbe58d6a1326a0eefc02c75cda71621daa))
+
 ## [0.8.3](https://github.com/nuasite/nuasite/compare/v0.8.2...v0.8.3) (2026-02-14)
 
 
