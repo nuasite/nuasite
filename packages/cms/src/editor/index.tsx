@@ -450,7 +450,6 @@ const CmsUI = () => {
 						onCompare: handleCompare,
 						onSave: handleSave,
 						onDiscard: handleDiscard,
-						onAIChat: handleAIChatToggle,
 						onMediaLibrary: handleMediaLibrary,
 						onDismissDeployment: handleDismissDeployment,
 						onNavigateChange: () => {
@@ -463,18 +462,6 @@ const CmsUI = () => {
 						onOpenCollections: openCollectionsBrowser,
 					}}
 					collectionDefinitions={Object.keys(collectionDefinitions).length > 0 ? collectionDefinitions : undefined}
-				/>
-			</ErrorBoundary>
-
-			<ErrorBoundary componentName="AI Tooltip">
-				<AITooltip
-					callbacks={{
-						onPromptSubmit: handleTooltipPromptSubmit,
-					}}
-					visible={!!tooltipState.elementId && isEditing && !isAIProcessing && !textSelectionState.hasSelection}
-					elementId={tooltipState.elementId}
-					rect={tooltipState.rect}
-					processing={isAIProcessing}
 				/>
 			</ErrorBoundary>
 
@@ -502,17 +489,6 @@ const CmsUI = () => {
 			<ErrorBoundary componentName="Attribute Editor">
 				<AttributeEditor
 					onClose={handleAttributeEditorClose}
-				/>
-			</ErrorBoundary>
-
-			<ErrorBoundary componentName="AI Chat">
-				<AIChat
-					callbacks={{
-						onSend: handleChatSend,
-						onClose: handleChatClose,
-						onCancel: handleChatCancel,
-						onApplyToElement: handleApplyToElement,
-					}}
 				/>
 			</ErrorBoundary>
 
