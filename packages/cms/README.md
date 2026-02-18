@@ -321,7 +321,7 @@ iframe.contentWindow.postMessage({ type: 'cms-deselect-element' }, '*')
 All inbound message types are exported as TypeScript interfaces:
 
 ```typescript
-import type { CmsInboundMessage, CmsDeselectElementMessage } from '@nuasite/cms'
+import type { CmsDeselectElementMessage, CmsInboundMessage } from '@nuasite/cms'
 ```
 
 #### `cms-deselect-element`

@@ -579,5 +579,4 @@ export interface CmsDeselectElementMessage {
 }
 
 /** All possible CMS postMessage types sent from the parent to the editor iframe */
-export type CmsInboundMessage =
-	| CmsDeselectElementMessage
+export type CmsInboundMessage = CmsDeselectElementMessage
