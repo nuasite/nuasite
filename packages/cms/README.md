@@ -307,6 +307,27 @@ Sent when the user hovers or clicks a CMS element. Contains full element metadat
 
 Sent when no element is hovered. No additional data.
 
+### Inbound Messages (Parent → Iframe)
+
+The parent window can send commands to the editor iframe using `postMessage`:
+
+```typescript
+const iframe = document.querySelector('iframe')
+
+// Deselect the currently selected component
+iframe.contentWindow.postMessage({ type: 'cms-deselect-element' }, '*')
+```
+
+All inbound message types are exported as TypeScript interfaces:
+
+```typescript
+import type { CmsInboundMessage, CmsDeselectElementMessage } from '@nuasite/cms'
+```
+
+#### `cms-deselect-element`
+
+Deselects the currently selected component and closes the block editor. No additional data required.
+
 ## Exports
 
 ```typescript

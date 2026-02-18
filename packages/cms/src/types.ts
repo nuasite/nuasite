@@ -568,3 +568,16 @@ export type CmsPostMessage =
 	| CmsReadyMessage
 	| CmsStateChangedMessage
 	| CmsPageNavigatedMessage
+
+// ============================================================================
+// Inbound messages (parent → editor iframe)
+// ============================================================================
+
+/** Message sent from parent to deselect the currently selected element/component */
+export interface CmsDeselectElementMessage {
+	type: 'cms-deselect-element'
+}
+
+/** All possible CMS postMessage types sent from the parent to the editor iframe */
+export type CmsInboundMessage =
+	| CmsDeselectElementMessage

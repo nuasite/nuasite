@@ -1,6 +1,6 @@
 import { render } from 'preact'
 import { useCallback, useEffect, useRef } from 'preact/hooks'
-import type { CmsElementDeselectedMessage, CmsElementSelectedMessage } from '../types'
+import type { CmsElementDeselectedMessage, CmsElementSelectedMessage, CmsInboundMessage } from '../types'
 import { fetchManifest } from './api'
 import { AttributeEditor } from './components/attribute-editor'
 import { BgImageOverlay } from './components/bg-image-overlay'
@@ -232,6 +232,21 @@ const CmsUI = () => {
 		onComponentSelect: handleComponentSelect,
 		onComponentDeselect: handleBlockEditorClose,
 	})
+
+	// Listen for inbound messages from parent window (when inside an iframe)
+	useEffect(() => {
+		const handleMessage = (ev: MessageEvent) => {
+			const msg = ev.data as CmsInboundMessage
+			if (!msg || typeof msg.type !== 'string') return
+
+			if (msg.type === 'cms-deselect-element') {
+				handleBlockEditorClose()
+			}
+		}
+
+		window.addEventListener('message', handleMessage)
+		return () => window.removeEventListener('message', handleMessage)
+	}, [handleBlockEditorClose])
 
 	// Editor control handlers
 	const handleEditToggle = useCallback(async () => {
