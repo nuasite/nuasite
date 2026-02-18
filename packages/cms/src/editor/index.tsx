@@ -10,6 +10,7 @@ import { ColorToolbar } from './components/color-toolbar'
 import { ConfirmDialog } from './components/confirm-dialog'
 import { CreatePageModal } from './components/create-page-modal'
 import { EditableHighlights } from './components/editable-highlights'
+import { SelectionHighlight } from './components/selection-highlight'
 import { ErrorBoundary } from './components/error-boundary'
 import { ImageOverlay } from './components/image-overlay'
 import { MarkdownEditorOverlay } from './components/markdown-editor-overlay'
@@ -432,6 +433,10 @@ const CmsUI = () => {
 		<>
 			<ErrorBoundary componentName="Editable Highlights">
 				<EditableHighlights visible={showEditableHighlights && isEditing} />
+			</ErrorBoundary>
+
+			<ErrorBoundary componentName="Selection Highlight">
+				<SelectionHighlight />
 			</ErrorBoundary>
 
 			<ErrorBoundary componentName="Outline">
