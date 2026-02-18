@@ -15,7 +15,37 @@ import {
 	showToast,
 } from '../signals'
 import type { ChangePayload, PageSeoData, PendingSeoChange } from '../types'
-import { ImageField } from './fields'
+import { ColorField, ComboBoxField, ImageField } from './fields'
+
+const OG_TYPE_OPTIONS = [
+	{ value: 'website', label: 'Website', description: 'Default type for most pages' },
+	{ value: 'article', label: 'Article', description: 'Blog posts, news articles' },
+	{ value: 'profile', label: 'Profile', description: 'User or author profile page' },
+	{ value: 'video.movie', label: 'Video (Movie)', description: 'Movie or film' },
+	{ value: 'video.episode', label: 'Video (Episode)', description: 'TV show episode' },
+	{ value: 'video.other', label: 'Video (Other)', description: 'Other video content' },
+	{ value: 'music.song', label: 'Music (Song)', description: 'Individual song' },
+	{ value: 'music.album', label: 'Music (Album)', description: 'Music album' },
+	{ value: 'book', label: 'Book', description: 'Book or publication' },
+	{ value: 'product', label: 'Product', description: 'Product page' },
+]
+
+const TWITTER_CARD_OPTIONS = [
+	{ value: 'summary', label: 'Summary', description: 'Small square image with title and description' },
+	{ value: 'summary_large_image', label: 'Summary Large Image', description: 'Large banner image above title' },
+	{ value: 'app', label: 'App', description: 'Mobile app download card' },
+	{ value: 'player', label: 'Player', description: 'Embedded media player card' },
+]
+
+const ROBOTS_OPTIONS = [
+	{ value: 'index, follow', label: 'Index, Follow', description: 'Allow indexing and link following (default)' },
+	{ value: 'noindex, follow', label: 'No Index, Follow', description: 'Block indexing but follow links' },
+	{ value: 'index, nofollow', label: 'Index, No Follow', description: 'Allow indexing but don\'t follow links' },
+	{ value: 'noindex, nofollow', label: 'No Index, No Follow', description: 'Block indexing and link following' },
+	{ value: 'noarchive', label: 'No Archive', description: 'Prevent cached copies in search results' },
+	{ value: 'nosnippet', label: 'No Snippet', description: 'Don\'t show text snippets in results' },
+	{ value: 'max-image-preview:large', label: 'Max Image Preview: Large', description: 'Allow large image previews' },
+]
 
 interface SeoFieldProps {
 	label: string
@@ -61,6 +91,18 @@ function SeoField({ label, id, value, placeholder, multiline, onChange }: SeoFie
 			/>
 		</div>
 	)
+}
+
+/** Helper to resolve pending value/dirty state for a SEO meta tag */
+function useSeoMeta(tag: { id?: string; content: string } | undefined) {
+	if (!tag) return { id: undefined, original: '', current: '', dirty: false }
+	const pending = tag.id ? getPendingSeoChange(tag.id) : undefined
+	return {
+		id: tag.id,
+		original: tag.content,
+		current: pending?.newValue ?? tag.content ?? '',
+		dirty: pending?.isDirty ?? false,
+	}
 }
 
 interface SeoSectionProps {
@@ -130,6 +172,8 @@ export function SeoEditor() {
 			seoData.description,
 			seoData.keywords,
 			seoData.canonical,
+			seoData.themeColor,
+			seoData.robots,
 			...(seoData.openGraph ? Object.values(seoData.openGraph) : []),
 			...(seoData.twitterCard ? Object.values(seoData.twitterCard) : []),
 			...(seoData.favicons || []),
@@ -196,10 +240,20 @@ export function SeoEditor() {
 		|| seoData.description
 		|| seoData.keywords
 		|| seoData.canonical
+		|| seoData.themeColor
+		|| seoData.robots
 		|| seoData.openGraph
 		|| seoData.twitterCard
 		|| (seoData.favicons && seoData.favicons.length > 0)
 	)
+
+	// Resolve pending state for specialized fields
+	const ogImage = useSeoMeta(seoData?.openGraph?.image)
+	const ogType = useSeoMeta(seoData?.openGraph?.type)
+	const twitterCard = useSeoMeta(seoData?.twitterCard?.card)
+	const twitterImage = useSeoMeta(seoData?.twitterCard?.image)
+	const themeColor = useSeoMeta(seoData?.themeColor)
+	const robots = useSeoMeta(seoData?.robots)
 
 	return (
 		<div
@@ -292,6 +346,25 @@ export function SeoEditor() {
 											onChange={handleFieldChange}
 										/>
 									)}
+									{seoData.robots && (
+										<ComboBoxField
+											label="Robots"
+											value={robots.current}
+											placeholder="index, follow"
+											options={ROBOTS_OPTIONS}
+											onChange={(v) => { if (robots.id) handleFieldChange(robots.id, v, robots.original) }}
+											isDirty={robots.dirty}
+										/>
+									)}
+									{seoData.themeColor && (
+										<ColorField
+											label="Theme Color"
+											value={themeColor.current}
+											placeholder="#000000"
+											onChange={(v) => { if (themeColor.id) handleFieldChange(themeColor.id, v, themeColor.original) }}
+											isDirty={themeColor.dirty}
+										/>
+									)}
 								</SeoSection>
 
 								{/* Favicons */}
@@ -355,12 +428,17 @@ export function SeoEditor() {
 											/>
 										)}
 										{seoData.openGraph.image && (
-											<SeoField
+											<ImageField
 												label="OG Image"
-												id={seoData.openGraph.image.id}
-												value={seoData.openGraph.image.content}
+												value={ogImage.current}
 												placeholder="/images/og-image.jpg"
-												onChange={handleFieldChange}
+												onChange={(v) => { if (ogImage.id) handleFieldChange(ogImage.id, v, ogImage.original) }}
+												onBrowse={() => {
+													openMediaLibraryWithCallback((url: string) => {
+														if (ogImage.id) handleFieldChange(ogImage.id, url, ogImage.original)
+													})
+												}}
+												isDirty={ogImage.dirty}
 											/>
 										)}
 										{seoData.openGraph.url && (
@@ -373,12 +451,13 @@ export function SeoEditor() {
 											/>
 										)}
 										{seoData.openGraph.type && (
-											<SeoField
+											<ComboBoxField
 												label="OG Type"
-												id={seoData.openGraph.type.id}
-												value={seoData.openGraph.type.content}
+												value={ogType.current}
 												placeholder="website"
-												onChange={handleFieldChange}
+												options={OG_TYPE_OPTIONS}
+												onChange={(v) => { if (ogType.id) handleFieldChange(ogType.id, v, ogType.original) }}
+												isDirty={ogType.dirty}
 											/>
 										)}
 										{seoData.openGraph.siteName && (
@@ -397,12 +476,13 @@ export function SeoEditor() {
 								{seoData.twitterCard && Object.keys(seoData.twitterCard).length > 0 && (
 									<SeoSection title="Twitter Card">
 										{seoData.twitterCard.card && (
-											<SeoField
+											<ComboBoxField
 												label="Card Type"
-												id={seoData.twitterCard.card.id}
-												value={seoData.twitterCard.card.content}
+												value={twitterCard.current}
 												placeholder="summary_large_image"
-												onChange={handleFieldChange}
+												options={TWITTER_CARD_OPTIONS}
+												onChange={(v) => { if (twitterCard.id) handleFieldChange(twitterCard.id, v, twitterCard.original) }}
+												isDirty={twitterCard.dirty}
 											/>
 										)}
 										{seoData.twitterCard.title && (
@@ -425,12 +505,17 @@ export function SeoEditor() {
 											/>
 										)}
 										{seoData.twitterCard.image && (
-											<SeoField
+											<ImageField
 												label="Twitter Image"
-												id={seoData.twitterCard.image.id}
-												value={seoData.twitterCard.image.content}
+												value={twitterImage.current}
 												placeholder="/images/twitter-image.jpg"
-												onChange={handleFieldChange}
+												onChange={(v) => { if (twitterImage.id) handleFieldChange(twitterImage.id, v, twitterImage.original) }}
+												onBrowse={() => {
+													openMediaLibraryWithCallback((url: string) => {
+														if (twitterImage.id) handleFieldChange(twitterImage.id, url, twitterImage.original)
+													})
+												}}
+												isDirty={twitterImage.dirty}
 											/>
 										)}
 										{seoData.twitterCard.site && (

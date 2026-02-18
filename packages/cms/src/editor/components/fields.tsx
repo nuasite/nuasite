@@ -111,6 +111,54 @@ export function ImageField({ label, value, placeholder, onChange, onBrowse, isDi
 }
 
 // ============================================================================
+// Color Field (color picker + hex text input)
+// ============================================================================
+
+export interface ColorFieldProps {
+	label: string
+	value: string | undefined
+	placeholder?: string
+	onChange: (value: string) => void
+	isDirty?: boolean
+	onReset?: () => void
+}
+
+export function ColorField({ label, value, placeholder, onChange, isDirty, onReset }: ColorFieldProps) {
+	const colorValue = value || '#000000'
+	// Validate hex for the native picker (must be #rrggbb)
+	const isValidHex = /^#[0-9a-fA-F]{6}$/.test(colorValue)
+	const pickerValue = isValidHex ? colorValue : '#000000'
+
+	return (
+		<div class="space-y-1.5">
+			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
+			<div class="flex gap-2">
+				<input
+					type="color"
+					value={pickerValue}
+					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+					class="w-10 h-[38px] p-0.5 bg-white/10 border border-white/20 rounded-cms-sm cursor-pointer"
+					data-cms-ui
+				/>
+				<input
+					type="text"
+					value={value ?? ''}
+					placeholder={placeholder ?? '#000000'}
+					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+					class={cn(
+						'flex-1 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
+						isDirty
+							? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
+							: 'border-white/20 focus:border-white/40 focus:ring-white/10',
+					)}
+					data-cms-ui
+				/>
+			</div>
+		</div>
+	)
+}
+
+// ============================================================================
 // Select Field (native select)
 // ============================================================================
 

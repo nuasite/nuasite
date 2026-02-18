@@ -420,6 +420,10 @@ export interface PageSeoData {
 	openGraph?: OpenGraphData
 	/** Twitter Card metadata */
 	twitterCard?: TwitterCardData
+	/** Browser theme color (meta name="theme-color") */
+	themeColor?: SeoMetaTag
+	/** Robots directives (meta name="robots") */
+	robots?: SeoMetaTag
 	/** JSON-LD structured data blocks */
 	jsonLd?: JsonLdEntry[]
 }

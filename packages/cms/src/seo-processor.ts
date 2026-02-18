@@ -215,6 +215,18 @@ function categorizeMetaTags(metaTags: SeoMetaTag[], seo: PageSeoData): void {
 			continue
 		}
 
+		// Theme color
+		if (name === 'theme-color') {
+			seo.themeColor = meta
+			continue
+		}
+
+		// Robots
+		if (name === 'robots') {
+			seo.robots = meta
+			continue
+		}
+
 		// Open Graph tags
 		if (property?.startsWith('og:')) {
 			const ogKey = property.replace('og:', '')
