@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.0](https://github.com/nuasite/nuasite/compare/v0.9.3...v0.10.0) (2026-02-18)
+
+
+### Features
+
+* **cms:** add component deselection via click and keyboard ([58c9d6b](https://github.com/nuasite/nuasite/commit/58c9d6b03882d02fc9ac4befab979c3cf7c2be37))
+* **cms:** add inbound postMessage API for parent-to-iframe deselection ([c1a1f70](https://github.com/nuasite/nuasite/commit/c1a1f708c8a3c84b146642ee215735d15ff9a68e))
+* **cms:** add selection highlight overlay for selected components ([b1b135d](https://github.com/nuasite/nuasite/commit/b1b135d7f95e8e31c2ad8d1e88d5bb9c052696d2))
+* **cms:** add specialized input types for SEO editor fields ([4b4044a](https://github.com/nuasite/nuasite/commit/4b4044aaa225cc3840b2d0754bc68d579762e982))
+
+
+### Bug Fixes
+
+* **cms:** move early return after all hooks in SEO editor ([354a927](https://github.com/nuasite/nuasite/commit/354a9279f306e6e3fc8df91eb46aa127bc5e0012))
+
 ## [0.9.3](https://github.com/nuasite/nuasite/compare/v0.9.2...v0.9.3) (2026-02-16)
 
 
