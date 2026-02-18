@@ -53,10 +53,17 @@ export function useBlockEditorHandlers({
 	const [blockEditorCursor, setBlockEditorCursor] = useState<{ x: number; y: number } | null>(null)
 
 	/**
-	 * Open block editor for a component
+	 * Open block editor for a component, or deselect if already selected
 	 */
 	const handleComponentSelect = useCallback(
 		(componentId: string, cursor: { x: number; y: number }) => {
+			// Toggle: clicking the same component deselects it
+			if (signals.currentComponentId.value === componentId) {
+				signals.setCurrentComponentId(null)
+				signals.setBlockEditorOpen(false)
+				setBlockEditorCursor(null)
+				return
+			}
 			signals.setCurrentComponentId(componentId)
 			signals.setBlockEditorOpen(true)
 			setBlockEditorCursor(cursor)

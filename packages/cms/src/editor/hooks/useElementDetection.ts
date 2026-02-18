@@ -182,6 +182,7 @@ export function useElementDetection(): OutlineState {
 
 export interface ComponentClickHandlerOptions {
 	onComponentSelect: (componentId: string, cursor: { x: number; y: number }) => void
+	onComponentDeselect?: () => void
 }
 
 /**
@@ -190,6 +191,7 @@ export interface ComponentClickHandlerOptions {
  */
 export function useComponentClickHandler({
 	onComponentSelect,
+	onComponentDeselect,
 }: ComponentClickHandlerOptions): void {
 	useEffect(() => {
 		const handleClick = (ev: MouseEvent) => {
@@ -207,7 +209,10 @@ export function useComponentClickHandler({
 			// Check for text element first
 			const textEl = getCmsElementAtPosition(ev.clientX, ev.clientY, entries)
 			if (textEl && !textEl.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)) {
-				// Let the text element handle this click
+				// Clicking a text element deselects any selected component
+				if (signals.currentComponentId.value && onComponentDeselect) {
+					onComponentDeselect()
+				}
 				return
 			}
 
@@ -229,13 +234,31 @@ export function useComponentClickHandler({
 						ev.stopPropagation()
 						onComponentSelect(componentId, { x: ev.clientX, y: ev.clientY })
 					}
+					return
 				}
+			}
+
+			// Clicking on empty space deselects any selected component
+			if (signals.currentComponentId.value && onComponentDeselect) {
+				onComponentDeselect()
+			}
+		}
+
+		// Escape key deselects the selected component
+		const handleKeyDown = (ev: KeyboardEvent) => {
+			if (ev.key === 'Escape' && signals.currentComponentId.value && onComponentDeselect) {
+				ev.preventDefault()
+				onComponentDeselect()
 			}
 		}
 
 		document.addEventListener('click', handleClick, true)
-		return () => document.removeEventListener('click', handleClick, true)
-	}, [onComponentSelect])
+		document.addEventListener('keydown', handleKeyDown)
+		return () => {
+			document.removeEventListener('click', handleClick, true)
+			document.removeEventListener('keydown', handleKeyDown)
+		}
+	}, [onComponentSelect, onComponentDeselect])
 }
 
 // Re-export utilities for backwards compatibility

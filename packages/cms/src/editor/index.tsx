@@ -227,7 +227,10 @@ const CmsUI = () => {
 		showToast: signals.showToast,
 	})
 
-	useComponentClickHandler({ onComponentSelect: handleComponentSelect })
+	useComponentClickHandler({
+		onComponentSelect: handleComponentSelect,
+		onComponentDeselect: handleBlockEditorClose,
+	})
 
 	// Editor control handlers
 	const handleEditToggle = useCallback(async () => {
