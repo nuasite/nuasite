@@ -40,10 +40,10 @@ const TWITTER_CARD_OPTIONS = [
 const ROBOTS_OPTIONS = [
 	{ value: 'index, follow', label: 'Index, Follow', description: 'Allow indexing and link following (default)' },
 	{ value: 'noindex, follow', label: 'No Index, Follow', description: 'Block indexing but follow links' },
-	{ value: 'index, nofollow', label: 'Index, No Follow', description: 'Allow indexing but don\'t follow links' },
+	{ value: 'index, nofollow', label: 'Index, No Follow', description: "Allow indexing but don't follow links" },
 	{ value: 'noindex, nofollow', label: 'No Index, No Follow', description: 'Block indexing and link following' },
 	{ value: 'noarchive', label: 'No Archive', description: 'Prevent cached copies in search results' },
-	{ value: 'nosnippet', label: 'No Snippet', description: 'Don\'t show text snippets in results' },
+	{ value: 'nosnippet', label: 'No Snippet', description: "Don't show text snippets in results" },
 	{ value: 'max-image-preview:large', label: 'Max Image Preview: Large', description: 'Allow large image previews' },
 ]
 
