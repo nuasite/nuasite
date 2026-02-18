@@ -233,6 +233,14 @@ export function SeoEditor() {
 		}
 	}, [findSeoElementById])
 
+	// Resolve pending state for specialized fields
+	const ogImage = useSeoMeta(seoData?.openGraph?.image)
+	const ogType = useSeoMeta(seoData?.openGraph?.type)
+	const twitterCard = useSeoMeta(seoData?.twitterCard?.card)
+	const twitterImage = useSeoMeta(seoData?.twitterCard?.image)
+	const themeColor = useSeoMeta(seoData?.themeColor)
+	const robots = useSeoMeta(seoData?.robots)
+
 	if (!visible) return null
 
 	const hasSeoData = seoData && (
@@ -246,14 +254,6 @@ export function SeoEditor() {
 		|| seoData.twitterCard
 		|| (seoData.favicons && seoData.favicons.length > 0)
 	)
-
-	// Resolve pending state for specialized fields
-	const ogImage = useSeoMeta(seoData?.openGraph?.image)
-	const ogType = useSeoMeta(seoData?.openGraph?.type)
-	const twitterCard = useSeoMeta(seoData?.twitterCard?.card)
-	const twitterImage = useSeoMeta(seoData?.twitterCard?.image)
-	const themeColor = useSeoMeta(seoData?.themeColor)
-	const robots = useSeoMeta(seoData?.robots)
 
 	return (
 		<div
@@ -352,7 +352,9 @@ export function SeoEditor() {
 											value={robots.current}
 											placeholder="index, follow"
 											options={ROBOTS_OPTIONS}
-											onChange={(v) => { if (robots.id) handleFieldChange(robots.id, v, robots.original) }}
+											onChange={(v) => {
+												if (robots.id) handleFieldChange(robots.id, v, robots.original)
+											}}
 											isDirty={robots.dirty}
 										/>
 									)}
@@ -361,7 +363,9 @@ export function SeoEditor() {
 											label="Theme Color"
 											value={themeColor.current}
 											placeholder="#000000"
-											onChange={(v) => { if (themeColor.id) handleFieldChange(themeColor.id, v, themeColor.original) }}
+											onChange={(v) => {
+												if (themeColor.id) handleFieldChange(themeColor.id, v, themeColor.original)
+											}}
 											isDirty={themeColor.dirty}
 										/>
 									)}
@@ -432,7 +436,9 @@ export function SeoEditor() {
 												label="OG Image"
 												value={ogImage.current}
 												placeholder="/images/og-image.jpg"
-												onChange={(v) => { if (ogImage.id) handleFieldChange(ogImage.id, v, ogImage.original) }}
+												onChange={(v) => {
+													if (ogImage.id) handleFieldChange(ogImage.id, v, ogImage.original)
+												}}
 												onBrowse={() => {
 													openMediaLibraryWithCallback((url: string) => {
 														if (ogImage.id) handleFieldChange(ogImage.id, url, ogImage.original)
@@ -456,7 +462,9 @@ export function SeoEditor() {
 												value={ogType.current}
 												placeholder="website"
 												options={OG_TYPE_OPTIONS}
-												onChange={(v) => { if (ogType.id) handleFieldChange(ogType.id, v, ogType.original) }}
+												onChange={(v) => {
+													if (ogType.id) handleFieldChange(ogType.id, v, ogType.original)
+												}}
 												isDirty={ogType.dirty}
 											/>
 										)}
@@ -481,7 +489,9 @@ export function SeoEditor() {
 												value={twitterCard.current}
 												placeholder="summary_large_image"
 												options={TWITTER_CARD_OPTIONS}
-												onChange={(v) => { if (twitterCard.id) handleFieldChange(twitterCard.id, v, twitterCard.original) }}
+												onChange={(v) => {
+													if (twitterCard.id) handleFieldChange(twitterCard.id, v, twitterCard.original)
+												}}
 												isDirty={twitterCard.dirty}
 											/>
 										)}
@@ -509,7 +519,9 @@ export function SeoEditor() {
 												label="Twitter Image"
 												value={twitterImage.current}
 												placeholder="/images/twitter-image.jpg"
-												onChange={(v) => { if (twitterImage.id) handleFieldChange(twitterImage.id, v, twitterImage.original) }}
+												onChange={(v) => {
+													if (twitterImage.id) handleFieldChange(twitterImage.id, v, twitterImage.original)
+												}}
 												onBrowse={() => {
 													openMediaLibraryWithCallback((url: string) => {
 														if (twitterImage.id) handleFieldChange(twitterImage.id, url, twitterImage.original)
