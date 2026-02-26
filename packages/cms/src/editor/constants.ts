@@ -1,7 +1,11 @@
+import { version } from '../../package.json'
+
 /**
  * Constants for the CMS editor
  * Centralizes magic numbers and configuration values
  */
+
+export const CMS_VERSION = version
 
 /**
  * Z-index layers for CMS UI elements.

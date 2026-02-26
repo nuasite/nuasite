@@ -1,5 +1,6 @@
 import type { ComponentChildren, FunctionComponent } from 'preact'
-import { useState } from 'preact/hooks'
+import { useRef, useState } from 'preact/hooks'
+import { CMS_VERSION } from '../constants'
 import { cn } from '../lib/cn'
 import * as signals from '../signals'
 import { showConfirmDialog } from '../signals'
@@ -104,6 +105,8 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const isPreviewingMarkdown = signals.isMarkdownPreview.value
 	const currentPageCollection = signals.currentPageCollection.value
 	const [isMenuOpen, setIsMenuOpen] = useState(false)
+	const [showVersion, setShowVersion] = useState(false)
+	const versionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	if (isPreviewingMarkdown) return null
 
@@ -312,11 +315,24 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 										e.stopPropagation()
 										setIsMenuOpen(!isMenuOpen)
 									}}
+									onDblClick={(e) => {
+										e.stopPropagation()
+										setIsMenuOpen(false)
+										setShowVersion(true)
+										if (versionTimeoutRef.current) clearTimeout(versionTimeoutRef.current)
+										versionTimeoutRef.current = setTimeout(() => setShowVersion(false), 3000)
+									}}
 									class="w-10 h-10 rounded-full bg-cms-primary flex items-center justify-center cursor-pointer transition-all duration-150 hover:bg-cms-primary-hover"
 									aria-label="Menu"
 								>
 									<span class="w-3 h-3 rounded-full bg-black" />
 								</button>
+
+								{showVersion && (
+									<div class="absolute bottom-full right-0 mb-2 px-3.5 py-2 text-sm text-white/70 bg-cms-dark rounded-cms-lg shadow-lg border border-white/10 whitespace-nowrap animate-[fadeIn_150ms_ease-out]">
+										v{CMS_VERSION}
+									</div>
+								)}
 
 								{isMenuOpen && (
 									<>
