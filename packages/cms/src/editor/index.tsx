@@ -135,7 +135,44 @@ const CmsUI = () => {
 		}
 	}, [])
 
-	// Send selected element info to parent window via postMessage (when inside an iframe)
+	// Send select-mode click selection to parent window via postMessage
+	const prevSelectModeRef = useRef<string | null>(null)
+	useEffect(() => {
+		const selected = signals.selectModeElement.value
+		const id = selected?.id ?? null
+		if (id === prevSelectModeRef.current) return
+		prevSelectModeRef.current = id
+
+		if (selected) {
+			const manifestData = signals.manifest.value
+			const isComponent = selected.type === 'component'
+			const cmsId = isComponent ? null : selected.id
+			const componentId = isComponent ? selected.id : selected.element.getAttribute('data-cms-component-id') ?? undefined
+			const entry = cmsId ? manifestData.entries[cmsId] : undefined
+			const instance = componentId ? manifestData.components?.[componentId] : undefined
+			const rect = selected.element.getBoundingClientRect()
+
+			const msg: CmsElementSelectedMessage = {
+				type: 'cms-element-selected',
+				element: buildSelectedElement({
+					cmsId,
+					isComponent,
+					componentName: isComponent ? selected.label : undefined,
+					componentId,
+					tagName: selected.element.tagName.toLowerCase(),
+					rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+					entry,
+					instance,
+				}),
+			}
+			postToParent(msg)
+		} else {
+			const msg: CmsElementDeselectedMessage = { type: 'cms-element-deselected' }
+			postToParent(msg)
+		}
+	})
+
+	// Send hovered element info to parent window via postMessage (when inside an iframe)
 	const prevOutlineRef = useRef<{ cmsId: string | null; isComponent: boolean }>({ cmsId: null, isComponent: false })
 	useEffect(() => {
 		const prev = prevOutlineRef.current
