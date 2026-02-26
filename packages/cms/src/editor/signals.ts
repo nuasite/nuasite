@@ -219,6 +219,20 @@ export const showingOriginal = signal(false)
 export const currentEditingId = signal<string | null>(null)
 export const currentComponentId = signal<string | null>(null)
 
+/** Selected element in select mode (any CMS element — text, image, or component) */
+export interface SelectedElement {
+	element: HTMLElement
+	/** data-cms-id, data-cms-component-id, or data-cms-img value */
+	id: string
+	label: string
+	type: 'text' | 'image' | 'component'
+}
+export const selectModeElement = signal<SelectedElement | null>(null)
+
+export function setSelectModeElement(el: SelectedElement | null): void {
+	selectModeElement.value = el
+}
+
 // Complex state - use signals wrapping the full object for atomicity
 export const pendingChanges = signal<Map<string, PendingChange>>(new Map())
 export const pendingComponentChanges = signal<Map<string, ComponentInstance>>(

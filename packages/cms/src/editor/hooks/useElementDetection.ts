@@ -3,6 +3,7 @@ import { CSS, LAYOUT, TIMING } from '../constants'
 import { getCmsElementAtPosition, getComponentAtPosition, isNearElementEdge } from '../dom'
 import { getComponentInstance } from '../manifest'
 import * as signals from '../signals'
+import type { SelectedElement } from '../signals'
 import { isEventOnCmsUI, usePositionTracking } from './utils'
 
 export interface OutlineState {
@@ -24,6 +25,114 @@ const INITIAL_STATE: OutlineState = {
 	tagName: undefined,
 	element: null,
 	cmsId: null,
+}
+
+/**
+ * Build a component-style outline state for a given component element.
+ */
+function buildComponentOutline(componentEl: HTMLElement, manifest: any): OutlineState {
+	const componentId = componentEl.getAttribute(CSS.COMPONENT_ID_ATTRIBUTE)
+	const instance = componentId ? getComponentInstance(manifest, componentId) : null
+	return {
+		visible: true,
+		rect: componentEl.getBoundingClientRect(),
+		isComponent: true,
+		componentName: instance?.componentName,
+		tagName: componentEl.tagName.toLowerCase(),
+		element: componentEl,
+		cmsId: null,
+	}
+}
+
+/**
+ * Check if an element is currently selected (either as component or select-mode element).
+ */
+function isElementSelected(el: HTMLElement): boolean {
+	// Check component selection
+	const componentId = el.getAttribute(CSS.COMPONENT_ID_ATTRIBUTE)
+	if (componentId && componentId === signals.currentComponentId.value) return true
+
+	// Check select-mode selection
+	const selectEl = signals.selectModeElement.value
+	if (selectEl && selectEl.element === el) return true
+
+	return false
+}
+
+/**
+ * Resolve a CMS element to a SelectedElement descriptor for select mode.
+ */
+function resolveSelectedElement(el: HTMLElement, manifest: any): SelectedElement | null {
+	// Component element
+	const componentId = el.getAttribute(CSS.COMPONENT_ID_ATTRIBUTE)
+	if (componentId) {
+		const instance = getComponentInstance(manifest, componentId)
+		return {
+			element: el,
+			id: componentId,
+			label: instance?.componentName ?? el.tagName.toLowerCase(),
+			type: 'component',
+		}
+	}
+
+	// Image element
+	if (el.hasAttribute('data-cms-img')) {
+		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE) ?? el.getAttribute('data-cms-img') ?? ''
+		return {
+			element: el,
+			id: cmsId,
+			label: el.getAttribute('alt') || 'Image',
+			type: 'image',
+		}
+	}
+
+	// Background image element
+	if (el.hasAttribute('data-cms-bg-img')) {
+		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE) ?? el.getAttribute('data-cms-bg-img') ?? ''
+		return {
+			element: el,
+			id: cmsId,
+			label: 'Background Image',
+			type: 'image',
+		}
+	}
+
+	// Text/CMS element
+	const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
+	if (cmsId) {
+		const tagName = el.tagName.toLowerCase()
+		return {
+			element: el,
+			id: cmsId,
+			label: tagName,
+			type: 'text',
+		}
+	}
+
+	return null
+}
+
+/**
+ * Find any CMS element at position (text, image, bg-image, or component).
+ * Returns the deepest/most specific CMS element at the given point.
+ */
+function getAnyCmsElementAtPosition(x: number, y: number): HTMLElement | null {
+	const elementsAtPoint = document.elementsFromPoint(x, y)
+	for (const el of elementsAtPoint) {
+		if (!(el instanceof HTMLElement)) continue
+		// Skip CMS UI elements
+		if (el.hasAttribute(CSS.UI_ATTRIBUTE) || el.closest(`[${CSS.UI_ATTRIBUTE}]`)) continue
+		// Any element with a CMS attribute
+		if (
+			el.hasAttribute(CSS.ID_ATTRIBUTE)
+			|| el.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)
+			|| el.hasAttribute('data-cms-img')
+			|| el.hasAttribute('data-cms-bg-img')
+		) {
+			return el
+		}
+	}
+	return null
 }
 
 /**
@@ -53,6 +162,22 @@ export function useElementDetection(): OutlineState {
 		handlePositionChange,
 		outlineState.visible,
 	)
+
+	// Hide hover outline immediately when a component is selected
+	const currentComponentId = signals.currentComponentId.value
+	useEffect(() => {
+		if (currentComponentId) {
+			setOutlineState(INITIAL_STATE)
+		}
+	}, [currentComponentId])
+
+	// Hide hover outline immediately when a select-mode element is selected
+	const selectModeElement = signals.selectModeElement.value
+	useEffect(() => {
+		if (selectModeElement) {
+			setOutlineState(INITIAL_STATE)
+		}
+	}, [selectModeElement])
 
 	// Setup hover highlight for both elements and components
 	useEffect(() => {
@@ -89,10 +214,48 @@ export function useElementDetection(): OutlineState {
 			const manifest = signals.manifest.value
 			const entries = manifest.entries
 
+			// ── Select mode: show component-style outline for any CMS element ──
+			if (selectMode) {
+				const cmsEl = getAnyCmsElementAtPosition(ev.clientX, ev.clientY)
+				if (cmsEl) {
+					if (isElementSelected(cmsEl)) {
+						setOutlineState(INITIAL_STATE)
+						return
+					}
+					if (hideTimeoutRef.current) {
+						clearTimeout(hideTimeoutRef.current)
+						hideTimeoutRef.current = null
+					}
+					const resolved = resolveSelectedElement(cmsEl, manifest)
+					const rect = cmsEl.getBoundingClientRect()
+					setOutlineState({
+						visible: true,
+						rect,
+						isComponent: true,
+						componentName: resolved?.label,
+						tagName: cmsEl.tagName.toLowerCase(),
+						element: cmsEl,
+						cmsId: null,
+					})
+					return
+				}
+				setOutlineState(INITIAL_STATE)
+				return
+			}
+
+			// ── Edit mode: standard detection ──
+
 			// Use the improved elementsFromPoint-based detection
 			const cmsEl = getCmsElementAtPosition(ev.clientX, ev.clientY, entries)
 
 			if (cmsEl && !cmsEl.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)) {
+				// Hide hover outline if this element is inside the selected component
+				const selectedId = signals.currentComponentId.value
+				if (selectedId && cmsEl.closest(`[${CSS.COMPONENT_ID_ATTRIBUTE}="${selectedId}"]`)) {
+					setOutlineState(INITIAL_STATE)
+					return
+				}
+
 				// Found a text-editable element - cancel any pending hide
 				if (hideTimeoutRef.current) {
 					clearTimeout(hideTimeoutRef.current)
@@ -115,21 +278,21 @@ export function useElementDetection(): OutlineState {
 			// Check for component at position
 			const componentEl = getComponentAtPosition(ev.clientX, ev.clientY)
 			if (componentEl) {
-				const rect = componentEl.getBoundingClientRect()
-				const nearEdge = isNearElementEdge(
-					ev.clientX,
-					ev.clientY,
-					rect,
-					LAYOUT.COMPONENT_EDGE_THRESHOLD,
-				)
+				// Hide hover outline if this component is already selected
+				const componentId = componentEl.getAttribute(CSS.COMPONENT_ID_ATTRIBUTE)
+				if (componentId && componentId === signals.currentComponentId.value) {
+					setOutlineState(INITIAL_STATE)
+					return
+				}
 
-				if (ev.altKey || nearEdge) {
+				const rect = componentEl.getBoundingClientRect()
+
+				if (ev.altKey || isNearElementEdge(ev.clientX, ev.clientY, rect, LAYOUT.COMPONENT_EDGE_THRESHOLD)) {
 					// Cancel any pending hide
 					if (hideTimeoutRef.current) {
 						clearTimeout(hideTimeoutRef.current)
 						hideTimeoutRef.current = null
 					}
-					const componentId = componentEl.getAttribute(CSS.COMPONENT_ID_ATTRIBUTE)
 					const instance = componentId ? getComponentInstance(manifest, componentId) : null
 
 					setOutlineState({
@@ -205,11 +368,29 @@ export function useComponentClickHandler({
 			const manifest = signals.manifest.value
 			const entries = manifest.entries
 
-			// Normal editing mode behavior
+			// ── Select mode: select any CMS element ──
+			if (selectMode) {
+				const cmsEl = getAnyCmsElementAtPosition(ev.clientX, ev.clientY)
+				if (cmsEl) {
+					const resolved = resolveSelectedElement(cmsEl, manifest)
+					if (resolved) {
+						ev.preventDefault()
+						ev.stopPropagation()
+						signals.setSelectModeElement(resolved)
+						return
+					}
+				}
+				// Clicking empty space deselects
+				signals.setSelectModeElement(null)
+				return
+			}
+
+			// ── Edit mode: standard behavior ──
+
 			// Check for text element first
 			const textEl = getCmsElementAtPosition(ev.clientX, ev.clientY, entries)
 			if (textEl && !textEl.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)) {
-				// Clicking a text element deselects any selected component
+				// In edit mode, clicking a text element deselects any selected component
 				if (signals.currentComponentId.value && onComponentDeselect) {
 					onComponentDeselect()
 				}
@@ -219,6 +400,7 @@ export function useComponentClickHandler({
 			// Check for component click
 			const componentEl = getComponentAtPosition(ev.clientX, ev.clientY)
 			if (componentEl) {
+				// In edit mode, require edge proximity or Alt key
 				const rect = componentEl.getBoundingClientRect()
 				const nearEdge = isNearElementEdge(
 					ev.clientX,
@@ -244,11 +426,16 @@ export function useComponentClickHandler({
 			}
 		}
 
-		// Escape key deselects the selected component
+		// Escape key deselects
 		const handleKeyDown = (ev: KeyboardEvent) => {
-			if (ev.key === 'Escape' && signals.currentComponentId.value && onComponentDeselect) {
-				ev.preventDefault()
-				onComponentDeselect()
+			if (ev.key === 'Escape') {
+				if (signals.selectModeElement.value) {
+					ev.preventDefault()
+					signals.setSelectModeElement(null)
+				} else if (signals.currentComponentId.value && onComponentDeselect) {
+					ev.preventDefault()
+					onComponentDeselect()
+				}
 			}
 		}
 

@@ -22,7 +22,7 @@ import { TextStyleToolbar } from './components/text-style-toolbar'
 import { ToastContainer } from './components/toast/toast-container'
 import { Toolbar } from './components/toolbar'
 import { getConfig } from './config'
-import { logDebug } from './dom'
+import { disableAllInteractiveElements, enableAllInteractiveElements, logDebug } from './dom'
 import {
 	discardAllChanges,
 	dismissDeploymentStatus,
@@ -314,7 +314,21 @@ const CmsUI = () => {
 	}, [])
 
 	const handleSelectElementToggle = useCallback(() => {
-		signals.isSelectMode.value = !signals.isSelectMode.value
+		const entering = !signals.isSelectMode.value
+		signals.isSelectMode.value = entering
+		// Clear select-mode selection when leaving
+		if (!entering) {
+			signals.setSelectModeElement(null)
+		}
+		// Disable/enable links and interactive elements in select mode
+		// (skip if already in edit mode, which handles its own disabling)
+		if (!signals.isEditing.value) {
+			if (entering) {
+				disableAllInteractiveElements()
+			} else {
+				enableAllInteractiveElements()
+			}
+		}
 	}, [])
 
 	// Color toolbar handlers
@@ -450,10 +464,6 @@ const CmsUI = () => {
 				<EditableHighlights visible={showEditableHighlights && isEditing} />
 			</ErrorBoundary>
 
-			<ErrorBoundary componentName="Selection Highlight">
-				<SelectionHighlight />
-			</ErrorBoundary>
-
 			<ErrorBoundary componentName="Outline">
 				<Outline
 					visible={outlineState.visible}
@@ -468,6 +478,10 @@ const CmsUI = () => {
 					onAttributeClick={handleOutlineAttributeClick}
 					onTextStyleChange={handleOutlineTextStyleChange}
 				/>
+			</ErrorBoundary>
+
+			<ErrorBoundary componentName="Selection Highlight">
+				<SelectionHighlight />
 			</ErrorBoundary>
 
 			<ErrorBoundary componentName="ImageOverlay">

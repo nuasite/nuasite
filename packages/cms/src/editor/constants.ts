@@ -14,9 +14,11 @@ export const CMS_VERSION = version
  */
 export const Z_INDEX = {
 	/** Highlight overlay for hovered elements */
-	HIGHLIGHT: 2147483645,
-	/** Overlay backdrop for modals */
-	OVERLAY: 2147483646,
+	HIGHLIGHT: 2147483644,
+	/** Hover outline for elements/components */
+	OVERLAY: 2147483645,
+	/** Persistent selection highlight for selected component */
+	SELECTION: 2147483646,
 	/** Modal panels (block editor, AI chat) */
 	MODAL: 2147483647,
 	/** Toast notifications - always on top */

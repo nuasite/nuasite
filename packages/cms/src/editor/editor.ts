@@ -332,7 +332,10 @@ export function stopEditMode(onStateChange?: () => void): void {
 	signals.setEditing(false)
 	saveEditingState(false)
 	signals.setShowingOriginal(false)
-	enableAllInteractiveElements()
+	// Only re-enable interactive elements if select mode is not active
+	if (!signals.isSelectMode.value) {
+		enableAllInteractiveElements()
+	}
 	cleanupHighlightSystem()
 	onStateChange?.()
 

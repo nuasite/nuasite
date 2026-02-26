@@ -5,7 +5,8 @@ import { getComponentInstance } from '../manifest'
 import * as signals from '../signals'
 
 /**
- * Renders a persistent highlight around the currently selected component.
+ * Renders a persistent highlight around the currently selected element.
+ * Supports both component selection (edit mode) and any CMS element selection (select mode).
  * Uses Shadow DOM to avoid style conflicts with page content.
  */
 export function SelectionHighlight() {
@@ -15,19 +16,28 @@ export function SelectionHighlight() {
 	const labelRef = useRef<HTMLDivElement | null>(null)
 
 	const componentId = signals.currentComponentId.value
+	const selectModeEl = signals.selectModeElement.value
 	const isEditing = signals.isEditing.value
 	const isSelectMode = signals.isSelectMode.value
-	const visible = !!componentId && (isEditing || isSelectMode)
 
-	// Find the DOM element for the selected component
-	const element = componentId
-		? (document.querySelector(`[data-cms-component-id="${componentId}"]`) as HTMLElement | null)
-		: null
+	// Determine which element to highlight
+	const hasComponentSelection = !!componentId && (isEditing || isSelectMode)
+	const hasSelectModeSelection = isSelectMode && !!selectModeEl
+	const visible = hasComponentSelection || hasSelectModeSelection
 
-	// Get component name from manifest
-	const manifest = signals.manifest.value
-	const instance = componentId ? getComponentInstance(manifest, componentId) : null
-	const componentName = instance?.componentName
+	// Resolve the DOM element and label
+	let element: HTMLElement | null = null
+	let label: string = 'Component'
+
+	if (hasSelectModeSelection && selectModeEl) {
+		element = selectModeEl.element
+		label = selectModeEl.label
+	} else if (hasComponentSelection && componentId) {
+		element = document.querySelector(`[data-cms-component-id="${componentId}"]`) as HTMLElement | null
+		const manifest = signals.manifest.value
+		const instance = getComponentInstance(manifest, componentId)
+		label = instance?.componentName ?? 'Component'
+	}
 
 	// Initialize Shadow DOM once
 	useEffect(() => {
@@ -41,7 +51,7 @@ export function SelectionHighlight() {
 					top: 0;
 					left: 0;
 					pointer-events: none;
-					z-index: ${Z_INDEX.OVERLAY};
+					z-index: ${Z_INDEX.SELECTION};
 				}
 
 				.selection-overlay {
@@ -113,8 +123,12 @@ export function SelectionHighlight() {
 
 	// Handle deselection
 	const handleDeselect = useCallback(() => {
-		signals.setCurrentComponentId(null)
-		signals.setBlockEditorOpen(false)
+		if (signals.selectModeElement.value) {
+			signals.setSelectModeElement(null)
+		} else {
+			signals.setCurrentComponentId(null)
+			signals.setBlockEditorOpen(false)
+		}
 	}, [])
 
 	// Track position on scroll/resize
@@ -160,11 +174,10 @@ export function SelectionHighlight() {
 		}
 
 		// Build label content
-		const name = componentName ?? 'Component'
 		labelRef.current.innerHTML = ''
 
 		const nameSpan = document.createElement('span')
-		nameSpan.textContent = name
+		nameSpan.textContent = label
 		labelRef.current.appendChild(nameSpan)
 
 		const deselectBtn = document.createElement('button')
@@ -180,7 +193,7 @@ export function SelectionHighlight() {
 		// Set initial position
 		const rect = element.getBoundingClientRect()
 		handlePositionChange(rect)
-	}, [visible, element, componentName, handleDeselect, handlePositionChange])
+	}, [visible, element, label, handleDeselect, handlePositionChange])
 
 	return (
 		<div
@@ -193,7 +206,7 @@ export function SelectionHighlight() {
 				width: 0,
 				height: 0,
 				pointerEvents: 'none',
-				zIndex: Z_INDEX.OVERLAY,
+				zIndex: Z_INDEX.SELECTION,
 			}}
 		/>
 	)
