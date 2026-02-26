@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/nuasite/nuasite/compare/v0.11.0...v0.11.1) (2026-02-26)
+
+
+### Bug Fixes
+
+* **cms:** send select-mode element selection to parent via postMessage ([aff72bd](https://github.com/nuasite/nuasite/commit/aff72bdc5e5f2c6a5f0a03c875aa5c952fc2babf))
+
 ## [0.11.0](https://github.com/nuasite/nuasite/compare/v0.10.0...v0.11.0) (2026-02-26)
 
 
