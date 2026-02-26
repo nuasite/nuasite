@@ -14,7 +14,7 @@
 		"directory": "packages/astro-cms"
 	},
 	"license": "Apache-2.0",
-	"version": "0.11.0",
+	"version": "0.11.1",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
 	"type": "module",
