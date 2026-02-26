@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/nuasite/nuasite/compare/v0.10.0...v0.11.0) (2026-02-26)
+
+
+### Features
+
+* **cms:** add select mode element selection with hover and click detection ([5a65082](https://github.com/nuasite/nuasite/commit/5a650822f245bbe29bc3835e1657382635b4f7f1))
+* **cms:** add version display Easter egg on toolbar double-click ([ff334a2](https://github.com/nuasite/nuasite/commit/ff334a2199ddee160c83c134011a561f1903bab2))
+
 ## [0.10.0](https://github.com/nuasite/nuasite/compare/v0.9.3...v0.10.0) (2026-02-18)
 
 
