@@ -1,0 +1,180 @@
+---
+import ReservationAvailability from '@nuasite/components/ReservationAvailability.astro'
+import ReservationCheckout from '@nuasite/components/ReservationCheckout.astro'
+import ReservationStatus from '@nuasite/components/ReservationStatus.astro'
+---
+
+<!-- Mock fetch before component module scripts run -->
+<script is:inline>
+(function () {
+	var realFetch = window.fetch
+	var mocks = {
+		'/api/demo/availability': {
+			products: [
+				{
+					id: 'studio-a-10am',
+					name: 'Studio A — 10:00 AM',
+					price: 75,
+					currency: 'USD',
+					timeSlots: [{ id: 'ts-1', startTime: '10:00', endTime: '11:00', available: true, remainingCapacity: 3 }],
+				},
+				{
+					id: 'studio-a-1130am',
+					name: 'Studio A — 11:30 AM',
+					price: 75,
+					currency: 'USD',
+					timeSlots: [{ id: 'ts-2', startTime: '11:30', endTime: '12:30', available: true, remainingCapacity: 1 }],
+				},
+				{
+					id: 'studio-a-1pm',
+					name: 'Studio A — 1:00 PM',
+					price: 75,
+					currency: 'USD',
+					timeSlots: [{ id: 'ts-3', startTime: '13:00', endTime: '14:00', available: false, remainingCapacity: 0 }],
+				},
+			],
+		},
+		'/api/demo/status': {
+			booking: {
+				id: 'BK-4821',
+				date: 'Mar 15, 2026',
+				time: '10:00 AM',
+				studio: 'Studio A',
+				status: 'confirmed',
+			},
+		},
+	}
+	window.fetch = function (input, init) {
+		var url = typeof input === 'string' ? input : input.url || input.toString()
+		var path = url.split('?')[0]
+		if (mocks[path]) {
+			return Promise.resolve(
+				new Response(JSON.stringify(mocks[path]), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				}),
+			)
+		}
+		return realFetch.apply(this, arguments)
+	}
+})()
+</script>
+
+<div class="space-y-8">
+	<p class="text-sm text-slate-300">
+		Three headless components that cover the full reservation flow — <code class="rounded border border-slate-800 bg-slate-900 px-1 py-0.5 text-xs">Availability</code>,
+		<code class="rounded border border-slate-800 bg-slate-900 px-1 py-0.5 text-xs">Checkout</code>, and
+		<code class="rounded border border-slate-800 bg-slate-900 px-1 py-0.5 text-xs">Status</code>.
+	</p>
+
+	<div class="grid gap-6 lg:grid-cols-3">
+		<!-- Availability -->
+		<div class="space-y-3">
+			<div class="flex items-center gap-2">
+				<span class="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-500/20 text-[10px] font-bold text-indigo-300">1</span>
+				<h4 class="text-sm font-semibold text-white">Availability</h4>
+			</div>
+			<div class="rounded-xl border border-slate-700 bg-slate-950/80 p-4">
+				<ReservationAvailability action="/api/demo/availability">
+					<div class="space-y-2">
+						<div class="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-900 px-3 py-2">
+							<span class="text-sm text-slate-200">10:00 AM</span>
+							<span class="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-medium text-emerald-300">Available</span>
+						</div>
+						<div class="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-900 px-3 py-2">
+							<span class="text-sm text-slate-200">11:30 AM</span>
+							<span class="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-medium text-emerald-300">Available</span>
+						</div>
+						<div class="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 opacity-50">
+							<span class="text-sm text-slate-400">1:00 PM</span>
+							<span class="rounded-full bg-slate-500/15 border border-slate-600 px-2 py-0.5 text-[10px] font-medium text-slate-400">Full</span>
+						</div>
+					</div>
+				</ReservationAvailability>
+			</div>
+		</div>
+
+		<!-- Checkout -->
+		<div class="space-y-3">
+			<div class="flex items-center gap-2">
+				<span class="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-500/20 text-[10px] font-bold text-indigo-300">2</span>
+				<h4 class="text-sm font-semibold text-white">Checkout</h4>
+			</div>
+			<div class="rounded-xl border border-slate-700 bg-slate-950/80 p-4">
+				<ReservationCheckout action="/api/demo/checkout">
+					<input type="hidden" name="productId" value="demo-slot-1" />
+					<div class="space-y-3">
+						<div class="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2">
+							<p class="text-xs text-indigo-300">Selected slot</p>
+							<p class="text-sm font-medium text-white">10:00 AM — Studio A</p>
+						</div>
+						<label class="block text-sm font-medium text-slate-200">
+							Name
+							<input
+								class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+								type="text"
+								name="name"
+								placeholder="Jane Doe"
+							/>
+						</label>
+						<label class="block text-sm font-medium text-slate-200">
+							Email
+							<input
+								class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+								type="email"
+								name="email"
+								placeholder="jane@example.com"
+							/>
+						</label>
+						<button
+							type="submit"
+							class="w-full rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300"
+						>
+							Confirm booking
+						</button>
+					</div>
+				</ReservationCheckout>
+			</div>
+		</div>
+
+		<!-- Status -->
+		<div class="space-y-3">
+			<div class="flex items-center gap-2">
+				<span class="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-500/20 text-[10px] font-bold text-indigo-300">3</span>
+				<h4 class="text-sm font-semibold text-white">Status</h4>
+			</div>
+			<div class="rounded-xl border border-slate-700 bg-slate-950/80 p-4">
+				<ReservationStatus action="/api/demo/status">
+					<div class="space-y-3">
+						<div class="flex items-center gap-2">
+							<svg class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							<span class="text-sm font-semibold text-emerald-300">Confirmed</span>
+						</div>
+						<div class="rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm text-slate-300 space-y-1">
+							<p><span class="text-slate-500">Booking:</span> #BK-4821</p>
+							<p><span class="text-slate-500">Date:</span> Mar 15, 2026</p>
+							<p><span class="text-slate-500">Time:</span> 10:00 AM</p>
+							<p><span class="text-slate-500">Studio:</span> Studio A</p>
+						</div>
+					</div>
+				</ReservationStatus>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Force status component into loaded state (it reads booking_id from the URL which won't exist in playground) -->
+<script>
+	customElements.whenDefined('nua-reservation-status').then(() => {
+		requestAnimationFrame(() => {
+			const el = document.querySelector('nua-reservation-status')
+			if (!el) return
+			el.dataset.state = 'loaded'
+			el.querySelector('[data-status="loading"]')?.classList.add('hidden')
+			el.querySelector('[data-status="loaded"]')?.classList.remove('hidden')
+			el.querySelector('[data-status="error"]')?.classList.add('hidden')
+		})
+	})
+</script>

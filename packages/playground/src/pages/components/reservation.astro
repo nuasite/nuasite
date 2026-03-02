@@ -1,0 +1,166 @@
+---
+import DocLayout from '../../components/DocLayout.astro'
+import PageHeader from '../../components/PageHeader.astro'
+import SectionHeading from '../../components/SectionHeading.astro'
+import CodeBlock from '../../components/CodeBlock.astro'
+import ConfigTable from '../../components/ConfigTable.astro'
+import ReservationPreview from '../../components/ReservationPreview.astro'
+
+const availabilityProps = [
+	{ name: 'reservationId', required: true, type: 'string', description: 'Unique identifier wiring the widget to your _nua endpoint. Either this or action is required.' },
+	{ name: 'action', type: 'string', default: '/_nua/reservation/availability/{reservationId}', description: 'Override the default availability endpoint.' },
+	{ name: 'loadingMessage', type: 'string', default: '"Loading availability..."', description: 'Message shown while fetching availability data.' },
+	{ name: 'errorMessage', type: 'string', default: '"Failed to load availability."', description: 'Message shown when the availability request fails.' },
+	{ name: 'pollInterval', type: 'number', description: 'Interval in milliseconds to auto-refresh availability. Omit to disable polling.' },
+]
+
+const checkoutProps = [
+	{ name: 'reservationId', required: true, type: 'string', description: 'Unique identifier wiring the widget to your _nua endpoint. Either this or action is required.' },
+	{ name: 'action', type: 'string', default: '/_nua/reservation/checkout/{reservationId}', description: 'Override the default checkout endpoint.' },
+	{ name: 'submittingMessage', type: 'string', default: '"Processing..."', description: 'Text shown on the submit button while the form posts.' },
+	{ name: 'errorMessage', type: 'string', default: '"Something went wrong. Please try again."', description: 'Generic error message shown when checkout fails.' },
+	{ name: 'unavailableMessage', type: 'string', default: '"This product is no longer available."', description: 'Message shown when no productId is present on submit.' },
+]
+
+const statusProps = [
+	{ name: 'reservationId', required: true, type: 'string', description: 'Unique identifier wiring the widget to your _nua endpoint. Either this or action is required.' },
+	{ name: 'action', type: 'string', default: '/_nua/reservation/status/{reservationId}', description: 'Override the default status endpoint.' },
+	{ name: 'loadingMessage', type: 'string', default: '"Loading booking details..."', description: 'Message shown while fetching booking status.' },
+	{ name: 'errorMessage', type: 'string', default: '"Failed to load booking details."', description: 'Message shown when the status request fails.' },
+	{ name: 'missingBookingMessage', type: 'string', default: '"No booking found."', description: 'Shown when no booking_id query parameter is present.' },
+	{ name: 'notFoundMessage', type: 'string', default: '"Booking not found."', description: 'Shown when the server returns a 404 for the booking.' },
+]
+---
+
+<DocLayout title="Reservation Components | Nua Playground" description="Headless reservation flow — availability, checkout, and status — built as progressive Astro web components.">
+	<PageHeader
+		badge="Component"
+		title="Reservation"
+		description="Three headless components that cover the full reservation flow — browse availability, submit a booking, and display confirmation status."
+	/>
+
+	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
+
+		<section class="space-y-8">
+			<SectionHeading title="Live preview" id="preview" />
+			<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-8">
+				<ReservationPreview />
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="How it works"
+				description="Each component is a custom element that handles its own data fetching, state management, and event dispatching. Slot your own markup inside — no imposed styles."
+				id="how-it-works"
+			/>
+			<div class="grid gap-6 sm:grid-cols-3">
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">1</div>
+					<h4 class="text-sm font-semibold text-white">Availability</h4>
+					<p class="text-sm text-slate-400">Fetches products and time slots from your endpoint, shows loading/error states, and emits an <code class="text-xs">availability:loaded</code> event with the data.</p>
+				</div>
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">2</div>
+					<h4 class="text-sm font-semibold text-white">Checkout</h4>
+					<p class="text-sm text-slate-400">Wraps a standard POST form with submit-state management, productId validation, and a button disabled state while processing.</p>
+				</div>
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">3</div>
+					<h4 class="text-sm font-semibold text-white">Status</h4>
+					<p class="text-sm text-slate-400">Reads the <code class="text-xs">booking_id</code> query parameter, fetches booking details, and emits a <code class="text-xs">status:loaded</code> event.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Usage" id="usage" />
+			<div class="space-y-6">
+				<CodeBlock
+					filename="src/pages/book.astro"
+					code={`---
+import ReservationAvailability from '@nuasite/components/ReservationAvailability.astro'
+import ReservationCheckout from '@nuasite/components/ReservationCheckout.astro'
+---
+
+<ReservationAvailability reservationId="studio-a" pollInterval={30000}>
+  <!-- Slot content rendered when availability loads -->
+  <div id="slots"></div>
+</ReservationAvailability>
+
+<ReservationCheckout reservationId="studio-a">
+  <input type="hidden" name="productId" id="selected-slot" />
+  <input type="text" name="name" placeholder="Your name" required />
+  <input type="email" name="email" placeholder="Email" required />
+  <button type="submit">Book now</button>
+</ReservationCheckout>`}
+				/>
+				<CodeBlock
+					filename="src/pages/booking-confirmed.astro"
+					code={`---
+import ReservationStatus from '@nuasite/components/ReservationStatus.astro'
+---
+
+<ReservationStatus reservationId="studio-a">
+  <!-- Slot content rendered when booking details load -->
+  <div id="booking-details"></div>
+</ReservationStatus>
+
+<script>
+  document.addEventListener('status:loaded', (e) => {
+    const { booking } = e.detail
+    const el = document.getElementById('booking-details')
+    el.textContent = 'Booking ' + booking.id + ' confirmed for ' + booking.date
+  })
+</script>`}
+				/>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Props reference" id="props" />
+			<div class="space-y-8">
+				<ConfigTable title="ReservationAvailability Props" rows={availabilityProps} />
+				<ConfigTable title="ReservationCheckout Props" rows={checkoutProps} />
+				<ConfigTable title="ReservationStatus Props" rows={statusProps} />
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="Events"
+				description="Each component dispatches bubbling custom events you can listen to from any ancestor."
+				id="events"
+			/>
+			<div class="overflow-x-auto rounded-xl border border-slate-800">
+				<table class="w-full text-sm">
+					<thead>
+						<tr class="border-b border-slate-800 bg-slate-950/80">
+							<th class="px-4 py-3 text-left font-semibold text-slate-300">Component</th>
+							<th class="px-4 py-3 text-left font-semibold text-slate-300">Event</th>
+							<th class="px-4 py-3 text-left font-semibold text-slate-300">Detail</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-slate-800/60">
+						<tr>
+							<td class="px-4 py-3 text-slate-400">Availability</td>
+							<td class="px-4 py-3"><code class="rounded bg-slate-900 px-1.5 py-0.5 text-xs text-indigo-300">availability:loaded</code></td>
+							<td class="px-4 py-3 text-slate-400"><code class="text-xs">{`{ products: ReservationProduct[] }`}</code></td>
+						</tr>
+						<tr>
+							<td class="px-4 py-3 text-slate-400">Checkout</td>
+							<td class="px-4 py-3"><code class="rounded bg-slate-900 px-1.5 py-0.5 text-xs text-indigo-300">checkout:error</code></td>
+							<td class="px-4 py-3 text-slate-400"><code class="text-xs">{`{ message: string }`}</code></td>
+						</tr>
+						<tr>
+							<td class="px-4 py-3 text-slate-400">Status</td>
+							<td class="px-4 py-3"><code class="rounded bg-slate-900 px-1.5 py-0.5 text-xs text-indigo-300">status:loaded</code></td>
+							<td class="px-4 py-3 text-slate-400"><code class="text-xs">{`{ booking: object }`}</code></td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</section>
+
+	</div>
+</DocLayout>
