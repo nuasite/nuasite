@@ -1,0 +1,114 @@
+---
+import type { ReservationStatusProps } from './types'
+
+export type Props = ReservationStatusProps
+
+const {
+	reservationId,
+	action = `/_nua/reservation/status/${reservationId}`,
+	loadingMessage = 'Loading booking details...',
+	errorMessage = 'Failed to load booking details.',
+	missingBookingMessage = 'No booking found.',
+	notFoundMessage = 'Booking not found.',
+} = Astro.props
+
+if (!action && !reservationId) {
+	throw new Error('ReservationStatus requires either "reservationId" or "action" prop')
+}
+---
+
+<nua-reservation-status
+	data-action={action}
+	data-loading-message={loadingMessage}
+	data-error-message={errorMessage}
+	data-missing-session-message={missingBookingMessage}
+	data-not-found-message={notFoundMessage}
+	data-state="loading"
+>
+	<div data-status="loading">
+		<span>{loadingMessage}</span>
+	</div>
+	<div data-status="loaded" class="hidden">
+		<slot />
+	</div>
+	<div data-status="error" class="hidden">
+		<span>{errorMessage}</span>
+	</div>
+</nua-reservation-status>
+
+<script>
+	class NuaReservationStatus extends HTMLElement {
+		private fetchController: AbortController | null = null
+
+		connectedCallback() {
+			this.fetchStatus()
+		}
+
+		disconnectedCallback() {
+			this.fetchController?.abort()
+			this.fetchController = null
+		}
+
+		private showState(state: 'loading' | 'loaded' | 'error', message?: string) {
+			this.dataset.state = state
+			const loading = this.querySelector('[data-status="loading"]')
+			const loaded = this.querySelector('[data-status="loaded"]')
+			const error = this.querySelector('[data-status="error"]')
+
+			loading?.classList.toggle('hidden', state !== 'loading')
+			loaded?.classList.toggle('hidden', state !== 'loaded')
+			error?.classList.toggle('hidden', state !== 'error')
+
+			if (message && state === 'error') {
+				const span = error?.querySelector('span')
+				if (span) span.textContent = message
+			}
+		}
+
+		private async fetchStatus() {
+			this.fetchController?.abort()
+			this.fetchController = new AbortController()
+
+			const action = this.dataset.action!
+			const missingBookingMessage = this.dataset.missingBookingMessage!
+			const notFoundMessage = this.dataset.notFoundMessage!
+			const errorMessage = this.dataset.errorMessage!
+
+			const params = new URLSearchParams(window.location.search)
+			const bookingId = params.get('booking_id')
+
+			if (!bookingId) {
+				this.showState('error', missingBookingMessage)
+				return
+			}
+
+			try {
+				const url = `${action}?booking_id=${encodeURIComponent(bookingId)}`
+				const response = await fetch(url, { signal: this.fetchController.signal })
+
+				if (response.status === 404) {
+					this.showState('error', notFoundMessage)
+					return
+				}
+
+				if (!response.ok) {
+					this.showState('error', errorMessage)
+					return
+				}
+
+				const data = await response.json()
+
+				this.showState('loaded')
+				this.dispatchEvent(new CustomEvent('status:loaded', {
+					bubbles: true,
+					detail: { booking: data.booking || data },
+				}))
+			} catch (err) {
+				if (err instanceof DOMException && err.name === 'AbortError') return
+				this.showState('error', errorMessage)
+			}
+		}
+	}
+
+	customElements.define('nua-reservation-status', NuaReservationStatus)
+</script>

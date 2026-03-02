@@ -1,0 +1,116 @@
+---
+import type { ReservationAvailabilityProps } from './types'
+
+export type Props = ReservationAvailabilityProps
+
+const {
+	reservationId,
+	action = `/_nua/reservation/availability/${reservationId}`,
+	loadingMessage = 'Loading availability...',
+	errorMessage = 'Failed to load availability.',
+	pollInterval,
+} = Astro.props
+
+if (!action && !reservationId) {
+	throw new Error('ReservationAvailability requires either "reservationId" or "action" prop')
+}
+---
+
+<nua-reservation-availability
+	data-action={action}
+	data-loading-message={loadingMessage}
+	data-error-message={errorMessage}
+	data-poll-interval={pollInterval}
+	data-state="loading"
+>
+	<div data-status="loading">
+		<span>{loadingMessage}</span>
+	</div>
+	<div data-status="loaded" class="hidden">
+		<slot />
+	</div>
+	<div data-status="error" class="hidden">
+		<span>{errorMessage}</span>
+	</div>
+</nua-reservation-availability>
+
+<script>
+	import type { ReservationProduct } from '../types'
+
+	class NuaReservationAvailability extends HTMLElement {
+		private products: ReservationProduct[] = []
+		private pollTimer: ReturnType<typeof setInterval> | null = null
+		private fetchController: AbortController | null = null
+
+		connectedCallback() {
+			this.fetchAvailability()
+
+			const pollInterval = this.dataset.pollInterval
+			if (pollInterval) {
+				const ms = parseInt(pollInterval, 10)
+				if (ms > 0) {
+					this.pollTimer = setInterval(() => this.fetchAvailability(), ms)
+				}
+			}
+		}
+
+		disconnectedCallback() {
+			if (this.pollTimer) {
+				clearInterval(this.pollTimer)
+				this.pollTimer = null
+			}
+			this.fetchController?.abort()
+			this.fetchController = null
+		}
+
+		getProducts(): ReservationProduct[] {
+			return this.products
+		}
+
+		async refresh() {
+			await this.fetchAvailability()
+		}
+
+		private showState(state: 'loading' | 'loaded' | 'error') {
+			this.dataset.state = state
+			const loading = this.querySelector('[data-status="loading"]')
+			const loaded = this.querySelector('[data-status="loaded"]')
+			const error = this.querySelector('[data-status="error"]')
+
+			loading?.classList.toggle('hidden', state !== 'loading')
+			loaded?.classList.toggle('hidden', state !== 'loaded')
+			error?.classList.toggle('hidden', state !== 'error')
+		}
+
+		private async fetchAvailability() {
+			this.fetchController?.abort()
+			this.fetchController = new AbortController()
+
+			this.showState('loading')
+			const action = this.dataset.action!
+
+			try {
+				const response = await fetch(action, { signal: this.fetchController.signal })
+
+				if (!response.ok) {
+					this.showState('error')
+					return
+				}
+
+				const data = await response.json()
+				this.products = data.products || []
+
+				this.showState('loaded')
+				this.dispatchEvent(new CustomEvent('availability:loaded', {
+					bubbles: true,
+					detail: { products: this.products },
+				}))
+			} catch (err) {
+				if (err instanceof DOMException && err.name === 'AbortError') return
+				this.showState('error')
+			}
+		}
+	}
+
+	customElements.define('nua-reservation-availability', NuaReservationAvailability)
+</script>

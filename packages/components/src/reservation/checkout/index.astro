@@ -1,0 +1,92 @@
+---
+import type { ReservationCheckoutProps } from './types'
+
+export type Props = ReservationCheckoutProps
+
+const {
+	reservationId,
+	action = `/_nua/reservation/checkout/${reservationId}`,
+	submittingMessage = 'Processing...',
+	errorMessage = 'Something went wrong. Please try again.',
+	unavailableMessage = 'This product is no longer available.',
+} = Astro.props
+
+if (!action && !reservationId) {
+	throw new Error('ReservationCheckout requires either "reservationId" or "action" prop')
+}
+---
+
+<nua-reservation-checkout
+	data-action={action}
+	data-submitting-message={submittingMessage}
+	data-error-message={errorMessage}
+	data-unavailable-message={unavailableMessage}
+>
+	<form method="POST" action={action}>
+		<slot />
+	</form>
+	<div data-status="error" class="hidden">
+		<span>{errorMessage}</span>
+	</div>
+</nua-reservation-checkout>
+
+<script>
+	class NuaReservationCheckout extends HTMLElement {
+		connectedCallback() {
+			const form = this.querySelector('form')
+			if (!form) return
+
+			const submittingMessage = this.dataset.submittingMessage!
+			const unavailableMessage = this.dataset.unavailableMessage!
+
+			form.addEventListener('submit', (e) => {
+				const productId = form.querySelector<HTMLInputElement>('[name="productId"]')
+				if (!productId || !productId.value) {
+					e.preventDefault()
+					this.showError(unavailableMessage)
+					this.dispatchEvent(new CustomEvent('checkout:error', {
+						bubbles: true,
+						detail: { message: unavailableMessage },
+					}))
+					return
+				}
+
+				this.hideError()
+
+				const submitButton = form.querySelector<HTMLButtonElement>('button[type="submit"], button:not([type])')
+				if (submitButton) {
+					submitButton.disabled = true
+					if (submittingMessage) {
+						submitButton.dataset.originalText = submitButton.textContent || ''
+						submitButton.textContent = submittingMessage
+					}
+				}
+			})
+
+			window.addEventListener('pageshow', (e) => {
+				if (!e.persisted) return
+				const submitButton = form.querySelector<HTMLButtonElement>('button[type="submit"], button:not([type])')
+				if (submitButton && submitButton.dataset.originalText) {
+					submitButton.disabled = false
+					submitButton.textContent = submitButton.dataset.originalText
+					delete submitButton.dataset.originalText
+				}
+			})
+		}
+
+		private showError(message: string) {
+			const errorDiv = this.querySelector('[data-status="error"]')
+			if (!errorDiv) return
+			const span = errorDiv.querySelector('span')
+			if (span) span.textContent = message
+			errorDiv.classList.remove('hidden')
+		}
+
+		private hideError() {
+			const errorDiv = this.querySelector('[data-status="error"]')
+			errorDiv?.classList.add('hidden')
+		}
+	}
+
+	customElements.define('nua-reservation-checkout', NuaReservationCheckout)
+</script>

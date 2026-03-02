@@ -36,6 +36,21 @@
 			"types": "./src/image/index.astro",
 			"import": "./src/image/index.astro",
 			"default": "./src/image/index.astro"
+		},
+		"./ReservationCheckout.astro": {
+			"types": "./src/reservation/checkout/index.astro",
+			"import": "./src/reservation/checkout/index.astro",
+			"default": "./src/reservation/checkout/index.astro"
+		},
+		"./ReservationAvailability.astro": {
+			"types": "./src/reservation/availability/index.astro",
+			"import": "./src/reservation/availability/index.astro",
+			"default": "./src/reservation/availability/index.astro"
+		},
+		"./ReservationStatus.astro": {
+			"types": "./src/reservation/status/index.astro",
+			"import": "./src/reservation/status/index.astro",
+			"default": "./src/reservation/status/index.astro"
 		}
 	},
 	"peerDependencies": {
