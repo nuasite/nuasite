@@ -532,6 +532,18 @@ export function applyTextChange(
 	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, resolvedNewText)
 
 	if (updatedSnippet === sourceSnippet) {
+		// Try with <br> tag normalization (browser normalizes <br /> to <br>)
+		const brNorm = (s: string) => s.replace(/<br\s*\/?>/gi, '<br>')
+		if (brNorm(sourceSnippet).includes(brNorm(resolvedOriginal))) {
+			const parts = resolvedOriginal.split(/<br\s*\/?>/gi)
+			const regexStr = parts.map((p) => escapeRegExp(p)).join('<br\\s*\\/?>')
+			const brRegex = new RegExp(regexStr)
+			const updatedWithBr = sourceSnippet.replace(brRegex, resolvedNewText)
+			if (updatedWithBr !== sourceSnippet) {
+				return { success: true, content: content.replace(sourceSnippet, updatedWithBr) }
+			}
+		}
+
 		// resolvedOriginal wasn't found in snippet - try HTML entity handling
 		const matchedText = findTextInSnippet(sourceSnippet, resolvedOriginal)
 		if (matchedText) {

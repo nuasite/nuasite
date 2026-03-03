@@ -320,6 +320,23 @@ describe('applyTextChange', () => {
 		}
 	})
 
+	test('handles <br> vs <br /> mismatch between browser and source', () => {
+		const content = '<h1>Kupujete nemovitost?<br />Nejdřív ji prověříme.</h1>'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: '<h1>Kupujete nemovitost?<br />Nejdřív ji prověříme.</h1>',
+				originalValue: 'Kupujete nemovitost?<br>Nejdřív ji prověříme.',
+				newValue: 'Kupujete nemovitost?<br>Nejdřív ji prověříme',
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({
+			success: true,
+			content: '<h1>Kupujete nemovitost?<br>Nejdřív ji prověříme</h1>',
+		})
+	})
+
 	test('preserves surrounding content when replacing snippet', () => {
 		const content = '<div>\n  <h3>Hello <span class="sm">world</span></h3>\n  <p>Other</p>\n</div>'
 		const result = applyTextChange(
