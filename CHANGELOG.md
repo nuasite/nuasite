@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/nuasite/nuasite/compare/v0.11.1...v0.12.0) (2026-03-03)
+
+
+### Features
+
+* **components:** add reservation components for availability, checkout, and status ([c594625](https://github.com/nuasite/nuasite/commit/c5946251968d51e90b43d4cc6c890e5774414122))
+
+
+### Bug Fixes
+
+* **cms:** handle &lt;br&gt; vs &lt;br /&gt; mismatch in source writer ([0a58a0c](https://github.com/nuasite/nuasite/commit/0a58a0ca40fe40cb0e892440d80cb4239a811d60))
+
 ## [0.11.1](https://github.com/nuasite/nuasite/compare/v0.11.0...v0.11.1) (2026-02-26)
 
 
