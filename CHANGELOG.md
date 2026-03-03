@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.3](https://github.com/nuasite/nuasite/compare/v0.12.2...v0.12.3) (2026-03-03)
+
+
+### Bug Fixes
+
+* **cms:** remove unnecessary visible dep from create-page-modal effect ([1c8e7a0](https://github.com/nuasite/nuasite/commit/1c8e7a0f93456e94e5fe6a6646f6b425c6102993))
+
 ## [0.12.2](https://github.com/nuasite/nuasite/compare/v0.12.1...v0.12.2) (2026-03-03)
 
 
