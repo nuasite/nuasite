@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.2](https://github.com/nuasite/nuasite/compare/v0.12.1...v0.12.2) (2026-03-03)
+
+
+### Other Changes
+
+* move release skill to skills directory ([c3f2002](https://github.com/nuasite/nuasite/commit/c3f20020ad301bf4c9bdf28ebe9862eee9f4d521))
+* add manual release skill ([411bff1](https://github.com/nuasite/nuasite/commit/411bff16c6aa6535810c7ce487dbfac344d57e5a))
+* remove Release Please automation ([f922e25](https://github.com/nuasite/nuasite/commit/f922e25c519bfa8ecc327937c3a9adf2c7341c07))
+* **deps:** update workspace dependencies ([ad5439b](https://github.com/nuasite/nuasite/commit/ad5439b825c6bedfce893ce4c384331b387fcd46))
+
 ## [0.12.1](https://github.com/nuasite/nuasite/compare/v0.12.0...v0.12.1) (2026-03-03)
 
 
