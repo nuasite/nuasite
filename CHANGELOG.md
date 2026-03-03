@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.4](https://github.com/nuasite/nuasite/compare/v0.12.3...v0.12.4) (2026-03-03)
+
+
+### Other Changes
+
+* **ci:** migrate extract-version action to ESM and Node 20 ([4198890](https://github.com/nuasite/nuasite/commit/4198890))
+
 ## [0.12.3](https://github.com/nuasite/nuasite/compare/v0.12.2...v0.12.3) (2026-03-03)
 
 
