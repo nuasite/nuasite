@@ -30,64 +30,61 @@
 		"json5": "catalog:build",
 		"typescript": "catalog:build"
 	},
-	"overrides": {
-		"vite": "^6"
-	},
 	"workspaces": {
 		"packages": [
 			"packages/*"
 		],
 		"catalogs": {
 			"build": {
-				"@actions/core": "^2.0.2",
-				"@biomejs/biome": "^2.3.11",
-				"@types/bun": "latest",
+				"@actions/core": "^3.0.0",
+				"@biomejs/biome": "^2.4.5",
+				"@types/bun": "1.3.10",
 				"@types/js-yaml": "^4.0.9",
-				"dprint": "^0.51.1",
+				"dprint": "^0.52.0",
 				"js-yaml": "^4.1.0",
 				"json5": "^2.2.3",
 				"typescript": "^5",
-				"vite": "^6"
+				"vite": "^7.3.1"
 			},
 			"astro": {
-				"@astrojs/check": "0.9.5",
-				"@astrojs/compiler": "^2.13.0",
-				"@astrojs/mdx": "4.3.8",
-				"@astrojs/rss": "4.0.13",
-				"@astrojs/sitemap": "3.6.0",
-				"astro": "^5.16.6"
+				"@astrojs/check": "0.9.6",
+				"@astrojs/compiler": "^2.13.1",
+				"@astrojs/mdx": "4.3.13",
+				"@astrojs/rss": "4.0.15",
+				"@astrojs/sitemap": "3.7.0",
+				"astro": "^5.17"
 			},
 			"parsers": {
-				"@babel/parser": "^7.24.0",
-				"node-html-parser": "^6.1.13",
+				"@babel/parser": "^7.29.0",
+				"node-html-parser": "^7.1.0",
 				"stacktracey": "2.1.8",
 				"yaml": "^2.8.2"
 			},
 			"ui": {
-				"@tailwindcss/vite": "^4.1.11",
+				"@tailwindcss/vite": "^4.2.1",
 				"@tailwindcss/typography": "^0.5.19",
-				"flowbite": "3.1.2",
-				"tailwindcss": "4.1.16"
+				"flowbite": "4.0.1",
+				"tailwindcss": "4.2.1"
 			},
 			"tests": {
-				"happy-dom": "^20.6.0",
-				"@happy-dom/global-registrator": "^20.5.0"
+				"happy-dom": "^20.8.3",
+				"@happy-dom/global-registrator": "^20.8.3"
 			},
 			"editor": {
-				"@milkdown/core": "^7.8.0",
-				"@milkdown/ctx": "^7.8.0",
-				"@milkdown/plugin-listener": "^7.8.0",
-				"@milkdown/preset-commonmark": "^7.8.0",
-				"@milkdown/preset-gfm": "^7.8.0",
-				"@milkdown/prose": "^7.8.0",
-				"@milkdown/utils": "^7.8.0",
-				"@preact/signals": "^2.6.1",
+				"@milkdown/core": "^7.19.0",
+				"@milkdown/ctx": "^7.19.0",
+				"@milkdown/plugin-listener": "^7.19.0",
+				"@milkdown/preset-commonmark": "^7.19.0",
+				"@milkdown/preset-gfm": "^7.19.0",
+				"@milkdown/prose": "^7.19.0",
+				"@milkdown/utils": "^7.19.0",
+				"@preact/signals": "^2.8.1",
 				"@tailwindcss/postcss": "^4.1.17",
 				"autoprefixer": "^10.4.22",
 				"clsx": "^2.1.1",
-				"marked": "^17.0.1",
+				"marked": "^17.0.3",
 				"postcss": "^8",
-				"preact": "^10.28.0",
+				"preact": "^10.28.4",
 				"prosemirror-commands": "^1.7.1",
 				"prosemirror-inputrules": "^1.5.1",
 				"prosemirror-keymap": "^1.2.3",
@@ -97,7 +94,7 @@
 				"prosemirror-state": "^1.4.4",
 				"prosemirror-transform": "^1.10.5",
 				"prosemirror-view": "^1.41.5",
-				"tailwind-merge": "^3.4.0"
+				"tailwind-merge": "^3.5.0"
 			}
 		}
 	}
