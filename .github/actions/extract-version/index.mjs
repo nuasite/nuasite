@@ -1,5 +1,5 @@
-const { exec } = require('child_process')
-const core = require('@actions/core')
+import { exec } from 'child_process'
+import * as core from '@actions/core'
 
 const parseVersion = (version) => {
 	const match = version.match(

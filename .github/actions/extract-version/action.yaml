@@ -10,5 +10,5 @@ outputs:
   versions:
     description: 'String of possible tags separated by space'
 runs:
-  using: 'node16'
-  main: 'index.cjs'
+  using: 'node20'
+  main: 'index.mjs'
