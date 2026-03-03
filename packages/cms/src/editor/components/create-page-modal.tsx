@@ -20,7 +20,7 @@ export function CreatePageModal() {
 				openMarkdownEditorForNewPage(col?.name, col)
 			}
 		}
-	}, [visible, collections])
+	}, [collections])
 
 	const handleClose = () => {
 		resetCreatePageState()
