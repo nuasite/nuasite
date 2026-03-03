@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { NodeType, parse as parseHtml } from 'node-html-parser'
 import { getProjectRoot } from '../config'
 import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
 import type { ManifestWriter } from '../manifest-writer'
@@ -532,16 +533,11 @@ export function applyTextChange(
 	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, resolvedNewText)
 
 	if (updatedSnippet === sourceSnippet) {
-		// Try with <br> tag normalization (browser normalizes <br /> to <br>)
-		const brNorm = (s: string) => s.replace(/<br\s*\/?>/gi, '<br>')
-		if (brNorm(sourceSnippet).includes(brNorm(resolvedOriginal))) {
-			const parts = resolvedOriginal.split(/<br\s*\/?>/gi)
-			const regexStr = parts.map((p) => escapeRegExp(p)).join('<br\\s*\\/?>')
-			const brRegex = new RegExp(regexStr)
-			const updatedWithBr = sourceSnippet.replace(brRegex, resolvedNewText)
-			if (updatedWithBr !== sourceSnippet) {
-				return { success: true, content: content.replace(sourceSnippet, updatedWithBr) }
-			}
+		// Try AST-based <br> normalization (browser normalizes <br class="..." /> to <br>
+		// and collapses surrounding whitespace/indentation)
+		const brResult = tryBrNormalizedChange(sourceSnippet, resolvedOriginal, resolvedNewText)
+		if (brResult !== null) {
+			return { success: true, content: content.replace(sourceSnippet, brResult) }
 		}
 
 		// resolvedOriginal wasn't found in snippet - try HTML entity handling
@@ -657,7 +653,7 @@ function findTextInSnippet(snippet: string, decodedText: string): string | null 
 
 	// Try matching with <br> tags stripped from snippet
 	const chars = [...decodedText].map((ch) => escapeRegExp(ch))
-	const brAwarePattern = chars.join('(?:<br\\s*\\/?>)*')
+	const brAwarePattern = chars.join('(?:<br\\b[^>]*\\/?>)*')
 	const brRegex = new RegExp(brAwarePattern)
 	const brMatch = snippet.match(brRegex)
 
@@ -735,6 +731,110 @@ function findExpressionSrcAttribute(text: string): { index: number; length: numb
 		index: match.index,
 		length: i - match.index,
 	}
+}
+
+/**
+ * Extract visible text from an HTML string the way a browser would render it.
+ * Text nodes contribute their content, <br> elements become '\n',
+ * and whitespace around '\n' is collapsed (matching browser behavior).
+ */
+function getVisibleText(html: string): string {
+	const root = parseHtml(html, { blockTextElements: {} })
+	let text = ''
+	const walk = (node: ReturnType<typeof parseHtml>) => {
+		for (const child of node.childNodes) {
+			if (child.nodeType === NodeType.TEXT_NODE) {
+				text += child.rawText
+			} else if (child.nodeType === NodeType.ELEMENT_NODE && (child as any).rawTagName === 'br') {
+				text += '\n'
+			} else {
+				walk(child as any)
+			}
+		}
+	}
+	walk(root)
+	// Collapse whitespace around newlines (browser behavior around <br>)
+	text = text.replace(/[ \t]*\n[ \t]*/g, '\n')
+	return text.trim()
+}
+
+/**
+ * Try to apply a text change when the mismatch is due to <br> normalization.
+ * The browser normalizes <br class="..." /> to plain <br> and collapses surrounding whitespace.
+ * This function preserves the original <br> elements (with attributes) and surrounding indentation.
+ * Returns the updated snippet, or null if this approach doesn't apply.
+ */
+function tryBrNormalizedChange(
+	sourceSnippet: string,
+	resolvedOriginal: string,
+	resolvedNewText: string,
+): string | null {
+	// Only applies when the browser text contains <br>
+	if (!resolvedOriginal.includes('<br>')) return null
+
+	// Verify that the visible text matches after normalization
+	const sourceVisible = getVisibleText(sourceSnippet)
+	const originalVisible = getVisibleText(resolvedOriginal)
+	if (sourceVisible !== originalVisible) return null
+
+	// Split browser text by <br> into segments
+	const originalSegments = resolvedOriginal.split('<br>')
+	const newSegments = resolvedNewText.split('<br>')
+
+	// If segment count changed, user added/removed line breaks — let other fallbacks handle it
+	if (originalSegments.length !== newSegments.length) return null
+
+	// Parse the source snippet and identify text nodes and br elements
+	const root = parseHtml(sourceSnippet, { blockTextElements: {} })
+
+	// Find the outer element (e.g., <h1>, <p>)
+	const outerElement = root.childNodes.find(
+		(n) => n.nodeType === NodeType.ELEMENT_NODE,
+	) as any
+	if (!outerElement) return null
+
+	// Collect text nodes between br boundaries
+	const groups: Array<Array<{ node: any; index: number }>> = [[]]
+	for (let i = 0; i < outerElement.childNodes.length; i++) {
+		const child = outerElement.childNodes[i]
+		if (child.nodeType === NodeType.ELEMENT_NODE && (child as any).rawTagName === 'br') {
+			groups.push([])
+		} else if (child.nodeType === NodeType.TEXT_NODE) {
+			groups[groups.length - 1]!.push({ node: child, index: i })
+		}
+	}
+
+	// Number of groups should match number of segments
+	if (groups.length !== originalSegments.length) return null
+
+	// Replace text content in each group
+	let result = sourceSnippet
+	for (let g = groups.length - 1; g >= 0; g--) {
+		const group = groups[g]!
+		const origSegment = originalSegments[g]!.trim()
+		const newSegment = newSegments[g]!.trim()
+
+		if (origSegment === newSegment) continue
+
+		// Find the text node in this group that contains the meaningful text
+		for (const { node } of group) {
+			const raw: string = node.rawText
+			const trimmed = raw.trim()
+			if (!trimmed) continue
+
+			// Check if this text node's trimmed content matches the original segment
+			if (trimmed === origSegment) {
+				// Replace the meaningful text, preserving surrounding whitespace
+				const leadingWs = raw.slice(0, raw.indexOf(trimmed))
+				const trailingWs = raw.slice(raw.indexOf(trimmed) + trimmed.length)
+				const newRaw = leadingWs + newSegment + trailingWs
+				result = result.replace(raw, newRaw)
+				break
+			}
+		}
+	}
+
+	return result !== sourceSnippet ? result : null
 }
 
 function escapeRegExp(string: string): string {

@@ -333,7 +333,44 @@ describe('applyTextChange', () => {
 		)
 		expect(result).toEqual({
 			success: true,
-			content: '<h1>Kupujete nemovitost?<br>Nejdřív ji prověříme</h1>',
+			content: '<h1>Kupujete nemovitost?<br />Nejdřív ji prověříme</h1>',
+		})
+	})
+
+	test('handles <br> with attributes and whitespace mismatch between browser and source', () => {
+		const content =
+			'          <p class="text-white">\n            Vyrobíme dvířka na míru vaší vany.<br class="hidden lg:block" />\n            Koupání bude pohodlné.\n          </p>'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet:
+					'          <p class="text-white">\n            Vyrobíme dvířka na míru vaší vany.<br class="hidden lg:block" />\n            Koupání bude pohodlné.\n          </p>',
+				originalValue: 'Vyrobíme dvířka na míru vaší vany.<br>\nKoupání bude pohodlné.',
+				newValue: 'Vyrobíme dvířka na míru vaší vany.<br>\nKoupání bude pohodlné!',
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({
+			success: true,
+			content:
+				'          <p class="text-white">\n            Vyrobíme dvířka na míru vaší vany.<br class="hidden lg:block" />\n            Koupání bude pohodlné!\n          </p>',
+		})
+	})
+
+	test('preserves <br> attributes (class, responsive breakpoints) during text edit', () => {
+		const content = '<h2 class="title">First line<br class="hidden lg:block" />Second line</h2>'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: '<h2 class="title">First line<br class="hidden lg:block" />Second line</h2>',
+				originalValue: 'First line<br>Second line',
+				newValue: 'First line<br>Updated line',
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({
+			success: true,
+			content: '<h2 class="title">First line<br class="hidden lg:block" />Updated line</h2>',
 		})
 	})
 
