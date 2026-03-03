@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/nuasite/nuasite/compare/v0.12.0...v0.12.1) (2026-03-03)
+
+
+### Bug Fixes
+
+* **cms:** preserve &lt;br&gt; attributes during source writer text changes ([97cc593](https://github.com/nuasite/nuasite/commit/97cc5932cfde06e87a31d56061e42eb7cc8c4d88))
+
 ## [0.12.0](https://github.com/nuasite/nuasite/compare/v0.11.1...v0.12.0) (2026-03-03)
 
 
