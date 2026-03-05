@@ -254,27 +254,39 @@ async function resolveArrayContext(
 ) {
 	const projectRoot = getProjectRoot()
 
-	const invocation = await findComponentInvocationFile(
-		projectRoot,
-		pageUrl,
-		manifest,
-		component,
-	)
+	let filePath: string
+	let refLineIndex: number
 
-	const filePath = invocation?.filePath
-		?? normalizeFilePath(component.invocationSourcePath ?? component.sourcePath)
+	if (component.isInlineRepeater && component.repeaterSourceLine !== undefined) {
+		// Inline repeater: use the page file and source line directly
+		filePath = normalizeFilePath(component.invocationSourcePath ?? component.sourcePath)
+		refLineIndex = component.repeaterSourceLine - 1 // Convert 1-indexed to 0-indexed
+	} else {
+		// Standard component: resolve invocation file and line
+		const invocation = await findComponentInvocationFile(
+			projectRoot,
+			pageUrl,
+			manifest,
+			component,
+		)
+
+		filePath = invocation?.filePath
+			?? normalizeFilePath(component.invocationSourcePath ?? component.sourcePath)
+
+		if (invocation) {
+			refLineIndex = invocation.lineIndex
+		} else {
+			const fullPathTemp = resolveAndValidatePath(filePath)
+			const contentTemp = await fs.readFile(fullPathTemp, 'utf-8')
+			const linesTemp = contentTemp.split('\n')
+			const occurrenceIndex = getComponentOccurrenceIndex(manifest, component)
+			refLineIndex = findComponentInvocationLine(linesTemp, component.componentName, occurrenceIndex)
+		}
+	}
 
 	const fullPath = resolveAndValidatePath(filePath)
 	const content = await fs.readFile(fullPath, 'utf-8')
 	const lines = content.split('\n')
-
-	let refLineIndex: number
-	if (invocation) {
-		refLineIndex = invocation.lineIndex
-	} else {
-		const occurrenceIndex = getComponentOccurrenceIndex(manifest, component)
-		refLineIndex = findComponentInvocationLine(lines, component.componentName, occurrenceIndex)
-	}
 
 	if (refLineIndex < 0 || refLineIndex >= lines.length) {
 		return null
@@ -304,20 +316,28 @@ async function resolveArrayContext(
 	}
 
 	// Determine which array element this component corresponds to.
-	// The invocationIndex tells us the Nth occurrence of this component in the template,
-	// which maps directly to the Nth array element.
-	const occurrenceIndex = getComponentOccurrenceIndex(manifest, component)
-	// Count only components with the same name AND same invocationSourcePath to get array index
-	const sameSourceComponents = Object.values(manifest.components)
-		.filter(c =>
-			c.componentName === component.componentName
-			&& c.invocationSourcePath === component.invocationSourcePath
-		)
-	const arrayIndex = sameSourceComponents.findIndex(c => c.id === component.id)
+	let arrayIndex: number
+	if (component.isInlineRepeater) {
+		// For inline repeaters, invocationIndex is the sibling position assigned during HTML processing
+		arrayIndex = component.invocationIndex ?? 0
+	} else {
+		// The invocationIndex tells us the Nth occurrence of this component in the template,
+		// which maps directly to the Nth array element.
+		const sameSourceComponents = Object.values(manifest.components)
+			.filter(c =>
+				c.componentName === component.componentName
+				&& c.invocationSourcePath === component.invocationSourcePath
+			)
+		arrayIndex = sameSourceComponents.findIndex(c => c.id === component.id)
+	}
 
 	if (arrayIndex < 0 || arrayIndex >= elementBounds.length) {
 		return null
 	}
+
+	const occurrenceIndex = component.isInlineRepeater
+		? (component.invocationIndex ?? 0)
+		: getComponentOccurrenceIndex(manifest, component)
 
 	return {
 		filePath,
@@ -463,8 +483,21 @@ export async function handleAddArrayItem(
 
 			const refBounds = elementBounds[arrayIndex]!
 
+			// If props are empty (e.g. inline repeater), duplicate from the reference element
+			let effectiveProps = props
+			if (Object.keys(effectiveProps).length === 0) {
+				const duplicatedProps = extractArrayElementProps(
+					ctx.frontmatterContent,
+					ctx.arrayVarName,
+					arrayIndex,
+				)
+				if (duplicatedProps) {
+					effectiveProps = duplicatedProps
+				}
+			}
+
 			// Generate JS object literal from props
-			const newElement = generateObjectLiteral(props)
+			const newElement = generateObjectLiteral(effectiveProps)
 
 			// Get indentation from the reference element
 			const indentation = getIndentation(freshLines[refBounds.startLine]!)

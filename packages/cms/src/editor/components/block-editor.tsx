@@ -41,10 +41,13 @@ export function BlockEditor({
 	const componentDefinitions = getComponentDefinitions(manifest.value)
 	const currentInstance = componentId ? getComponentInstance(manifest.value, componentId) : null
 	const currentDefinition = currentInstance ? getComponentDefinition(manifest.value, currentInstance.componentName) : null
+	const isInlineRepeater = currentInstance?.isInlineRepeater ?? false
 
 	// Detect if this component is rendered from a data array (.map pattern)
 	const isArrayItem = useMemo(() => {
 		if (!currentInstance) return false
+		// Inline repeaters are always array items
+		if (currentInstance.isInlineRepeater) return true
 		const instances = getComponentInstances(manifest.value)
 		let count = 0
 		for (const c of Object.values(instances)) {
@@ -251,6 +254,13 @@ export function BlockEditor({
 	const handleStartInsert = (position: InsertPosition) => {
 		setInsertPosition(position)
 
+		if (isInlineRepeater && currentInstance && componentId) {
+			// For inline repeaters, skip the form — send empty props (server duplicates from reference)
+			onInsertComponent(position, componentId, currentInstance.componentName, {})
+			onClose()
+			return
+		}
+
 		if (isArrayItem && currentInstance) {
 			// For array items, skip the component picker — use the same component type
 			const definition = componentDefinitions[currentInstance.componentName]
@@ -337,22 +347,26 @@ export function BlockEditor({
 					<span class="font-semibold text-white">
 						{mode === 'edit'
 							? (
-								currentDefinition
-									? (isArrayItem ? `Edit ${currentDefinition.name} Item` : `Edit ${currentDefinition.name}`)
-									: 'Block Editor'
+								isInlineRepeater
+									? `Repeater Item ${(currentInstance?.invocationIndex ?? 0) + 1}`
+									: currentDefinition
+										? (isArrayItem ? `Edit ${currentDefinition.name} Item` : `Edit ${currentDefinition.name}`)
+										: 'Block Editor'
 							)
 							: mode === 'confirm-remove'
 							? (
-								isArrayItem
-									? `Remove ${currentDefinition?.name ?? ''} Item`
-									: `Remove ${currentDefinition?.name ?? 'Component'}`
+								isInlineRepeater
+									? 'Remove Repeater Item'
+									: isArrayItem
+										? `Remove ${currentDefinition?.name ?? ''} Item`
+										: `Remove ${currentDefinition?.name ?? 'Component'}`
 							)
 							: mode === 'insert-picker'
 							? (
 								`Insert ${insertPosition === 'before' ? 'Before' : 'After'}`
 							)
 							: (
-								isArrayItem ? `Add ${selectedComponent} Item` : `Add ${selectedComponent}`
+								isInlineRepeater ? 'Add Repeater Item' : isArrayItem ? `Add ${selectedComponent} Item` : `Add ${selectedComponent}`
 							)}
 					</span>
 					<button
@@ -364,24 +378,34 @@ export function BlockEditor({
 				</div>
 
 				{/* Content */}
-				<div class={`flex-1 flex flex-col overflow-hidden bg-cms-dark ${mode === 'edit' && currentDefinition ? '' : 'overflow-y-auto'}`}>
-					{mode === 'edit' && currentDefinition
+				<div class={`flex-1 flex flex-col overflow-hidden bg-cms-dark ${mode === 'edit' && (currentDefinition || isInlineRepeater) ? '' : 'overflow-y-auto'}`}>
+					{mode === 'edit' && (currentDefinition || isInlineRepeater)
 						? (
 							<>
 								{/* Scrollable body */}
 								<div class="p-5 overflow-y-auto flex-1">
-									{/* Props editor */}
-									<div class="text-xs font-medium text-white/50 tracking-wide mb-3 uppercase">
-										Properties
-									</div>
-									{currentDefinition.props.map((prop) => (
-										<PropEditor
-											key={prop.name}
-											prop={prop}
-											value={propValues[prop.name] || ''}
-											onChange={(value) => handlePropChange(prop.name, value)}
-										/>
-									))}
+									{isInlineRepeater && !currentDefinition
+										? (
+											<div class="px-4 py-3 bg-white/10 rounded-cms-md text-[13px] text-white/80">
+												Edit text and images directly on the page. Use the buttons below to add or remove items.
+											</div>
+										)
+										: currentDefinition && (
+											<>
+												{/* Props editor */}
+												<div class="text-xs font-medium text-white/50 tracking-wide mb-3 uppercase">
+													Properties
+												</div>
+												{currentDefinition.props.map((prop) => (
+													<PropEditor
+														key={prop.name}
+														prop={prop}
+														value={propValues[prop.name] || ''}
+														onChange={(value) => handlePropChange(prop.name, value)}
+													/>
+												))}
+											</>
+										)}
 								</div>
 
 								{/* Insert buttons + Actions — outside scroll area */}
@@ -414,12 +438,14 @@ export function BlockEditor({
 											>
 												Cancel
 											</button>
-											<button
-												onClick={handleSave}
-												class="px-4 py-2.5 bg-cms-primary text-cms-primary-text rounded-cms-pill cursor-pointer hover:bg-cms-primary-hover transition-all font-medium"
-											>
-												Save
-											</button>
+											{!isInlineRepeater && (
+												<button
+													onClick={handleSave}
+													class="px-4 py-2.5 bg-cms-primary text-cms-primary-text rounded-cms-pill cursor-pointer hover:bg-cms-primary-hover transition-all font-medium"
+												>
+													Save
+												</button>
+											)}
 										</div>
 									</div>
 								</div>
@@ -429,7 +455,13 @@ export function BlockEditor({
 						? (
 							<div class="text-center p-5">
 								<div class="px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-cms-md mb-5 text-[13px] text-white">
-									{isArrayItem
+									{isInlineRepeater
+										? (
+											<>
+												This repeater item will be removed from the data array. This cannot be undone.
+											</>
+										)
+										: isArrayItem
 										? (
 											<>
 												This <strong>{currentDefinition?.name}</strong> item will be removed from the data array. This cannot be undone.

@@ -195,6 +195,10 @@ export interface ComponentInstance {
 	invocationSourcePath?: string
 	/** 0-based index among same-name component invocations in the parent file */
 	invocationIndex?: number
+	/** True when this instance represents inline HTML from a .map() repeater, not a real component */
+	isInlineRepeater?: boolean
+	/** 1-indexed source line of the repeater template element (used to locate the .map() call) */
+	repeaterSourceLine?: number
 }
 
 /** Represents a content collection entry (markdown file) */

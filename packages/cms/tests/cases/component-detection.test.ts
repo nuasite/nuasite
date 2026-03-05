@@ -130,6 +130,128 @@ cmsDescribe('Component Detection', { markComponents: true, generateManifest: tru
 	})
 })
 
+cmsDescribe('Inline Repeater Detection', { markComponents: true, generateManifest: true }, (ctx) => {
+	test('detects sibling elements from same page source with same line as repeater items', async () => {
+		// Simulates .map() output: 3 divs from the same page file at the same source line
+		const input = `
+			<section data-astro-source-file="src/pages/team.astro" data-astro-source-line="5:0">
+				<div data-astro-source-file="src/pages/team.astro" data-astro-source-line="12:4">
+					<h3>Alice</h3>
+				</div>
+				<div data-astro-source-file="src/pages/team.astro" data-astro-source-line="12:4">
+					<h3>Bob</h3>
+				</div>
+				<div data-astro-source-file="src/pages/team.astro" data-astro-source-line="12:4">
+					<h3>Charlie</h3>
+				</div>
+			</section>
+		`
+		const result = await ctx.process(input)
+
+		// Should detect 3 repeater items
+		const repeaters = Object.values(result.components).filter(c => c.isInlineRepeater)
+		expect(repeaters.length).toBe(3)
+
+		// All should have the same componentName
+		const names = [...new Set(repeaters.map(c => c.componentName))]
+		expect(names.length).toBe(1)
+		expect(names[0]).toBe('__repeater_div')
+
+		// Each should have correct invocationIndex
+		const indices = repeaters.map(c => c.invocationIndex).sort()
+		expect(indices).toEqual([0, 1, 2])
+
+		// Each should have repeaterSourceLine set
+		for (const r of repeaters) {
+			expect(r.repeaterSourceLine).toBe(12)
+			expect(r.invocationSourcePath).toBe('src/pages/team.astro')
+		}
+	})
+
+	test('does NOT detect single elements as repeaters', async () => {
+		// Only one element at a source line — should NOT be a repeater
+		const input = `
+			<section data-astro-source-file="src/pages/about.astro" data-astro-source-line="5:0">
+				<div data-astro-source-file="src/pages/about.astro" data-astro-source-line="10:4">
+					<h3>Only item</h3>
+				</div>
+			</section>
+		`
+		const result = await ctx.process(input)
+
+		const repeaters = Object.values(result.components).filter(c => c.isInlineRepeater)
+		expect(repeaters.length).toBe(0)
+	})
+
+	test('does NOT mark inner elements of repeater items', async () => {
+		// Inner elements share same source file + line but are nested, not siblings
+		const input = `
+			<section data-astro-source-file="src/pages/team.astro" data-astro-source-line="5:0">
+				<div data-astro-source-file="src/pages/team.astro" data-astro-source-line="12:4">
+					<span data-astro-source-file="src/pages/team.astro" data-astro-source-line="12:4">Inner</span>
+				</div>
+				<div data-astro-source-file="src/pages/team.astro" data-astro-source-line="12:4">
+					<span data-astro-source-file="src/pages/team.astro" data-astro-source-line="12:4">Inner</span>
+				</div>
+			</section>
+		`
+		const result = await ctx.process(input)
+
+		// Should only mark the 2 outer divs, not the inner spans
+		const repeaters = Object.values(result.components).filter(c => c.isInlineRepeater)
+		expect(repeaters.length).toBe(2)
+		expect(repeaters[0]?.componentName).toBe('__repeater_div')
+	})
+
+	test('does NOT detect elements from component directories as repeaters', async () => {
+		// Elements from src/components should be handled by component detection, not repeater detection
+		const input = `
+			<div data-astro-source-file="src/components/Card.astro" data-astro-source-line="5:0">
+				<h3>Card 1</h3>
+			</div>
+			<div data-astro-source-file="src/components/Card.astro" data-astro-source-line="5:0">
+				<h3>Card 2</h3>
+			</div>
+		`
+		const result = await ctx.process(input)
+
+		const repeaters = Object.values(result.components).filter(c => c.isInlineRepeater)
+		expect(repeaters.length).toBe(0)
+		// But they should be detected as regular components
+		expectComponentCount(result, 2)
+	})
+
+	test('does NOT detect elements inside component roots as repeaters', async () => {
+		const input = `
+			<div data-astro-source-file="src/components/TeamSection.astro">
+				<div data-astro-source-file="src/pages/team.astro" data-astro-source-line="12:4">
+					<h3>Alice</h3>
+				</div>
+				<div data-astro-source-file="src/pages/team.astro" data-astro-source-line="12:4">
+					<h3>Bob</h3>
+				</div>
+			</div>
+		`
+		const result = await ctx.process(input)
+
+		const repeaters = Object.values(result.components).filter(c => c.isInlineRepeater)
+		expect(repeaters.length).toBe(0)
+	})
+
+	test('repeater items get data-cms-component-id attributes', async () => {
+		const input = `
+			<section data-astro-source-file="src/pages/stats.astro" data-astro-source-line="3:0">
+				<div data-astro-source-file="src/pages/stats.astro" data-astro-source-line="8:4">Stat 1</div>
+				<div data-astro-source-file="src/pages/stats.astro" data-astro-source-line="8:4">Stat 2</div>
+			</section>
+		`
+		const result = await ctx.process(input)
+
+		const componentIds = result.html.match(/data-cms-component-id/g)
+		expect(componentIds?.length).toBe(2)
+	})
+})
+
 cmsDescribe('Component Detection Snapshots', { markComponents: true, generateManifest: true }, (ctx) => {
 	test('nested component with text elements', async () => {
 		const input = `

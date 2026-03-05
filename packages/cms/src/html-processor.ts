@@ -339,6 +339,127 @@ export async function processHtml(
 		})
 	}
 
+	// Repeater detection pass: detect inline HTML elements rendered via .map()
+	// These are sibling elements from a page/layout file that share the same source line
+	if (markComponents) {
+		// Collect candidate elements: from excluded dirs (pages/layouts), not already marked
+		const repeaterCandidates: Array<{ node: HTMLNode; sourceFile: string; sourceLine: number; sourceLoc: string }> = []
+
+		root.querySelectorAll('*').forEach((node) => {
+			// Skip elements already marked as component roots
+			if (markedComponentRoots.has(node)) return
+			if (node.getAttribute('data-cms-component-id')) return
+
+			const sourceFile = node.getAttribute('data-astro-source-file')
+			if (!sourceFile) return
+
+			const sourceLoc = node.getAttribute('data-astro-source-loc')
+				|| node.getAttribute('data-astro-source-line')
+			if (!sourceLoc) return
+
+			// Only consider elements from excluded dirs (pages/layouts)
+			const isFromExcludedDir = excludeComponentDirs.some(dir => {
+				const normalizedDir = dir.replace(/^\/+|\/+$/g, '')
+				return sourceFile.startsWith(normalizedDir + '/')
+					|| sourceFile.startsWith(normalizedDir + '\\')
+					|| sourceFile.includes('/' + normalizedDir + '/')
+					|| sourceFile.includes('\\' + normalizedDir + '\\')
+			})
+			if (!isFromExcludedDir) return
+
+			// Skip elements inside a component root (they belong to the component, not the page)
+			let insideComponentRoot = false
+			let ancestor = node.parentNode as HTMLNode | null
+			while (ancestor) {
+				if (markedComponentRoots.has(ancestor)) {
+					insideComponentRoot = true
+					break
+				}
+				ancestor = ancestor.parentNode as HTMLNode | null
+			}
+			if (insideComponentRoot) return
+
+			// Skip elements whose ancestor has the same (sourceFile, sourceLoc)
+			// This ensures we only mark the outermost element per .map() iteration
+			let ancestorHasSameLoc = false
+			ancestor = node.parentNode as HTMLNode | null
+			while (ancestor) {
+				const ancestorSource = ancestor.getAttribute?.('data-astro-source-file')
+				const ancestorLoc = ancestor.getAttribute?.('data-astro-source-loc')
+					|| ancestor.getAttribute?.('data-astro-source-line')
+				if (ancestorSource === sourceFile && ancestorLoc === sourceLoc) {
+					ancestorHasSameLoc = true
+					break
+				}
+				ancestor = ancestor.parentNode as HTMLNode | null
+			}
+			if (ancestorHasSameLoc) return
+
+			const sourceLine = parseInt(sourceLoc.split(':')[0] ?? '1', 10)
+			repeaterCandidates.push({ node, sourceFile, sourceLine, sourceLoc })
+		})
+
+		// Group candidates by (DOM parent, sourceFile, sourceLine)
+		// Use a two-level Map: parent node -> sub-key -> candidates
+		const parentGroups = new Map<HTMLNode, Map<string, typeof repeaterCandidates>>()
+		for (const candidate of repeaterCandidates) {
+			const parentNode = candidate.node.parentNode as HTMLNode | null
+			if (!parentNode) continue
+			if (!parentGroups.has(parentNode)) parentGroups.set(parentNode, new Map())
+			const subMap = parentGroups.get(parentNode)!
+			const subKey = `${candidate.sourceFile}::${candidate.sourceLine}`
+			if (!subMap.has(subKey)) subMap.set(subKey, [])
+			subMap.get(subKey)!.push(candidate)
+		}
+
+		// Flatten into groups
+		const repeaterGroups: Array<typeof repeaterCandidates> = []
+		for (const subMap of parentGroups.values()) {
+			for (const group of subMap.values()) {
+				repeaterGroups.push(group)
+			}
+		}
+
+		// Process groups with 2+ members as repeater items
+		for (const group of repeaterGroups) {
+			if (group.length < 2) continue
+
+			// All members share the same sourceFile, so use the first
+			const sourceFile = group[0]!.sourceFile
+
+			for (let i = 0; i < group.length; i++) {
+				const { node, sourceLine } = group[i]!
+				const id = getNextId()
+				node.setAttribute('data-cms-component-id', id)
+				markedComponentRoots.add(node)
+
+				const tagName = (node.tagName ?? 'div').toLowerCase()
+				const componentName = `__repeater_${tagName}`
+
+				// Track invocation index per parent file + component name
+				if (!componentCountPerParent.has(sourceFile)) {
+					componentCountPerParent.set(sourceFile, new Map())
+				}
+				const counters = componentCountPerParent.get(sourceFile)!
+				const current = counters.get(componentName) ?? 0
+				counters.set(componentName, current + 1)
+
+				components[id] = {
+					id,
+					componentName,
+					file: fileId,
+					sourcePath: sourceFile,
+					sourceLine,
+					props: {},
+					invocationSourcePath: sourceFile,
+					invocationIndex: i,
+					isInlineRepeater: true,
+					repeaterSourceLine: sourceLine,
+				}
+			}
+		}
+	}
+
 	// Second pass: mark span elements with text-only styling classes as styled spans
 	// This allows the CMS editor to recognize pre-existing styled text
 	if (markStyledSpans) {

@@ -507,6 +507,9 @@ async function processHtmlForDev(
 	}
 
 	for (const comp of Object.values(result.components)) {
+		// Skip inline repeaters — they don't have <ComponentName> tags in the template
+		if (comp.isInlineRepeater) continue
+
 		let found = false
 
 		// Try invocationSourcePath first (may point to a layout, not the page)
@@ -556,8 +559,13 @@ async function processHtmlForDev(
 		const lines = await readLines(path.resolve(projectRoot, filePath))
 		if (!lines) continue
 
-		// Find the invocation line (occurrence 0, since .map() has a single <Component> tag)
-		const invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
+		// Find the invocation line — for inline repeaters, use the source line directly
+		let invLine: number
+		if (firstComp.isInlineRepeater && firstComp.repeaterSourceLine !== undefined) {
+			invLine = firstComp.repeaterSourceLine - 1 // Convert 1-indexed to 0-indexed
+		} else {
+			invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
+		}
 		if (invLine < 0) continue
 
 		const pattern = detectArrayPattern(lines, invLine)
