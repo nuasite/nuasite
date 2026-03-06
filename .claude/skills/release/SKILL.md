@@ -21,15 +21,18 @@ Read `package.json` and note the current `version` field.
 ### 4. Generate changelog entry
 
 Run `git tag -l 'v*' --sort=-v:refname` to find the latest existing tag. Then:
+
 - If a previous tag exists: `git log <previous-tag>..HEAD --oneline --no-merges`
 - If no tags exist: `git log --oneline --no-merges`
 
 Group the commit messages into sections based on conventional commit prefixes:
+
 - **Features** — `feat:` or `feat(...):` commits
 - **Bug Fixes** — `fix:` or `fix(...):` commits
 - **Other Changes** — everything else (refactor, chore, style, docs, ci, etc.)
 
 Omit empty sections. Format each entry as a bullet with the commit hash linked to GitHub:
+
 ```
 * **scope:** description ([short-hash](https://github.com/nuasite/nuasite/commit/<full-hash>))
 ```
@@ -39,6 +42,7 @@ Present the release notes to the user for review and allow them to edit.
 ### 5. Bump the version
 
 Use the Edit tool to update the `version` field in **all 8 package.json files**:
+
 1. `package.json` (root)
 2. `packages/agent-summary/package.json`
 3. `packages/cli/package.json`
@@ -61,11 +65,11 @@ Read the current `CHANGELOG.md` and prepend a new entry at the top (after the `#
 
 ### Features
 
-* **scope:** description ([hash](url))
+- **scope:** description ([hash](url))
 
 ### Bug Fixes
 
-* **scope:** description ([hash](url))
+- **scope:** description ([hash](url))
 ```
 
 Match the existing style in the file. Omit empty sections.
@@ -90,6 +94,7 @@ gh release create "v<new-version>" --title "v<new-version>" --notes "<release-no
 ### 10. Summary
 
 Tell the user:
+
 - The new version number
 - Link to the GitHub release
 - That the publish workflow will run automatically (triggered by the tag push)
