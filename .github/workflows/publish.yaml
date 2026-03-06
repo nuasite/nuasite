@@ -1,11 +1,9 @@
 name: Publish
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag_name:
-        required: true
-        type: string
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   id-token: write
@@ -36,7 +34,7 @@ jobs:
         id: versions
         uses: ./.github/actions/extract-version
         with:
-          version: ${{ inputs.tag_name }}
+          version: ${{ github.ref_name }}
 
       - name: "Build app"
         run: bun run build

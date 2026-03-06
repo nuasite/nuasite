@@ -87,15 +87,9 @@ Use `gh release create` with the generated release notes:
 gh release create "v<new-version>" --title "v<new-version>" --notes "<release-notes>"
 ```
 
-### 10. Trigger publish workflow
-
-```bash
-gh workflow run publish.yaml --field tag_name=v<new-version>
-```
-
-### 11. Summary
+### 10. Summary
 
 Tell the user:
 - The new version number
 - Link to the GitHub release
-- That the publish workflow has been triggered to publish to npm
+- That the publish workflow will run automatically (triggered by the tag push)
