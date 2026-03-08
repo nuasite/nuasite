@@ -1,6 +1,7 @@
 import type { Plugin } from 'vite'
 import type { ManifestWriter } from './manifest-writer'
 import type { CmsMarkerOptions, ComponentDefinition } from './types'
+import { createArrayTransformPlugin } from './vite-plugin-array-transform'
 
 export interface VitePluginContext {
 	manifestWriter: ManifestWriter
@@ -38,5 +39,5 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 	// HTML processing is done in build-processor.ts after pages are generated.
 	// Source location attributes are provided natively by Astro's compiler
 	// (data-astro-source-file, data-astro-source-loc) in dev mode.
-	return [virtualManifestPlugin]
+	return [virtualManifestPlugin, createArrayTransformPlugin()]
 }
