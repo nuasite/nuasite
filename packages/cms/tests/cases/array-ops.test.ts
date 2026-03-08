@@ -1,5 +1,80 @@
 import { describe, expect, test } from 'bun:test'
-import { detectArrayPattern, extractArrayElementProps } from '../../src/handlers/array-ops'
+import { buildMapPattern, detectArrayPattern, extractArrayElementProps, findArrayDeclaration, generateObjectLiteral, parseInlineArrayName } from '../../src/handlers/array-ops'
+
+describe('parseInlineArrayName', () => {
+	test('returns null for non-array component name', () => {
+		expect(parseInlineArrayName('Card')).toBeNull()
+		expect(parseInlineArrayName('MyComponent')).toBeNull()
+	})
+
+	test('parses simple array name', () => {
+		const result = parseInlineArrayName('__array:items')
+		expect(result).toEqual({ arrayVarName: 'items', mapOccurrence: 0 })
+	})
+
+	test('parses array name with #N suffix', () => {
+		const result = parseInlineArrayName('__array:packages#2')
+		expect(result).toEqual({ arrayVarName: 'packages', mapOccurrence: 2 })
+	})
+
+	test('parses array name with #0 suffix', () => {
+		const result = parseInlineArrayName('__array:items#0')
+		expect(result).toEqual({ arrayVarName: 'items', mapOccurrence: 0 })
+	})
+
+	test('returns null for invalid #suffix like #abc', () => {
+		expect(parseInlineArrayName('__array:items#abc')).toBeNull()
+		expect(parseInlineArrayName('__array:items#foo2')).toBeNull()
+	})
+})
+
+describe('buildMapPattern', () => {
+	test('without varName uses capture group', () => {
+		const re = new RegExp(buildMapPattern())
+		const match = '{items.map('.match(re)
+		expect(match).not.toBeNull()
+		expect(match![1]).toBe('items')
+	})
+
+	test('with varName matches exact name', () => {
+		const re = new RegExp(buildMapPattern('items'))
+		expect(re.test('{items.map(')).toBe(true)
+		expect(re.test('{other.map(')).toBe(false)
+	})
+
+	test('requires opening brace', () => {
+		const re = new RegExp(buildMapPattern())
+		expect(re.test('items.map(')).toBe(false)
+	})
+
+	test('supports optional chaining', () => {
+		const re = new RegExp(buildMapPattern())
+		const match = '{items?.map('.match(re)
+		expect(match).not.toBeNull()
+		expect(match![1]).toBe('items')
+	})
+
+	test('supports dotted property paths', () => {
+		const re = new RegExp(buildMapPattern())
+		const match = '{data.items.map('.match(re)
+		expect(match).not.toBeNull()
+		expect(match![1]).toBe('items')
+	})
+
+	test('supports deep dotted paths like Astro.props', () => {
+		const re = new RegExp(buildMapPattern())
+		const match = '{Astro.props.items.map('.match(re)
+		expect(match).not.toBeNull()
+		expect(match![1]).toBe('items')
+	})
+
+	test('with varName matches dotted path ending in varName', () => {
+		const re = new RegExp(buildMapPattern('items'))
+		expect(re.test('{data.items.map(')).toBe(true)
+		expect(re.test('{Astro.props.items.map(')).toBe(true)
+		expect(re.test('{data.other.map(')).toBe(false)
+	})
+})
 
 describe('detectArrayPattern', () => {
 	test('detects .map() on the same line', () => {

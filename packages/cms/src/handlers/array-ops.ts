@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import { getProjectRoot } from '../config'
 import type { ManifestWriter } from '../manifest-writer'
 import type { CmsManifest, ComponentInstance } from '../types'
-import { acquireFileLock, normalizePagePath, resolveAndValidatePath } from '../utils'
+import { acquireFileLock, escapeRegex, normalizePagePath, resolveAndValidatePath } from '../utils'
 import {
 	findComponentInvocationFile,
 	findComponentInvocationLine,
@@ -12,6 +12,40 @@ import {
 	getIndentation,
 	normalizeFilePath,
 } from './component-ops'
+
+/**
+ * Parse an inline array component name like `__array:varName` or `__array:varName#1`.
+ * Returns the variable name and the .map() occurrence index (0-based).
+ */
+export function parseInlineArrayName(componentName: string): { arrayVarName: string; mapOccurrence: number } | null {
+	if (!componentName.startsWith('__array:')) return null
+	const rest = componentName.slice('__array:'.length)
+	const hashIndex = rest.indexOf('#')
+	if (hashIndex < 0) return { arrayVarName: rest, mapOccurrence: 0 }
+	const occurrence = Number(rest.slice(hashIndex + 1))
+	if (Number.isNaN(occurrence)) return null
+	return {
+		arrayVarName: rest.slice(0, hashIndex),
+		mapOccurrence: occurrence,
+	}
+}
+
+/**
+ * Build a regex pattern string that matches `.map(` calls on variables/properties.
+ *
+ * Supports simple variables (`{items.map(`) and dotted property paths
+ * (`{data.items.map(`, `{Astro.props.items.map(`).
+ * Also handles optional chaining (`{items?.map(`).
+ *
+ * If `varName` is omitted, uses a capture group to match any variable name
+ * (captures only the last segment before `.map`).
+ */
+export function buildMapPattern(varName?: string): string {
+	// Allow optional leading dotted path segments (e.g. `Astro.props.`)
+	const prefix = '(?:[\\w]+\\.)*'
+	const name = varName ? escapeRegex(varName) : '(\\w+)'
+	return `\\{${prefix}${name}\\??\\.map\\s*\\(`
+}
 
 export interface AddArrayItemRequest {
 	referenceComponentId: string
@@ -55,8 +89,7 @@ export function detectArrayPattern(
 	const searchStart = Math.max(0, invocationLineIndex - 5)
 	for (let i = invocationLineIndex; i >= searchStart; i--) {
 		const line = lines[i]!
-		// Match patterns like: {varName.map( or varName.map(
-		const match = line.match(/\{?\s*(\w+)\.map\s*\(/)
+		const match = line.match(new RegExp(buildMapPattern()))
 		if (match) {
 			return { arrayVarName: match[1]!, mapLineIndex: i }
 		}
