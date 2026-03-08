@@ -195,6 +195,8 @@ export interface ComponentInstance {
 	invocationSourcePath?: string
 	/** 0-based index among same-name component invocations in the parent file */
 	invocationIndex?: number
+	/** Whether this component represents an inline HTML element inside a .map() array */
+	isInlineArray?: boolean
 }
 
 /** Represents a content collection entry (markdown file) */

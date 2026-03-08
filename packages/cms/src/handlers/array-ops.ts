@@ -164,7 +164,7 @@ function extractElementBounds(
 ): ArrayElementBounds[] {
 	const bounds: ArrayElementBounds[] = []
 	for (const el of elements) {
-		if (el?.loc) {
+		if (el?.loc && el.type !== 'SpreadElement') {
 			bounds.push({
 				// Babel loc is 1-indexed; convert to 0-indexed file lines
 				startLine: el.loc.start.line - 1 + frontmatterStartLine,
@@ -287,6 +287,66 @@ async function resolveArrayContext(
 ) {
 	const projectRoot = getProjectRoot()
 
+	// Inline array components (__array:varName or __array:varName#N) — find .map() line directly
+	const parsed = parseInlineArrayName(component.componentName)
+	if (parsed) {
+		const { arrayVarName, mapOccurrence } = parsed
+		const filePath = normalizeFilePath(component.invocationSourcePath ?? component.sourcePath)
+		const fullPath = resolveAndValidatePath(filePath)
+		const content = await fs.readFile(fullPath, 'utf-8')
+		const lines = content.split('\n')
+
+		// Find the Nth .map() line by searching the template section
+		const fmEnd = findFrontmatterEnd(lines)
+		if (fmEnd === 0) return null
+
+		let mapLineIndex = -1
+		let occurrencesSeen = 0
+		const mapPattern = new RegExp(buildMapPattern(arrayVarName))
+		for (let i = fmEnd; i < lines.length; i++) {
+			if (mapPattern.test(lines[i]!)) {
+				if (occurrencesSeen === mapOccurrence) {
+					mapLineIndex = i
+					break
+				}
+				occurrencesSeen++
+			}
+		}
+		if (mapLineIndex < 0) return null
+
+		const frontmatterStartLine = 1
+		const frontmatterContent = lines.slice(1, fmEnd - 1).join('\n')
+
+		const elementBounds = findArrayDeclaration(
+			frontmatterContent,
+			frontmatterStartLine,
+			arrayVarName,
+		)
+		if (!elementBounds || elementBounds.length === 0) return null
+
+		// Get array index from same-source components (sorted by invocationIndex for reliable ordering)
+		const sameSourceComponents = Object.values(manifest.components)
+			.filter(c =>
+				c.componentName === component.componentName
+				&& c.invocationSourcePath === component.invocationSourcePath
+			)
+			.sort((a, b) => (a.invocationIndex ?? 0) - (b.invocationIndex ?? 0))
+		const arrayIndex = sameSourceComponents.findIndex(c => c.id === component.id)
+		if (arrayIndex < 0 || arrayIndex >= elementBounds.length) return null
+
+		return {
+			filePath,
+			fullPath,
+			lines,
+			content,
+			elementBounds,
+			arrayIndex,
+			frontmatterContent,
+			frontmatterStartLine,
+			arrayVarName,
+		}
+	}
+
 	const invocation = await findComponentInvocationFile(
 		projectRoot,
 		pageUrl,
@@ -341,11 +401,13 @@ async function resolveArrayContext(
 	// which maps directly to the Nth array element.
 	const occurrenceIndex = getComponentOccurrenceIndex(manifest, component)
 	// Count only components with the same name AND same invocationSourcePath to get array index
+	// Sort by invocationIndex for reliable ordering (don't rely on Object.values insertion order)
 	const sameSourceComponents = Object.values(manifest.components)
 		.filter(c =>
 			c.componentName === component.componentName
 			&& c.invocationSourcePath === component.invocationSourcePath
 		)
+		.sort((a, b) => (a.invocationIndex ?? 0) - (b.invocationIndex ?? 0))
 	const arrayIndex = sameSourceComponents.findIndex(c => c.id === component.id)
 
 	if (arrayIndex < 0 || arrayIndex >= elementBounds.length) {
@@ -362,7 +424,6 @@ async function resolveArrayContext(
 		frontmatterContent,
 		frontmatterStartLine,
 		arrayVarName: pattern.arrayVarName,
-		occurrenceIndex,
 	}
 }
 
@@ -399,15 +460,25 @@ export async function handleRemoveArrayItem(
 			return { success: false, error: 'Could not detect array pattern for this component' }
 		}
 
-		const { fullPath, lines, elementBounds, arrayIndex } = ctx
+		const { fullPath, arrayIndex } = ctx
 
 		const release = await acquireFileLock(fullPath)
 		try {
-			// Re-read the file to avoid stale data
+			// Re-read the file and recompute bounds to avoid stale data
 			const freshContent = await fs.readFile(fullPath, 'utf-8')
 			const freshLines = freshContent.split('\n')
 
-			const bounds = elementBounds[arrayIndex]!
+			const freshFmEnd = findFrontmatterEnd(freshLines)
+			if (freshFmEnd === 0) {
+				return { success: false, error: 'Could not find frontmatter in source file' }
+			}
+			const freshFmContent = freshLines.slice(1, freshFmEnd - 1).join('\n')
+			const freshBounds = findArrayDeclaration(freshFmContent, 1, ctx.arrayVarName)
+			if (!freshBounds || arrayIndex >= freshBounds.length) {
+				return { success: false, error: 'Array declaration not found or index out of bounds after re-read' }
+			}
+
+			const bounds = freshBounds[arrayIndex]!
 			const removeStart = bounds.startLine
 			let removeEnd = bounds.endLine
 
@@ -420,8 +491,8 @@ export async function handleRemoveArrayItem(
 				// now becomes the last element (remove its trailing comma)
 			}
 
-			// Check line after removeEnd for a comma-only or blank line
-			if (removeEnd + 1 < freshLines.length && freshLines[removeEnd + 1]!.trim() === '') {
+			// Check line after removeEnd for a blank separator line (only between elements, not at start)
+			if (removeStart > 0 && removeEnd + 1 < freshLines.length && freshLines[removeEnd + 1]!.trim() === '') {
 				removeEnd++
 			}
 
@@ -487,14 +558,25 @@ export async function handleAddArrayItem(
 			return { success: false, error: 'Could not detect array pattern for this component' }
 		}
 
-		const { fullPath, elementBounds, arrayIndex } = ctx
+		const { fullPath, arrayIndex } = ctx
 
 		const release = await acquireFileLock(fullPath)
 		try {
+			// Re-read the file and recompute bounds to avoid stale data
 			const freshContent = await fs.readFile(fullPath, 'utf-8')
 			const freshLines = freshContent.split('\n')
 
-			const refBounds = elementBounds[arrayIndex]!
+			const freshFmEnd = findFrontmatterEnd(freshLines)
+			if (freshFmEnd === 0) {
+				return { success: false, error: 'Could not find frontmatter in source file' }
+			}
+			const freshFmContent = freshLines.slice(1, freshFmEnd - 1).join('\n')
+			const freshBounds = findArrayDeclaration(freshFmContent, 1, ctx.arrayVarName)
+			if (!freshBounds || arrayIndex >= freshBounds.length) {
+				return { success: false, error: 'Array declaration not found or index out of bounds after re-read' }
+			}
+
+			const refBounds = freshBounds[arrayIndex]!
 
 			// Generate JS object literal from props
 			const newElement = generateObjectLiteral(props)
@@ -515,7 +597,7 @@ export async function handleAddArrayItem(
 			if (position === 'before') {
 				// Insert before the reference element
 				const insertLine = refBounds.startLine
-				freshLines.splice(insertLine, 0, indentedLines + ',')
+				freshLines.splice(insertLine, 0, ...(indentedLines + ',').split('\n'))
 			} else {
 				// Insert after the reference element
 				const insertLine = refBounds.endLine + 1
@@ -524,17 +606,19 @@ export async function handleAddArrayItem(
 				if (!refEndLine.trimEnd().endsWith(',')) {
 					freshLines[refBounds.endLine] = refEndLine.replace(/(\s*)$/, ',$1')
 				}
-				freshLines.splice(insertLine, 0, indentedLines + ',')
+				freshLines.splice(insertLine, 0, ...(indentedLines + ',').split('\n'))
 			}
 
 			// Clean up trailing comma before closing bracket
-			// Find the closing ] and remove comma from the last element
-			for (let i = freshLines.length - 1; i >= 0; i--) {
+			// Search forward from the last element to find this array's closing ]
+			// The insertion always happens within the array, so the ] shifts by addedLineCount
+			const lastEl = freshBounds[freshBounds.length - 1]!
+			const addedLineCount = indentedLines.split('\n').length
+			const closingSearchStart = lastEl.endLine + addedLineCount + 1
+			for (let i = closingSearchStart; i < closingSearchStart + 5 && i < freshLines.length; i++) {
 				if (freshLines[i]!.trim().startsWith(']')) {
 					const prev = freshLines[i - 1]
 					if (prev?.trimEnd().endsWith(',')) {
-						// Check if this is the array we're editing by scanning backwards
-						// to find the array variable
 						freshLines[i - 1] = prev.replace(/,(\s*)$/, '$1')
 					}
 					break
@@ -561,7 +645,7 @@ export async function handleAddArrayItem(
  * Generate a JavaScript object literal string from props.
  * Example: { name: 'Components', slug: 'components' }
  */
-function generateObjectLiteral(props: Record<string, unknown>): string {
+export function generateObjectLiteral(props: Record<string, unknown>): string {
 	const entries = Object.entries(props)
 	if (entries.length === 0) return '{}'
 
@@ -578,9 +662,10 @@ function generateObjectLiteral(props: Record<string, unknown>): string {
 }
 
 function formatValue(value: unknown): string {
-	if (typeof value === 'string') return `'${value.replace(/'/g, "\\'")}'`
+	if (typeof value === 'string') return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
 	if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-	if (value === null || value === undefined) return 'undefined'
+	if (value === null) return 'null'
+	if (value === undefined) return 'undefined'
 	if (Array.isArray(value)) return `[${value.map(formatValue).join(', ')}]`
 	if (typeof value === 'object') return generateObjectLiteral(value as Record<string, unknown>)
 	return String(value)

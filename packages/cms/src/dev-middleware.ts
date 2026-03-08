@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { getProjectRoot } from './config'
-import { detectArrayPattern, extractArrayElementProps, handleAddArrayItem, handleRemoveArrayItem } from './handlers/array-ops'
+import { buildMapPattern, detectArrayPattern, extractArrayElementProps, handleAddArrayItem, handleRemoveArrayItem, parseInlineArrayName } from './handlers/array-ops'
 import {
 	extractPropsFromSource,
 	findComponentInvocationLine,
@@ -507,6 +507,10 @@ async function processHtmlForDev(
 	}
 
 	for (const comp of Object.values(result.components)) {
+		// Skip inline array components — they have no <Tag> in source;
+		// their props are resolved in the array-group pass below
+		if (comp.componentName.startsWith('__array:')) continue
+
 		let found = false
 
 		// Try invocationSourcePath first (may point to a layout, not the page)
@@ -547,7 +551,7 @@ async function processHtmlForDev(
 	}
 
 	for (const group of componentGroups.values()) {
-		if (group.length <= 1) continue
+		if (group.length < 1) continue
 		// Only process groups where at least one component has empty props (spread case)
 		if (!group.some(c => Object.keys(c.props).length === 0)) continue
 
@@ -556,11 +560,33 @@ async function processHtmlForDev(
 		const lines = await readLines(path.resolve(projectRoot, filePath))
 		if (!lines) continue
 
-		// Find the invocation line (occurrence 0, since .map() has a single <Component> tag)
-		const invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
-		if (invLine < 0) continue
-
-		const pattern = detectArrayPattern(lines, invLine)
+		// For inline array components (__array:varName or __array:varName#N), find the .map() line
+		// directly instead of searching for a component tag that won't exist
+		let pattern: ReturnType<typeof detectArrayPattern>
+		const parsed = parseInlineArrayName(firstComp.componentName)
+		if (parsed) {
+			const { arrayVarName, mapOccurrence } = parsed
+			const fmEndCheck = findFrontmatterEnd(lines)
+			const mapRegex = new RegExp(buildMapPattern(arrayVarName))
+			let mapLine = -1
+			let seen = 0
+			for (let i = fmEndCheck; i < lines.length; i++) {
+				if (mapRegex.test(lines[i]!)) {
+					if (seen === mapOccurrence) {
+						mapLine = i
+						break
+					}
+					seen++
+				}
+			}
+			if (mapLine < 0) continue
+			pattern = { arrayVarName, mapLineIndex: mapLine }
+		} else {
+			// Find the invocation line (occurrence 0, since .map() has a single <Component> tag)
+			const invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
+			if (invLine < 0) continue
+			pattern = detectArrayPattern(lines, invLine)
+		}
 		if (!pattern) continue
 
 		const fmEnd = findFrontmatterEnd(lines)

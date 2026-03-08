@@ -339,6 +339,66 @@ export async function processHtml(
 		})
 	}
 
+	// Inline array detection pass: detect elements with data-cms-array-source
+	// (injected by vite-plugin-array-transform) and create virtual ComponentInstance entries
+	if (markComponents) {
+		root.querySelectorAll('[data-cms-array-source]').forEach((node) => {
+			const arrayVarName = node.getAttribute('data-cms-array-source')
+			if (!arrayVarName) return
+
+			// Walk ancestors to find invocationSourcePath and source line
+			let invocationSourcePath: string | undefined
+			let sourceLine = 0
+			let ancestor = node.parentNode as HTMLNode | null
+			while (ancestor) {
+				const ancestorSource = ancestor.getAttribute?.('data-astro-source-file')
+				if (ancestorSource) {
+					invocationSourcePath = ancestorSource
+					// Try to get source line from ancestor
+					const locAttr = ancestor.getAttribute?.('data-astro-source-loc')
+						|| ancestor.getAttribute?.('data-astro-source-line')
+					if (locAttr) {
+						sourceLine = parseInt(locAttr.split(':')[0] ?? '0', 10)
+					}
+					break
+				}
+				ancestor = ancestor.parentNode as HTMLNode | null
+			}
+
+			const componentName = `__array:${arrayVarName}`
+
+			// Track invocation index using existing componentCountPerParent map
+			let invocationIndex: number | undefined
+			if (invocationSourcePath) {
+				if (!componentCountPerParent.has(invocationSourcePath)) {
+					componentCountPerParent.set(invocationSourcePath, new Map())
+				}
+				const counters = componentCountPerParent.get(invocationSourcePath)!
+				const current = counters.get(componentName) ?? 0
+				counters.set(componentName, current + 1)
+				invocationIndex = current
+			}
+
+			const id = getNextId()
+			node.setAttribute('data-cms-component-id', id)
+
+			components[id] = {
+				id,
+				componentName,
+				file: fileId,
+				sourcePath: invocationSourcePath ?? '',
+				sourceLine,
+				props: {},
+				invocationSourcePath,
+				invocationIndex,
+				isInlineArray: true,
+			}
+
+			// Remove the marker attribute from output HTML
+			node.removeAttribute('data-cms-array-source')
+		})
+	}
+
 	// Second pass: mark span elements with text-only styling classes as styled spans
 	// This allows the CMS editor to recognize pre-existing styled text
 	if (markStyledSpans) {

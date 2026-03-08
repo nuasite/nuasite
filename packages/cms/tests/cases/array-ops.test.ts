@@ -206,3 +206,58 @@ describe('extractArrayElementProps', () => {
 		expect(result).toEqual({ name: 'A', offset: -5 })
 	})
 })
+
+describe('findArrayDeclaration', () => {
+	test('returns empty bounds for empty array', () => {
+		const frontmatter = `const items = []`
+		const result = findArrayDeclaration(frontmatter, 1, 'items')
+		expect(result).toEqual([])
+	})
+
+	test('skips spread elements and only returns concrete items', () => {
+		const frontmatter = `const items = [
+	...existing,
+	{ name: 'new' },
+]`
+		const result = findArrayDeclaration(frontmatter, 1, 'items')
+		expect(result).not.toBeNull()
+		expect(result!.length).toBe(1) // Only the object, not the spread
+	})
+})
+
+describe('generateObjectLiteral', () => {
+	test('generates null for null values (not undefined)', () => {
+		const result = generateObjectLiteral({ name: 'A', extra: null })
+		expect(result).toContain('null')
+		expect(result).not.toContain('undefined')
+	})
+
+	test('generates undefined for undefined values', () => {
+		const result = generateObjectLiteral({ name: 'A', extra: undefined })
+		expect(result).toContain('undefined')
+	})
+
+	test('generates empty object for no props', () => {
+		expect(generateObjectLiteral({})).toBe('{}')
+	})
+
+	test('generates single-line for small objects', () => {
+		const result = generateObjectLiteral({ name: 'hello', slug: 'hi' })
+		expect(result).toBe("{ name: 'hello', slug: 'hi' }")
+	})
+
+	test('handles nested arrays', () => {
+		const result = generateObjectLiteral({ tags: ['a', 'b'] })
+		expect(result).toContain("['a', 'b']")
+	})
+
+	test('escapes backslashes in string values', () => {
+		const result = generateObjectLiteral({ path: 'C:\\Users\\test' })
+		expect(result).toContain("'C:\\\\Users\\\\test'")
+	})
+
+	test('escapes both backslashes and single quotes', () => {
+		const result = generateObjectLiteral({ text: "it's a \\path" })
+		expect(result).toContain("'it\\'s a \\\\path'")
+	})
+})
