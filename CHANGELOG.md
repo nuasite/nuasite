@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.0](https://github.com/nuasite/nuasite/compare/v0.12.4...v0.13.0) (2026-03-08)
+
+### Features
+
+* **cms:** support inline array components with array ops improvements ([2539427](https://github.com/nuasite/nuasite/commit/2539427))
+* **cms:** add vite array transform plugin for inline HTML ([25e2a91](https://github.com/nuasite/nuasite/commit/25e2a91))
+* **cms:** add parseInlineArrayName and buildMapPattern helpers ([6b051db](https://github.com/nuasite/nuasite/commit/6b051db))
+
+### Other Changes
+
+* **style:** reformat code ([65c2cf4](https://github.com/nuasite/nuasite/commit/65c2cf4))
+* **playground:** update agents file ([e1cf194](https://github.com/nuasite/nuasite/commit/e1cf194))
+* **ci:** trigger publish workflow automatically on tag push ([973a907](https://github.com/nuasite/nuasite/commit/973a907))
+
 ## [0.12.4](https://github.com/nuasite/nuasite/compare/v0.12.3...v0.12.4) (2026-03-03)
 
 
