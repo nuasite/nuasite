@@ -1,4 +1,5 @@
 import type { Plugin } from 'vite'
+import { expectedDeletions } from './dev-middleware'
 import type { ManifestWriter } from './manifest-writer'
 import type { CmsMarkerOptions, ComponentDefinition } from './types'
 import { createArrayTransformPlugin } from './vite-plugin-array-transform'
@@ -12,7 +13,7 @@ export interface VitePluginContext {
 }
 
 export function createVitePlugin(context: VitePluginContext): Plugin[] {
-	const { manifestWriter, componentDefinitions } = context
+	const { manifestWriter, componentDefinitions, command } = context
 
 	const virtualManifestPlugin: Plugin = {
 		name: 'cms-marker-virtual-manifest',
@@ -34,10 +35,33 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 		},
 	}
 
+	// Intercept Vite's file watcher to suppress full page reloads when the CMS
+	// deletes a content collection entry. Without this, Vite/Astro detects the
+	// unlink and forces a reload, undoing the optimistic UI update.
+	const watcherPlugin: Plugin = {
+		name: 'cms-suppress-delete-reload',
+		configureServer(server) {
+			if (command !== 'dev') return
+
+			// Monkey-patch the watcher to intercept unlink events before Vite/Astro
+			// processes them. We use prependListener so our handler runs first.
+			const watcher = server.watcher
+			const origEmit = watcher.emit.bind(watcher)
+			watcher.emit = function (event: string, filePath: string, ...args: any[]) {
+				if ((event === 'unlink' || event === 'unlinkDir') && expectedDeletions.has(filePath)) {
+					expectedDeletions.delete(filePath)
+					// Swallow the event — don't let Vite/Astro see it
+					return true
+				}
+				return origEmit(event, filePath, ...args)
+			} as typeof watcher.emit
+		},
+	}
+
 	// Note: We cannot use transformIndexHtml for static Astro builds because
 	// Astro generates HTML files directly without going through Vite's HTML pipeline.
 	// HTML processing is done in build-processor.ts after pages are generated.
 	// Source location attributes are provided natively by Astro's compiler
 	// (data-astro-source-file, data-astro-source-loc) in dev mode.
-	return [virtualManifestPlugin, createArrayTransformPlugin()]
+	return [virtualManifestPlugin, watcherPlugin, createArrayTransformPlugin()]
 }

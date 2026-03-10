@@ -2,6 +2,7 @@ import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
+import { scanCollections } from './collection-scanner'
 import { getProjectRoot } from './config'
 import { buildMapPattern, detectArrayPattern, extractArrayElementProps, handleAddArrayItem, handleRemoveArrayItem, parseInlineArrayName } from './handlers/array-ops'
 import {
@@ -13,7 +14,7 @@ import {
 	handleRemoveComponent,
 	normalizeFilePath,
 } from './handlers/component-ops'
-import { handleCreateMarkdown, handleGetMarkdownContent, handleUpdateMarkdown } from './handlers/markdown-ops'
+import { handleCreateMarkdown, handleDeleteMarkdown, handleGetMarkdownContent, handleUpdateMarkdown } from './handlers/markdown-ops'
 import { handleCors, parseJsonBody, parseMultipartFile, readBody, sendError, sendJson } from './handlers/request-utils'
 import { handleUpdate } from './handlers/source-writer'
 import { processHtml } from './html-processor'
@@ -29,7 +30,18 @@ interface ViteDevServerLike {
 		use: (middleware: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void
 	}
 	transformIndexHtml: (url: string, html: string) => Promise<string>
+	watcher?: {
+		on: (event: string, listener: (...args: any[]) => void) => any
+		removeListener: (event: string, listener: (...args: any[]) => void) => any
+	}
 }
+
+/**
+ * Set of absolute file paths that the CMS expects to be deleted.
+ * When Vite/Astro detects an unlink for one of these files, the CMS
+ * intercepts the event and prevents a full page reload.
+ */
+export const expectedDeletions = new Set<string>()
 
 export interface DevMiddlewareOptions {
 	enableCmsApi?: boolean
@@ -89,7 +101,7 @@ export function createDevMiddleware(
 
 			const route = url.replace('/_nua/cms/', '').split('?')[0]!
 
-			handleCmsApiRoute(route, req, res, manifestWriter, options.mediaAdapter).catch(
+			handleCmsApiRoute(route, req, res, manifestWriter, config.contentDir, options.mediaAdapter).catch(
 				(error) => {
 					console.error('[astro-cms] API error:', error)
 					sendError(res, 'Internal server error', 500)
@@ -279,6 +291,7 @@ async function handleCmsApiRoute(
 	req: IncomingMessage,
 	res: ServerResponse,
 	manifestWriter: ManifestWriter,
+	contentDir: string,
 	mediaAdapter?: MediaStorageAdapter,
 ): Promise<void> {
 	// POST /_nua/cms/update
@@ -350,6 +363,24 @@ async function handleCmsApiRoute(
 	if (route === 'markdown/create' && req.method === 'POST') {
 		const body = await parseJsonBody<Parameters<typeof handleCreateMarkdown>[0]>(req)
 		const result = await handleCreateMarkdown(body)
+		sendJson(res, result, result.success ? 200 : 400)
+		return
+	}
+
+	// POST /_nua/cms/markdown/delete
+	if (route === 'markdown/delete' && req.method === 'POST') {
+		const body = await parseJsonBody<Parameters<typeof handleDeleteMarkdown>[0]>(req)
+		// Register expected deletion so the Vite watcher ignores the unlink
+		const fullPath = path.resolve(getProjectRoot(), body.filePath?.replace(/^\//, '') ?? '')
+		expectedDeletions.add(fullPath)
+		const result = await handleDeleteMarkdown(body)
+		if (result.success) {
+			// Re-scan collections so the manifest reflects the deletion
+			const updatedCollections = await scanCollections(contentDir)
+			manifestWriter.setCollectionDefinitions(updatedCollections)
+		} else {
+			expectedDeletions.delete(fullPath)
+		}
 		sendJson(res, result, result.success ? 200 : 400)
 		return
 	}

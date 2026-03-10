@@ -41,6 +41,15 @@ export interface UpdateMarkdownResponse {
 	error?: string
 }
 
+export interface DeleteMarkdownRequest {
+	filePath: string
+}
+
+export interface DeleteMarkdownResponse {
+	success: boolean
+	error?: string
+}
+
 export interface GetMarkdownContentResponse {
 	content: string
 	frontmatter: BlogFrontmatter
@@ -129,6 +138,26 @@ export async function handleCreateMarkdown(
 	} catch (error) {
 		if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'EEXIST') {
 			return { success: false, error: `File already exists: ${filePath}` }
+		}
+		const message = error instanceof Error ? error.message : String(error)
+		return { success: false, error: message }
+	}
+}
+
+export async function handleDeleteMarkdown(
+	request: DeleteMarkdownRequest,
+): Promise<DeleteMarkdownResponse> {
+	try {
+		const fullPath = resolveAndValidatePath(request.filePath)
+
+		// Verify the file exists before deleting
+		await fs.access(fullPath)
+		await fs.unlink(fullPath)
+
+		return { success: true }
+	} catch (error) {
+		if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+			return { success: false, error: `File not found: ${request.filePath}` }
 		}
 		const message = error instanceof Error ? error.message : String(error)
 		return { success: false, error: message }

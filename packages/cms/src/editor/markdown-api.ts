@@ -108,6 +108,33 @@ export async function fetchMarkdownContent(
 }
 
 /**
+ * Delete a markdown page (collection entry)
+ */
+export async function deleteMarkdownPage(
+	config: CmsConfig,
+	filePath: string,
+): Promise<{ success: boolean; error?: string }> {
+	const res = await fetchWithTimeout(`${config.apiBase}/markdown/delete`, {
+		method: 'POST',
+		credentials: 'include',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({ filePath }),
+	})
+
+	if (!res.ok) {
+		const text = await res.text().catch(() => '')
+		return {
+			success: false,
+			error: `Delete failed (${res.status}): ${text || res.statusText}`,
+		}
+	}
+
+	return res.json()
+}
+
+/**
  * Fetch media library items
  */
 export async function fetchMediaLibrary(

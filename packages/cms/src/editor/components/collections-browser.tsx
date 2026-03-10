@@ -1,6 +1,9 @@
 import { useMemo } from 'preact/hooks'
+import { signal } from '@preact/signals'
+import { deleteMarkdownPage } from '../markdown-api'
 import {
 	closeCollectionsBrowser,
+	config,
 	isCollectionsBrowserOpen,
 	manifest,
 	openMarkdownEditorForEntry,
@@ -9,6 +12,9 @@ import {
 	selectedBrowserCollection,
 } from '../signals'
 import { savePendingEntryNavigation } from '../storage'
+
+const deletingEntry = signal<string | null>(null)
+const confirmDeleteSlug = signal<string | null>(null)
 
 export function CollectionsBrowser() {
 	const visible = isCollectionsBrowserOpen.value
@@ -52,6 +58,44 @@ export function CollectionsBrowser() {
 		const handleAddNew = () => {
 			closeCollectionsBrowser()
 			openMarkdownEditorForNewPage(selected, def)
+		}
+
+		const handleDeleteClick = (e: Event, slug: string) => {
+			e.stopPropagation()
+			confirmDeleteSlug.value = slug
+		}
+
+		const handleConfirmDelete = async (slug: string, sourcePath: string) => {
+			deletingEntry.value = slug
+
+			// Optimistically remove the entry from the manifest
+			const defs = manifest.value.collectionDefinitions
+			const currentDef = defs?.[selected]
+			if (currentDef) {
+				const updatedEntries = (currentDef.entries ?? []).filter(e => e.slug !== slug)
+				manifest.value = {
+					...manifest.value,
+					collectionDefinitions: {
+						...defs,
+						[selected]: {
+							...currentDef,
+							entries: updatedEntries,
+							entryCount: updatedEntries.length,
+						},
+					},
+				}
+			}
+
+			deletingEntry.value = null
+			confirmDeleteSlug.value = null
+
+			// Fire the API call in the background
+			deleteMarkdownPage(config.value, sourcePath)
+		}
+
+		const handleCancelDelete = (e: Event) => {
+			e.stopPropagation()
+			confirmDeleteSlug.value = null
 		}
 
 		return (
@@ -99,33 +143,68 @@ export function CollectionsBrowser() {
 							</div>
 						)}
 						{entries.map((entry) => (
-							<button
-								key={entry.slug}
-								type="button"
-								onClick={() => handleEntryClick(entry.slug, entry.sourcePath, entry.pathname)}
-								class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 rounded-cms-lg transition-colors text-left group"
-								data-cms-ui
-							>
-								<div class="flex-1 min-w-0">
-									<div class={`font-medium truncate ${entry.draft ? 'text-white/40' : 'text-white'}`}>
-										{entry.title || entry.slug}
+							<div key={entry.slug} class="relative" data-cms-ui>
+								{confirmDeleteSlug.value === entry.slug ? (
+									<div class="flex items-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-cms-lg" data-cms-ui>
+										<div class="flex-1 min-w-0 text-sm text-white/70">
+											Delete "{entry.title || entry.slug}"?
+										</div>
+										<button
+											type="button"
+											onClick={() => handleConfirmDelete(entry.slug, entry.sourcePath)}
+											disabled={deletingEntry.value === entry.slug}
+											class="px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-cms-pill transition-colors disabled:opacity-50"
+											data-cms-ui
+										>
+											{deletingEntry.value === entry.slug ? 'Deleting...' : 'Delete'}
+										</button>
+										<button
+											type="button"
+											onClick={handleCancelDelete}
+											class="px-3 py-1 text-xs font-medium text-white/60 hover:text-white bg-white/10 hover:bg-white/20 rounded-cms-pill transition-colors"
+											data-cms-ui
+										>
+											Cancel
+										</button>
 									</div>
-									{entry.title && <div class="text-white/30 text-xs truncate">{entry.slug}</div>}
-								</div>
-								{entry.draft && (
-									<span class="shrink-0 px-2 py-0.5 text-xs font-medium text-amber-400/80 bg-amber-400/10 rounded-full border border-amber-400/20">
-										Draft
-									</span>
+								) : (
+									<button
+										type="button"
+										onClick={() => handleEntryClick(entry.slug, entry.sourcePath, entry.pathname)}
+										class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 rounded-cms-lg transition-colors text-left group"
+										data-cms-ui
+									>
+										<div class="flex-1 min-w-0">
+											<div class={`font-medium truncate ${entry.draft ? 'text-white/40' : 'text-white'}`}>
+												{entry.title || entry.slug}
+											</div>
+											{entry.title && <div class="text-white/30 text-xs truncate">{entry.slug}</div>}
+										</div>
+										{entry.draft && (
+											<span class="shrink-0 px-2 py-0.5 text-xs font-medium text-amber-400/80 bg-amber-400/10 rounded-full border border-amber-400/20">
+												Draft
+											</span>
+										)}
+										<button
+											type="button"
+											onClick={(e) => handleDeleteClick(e, entry.slug)}
+											class="shrink-0 p-1 text-white/0 group-hover:text-white/30 hover:!text-red-400 rounded transition-colors"
+											title="Delete entry"
+											data-cms-ui
+										>
+											<TrashIcon />
+										</button>
+										<svg
+											class="w-4 h-4 text-white/20 group-hover:text-white/40 shrink-0 transition-colors"
+											fill="none"
+											stroke="currentColor"
+											viewBox="0 0 24 24"
+										>
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+										</svg>
+									</button>
 								)}
-								<svg
-									class="w-4 h-4 text-white/20 group-hover:text-white/40 shrink-0 transition-colors"
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-								>
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-								</svg>
-							</button>
+							</div>
 						))}
 					</div>
 				</div>
@@ -247,6 +326,14 @@ function BackArrowIcon() {
 	return (
 		<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+		</svg>
+	)
+}
+
+function TrashIcon() {
+	return (
+		<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
 		</svg>
 	)
 }
