@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.1](https://github.com/nuasite/nuasite/compare/v0.13.0...v0.13.1) (2026-03-10)
+
+### Features
+
+* **cms:** add collection entry deletion with optimistic UI ([4a38dc9](https://github.com/nuasite/nuasite/commit/4a38dc9))
+
 ## [0.13.0](https://github.com/nuasite/nuasite/compare/v0.12.4...v0.13.0) (2026-03-08)
 
 ### Features
