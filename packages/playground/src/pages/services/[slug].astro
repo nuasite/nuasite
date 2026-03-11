@@ -1,17 +1,17 @@
 ---
-import { getCollection } from 'astro:content';
+import { getCollection, render } from 'astro:content';
 import Layout from '../../layouts/layout.astro';
 
 export async function getStaticPaths() {
   const servicesEntries = await getCollection('services');
   return servicesEntries.map(entry => ({
-    params: { slug: entry.slug },
+    params: { slug: entry.id },
     props: { entry }
   }));
 }
 
 const { entry } = Astro.props;
-const { Content } = await entry.render();
+const { Content } = await render(entry);
 const { title, subtitle, heroImageDesktop, heroImageMobile, stats, ctaText, ctaLink } = entry.data;
 ---
 
@@ -78,7 +78,7 @@ const { title, subtitle, heroImageDesktop, heroImageMobile, stats, ctaText, ctaL
       )}
 
       <!-- Full Width Image Section -->
-      {entry.slug === 'logistika-a-fulfillment' && (
+      {entry.id === 'logistika-a-fulfillment' && (
         <section class="py-8">
           <img
             src="/assets/313560c4e29d-authentica-logistics-fulfillment-fotka-celou-sirku-1803x643px-scaled-jpg.webp"
@@ -97,7 +97,7 @@ const { title, subtitle, heroImageDesktop, heroImageMobile, stats, ctaText, ctaL
       </div>
 
       <!-- Two Images Section -->
-      {entry.slug === 'logistika-a-fulfillment' && (
+      {entry.id === 'logistika-a-fulfillment' && (
         <section class="flex flex-col gap-8 py-8 md:flex-row 2xl:gap-24">
           <div class="flex items-end w-full md:w-1/4 xl:w-[30%]">
             <img
@@ -123,7 +123,7 @@ const { title, subtitle, heroImageDesktop, heroImageMobile, stats, ctaText, ctaL
       )}
 
       <!-- Centered Image Section -->
-      {entry.slug === 'logistika-a-fulfillment' && (
+      {entry.id === 'logistika-a-fulfillment' && (
         <section class="py-8">
           <img
             src="/assets/793b56433d66-authentica-logistics-fulfillment-fotka-stred-900x641px-jpg.webp"

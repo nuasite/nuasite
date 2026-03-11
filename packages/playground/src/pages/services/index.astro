@@ -12,7 +12,7 @@ const services = await getCollection('services');
 
 		<div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
 			{services.map(service => (
-				<a href={`/services/${service.slug}/`} class="group rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden transition hover:border-slate-700 hover:bg-slate-900/70">
+				<a href={`/services/${service.id}/`} class="group rounded-2xl border border-slate-800 bg-slate-900/40 overflow-hidden transition hover:border-slate-700 hover:bg-slate-900/70">
 					{service.data.heroImageDesktop && (
 						<img
 							src={service.data.heroImageDesktop}
