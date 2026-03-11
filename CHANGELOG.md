@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.2](https://github.com/nuasite/nuasite/compare/v0.13.1...v0.13.2) (2026-03-11)
+
+### Bug Fixes
+
+* **cli:** use Astro's server config for --port and --host flags ([1e15347](https://github.com/nuasite/nuasite/commit/1e15347))
+
 ## [0.13.1](https://github.com/nuasite/nuasite/compare/v0.13.0...v0.13.1) (2026-03-10)
 
 ### Features
