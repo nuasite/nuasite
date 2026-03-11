@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.3](https://github.com/nuasite/nuasite/compare/v0.13.2...v0.13.3) (2026-03-11)
+
+### Bug Fixes
+
+* **cli:** fix TypeScript build for server config type ([0e6cfeb](https://github.com/nuasite/nuasite/commit/0e6cfeb))
+
 ## [0.13.2](https://github.com/nuasite/nuasite/compare/v0.13.1...v0.13.2) (2026-03-11)
 
 ### Bug Fixes

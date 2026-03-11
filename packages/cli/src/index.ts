@@ -77,20 +77,22 @@ if (canProxyDirectly && command && ['build', 'dev', 'preview'].includes(command)
 			break
 		case 'dev':
 		case 'preview': {
-			const options: AstroInlineConfig = {
-				root: process.cwd(),
-				integrations: [agentsSummary()],
-				server: {},
-			}
+			const server: { port?: number; host?: string } = {}
 
 			for (let i = 0; i < args.length; i++) {
 				if (args[i] === '--port' && args[i + 1]) {
-					options.server!.port = parseInt(args[i + 1]!, 10)
+					server.port = parseInt(args[i + 1]!, 10)
 					i++
 				} else if (args[i] === '--host' && args[i + 1]) {
-					options.server!.host = args[i + 1]
+					server.host = args[i + 1]
 					i++
 				}
+			}
+
+			const options: AstroInlineConfig = {
+				root: process.cwd(),
+				integrations: [agentsSummary()],
+				server,
 			}
 
 			const runner = command === 'dev' ? dev : preview
