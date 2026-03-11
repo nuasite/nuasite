@@ -55,6 +55,9 @@ export function defineConfig(config: NuaConfig = {}) {
 	const defaults = {
 		site: 'http://localhost:4321',
 		vite: mergedVite,
+		legacy: {
+			collectionsBackwardsCompat: true,
+		},
 	}
 
 	// If nua is explicitly disabled, just pass through to Astro
