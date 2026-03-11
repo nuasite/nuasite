@@ -217,21 +217,6 @@ const tokenId = `${tokenFieldName}_${formId}`
 					return
 				}
 
-				for (const fieldName of this.honeypotFieldNames) {
-					const field = form.querySelector(`[name="${fieldName}"]`) as HTMLInputElement;
-					if (field && field.value.trim()) {
-						showError(tryAgainMessage)
-						return
-					}
-				}
-
-				// Check CSS honeypot
-				const cssHoneypot = form.querySelector('input[style*="position: absolute; left: -9999px"]') as HTMLInputElement;
-				if (cssHoneypot && cssHoneypot.value.trim()) {
-					showError(tryAgainMessage)
-					return
-				}
-
 				const elapsed = performance.now() - activationTime
 				if (minSubmitDelay > 0 && elapsed < minSubmitDelay) {
 					showError(fastSubmitMessage || tryAgainMessage)
