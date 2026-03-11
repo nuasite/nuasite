@@ -17,6 +17,9 @@ const {
 	...rest
 } = Astro.props
 
+const hasCustomSuccess = 'successMessage' in Astro.props
+const hasCustomError = 'errorMessage' in Astro.props
+
 const slotContent = await Astro.slots.render("default")
 
 if (!submitButtonRegex.test(slotContent)) {
@@ -37,10 +40,12 @@ const tokenId = `${tokenFieldName}_${formId}`
 <astro-form>
 	<form
 		action={action}
-		class="astro-from"
+		class="astro-form"
 		data-form-id={formId}
 		data-token-field={tokenFieldName}
 		data-success-message={successMessage}
+		data-custom-success={hasCustomSuccess || undefined}
+		data-custom-error={hasCustomError || undefined}
 		data-error-message={errorMessage}
 		data-submitting-message={submittingMessage}
 		data-network-error-message={networkErrorMessage}
@@ -131,6 +136,8 @@ const tokenId = `${tokenFieldName}_${formId}`
 			const networkErrorMessage = form.dataset.networkErrorMessage
 			const tryAgainMessage = form.dataset.tryAgainMessage
 			const fastSubmitMessage = form.dataset.fastSubmitMessage
+			const hasCustomSuccess = form.dataset.customSuccess != null
+			const hasCustomError = form.dataset.customError != null
 			this.honeypotFieldNames = form.dataset.requiredFields?.split(',') || []
 
 			const statusContainer = document.getElementById(`${formId}-status`)
@@ -243,12 +250,12 @@ const tokenId = `${tokenFieldName}_${formId}`
 					try { result = await response.json() } catch {}
 
 					if (response.ok && 'success' in result && result.success) {
-						const message = result.message || successMessage
+						const message = hasCustomSuccess ? successMessage : (result.message || successMessage)
 						showSuccess(message)
 						form.reset()
 						refreshSubmissionGuards()
 					} else {
-						const message = result.error || result.message || errorMessage
+						const message = hasCustomError ? errorMessage : (result.error || result.message || errorMessage)
 						showError(message)
 					}
 				} catch (err) {
