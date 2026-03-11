@@ -80,17 +80,15 @@ if (canProxyDirectly && command && ['build', 'dev', 'preview'].includes(command)
 			const options: AstroInlineConfig = {
 				root: process.cwd(),
 				integrations: [agentsSummary()],
-				vite: {
-					server: {},
-				},
+				server: {},
 			}
 
 			for (let i = 0; i < args.length; i++) {
 				if (args[i] === '--port' && args[i + 1]) {
-					options.vite!.server!.port = parseInt(args[i + 1] ?? '', 10)
+					options.server!.port = parseInt(args[i + 1]!, 10)
 					i++
 				} else if (args[i] === '--host' && args[i + 1]) {
-					options.vite!.server!.host = args[i + 1]
+					options.server!.host = args[i + 1]
 					i++
 				}
 			}
