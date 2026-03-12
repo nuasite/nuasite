@@ -23,7 +23,7 @@ Read the current version from `package.json` and calculate the new version.
 
 Present your recommendation to the user for confirmation. If the user provided arguments (e.g. `/release patch`, `/release 0.3.0`), use that instead.
 
-### 2. Generate changelog entry
+### 2. Generate release notes
 
 Group the commits since the last tag into sections based on conventional commit prefixes:
 
@@ -39,44 +39,21 @@ Omit empty sections. Format each entry as a bullet with the commit hash linked t
 
 Present the release notes to the user for review and allow them to edit.
 
-### 3. Update CHANGELOG.md
+### 3. Run the release script
 
-Read the current `CHANGELOG.md` and prepend a new entry at the top (after the `# Changelog` heading) in this format:
-
-```markdown
-## [<new-version>](https://github.com/nuasite/nuasite/compare/v<old-version>...v<new-version>) (<YYYY-MM-DD>)
-
-### Features
-
-- **scope:** description ([hash](url))
-
-### Bug Fixes
-
-- **scope:** description ([hash](url))
-```
-
-Match the existing style in the file. Omit empty sections.
-
-### 4. Commit the changelog and run the release script
-
-```bash
-git add CHANGELOG.md
-git commit -m "changelog: v<new-version>"
-```
-
-Then run the tag-version script which handles everything else (preflight checks, version bump in all package.json files, lockfile update, commit, tag, and push):
+Run the tag-version script which handles everything (preflight checks, version bump in all package.json files, lockfile update, commit, tag, and push):
 
 ```bash
 ./scripts/tag-version/run.sh <new-version>
 ```
 
-### 5. Create GitHub release
+### 4. Create GitHub release
 
 ```bash
 gh release create "v<new-version>" --title "v<new-version>" --notes "<release-notes>"
 ```
 
-### 6. Summary
+### 5. Summary
 
 Tell the user:
 
