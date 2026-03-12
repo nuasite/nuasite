@@ -4,7 +4,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { scanCollections } from './collection-scanner'
 import { getProjectRoot } from './config'
-import { buildMapPattern, detectArrayPattern, extractArrayElementProps, handleAddArrayItem, handleRemoveArrayItem, parseInlineArrayName } from './handlers/array-ops'
+import {
+	buildMapPattern,
+	detectArrayPattern,
+	extractArrayElementProps,
+	handleAddArrayItem,
+	handleRemoveArrayItem,
+	parseInlineArrayName,
+} from './handlers/array-ops'
 import {
 	extractPropsFromSource,
 	findComponentInvocationLine,

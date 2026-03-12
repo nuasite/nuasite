@@ -37,10 +37,13 @@ describe('applyImageChange', () => {
 		['double-quoted', '<img src="/old/image.jpg" alt="Photo" />', '<img src="/uploads/new.jpg" alt="Photo" />'],
 		['single-quoted', "<img src='/old/image.jpg' alt='Photo' />", "<img src='/uploads/new.jpg' alt='Photo' />"],
 	])('replaces static %s src', (_label, content, expected) => {
-		const result = applyImageChange(content, makeImageChange({
-			originalValue: '/old/image.jpg',
-			imageChange: { newSrc: '/uploads/new.jpg' },
-		}))
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/old/image.jpg',
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+		)
 		expect(result.success).toBe(true)
 		if (result.success) {
 			expect(result.content).toBe(expected)
@@ -49,10 +52,13 @@ describe('applyImageChange', () => {
 
 	test('replaces alt text alongside src', () => {
 		const content = '<img src="/old/image.jpg" alt="Old description" />'
-		const result = applyImageChange(content, makeImageChange({
-			originalValue: '/old/image.jpg',
-			imageChange: { newSrc: '/uploads/new.jpg', newAlt: 'New description' },
-		}))
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/old/image.jpg',
+				imageChange: { newSrc: '/uploads/new.jpg', newAlt: 'New description' },
+			}),
+		)
 		expect(result.success).toBe(true)
 		if (result.success) {
 			expect(result.content).toBe('<img src="/uploads/new.jpg" alt="New description" />')
@@ -61,10 +67,13 @@ describe('applyImageChange', () => {
 
 	test('uses URL pathname as fallback candidate', () => {
 		const content = '<img src="/images/photo.jpg" alt="test" />'
-		const result = applyImageChange(content, makeImageChange({
-			originalValue: 'https://cdn.example.com/images/photo.jpg',
-			imageChange: { newSrc: '/uploads/new.jpg' },
-		}))
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: 'https://cdn.example.com/images/photo.jpg',
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+		)
 		expect(result.success).toBe(true)
 		if (result.success) {
 			expect(result.content).toBe('<img src="/uploads/new.jpg" alt="test" />')
@@ -73,11 +82,14 @@ describe('applyImageChange', () => {
 
 	test('extracts src from sourceSnippet as fallback candidate', () => {
 		const content = '<img src="/assets/photo.png" alt="test" class="w-full" />'
-		const result = applyImageChange(content, makeImageChange({
-			originalValue: 'https://cdn.example.com/optimized/photo.webp',
-			sourceSnippet: '<img src="/assets/photo.png" alt="test" class="w-full" />',
-			imageChange: { newSrc: '/uploads/new.jpg' },
-		}))
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: 'https://cdn.example.com/optimized/photo.webp',
+				sourceSnippet: '<img src="/assets/photo.png" alt="test" class="w-full" />',
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+		)
 		expect(result.success).toBe(true)
 		if (result.success) {
 			expect(result.content).toBe('<img src="/uploads/new.jpg" alt="test" class="w-full" />')
@@ -86,11 +98,14 @@ describe('applyImageChange', () => {
 
 	test('falls back to expression replacement when literal src not found', () => {
 		const content = '<div>\n  <img\n    src={imageUrl}\n    alt="Photo"\n  />\n</div>'
-		const result = applyImageChange(content, makeImageChange({
-			originalValue: '/rendered/path.jpg',
-			sourceLine: 3,
-			imageChange: { newSrc: '/uploads/new.jpg' },
-		}))
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/rendered/path.jpg',
+				sourceLine: 3,
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+		)
 		expect(result.success).toBe(true)
 		if (result.success) {
 			expect(result.content).toContain('src="/uploads/new.jpg"')
@@ -100,20 +115,26 @@ describe('applyImageChange', () => {
 
 	test('returns error when src not found anywhere', () => {
 		const content = '<img src="/completely/different.jpg" alt="test" />'
-		const result = applyImageChange(content, makeImageChange({
-			originalValue: '/nonexistent/image.jpg',
-			sourceLine: 0,
-			imageChange: { newSrc: '/uploads/new.jpg' },
-		}))
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/nonexistent/image.jpg',
+				sourceLine: 0,
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+		)
 		expect(result.success).toBe(false)
 	})
 
 	test('replaces only first occurrence when same src appears multiple times', () => {
 		const content = '<img src="/photo.jpg" alt="First" />\n<img src="/photo.jpg" alt="Second" />'
-		const result = applyImageChange(content, makeImageChange({
-			originalValue: '/photo.jpg',
-			imageChange: { newSrc: '/uploads/new.jpg' },
-		}))
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/photo.jpg',
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+		)
 		expect(result.success).toBe(true)
 		if (result.success) {
 			expect(result.content).toContain('src="/uploads/new.jpg"')
@@ -123,10 +144,13 @@ describe('applyImageChange', () => {
 
 	test('escapes special regex characters in src path', () => {
 		const content = '<img src="/images/photo (1).jpg" alt="test" />'
-		const result = applyImageChange(content, makeImageChange({
-			originalValue: '/images/photo (1).jpg',
-			imageChange: { newSrc: '/uploads/new.jpg' },
-		}))
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/images/photo (1).jpg',
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+		)
 		expect(result.success).toBe(true)
 		if (result.success) {
 			expect(result.content).toBe('<img src="/uploads/new.jpg" alt="test" />')
@@ -135,10 +159,13 @@ describe('applyImageChange', () => {
 
 	test('escapes quotes in alt text', () => {
 		const content = '<img src="/photo.jpg" alt="Old" />'
-		const result = applyImageChange(content, makeImageChange({
-			originalValue: '/photo.jpg',
-			imageChange: { newSrc: '/uploads/new.jpg', newAlt: 'Photo of "sunset"' },
-		}))
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/photo.jpg',
+				imageChange: { newSrc: '/uploads/new.jpg', newAlt: 'Photo of "sunset"' },
+			}),
+		)
 		expect(result.success).toBe(true)
 		if (result.success) {
 			expect(result.content).toContain('alt="Photo of &quot;sunset&quot;"')
@@ -160,11 +187,14 @@ describe('applyImageChange', () => {
 				'))}',
 			].join('\n')
 
-			const result = applyImageChange(content, makeImageChange({
-				originalValue: '/assets/2604-1557-f97ac66b11c3f718b55db500ad4b99fa21bfb60e.png',
-				sourceLine: 3,
-				imageChange: { newSrc: '/uploads/b396a47a-7dec-403b-bfdf-cec65ab44b40.jpeg' },
-			}))
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/assets/2604-1557-f97ac66b11c3f718b55db500ad4b99fa21bfb60e.png',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/b396a47a-7dec-403b-bfdf-cec65ab44b40.jpeg' },
+				}),
+			)
 
 			// ACTUAL (broken): dynamic expression destroyed
 			expect(result.success).toBe(true)
@@ -188,10 +218,13 @@ describe('applyImageChange', () => {
 				'/>',
 			].join('\n')
 
-			const result = applyImageChange(content, makeImageChange({
-				originalValue: '/assets/photo.jpg',
-				imageChange: { newSrc: '/uploads/new.jpg', newAlt: 'New alt text' },
-			}))
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/assets/photo.jpg',
+					imageChange: { newSrc: '/uploads/new.jpg', newAlt: 'New alt text' },
+				}),
+			)
 
 			expect(result.success).toBe(true)
 			if (result.success) {
@@ -206,10 +239,13 @@ describe('applyImageChange', () => {
 
 		test('alt expression with simple variable (no nested braces) works correctly', () => {
 			const content = '<img\n  src="/assets/photo.jpg"\n  alt={altText}\n  class="w-full"\n/>'
-			const result = applyImageChange(content, makeImageChange({
-				originalValue: '/assets/photo.jpg',
-				imageChange: { newSrc: '/uploads/new.jpg', newAlt: 'New alt text' },
-			}))
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/assets/photo.jpg',
+					imageChange: { newSrc: '/uploads/new.jpg', newAlt: 'New alt text' },
+				}),
+			)
 
 			expect(result.success).toBe(true)
 			if (result.success) {

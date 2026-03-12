@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { buildMapPattern, detectArrayPattern, extractArrayElementProps, findArrayDeclaration, generateObjectLiteral, parseInlineArrayName } from '../../src/handlers/array-ops'
+import {
+	buildMapPattern,
+	detectArrayPattern,
+	extractArrayElementProps,
+	findArrayDeclaration,
+	generateObjectLiteral,
+	parseInlineArrayName,
+} from '../../src/handlers/array-ops'
 
 describe('parseInlineArrayName', () => {
 	test('returns null for non-array component name', () => {

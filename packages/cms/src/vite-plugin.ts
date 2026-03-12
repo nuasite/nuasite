@@ -47,14 +47,14 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 			// processes them. We use prependListener so our handler runs first.
 			const watcher = server.watcher
 			const origEmit = watcher.emit.bind(watcher)
-			watcher.emit = function (event: string, filePath: string, ...args: any[]) {
+			watcher.emit = ((event: string, filePath: string, ...args: any[]) => {
 				if ((event === 'unlink' || event === 'unlinkDir') && expectedDeletions.has(filePath)) {
 					expectedDeletions.delete(filePath)
 					// Swallow the event — don't let Vite/Astro see it
 					return true
 				}
 				return origEmit(event, filePath, ...args)
-			} as typeof watcher.emit
+			}) as typeof watcher.emit
 		},
 	}
 
