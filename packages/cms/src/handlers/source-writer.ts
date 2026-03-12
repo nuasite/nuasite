@@ -152,7 +152,7 @@ function applyChanges(
 	return { newContent, appliedCount, failedChanges }
 }
 
-function applyImageChange(
+export function applyImageChange(
 	content: string,
 	change: ChangePayload,
 ): { success: true; content: string } | { success: false; error: string } {
@@ -709,7 +709,7 @@ function resolveCmsPlaceholders(text: string, manifest: CmsManifest): string {
  * Handles balanced braces for nested expressions.
  * Returns the match with index and length, or null if not found.
  */
-function findExpressionSrcAttribute(text: string): { index: number; length: number } | null {
+export function findExpressionSrcAttribute(text: string): { index: number; length: number } | null {
 	// Find 'src=' followed by '{'
 	const srcExprStart = /src\s*=\s*\{/
 	const match = text.match(srcExprStart)
