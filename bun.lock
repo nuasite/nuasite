@@ -19,7 +19,7 @@
     },
     "packages/agent-summary": {
       "name": "@nuasite/agent-summary",
-      "version": "0.13.3",
+      "version": "0.14.0",
       "dependencies": {
         "astro": "catalog:astro",
       },
@@ -32,7 +32,7 @@
     },
     "packages/cli": {
       "name": "@nuasite/cli",
-      "version": "0.13.3",
+      "version": "0.14.0",
       "bin": {
         "nua": "src/index.ts",
       },
@@ -50,7 +50,7 @@
     },
     "packages/cms": {
       "name": "@nuasite/cms",
-      "version": "0.13.3",
+      "version": "0.14.0",
       "dependencies": {
         "@astrojs/compiler": "catalog:astro",
         "@babel/parser": "catalog:parsers",
@@ -94,14 +94,14 @@
     },
     "packages/components": {
       "name": "@nuasite/components",
-      "version": "0.13.3",
+      "version": "0.14.0",
       "peerDependencies": {
         "typescript": "catalog:build",
       },
     },
     "packages/core": {
       "name": "@nuasite/core",
-      "version": "0.13.3",
+      "version": "0.14.0",
       "devDependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -109,15 +109,15 @@
         "@astrojs/sitemap": "catalog:astro",
       },
       "peerDependencies": {
-        "@astrojs/check": "0.9.7",
-        "@astrojs/mdx": "5.0.0",
-        "@astrojs/rss": "4.0.17",
-        "@astrojs/sitemap": "3.7.1",
+        "@astrojs/check": "*",
+        "@astrojs/mdx": "*",
+        "@astrojs/rss": "*",
+        "@astrojs/sitemap": "*",
       },
     },
     "packages/llm-enhancements": {
       "name": "@nuasite/llm-enhancements",
-      "version": "0.13.3",
+      "version": "0.14.0",
       "dependencies": {
         "astro": "catalog:astro",
         "node-html-parser": "catalog:parsers",
@@ -136,7 +136,7 @@
     },
     "packages/nua": {
       "name": "@nuasite/nua",
-      "version": "0.13.3",
+      "version": "0.14.0",
       "dependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -158,7 +158,7 @@
     },
     "packages/playground": {
       "name": "playground",
-      "version": "0.4.0",
+      "version": "0.14.0",
       "dependencies": {
         "@nuasite/nua": "workspace:*",
       },
