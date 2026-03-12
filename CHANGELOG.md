@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.14.0](https://github.com/nuasite/nuasite/compare/v0.13.3...v0.14.0) (2026-03-12)
+
+### Features
+
+* **components:** add custom success/error message support and fix class typo ([289dc3d](https://github.com/nuasite/nuasite/commit/289dc3d))
+
+### Bug Fixes
+
+* **nua:** enable legacy collections backwards compat for Astro 6 ([19b216a](https://github.com/nuasite/nuasite/commit/19b216a))
+
+### Other Changes
+
+* **deps:** upgrade astro to v6 and update related dependencies ([50624f0](https://github.com/nuasite/nuasite/commit/50624f0))
+* **playground:** migrate to Astro 6 content layer API ([4fa2c35](https://github.com/nuasite/nuasite/commit/4fa2c35))
+* **components:** remove duplicate bot detection checks from form ([289dc3d](https://github.com/nuasite/nuasite/commit/289dc3d))
+* **cms:** add unit tests for image source-writer functions ([c408a04](https://github.com/nuasite/nuasite/commit/c408a04))
+* **claude:** migrate release skill to commands format ([3c620eb](https://github.com/nuasite/nuasite/commit/3c620eb))
+* reformat code ([74c898b](https://github.com/nuasite/nuasite/commit/74c898b))
+
 ## [0.13.3](https://github.com/nuasite/nuasite/compare/v0.13.2...v0.13.3) (2026-03-11)
 
 ### Bug Fixes
