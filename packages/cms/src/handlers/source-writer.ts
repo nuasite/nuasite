@@ -223,19 +223,15 @@ export function applyImageChange(
 
 		// Verify we're in an img or Image component context before replacing
 		if (/<img\b/i.test(regionText) || /<Image\b/.test(regionText)) {
-			// Match src attribute with expression value: src={...} (handling balanced braces)
 			const exprMatch = findExpressionSrcAttribute(regionText)
 			if (exprMatch) {
-				const regionOffset = regionStart > 0
-					? lines.slice(0, regionStart).join('\n').length + 1
-					: 0
-				const absoluteIndex = regionOffset + exprMatch.index
-
-				const escapedNewSrc = escapeReplacement(newSrc)
-				newContent = newContent.slice(0, absoluteIndex)
-					+ `src="${escapedNewSrc}"`
-					+ newContent.slice(absoluteIndex + exprMatch.length)
-				replacedIndex = absoluteIndex
+				// Any expression-based src (variable, function call, template literal, etc.)
+				// cannot be safely replaced with a static string — refuse the edit.
+				const exprContent = regionText.slice(
+					exprMatch.index + regionText.slice(exprMatch.index).indexOf('{') + 1,
+					exprMatch.index + exprMatch.length - 1,
+				).trim()
+				return { success: false, error: `Image src uses a dynamic expression (src={${exprContent}}) — edit the data source directly` }
 			}
 		}
 	}
@@ -250,28 +246,42 @@ export function applyImageChange(
 		const searchEnd = Math.min(newContent.length, replacedIndex + 300)
 		const region = newContent.slice(searchStart, searchEnd)
 
+		// Try string-literal alt first, then expression alt with balanced braces
+		let altIndex = -1
+		let altLength = 0
+		let altQuote = '"'
+
 		const altPatternDouble = /alt="[^"]*"/
 		const altPatternSingle = /alt='[^']*'/
-		// Also match expression-based alt: alt={...}
-		const altPatternExpr = /alt\s*=\s*\{[^}]*\}/
-
 		const altDoubleMatch = region.match(altPatternDouble)
 		const altSingleMatch = region.match(altPatternSingle)
-		const altExprMatch = region.match(altPatternExpr)
 
-		// Pick the first match found (string literals preferred over expressions)
-		const altMatch = altDoubleMatch ?? altSingleMatch ?? altExprMatch
-		const altQuote = altDoubleMatch ? '"' : altSingleMatch ? "'" : '"'
+		if (altDoubleMatch && altDoubleMatch.index !== undefined) {
+			altIndex = altDoubleMatch.index
+			altLength = altDoubleMatch[0].length
+			altQuote = '"'
+		} else if (altSingleMatch && altSingleMatch.index !== undefined) {
+			altIndex = altSingleMatch.index
+			altLength = altSingleMatch[0].length
+			altQuote = "'"
+		} else {
+			// Expression-based alt={...} — use balanced brace matching
+			const altExprMatch = findExpressionAltAttribute(region)
+			if (altExprMatch) {
+				altIndex = altExprMatch.index
+				altLength = altExprMatch.length
+				altQuote = '"'
+			}
+		}
 
-		if (altMatch && altMatch.index !== undefined) {
-			const altAbsoluteIndex = searchStart + altMatch.index
-			// Escape quotes in alt text matching the quote style used
+		if (altIndex >= 0) {
+			const altAbsoluteIndex = searchStart + altIndex
 			const escapedAlt = altQuote === '"'
 				? newAlt.replace(/"/g, '&quot;')
 				: newAlt.replace(/'/g, '&#39;')
 			newContent = newContent.slice(0, altAbsoluteIndex)
 				+ `alt=${altQuote}${escapedAlt}${altQuote}`
-				+ newContent.slice(altAbsoluteIndex + altMatch[0].length)
+				+ newContent.slice(altAbsoluteIndex + altLength)
 		}
 	}
 
@@ -705,14 +715,12 @@ function resolveCmsPlaceholders(text: string, manifest: CmsManifest): string {
 }
 
 /**
- * Find a src attribute with expression value (e.g., src={variable}) in text.
- * Handles balanced braces for nested expressions.
+ * Find an attribute with expression value (e.g., attr={variable}) using balanced brace matching.
  * Returns the match with index and length, or null if not found.
  */
-export function findExpressionSrcAttribute(text: string): { index: number; length: number } | null {
-	// Find 'src=' followed by '{'
-	const srcExprStart = /src\s*=\s*\{/
-	const match = text.match(srcExprStart)
+function findExpressionAttribute(text: string, attr: string): { index: number; length: number } | null {
+	const exprStart = new RegExp(`${attr}\\s*=\\s*\\{`)
+	const match = text.match(exprStart)
 	if (!match || match.index === undefined) return null
 
 	// Find the matching closing brace (handle nesting)
@@ -731,6 +739,14 @@ export function findExpressionSrcAttribute(text: string): { index: number; lengt
 		index: match.index,
 		length: i - match.index,
 	}
+}
+
+export function findExpressionSrcAttribute(text: string): { index: number; length: number } | null {
+	return findExpressionAttribute(text, 'src')
+}
+
+export function findExpressionAltAttribute(text: string): { index: number; length: number } | null {
+	return findExpressionAttribute(text, 'alt')
 }
 
 /**

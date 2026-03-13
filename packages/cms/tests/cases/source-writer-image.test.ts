@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { ChangePayload } from '../../src/editor/types'
-import { applyImageChange, findExpressionSrcAttribute } from '../../src/handlers/source-writer'
+import { applyImageChange, findExpressionAltAttribute, findExpressionSrcAttribute } from '../../src/handlers/source-writer'
 
 function makeImageChange(overrides: Partial<ChangePayload>): ChangePayload {
 	return {
@@ -29,6 +29,22 @@ describe('findExpressionSrcAttribute', () => {
 	test('returns null for static src="..."', () => {
 		const result = findExpressionSrcAttribute('<img src="/images/photo.jpg" alt="test" />')
 		expect(result).toBeNull()
+	})
+})
+
+describe('findExpressionAltAttribute', () => {
+	test('matches alt with nested template literal', () => {
+		const text = 'alt={`${cat.label} - instalace ${imgIdx + 1}`}'
+		const result = findExpressionAltAttribute(text)
+		expect(result).not.toBeNull()
+		expect(text.slice(result!.index, result!.index + result!.length)).toBe(text)
+	})
+
+	test('matches alt with simple variable', () => {
+		const text = '<img src="x" alt={altText} />'
+		const result = findExpressionAltAttribute(text)
+		expect(result).not.toBeNull()
+		expect(text.slice(result!.index, result!.index + result!.length)).toBe('alt={altText}')
 	})
 })
 
@@ -96,8 +112,8 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('falls back to expression replacement when literal src not found', () => {
-		const content = '<div>\n  <img\n    src={imageUrl}\n    alt="Photo"\n  />\n</div>'
+	test('expression src={getImageUrl()} is refused rather than corrupted', () => {
+		const content = '<div>\n  <img\n    src={getImageUrl()}\n    alt="Photo"\n  />\n</div>'
 		const result = applyImageChange(
 			content,
 			makeImageChange({
@@ -106,10 +122,27 @@ describe('applyImageChange', () => {
 				imageChange: { newSrc: '/uploads/new.jpg' },
 			}),
 		)
-		expect(result.success).toBe(true)
-		if (result.success) {
-			expect(result.content).toContain('src="/uploads/new.jpg"')
-			expect(result.content).not.toContain('src={imageUrl}')
+		expect(result.success).toBe(false)
+		if (!result.success) {
+			expect(result.error).toContain('dynamic expression')
+		}
+	})
+
+	test('variable src={imageUrl} is refused rather than corrupted', () => {
+		const content = 'const url = "/rendered/path.jpg"\n<div>\n  <img\n    src={imageUrl}\n    alt="Photo"\n  />\n</div>'
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/rendered/path.jpg',
+				sourceLine: 4,
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+		)
+		// Even though the literal exists in the file, we can't reliably know
+		// it's the right one to replace, so refuse the edit
+		expect(result.success).toBe(false)
+		if (!result.success) {
+			expect(result.error).toContain('dynamic expression')
 		}
 	})
 
@@ -172,11 +205,8 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	// These tests document known bugs. When fixed, flip assertions to the DESIRED lines.
-	describe('BUG: expression-based src/alt handling', () => {
-		test('expression src={img} inside .map() gets replaced with static value', () => {
-			// src={img} references a .map() loop variable — replacing it with a static
-			// string means ALL images in the loop show the same photo.
+	describe('expression-based src/alt handling', () => {
+		test('expression src={img} inside .map() is refused instead of corrupted', () => {
 			const content = [
 				'{cat.images.map((img, imgIdx) => (',
 				'  <img',
@@ -196,20 +226,14 @@ describe('applyImageChange', () => {
 				}),
 			)
 
-			// ACTUAL (broken): dynamic expression destroyed
-			expect(result.success).toBe(true)
-			if (result.success) {
-				expect(result.content).not.toContain('src={img}')
+			// Should refuse the edit rather than destroying the template
+			expect(result.success).toBe(false)
+			if (!result.success) {
+				expect(result.error).toContain('dynamic expression')
 			}
-
-			// DESIRED: CMS should modify the data array, not the template expression
-			// expect(result.content).toContain('src={img}')
 		})
 
-		test('alt expression with nested braces gets partially matched', () => {
-			// The alt regex /alt\s*=\s*\{[^}]*\}/ stops at the first }, so
-			// alt={`${cat.label} - instalace ${imgIdx + 1}`} is only partially matched,
-			// leaving dangling syntax.
+		test('alt expression with nested braces is fully replaced', () => {
 			const content = [
 				'<img',
 				'  src="/assets/photo.jpg"',
@@ -228,13 +252,9 @@ describe('applyImageChange', () => {
 
 			expect(result.success).toBe(true)
 			if (result.success) {
-				// ACTUAL (broken): partial match leaves dangling template literal
-				expect(result.content).toContain('- instalace ${imgIdx + 1}`}')
+				expect(result.content).toContain('alt="New alt text"')
+				expect(result.content).not.toContain('- instalace ${imgIdx + 1}`}')
 			}
-
-			// DESIRED: full expression replaced cleanly
-			// expect(result.content).toContain('alt="New alt text"')
-			// expect(result.content).not.toContain('- instalace ${imgIdx + 1}`}')
 		})
 
 		test('alt expression with simple variable (no nested braces) works correctly', () => {
