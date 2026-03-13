@@ -340,17 +340,151 @@ export function indexFileContent(cached: CachedParsedFile, relFile: string): voi
 }
 
 /**
+ * Resolve a .map() callback parameter back to the source array path.
+ *
+ * Given expression text like:
+ *   "categories.map((cat) => (\n  cat.images.map((img, i) => (\n    "
+ * and a parameter name like "img", returns "categories[*].images" — the
+ * array path that the parameter iterates over.
+ *
+ * Supports chained .map() calls (nested loops).
+ */
+export function resolveMapChain(exprTexts: string[], paramName: string): string | null {
+	const fullText = exprTexts.join('')
+
+	// Find all .map() calls: <arrayExpr>.map((<param>, ...) =>
+	// Capture: [1] = array expression, [2] = first callback parameter
+	const mapPattern = /([\w.[\]]+)\.map\(\s*\(\s*(\w+)/g
+	const maps: Array<{ arrayExpr: string; param: string }> = []
+	let match: RegExpExecArray | null
+	while ((match = mapPattern.exec(fullText)) !== null) {
+		maps.push({ arrayExpr: match[1]!, param: match[2]! })
+	}
+
+	if (maps.length === 0) return null
+
+	// Find which .map() provides our paramName
+	const directMap = maps.find(m => m.param === paramName)
+	if (!directMap) return null
+
+	// Resolve the array expression by substituting outer .map() params
+	// e.g., "cat.images" where "cat" comes from "categories.map((cat) => ...)"
+	let arrayPath = directMap.arrayExpr
+	for (const outerMap of maps) {
+		if (outerMap === directMap) continue
+		// If arrayPath starts with an outer param name, substitute it
+		// e.g., "cat.images" and cat comes from "categories" → "categories[*].images"
+		if (arrayPath === outerMap.param || arrayPath.startsWith(outerMap.param + '.')) {
+			const suffix = arrayPath.slice(outerMap.param.length) // ".images" or ""
+			const resolvedOuter = resolveMapChain(exprTexts, outerMap.param)
+			if (resolvedOuter) {
+				arrayPath = resolvedOuter + '[*]' + suffix
+			} else {
+				arrayPath = outerMap.arrayExpr + '[*]' + suffix
+			}
+		}
+	}
+
+	return arrayPath
+}
+
+/**
+ * Index images from an expression-based src={variable} by tracing
+ * the variable through .map() calls back to the data source array,
+ * then adding each array element to the image search index.
+ */
+function indexExpressionImageSrc(
+	exprValue: string,
+	parentExpression: AstroNode,
+	cached: CachedParsedFile,
+	relFile: string,
+): void {
+	// Collect text content from the expression node (contains the .map() calls)
+	const exprTexts: string[] = []
+	if ('children' in parentExpression && Array.isArray(parentExpression.children)) {
+		for (const child of parentExpression.children) {
+			if (child.type === 'text' && (child as TextNode).value) {
+				exprTexts.push((child as TextNode).value)
+			}
+		}
+	}
+
+	if (exprTexts.length === 0) return
+
+	// Resolve the .map() chain to find the source array path
+	const arrayPath = resolveMapChain(exprTexts, exprValue)
+	if (!arrayPath) return
+
+	for (const def of cached.variableDefinitions) {
+		const defPath = buildDefinitionPath(def)
+		// Match definitions that are direct children of the array
+		// e.g., for "images" match "images[0]", "images[1]"
+		// e.g., for "categories[*].images" match "categories[0].images[0]", etc.
+		if (isChildOfArray(defPath, arrayPath)) {
+			const snippet = cached.lines[def.line - 1]?.trim() || ''
+			addToImageSearchIndex({
+				file: relFile,
+				line: def.line,
+				snippet,
+				src: def.value,
+			})
+		}
+	}
+}
+
+/**
+ * Check if a definition path is a direct element of the given array path.
+ * Converts the arrayPath pattern (with optional [*] wildcards) into a regex
+ * that matches concrete indices.
+ *
+ * e.g., "images[0]" is a child of "images"
+ * e.g., "categories[0].images[1]" is a child of "categories[*].images"
+ * e.g., "categories[0].images[1].url" is NOT a child (too deep)
+ */
+export function isChildOfArray(defPath: string, arrayPath: string): boolean {
+	// Split arrayPath on [*] to get segments, then build a regex
+	// "categories[*].images" → ["categories", ".images"] → /^categories\[\d+\]\.images\[\d+\]$/
+	const segments = arrayPath.split('[*]')
+	let regexStr = '^'
+	for (let i = 0; i < segments.length; i++) {
+		regexStr += escapeRegex(segments[i]!)
+		if (i < segments.length - 1) {
+			regexStr += '\\[\\d+\\]'
+		}
+	}
+	regexStr += '\\[\\d+\\]$'
+	return new RegExp(regexStr).test(defPath)
+}
+
+/**
  * Index all images from a parsed file
  */
 export function indexFileImages(cached: CachedParsedFile, relFile: string): void {
 	// For Astro files, use AST
 	if (relFile.endsWith('.astro')) {
-		function visit(node: AstroNode) {
-			if (node.type === 'element') {
-				const elemNode = node as ElementNode
-				if (elemNode.name.toLowerCase() === 'img') {
+		function visit(node: AstroNode, parentExpression: AstroNode | null) {
+			// Track the nearest ancestor expression node (contains .map() context)
+			const currentExpr = node.type === 'expression' ? node : parentExpression
+
+			if (node.type === 'element' || node.type === 'component') {
+				const elemNode = node as ElementNode | ComponentNode
+				const isImg = node.type === 'element' && elemNode.name.toLowerCase() === 'img'
+				const isImageComponent = node.type === 'component' && elemNode.name === 'Image'
+
+				if (isImg || isImageComponent) {
 					for (const attr of elemNode.attributes) {
-						if (attr.type === 'attribute' && attr.name === 'src' && attr.value) {
+						if (attr.type !== 'attribute' || attr.name !== 'src' || !attr.value) continue
+
+						if ((attr as any).kind === 'expression' && currentExpr) {
+							// Expression src={variable} — trace through .map() to data source
+							indexExpressionImageSrc(
+								attr.value,
+								currentExpr,
+								cached,
+								relFile,
+							)
+						} else if ((attr as any).kind !== 'expression') {
+							// Static src="..." — index directly
 							const srcLine = attr.position?.start.line ?? elemNode.position?.start.line ?? 0
 							const snippet = extractImageSnippet(cached.lines, srcLine - 1)
 							addToImageSearchIndex({
@@ -364,31 +498,13 @@ export function indexFileImages(cached: CachedParsedFile, relFile: string): void
 				}
 			}
 
-			// Also index component nodes with src attributes (e.g., <Image src="..." />)
-			// This captures image component usages where the actual src is defined
-			if (node.type === 'component') {
-				const compNode = node as ComponentNode
-				for (const attr of compNode.attributes) {
-					if (attr.type === 'attribute' && attr.name === 'src' && attr.value) {
-						const srcLine = attr.position?.start.line ?? compNode.position?.start.line ?? 0
-						const snippet = extractImageSnippet(cached.lines, srcLine - 1)
-						addToImageSearchIndex({
-							file: relFile,
-							line: srcLine,
-							snippet,
-							src: attr.value,
-						})
-					}
-				}
-			}
-
 			if ('children' in node && Array.isArray(node.children)) {
 				for (const child of node.children) {
-					visit(child)
+					visit(child, currentExpr)
 				}
 			}
 		}
-		visit(cached.ast)
+		visit(cached.ast, null)
 	} else {
 		// For tsx/jsx, use regex
 		const srcPatterns = [/src="([^"]+)"/g, /src='([^']+)'/g]

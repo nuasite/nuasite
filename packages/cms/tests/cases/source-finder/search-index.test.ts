@@ -9,7 +9,7 @@
  */
 
 import type { Node as AstroNode } from '@astrojs/compiler/types'
-import { expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import {
 	addToImageSearchIndex,
 	addToTextSearchIndex,
@@ -25,6 +25,8 @@ import {
 	indexFileContent,
 	indexFileImages,
 	initializeSearchIndex,
+	isChildOfArray,
+	resolveMapChain,
 } from '../../../src/source-finder/search-index'
 import type { CachedParsedFile } from '../../../src/source-finder/types'
 import { setupAstroProjectStructure, withTempDir } from '../../utils'
@@ -642,6 +644,107 @@ withTempDir('findInImageIndex', (getCtx) => {
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/First.astro')
+	})
+})
+
+// ============================================================================
+// resolveMapChain Tests
+// ============================================================================
+
+describe('resolveMapChain', () => {
+	test('simple .map() with single parameter', () => {
+		const result = resolveMapChain(['images.map((img, i) => (\n  '], 'img')
+		expect(result).toBe('images')
+	})
+
+	test('nested .map() chains', () => {
+		const result = resolveMapChain(
+			['categories.map((cat) => (\n  cat.images.map((img, i) => (\n    '],
+			'img',
+		)
+		expect(result).toBe('categories[*].images')
+	})
+
+	test('returns null for unknown parameter', () => {
+		const result = resolveMapChain(['images.map((img) => (\n  '], 'unknown')
+		expect(result).toBeNull()
+	})
+
+	test('returns null for no .map() calls', () => {
+		const result = resolveMapChain(['<div>{title}</div>'], 'title')
+		expect(result).toBeNull()
+	})
+})
+
+// ============================================================================
+// isChildOfArray Tests
+// ============================================================================
+
+describe('isChildOfArray', () => {
+	test('simple array: images[0] is child of images', () => {
+		expect(isChildOfArray('images[0]', 'images')).toBe(true)
+		expect(isChildOfArray('images[5]', 'images')).toBe(true)
+	})
+
+	test('simple array: images[0].url is NOT child of images', () => {
+		expect(isChildOfArray('images[0].url', 'images')).toBe(false)
+	})
+
+	test('nested wildcard: categories[0].images[1] is child of categories[*].images', () => {
+		expect(isChildOfArray('categories[0].images[1]', 'categories[*].images')).toBe(true)
+		expect(isChildOfArray('categories[3].images[0]', 'categories[*].images')).toBe(true)
+	})
+
+	test('nested wildcard: wrong depth is NOT child', () => {
+		expect(isChildOfArray('categories[0].images', 'categories[*].images')).toBe(false)
+		expect(isChildOfArray('categories[0].images[1].url', 'categories[*].images')).toBe(false)
+	})
+
+	test('different path is NOT child', () => {
+		expect(isChildOfArray('other[0]', 'images')).toBe(false)
+	})
+})
+
+// ============================================================================
+// indexFileImages: expression src via AST
+// ============================================================================
+
+withTempDir('indexFileImages expression src', (getCtx) => {
+	test('should index images from expression src={img} in .map() via AST', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		const { parse } = await import('@astrojs/compiler')
+
+		const source = [
+			'---',
+			'const images = ["/assets/a.png", "/assets/b.png"];',
+			'---',
+			'<div>',
+			'{images.map((img) => (',
+			'  <img src={img} alt="photo" />',
+			'))}',
+			'</div>',
+		].join('\n')
+
+		const parsed = await parse(source)
+		const cached = createMockCachedFile({
+			lines: source.split('\n'),
+			ast: parsed.ast as unknown as AstroNode,
+			variableDefinitions: [
+				{ name: '0', value: '/assets/a.png', line: 2, parentName: 'images' },
+				{ name: '1', value: '/assets/b.png', line: 2, parentName: 'images' },
+			],
+		})
+
+		indexFileImages(cached, 'src/components/Gallery.astro')
+
+		const resultA = findInImageIndex('/assets/a.png')
+		expect(resultA).toBeDefined()
+		expect(resultA?.file).toBe('src/components/Gallery.astro')
+		expect(resultA?.line).toBe(2)
+
+		const resultB = findInImageIndex('/assets/b.png')
+		expect(resultB).toBeDefined()
 	})
 })
 
