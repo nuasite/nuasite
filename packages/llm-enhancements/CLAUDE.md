@@ -18,12 +18,14 @@ Astro integration that exposes pages as markdown endpoints (`.md` URLs) for LLM 
 ### Two Modes
 
 **Dev middleware** (`dev-middleware.ts`):
+
 - Intercepts `.md` URL requests and generates markdown on the fly
 - Serves `/.well-known/llm.md` and `/llms.txt` discovery endpoints
 - Injects `<link rel="alternate" type="text/markdown">` into HTML responses
 - Discovers pages via content collection files + homepage fetch
 
 **Build processor** (`build-processor.ts`):
+
 - Iterates all built pages after `astro:build:done`
 - For collections: reads original `.md` source from `src/content`
 - For static pages: converts rendered HTML to markdown
@@ -51,5 +53,6 @@ Astro integration that exposes pages as markdown endpoints (`.md` URLs) for LLM 
 ## Key Entry Point
 
 `src/index.ts` exports:
+
 - `llmEnhancements(options)` — the Astro integration (default export)
 - Types: `LlmEnhancementsOptions`

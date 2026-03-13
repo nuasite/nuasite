@@ -69,6 +69,7 @@ Media storage uses a pluggable adapter pattern (`MediaStorageAdapter`): local fi
 Tests use **Bun's built-in test runner** with `happy-dom` for DOM simulation (preloaded via `happydom.ts`).
 
 Key test helpers in `packages/cms/tests/utils/`:
+
 - `cmsDescribe()` — wraps `describe()` with automatic CMS ID generator reset between tests
 - `withTempDir()` — creates a temp directory for integration tests that need file system access
 - `setupCacheReset()` — resets caches between tests for isolation

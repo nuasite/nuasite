@@ -31,6 +31,7 @@ The CMS is a **bidirectional visual editor** for Astro sites with two core phase
 Astro hook (`astro:server:setup`) → `html-processor.ts` parses rendered HTML into an AST with `node-html-parser` → walks the AST to mark editable elements with `data-cms-id` attributes → `manifest-writer.ts` generates a per-page `cms-manifest.json` mapping each ID to its source location, text, tag, attributes, colors, and images.
 
 Supporting subsystems:
+
 - **Component Registry** (`component-registry.ts`) — scans `src/components/*.astro`, parses each into an AST via `@astrojs/compiler`, then extracts props from the frontmatter AST via Babel
 - **Collection Scanner** (`collection-scanner.ts`) — auto-detects Astro content collections
 - **SEO Processor** (`seo-processor.ts`) — extracts title, meta tags, JSON-LD from the HTML AST
@@ -63,6 +64,7 @@ Line-based text replacement. Changes are grouped by file, sorted by line descend
 Preact + Preact Signals for state, Milkdown (ProseMirror) for markdown editing. Built separately via `vite.config.editor.ts` into a single `dist/editor.js` bundle.
 
 Two delivery modes:
+
 - **Monorepo dev**: source files served directly, Vite transforms TSX on the fly
 - **npm installed**: pre-built `dist/editor.js` read from package
 
@@ -71,6 +73,7 @@ Injected as `<script type="module">` into every dev page.
 ### Media Storage (`src/media/`)
 
 Pluggable adapter pattern (`MediaStorageAdapter` interface):
+
 - `local.ts` — filesystem (`public/uploads/`)
 - `s3.ts` — S3/R2 direct
 - `contember.ts` — R2 + database
@@ -88,6 +91,7 @@ Prefer AST-based approaches when building new CMS functionality. Use `@astrojs/c
 ## Testing
 
 Test utilities in `tests/utils/`:
+
 - `cmsDescribe()` — wraps `describe()` with automatic CMS ID generator reset
 - `withTempDir()` — creates temp directory with full Astro project structure (`src/components/`, `src/pages/`, etc.) for integration tests
 - `setupCacheReset()` — isolates caches between tests
@@ -98,6 +102,7 @@ Pattern: unit tests use `cmsDescribe()` with HTML fixtures; integration tests us
 ## Key Entry Point
 
 `src/index.ts` exports:
+
 - `nuaCms(options)` — the Astro integration (default export)
 - Media adapters: `localMedia()`, `s3Media()`, `contemberMedia()`
 - `scanCollections()`, `getProjectRoot()`, `parseMarkdownContent()`

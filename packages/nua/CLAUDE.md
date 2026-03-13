@@ -34,11 +34,11 @@ export default defineConfig()
 // With customization
 import { defineConfig } from '@nuasite/nua/config'
 export default defineConfig({
-  site: 'https://example.com',
-  nua: {
-    cms: { /* CMS options */ },
-    sitemap: false,  // disable sitemap
-  },
+	site: 'https://example.com',
+	nua: {
+		cms: {/* CMS options */},
+		sitemap: false, // disable sitemap
+	},
 })
 
 // Direct integration usage
@@ -50,6 +50,7 @@ export default defineConfig({ integrations: [nua()] })
 ## Key Entry Point
 
 `src/index.ts` re-exports:
+
 - Default: `defineConfig` from `./config`
 - `/config`: `defineConfig(options)` — config wrapper
 - `/integration`: `nua(options)` — raw Astro integration

@@ -32,5 +32,6 @@ Astro integration that generates `AGENTS.md` — a machine-readable catalog of s
 ## Key Entry Point
 
 `src/index.ts` exports:
+
 - `agentsSummary(options)` — the Astro integration (default export)
 - Types: `PageMeta`, `RedirectMeta`

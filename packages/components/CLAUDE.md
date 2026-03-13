@@ -13,6 +13,7 @@ Reusable Astro component library for common site patterns. No build step — com
 #### Form (`src/form/index.astro`)
 
 Progressive form enhancement with anti-spam protection:
+
 - Honeypot fields for bot detection
 - Client-side validation tracking mouse, keyboard, and focus events
 - Minimum time-on-page (3s), keystroke count, and field interaction checks
@@ -24,12 +25,14 @@ Progressive form enhancement with anti-spam protection:
 Requires either `formId` (Nua-managed endpoint) or `action` (custom URL) — enforced by union type in `types.ts`.
 
 Supporting files:
+
 - `src/form/types.ts` — Props union type ensuring `formId` XOR `action`
 - `src/form/utils.ts` — Honeypot field names and regex validators
 
 #### Image (`src/image/index.astro`)
 
 Cloudflare Image Transform wrapper:
+
 - Builds responsive `srcset` with configurable widths (default: `[480, 768, 1024, 1400]`)
 - Supports absolute and relative image sources
 - Optional domain whitelist
