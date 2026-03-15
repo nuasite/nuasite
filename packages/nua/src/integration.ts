@@ -3,16 +3,24 @@ import sitemap from '@astrojs/sitemap'
 import cms from '@nuasite/cms'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroIntegration } from 'astro'
+import { writeFile } from 'node:fs/promises'
 import pageMarkdown from '../../llm-enhancements/src'
 import { type NuaIntegrationOptions, resolveOptions } from './types'
 
+interface NormalizedRedirect {
+	from: string
+	to: string
+	code: number
+}
+
 export default function nua(options: NuaIntegrationOptions = {}): AstroIntegration {
 	const resolved = resolveOptions(options)
+	let capturedRedirects: NormalizedRedirect[] = []
 
 	return {
 		name: '@nuasite/nua',
 		hooks: {
-			'astro:config:setup': ({ updateConfig, command, injectScript, logger }) => {
+			'astro:config:setup': ({ config, updateConfig, command, injectScript, logger }) => {
 				const integrations: AstroIntegration[] = []
 				const vitePlugins = []
 
@@ -65,13 +73,32 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 					)
 				}
 
+				// Capture and strip Astro redirects to generate _redirects file instead of meta-refresh HTML
+				const astroRedirects = config.redirects ?? {}
+				capturedRedirects = Object.entries(astroRedirects).map(([from, value]) => {
+					const destination = typeof value === 'string' ? value : value.destination
+					const code = typeof value === 'string' ? 301 : (value.status ?? 301)
+					const normalizedFrom = from.replace(/\[\.\.\.[\w]+\]/g, '*')
+					const normalizedTo = destination.replace(/\[\.\.\.[\w]+\]/g, ':splat')
+					return { from: normalizedFrom, to: normalizedTo, code }
+				})
+
 				// Inject Vite plugins and integrations
 				updateConfig({
+					redirects: {},
 					vite: {
 						plugins: vitePlugins,
 					},
 					integrations,
 				})
+			},
+			'astro:build:done': async ({ dir, logger }) => {
+				if (capturedRedirects.length === 0) return
+				const lines = capturedRedirects.map(r => `${r.from} ${r.to} ${r.code}`)
+				const content = lines.join('\n') + '\n'
+				const filePath = new URL('_redirects', dir)
+				await writeFile(filePath, content, 'utf-8')
+				logger.info(`Generated _redirects with ${capturedRedirects.length} rules`)
 			},
 		},
 	}
