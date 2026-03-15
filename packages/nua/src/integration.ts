@@ -77,7 +77,7 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				const astroRedirects = config.redirects ?? {}
 				capturedRedirects = Object.entries(astroRedirects).map(([from, value]) => {
 					const destination = typeof value === 'string' ? value : value.destination
-					const code = typeof value === 'string' ? 301 : (value.status ?? 301)
+					const code = typeof value === 'string' ? 307 : (value.status ?? 307)
 					const normalizedFrom = from.replace(/\[\.\.\.[\w]+\]/g, '*')
 					const normalizedTo = destination.replace(/\[\.\.\.[\w]+\]/g, ':splat')
 					return { from: normalizedFrom, to: normalizedTo, code }
