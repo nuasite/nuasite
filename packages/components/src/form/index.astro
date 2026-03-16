@@ -219,16 +219,32 @@ const tokenId = `${tokenFieldName}_${formId}`
 
 			refreshSubmissionGuards()
 
+			const trackForm = (action: string, detail?: Record<string, unknown>) => {
+				if (typeof window !== 'undefined' && (window as any).analytics?.form) {
+					(window as any).analytics.form(formId, action, detail)
+				}
+			}
+
 			form.addEventListener('submit', async (e) => {
 				e.preventDefault()
 
+				const formDataForTracking = Object.fromEntries(
+					Array.from(new FormData(form).entries())
+						.filter(([k]) => !this.honeypotFieldNames.includes(k) && !/^token_/.test(k) && !form.querySelector(`[name="${k}"][aria-hidden="true"]`))
+						.map(([k, v]) => [k, typeof v === 'string' ? v.slice(0, 100) : '[File]']),
+				)
+
+				trackForm('attempt', { formData: formDataForTracking })
+
 				if (!this.passesHumanityChecks(form)) {
+					trackForm('reject', { reason: 'humanity_check_failed', formData: formDataForTracking })
 					showError(tryAgainMessage)
 					return
 				}
 
 				const elapsed = performance.now() - activationTime
 				if (minSubmitDelay > 0 && elapsed < minSubmitDelay) {
+					trackForm('reject', { reason: 'submitted_too_fast', formData: formDataForTracking })
 					showError(fastSubmitMessage || tryAgainMessage)
 					return
 				}
@@ -236,6 +252,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				activationTime = performance.now()
 
 				if (tokenInput && !tokenInput.value) {
+					trackForm('reject', { reason: 'missing_token', formData: formDataForTracking })
 					showError(tryAgainMessage)
 					return
 				}
@@ -254,15 +271,18 @@ const tokenId = `${tokenFieldName}_${formId}`
 
 					if (response.ok && 'success' in result && result.success) {
 						const message = hasCustomSuccess ? successMessage : (result.message || successMessage)
+						trackForm('success', { formData: formDataForTracking })
 						showSuccess(message)
 						form.reset()
 						refreshSubmissionGuards()
 					} else {
 						const message = hasCustomError ? errorMessage : (result.error || result.message || errorMessage)
+						trackForm('error', { reason: result.error || `http_${response.status}`, formData: formDataForTracking })
 						showError(message)
 					}
 				} catch (err) {
 					console.error('Form submission error:', err);
+					trackForm('error', { reason: err instanceof Error ? err.message : 'network_error', formData: formDataForTracking })
 					showError(networkErrorMessage)
 				}
 			})
