@@ -70,12 +70,15 @@ const tokenId = `${tokenFieldName}_${formId}`
 				))}
 			</div>
 
+			<label for={cssHoneypotField} class="sr-only">Leave this field empty</label>
 			<input
 				type="text"
+				id={cssHoneypotField}
 				name={cssHoneypotField}
 				style="position: absolute; left: -9999px; opacity: 0;"
 				tabindex="-1"
 				autocomplete="nope"
+				aria-hidden="true"
 			/>
 
 			<slot />
