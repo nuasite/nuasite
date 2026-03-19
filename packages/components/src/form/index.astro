@@ -112,13 +112,15 @@ const tokenId = `${tokenFieldName}_${formId}`
 
 <script>
 	class AstroForm extends HTMLElement {
-		private interactionScore = 0;
 		private fieldInteractions = new Set<string>();
-		private mouseMovements = 0;
+		private hasPointerActivity = false;
 		private keyboardEvents = 0;
+		private inputEvents = 0;
 		private focusEvents = 0;
+		private scrolled = false;
 		private startTime = Date.now();
 		private honeypotFieldNames: string[] = []
+		private abortController = new AbortController()
 
 		connectedCallback() {
 			const form = this.querySelector('form')
@@ -289,50 +291,66 @@ const tokenId = `${tokenFieldName}_${formId}`
 		}
 
 		private setupInteractionTracking(form: HTMLFormElement) {
-			let mouseMoveTimeout: NodeJS.Timeout;
-			document.addEventListener('mousemove', () => {
-				clearTimeout(mouseMoveTimeout);
-				mouseMoveTimeout = setTimeout(() => {
-					this.mouseMovements++;
-					this.updateInteractionScore();
-				}, 100);
-			});
+			const signal = this.abortController.signal
+
+			document.addEventListener('mousemove', () => { this.hasPointerActivity = true }, { signal, once: true });
+			document.addEventListener('touchstart', () => { this.hasPointerActivity = true }, { signal, passive: true, once: true });
+			document.addEventListener('scroll', () => { this.scrolled = true }, { signal, passive: true, once: true });
 
 			form.addEventListener('keydown', (e) => {
 				if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
 					this.keyboardEvents++;
-					this.updateInteractionScore();
 				}
-			});
+			}, { signal });
 
-			const inputs = form.querySelectorAll('input[type="text"], input[type="email"], textarea');
-			inputs.forEach(input => {
-				input.addEventListener('focus', () => {
-					this.focusEvents++;
-					this.fieldInteractions.add((input as HTMLInputElement).name);
-					this.updateInteractionScore();
-				});
+			// Fires for autofill, paste, voice input, and virtual keyboards
+			form.addEventListener('input', (e) => {
+				if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+					this.inputEvents++;
+					this.fieldInteractions.add(e.target.name);
+				}
+			}, { signal });
+
+			// Fires on selects, checkboxes, date pickers
+			form.addEventListener('change', (e) => {
+				if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
+					this.fieldInteractions.add(e.target.name);
+				}
+			}, { signal });
+
+			form.querySelectorAll<HTMLElement>('input:not([type="hidden"]):not([aria-hidden="true"]), textarea, select').forEach(input => {
+				input.addEventListener('focus', () => { this.focusEvents++ }, { signal });
 			});
 		}
 
-		private updateInteractionScore() {
-			this.interactionScore =
-				(this.mouseMovements > 0 ? 1 : 0) +
-				(this.keyboardEvents > 5 ? 1 : 0) +
+		disconnectedCallback() {
+			this.abortController.abort()
+		}
+
+		private getInteractionScore(): number {
+			return (
+				(this.hasPointerActivity ? 1 : 0) +
+				(this.keyboardEvents > 5 || this.inputEvents > 2 ? 1 : 0) +
 				(this.focusEvents > 1 ? 1 : 0) +
-				(this.fieldInteractions.size > 1 ? 1 : 0);
+				(this.fieldInteractions.size > 1 ? 1 : 0) +
+				(this.scrolled ? 1 : 0)
+			);
 		}
 
 		private detectSuspiciousBrowser(): boolean {
+			const ua = window.navigator.userAgent
+			const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
+
 			// Check for headless browser indicators
 			const suspiciousIndicators = [
-				// Missing expected browser features
-				!window.navigator.webdriver === undefined,
-				!window.navigator.plugins.length,
+				// WebDriver API presence (set to true in automated browsers)
+				navigator.webdriver === true,
+				// Empty plugins list is only suspicious on desktop — mobile browsers normally have none
+				!isMobile && !window.navigator.plugins.length,
 				!window.navigator.languages.length,
 
 				// Headless Chrome indicators
-				window.navigator.userAgent.includes('HeadlessChrome'),
+				ua.includes('HeadlessChrome'),
 				window.outerWidth === 0,
 				window.outerHeight === 0,
 
@@ -350,7 +368,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 
 			if (timeSpent < 3000) return false;
 
-			if (this.interactionScore < 2) return false;
+			if (this.getInteractionScore() < 2) return false;
 
 			for (const fieldName of this.honeypotFieldNames) {
 				const field = form.querySelector(`[name="${fieldName}"]`) as HTMLInputElement
