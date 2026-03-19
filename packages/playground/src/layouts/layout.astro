@@ -17,6 +17,7 @@ const { title, description } = Astro.props;
 		<meta name="generator" content={Astro.generator} />
 		<title>{title}</title>
 		<meta name="description" content={description} />
+		<link rel="canonical" href={new URL(Astro.url.pathname, Astro.site).href} />
 	</head>
 	<body>
 		<slot />
