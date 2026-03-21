@@ -6,7 +6,23 @@ export type CheckSeverity = 'error' | 'warning' | 'info'
 export type CheckDomain = 'seo' | 'geo' | 'performance' | 'accessibility' | 'ai'
 export type CheckMode = 'auto' | 'full' | 'essential'
 
-// ── Check Result ───────────────────────────────────────────────────────────────
+// ── Check Issue (returned by checks) ────────────────────────────────────────────
+
+/** Lightweight result returned by a check's run() method. The runner enriches it into a full CheckResult. */
+export interface CheckIssue {
+	message: string
+	suggestion?: string
+	pagePath?: string
+	filePath?: string
+	line?: number
+	actual?: string
+	expected?: string
+}
+
+/** Issue returned by a site-level check — pagePath is required since there's no single page context. */
+export type SiteCheckIssue = CheckIssue & { pagePath: string }
+
+// ── Check Result (enriched by runner) ───────────────────────────────────────────
 
 export interface CheckResult {
 	checkId: string
@@ -34,7 +50,7 @@ export interface Check {
 	description: string
 	/** Whether this check runs in essential mode (true) or only in full mode (false) */
 	essential: boolean
-	run(context: PageCheckContext): CheckResult[]
+	run(context: PageCheckContext): CheckIssue[] | Promise<CheckIssue[]>
 }
 
 /** Site-level check — runs once after all pages are processed */
@@ -46,7 +62,7 @@ export interface SiteCheck {
 	defaultSeverity: CheckSeverity
 	description: string
 	essential: boolean
-	run(context: SiteCheckContext): CheckResult[]
+	run(context: SiteCheckContext): SiteCheckIssue[] | Promise<SiteCheckIssue[]>
 }
 
 // ── Check Contexts ─────────────────────────────────────────────────────────────
@@ -54,6 +70,7 @@ export interface SiteCheck {
 export interface PageCheckContext {
 	pagePath: string
 	filePath: string
+	distDir: string
 	html: string
 	root: ParsedHTMLElement
 	pageData: ExtractedPageData
@@ -61,6 +78,7 @@ export interface PageCheckContext {
 
 export interface SiteCheckContext {
 	distDir: string
+	projectRoot: string
 	pages: Map<string, ExtractedPageData>
 	siteUrl?: string
 }
@@ -84,6 +102,10 @@ export interface ExtractedPageData {
 	htmlLang?: string
 	htmlSize: number
 	bodyTextLength: number
+	hasViewport: boolean
+	hasNoindex: boolean
+	inlineScriptBytes: number
+	inlineStyleBytes: number
 }
 
 export interface MetaTagData {
@@ -126,6 +148,8 @@ export interface ScriptData {
 	type?: string
 	isAsync: boolean
 	isDefer: boolean
+	isInline: boolean
+	size: number
 	line: number
 }
 
@@ -161,6 +185,8 @@ export interface ChecksOptions {
 	failOnWarning?: boolean
 	overrides?: Record<string, CheckSeverity | false>
 	customChecks?: (Check | SiteCheck)[]
+	/** Write a JSON report to the dist dir. `true` writes `checks-report.json`, a string sets a custom filename. */
+	reportJson?: boolean | string
 }
 
 export interface SeoChecksConfig {
@@ -178,6 +204,8 @@ export interface PerformanceChecksConfig {
 	maxHtmlSize?: number
 	maxImageSize?: number
 	allowedImageFormats?: string[]
+	maxInlineSize?: number
+	maxExternalRequests?: number
 }
 
 export type AccessibilityChecksConfig = {}
@@ -200,6 +228,7 @@ export interface ResolvedChecksOptions {
 	failOnWarning: boolean
 	overrides: Record<string, CheckSeverity | false>
 	customChecks: (Check | SiteCheck)[]
+	reportJson: string | false
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────────

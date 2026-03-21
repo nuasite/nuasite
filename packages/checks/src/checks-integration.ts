@@ -6,8 +6,8 @@ import { CheckRunner } from './check-runner'
 import { resolveChecksOptions } from './config'
 import { analyzeHtml } from './html-analyzer'
 import { registerAllChecks } from './register'
-import { logReport } from './report'
-import type { Check, CheckResult, ChecksOptions, ExtractedPageData } from './types'
+import { logReport, writeJsonReport } from './report'
+import type { CheckResult, ChecksOptions, ExtractedPageData } from './types'
 
 /**
  * Try to read an HTML file for a given page pathname in the dist directory.
@@ -33,12 +33,14 @@ export const checks = (options: ChecksOptions = {}): AstroIntegration => {
 	const resolved = resolveChecksOptions(options)
 	const isCI = !!process.env.CI
 	let siteUrl: string | undefined
+	let projectRoot: string | undefined
 
 	return {
 		name: '@nuasite/checks',
 		hooks: {
 			'astro:config:done': ({ config }) => {
 				siteUrl = config.site
+				projectRoot = fileURLToPath(config.root)
 			},
 			'astro:build:done': async ({ dir, pages, logger }) => {
 				const distDir = fileURLToPath(dir)
@@ -59,37 +61,53 @@ export const checks = (options: ChecksOptions = {}): AstroIntegration => {
 				const allResults: CheckResult[] = []
 				const pagesData = new Map<string, ExtractedPageData>()
 
-				// Run per-page checks
-				for (const page of pages) {
-					const pagePath = `/${page.pathname}`.replace(/\/+/g, '/')
-					const result = await readPageHtml(distDir, page.pathname)
-					if (!result) {
-						logger.warn(`Skipping ${page.pathname}; no HTML output found.`)
-						continue
-					}
+				// Run per-page checks in parallel
+				const pageResults = await Promise.all(
+					pages.map(async (page) => {
+						const pagePath = `/${page.pathname}`.replace(/\/+/g, '/')
+						const result = await readPageHtml(distDir, page.pathname)
+						if (!result) {
+							logger.warn(`Skipping ${page.pathname}; no HTML output found.`)
+							return null
+						}
 
-					const { root, pageData } = analyzeHtml(result.html)
-					pagesData.set(pagePath, pageData)
+						const { root, pageData } = analyzeHtml(result.html)
+						const results = await runner.runPageChecks({
+							pagePath,
+							filePath: result.filePath,
+							distDir,
+							html: result.html,
+							root,
+							pageData,
+						})
+						return { pagePath, pageData, results }
+					}),
+				)
 
-					allResults.push(...runner.runPageChecks({
-						pagePath,
-						filePath: result.filePath,
-						html: result.html,
-						root,
-						pageData,
-					}))
+				for (const entry of pageResults) {
+					if (!entry) continue
+					pagesData.set(entry.pagePath, entry.pageData)
+					allResults.push(...entry.results)
 				}
 
 				// Run site-level checks
-				allResults.push(...runner.runSiteChecks({
+				const siteResults = await runner.runSiteChecks({
 					distDir,
+					projectRoot: projectRoot ?? process.cwd(),
 					pages: pagesData,
 					siteUrl,
-				}))
+				})
+				allResults.push(...siteResults)
 
 				// Generate and log report
 				const report = runner.generateReport(allResults, pagesData.size)
 				logReport(report, logger)
+
+				// Write JSON report if configured
+				if (resolved.reportJson) {
+					const reportPath = await writeJsonReport(report, distDir, resolved.reportJson)
+					logger.info(`JSON report written to ${reportPath}`)
+				}
 
 				// Fail build if configured
 				if (resolved.failOnError && report.errors.length > 0) {

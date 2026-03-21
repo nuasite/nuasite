@@ -1,4 +1,4 @@
-import type { Check, CheckResult, PageCheckContext } from '../../types'
+import type { Check, CheckIssue, PageCheckContext } from '../../types'
 
 export function createOgTitleCheck(): Check {
 	return {
@@ -9,18 +9,9 @@ export function createOgTitleCheck(): Check {
 		defaultSeverity: 'warning',
 		description: 'Pages should have an og:title meta tag',
 		essential: false,
-		run(ctx: PageCheckContext): CheckResult[] {
+		run(ctx: PageCheckContext): CheckIssue[] {
 			if (!ctx.pageData.openGraph.title) {
-				return [{
-					checkId: 'seo/og-title',
-					ruleName: 'Open Graph Title',
-					domain: 'seo',
-					severity: 'warning',
-					message: 'Page is missing og:title meta tag',
-					suggestion: 'Add <meta property="og:title" content="..."> inside <head>',
-					pagePath: ctx.pagePath,
-					filePath: ctx.filePath,
-				}]
+				return [{ message: 'Page is missing og:title meta tag', suggestion: 'Add <meta property="og:title" content="..."> inside <head>' }]
 			}
 			return []
 		},
@@ -36,18 +27,9 @@ export function createOgDescriptionCheck(): Check {
 		defaultSeverity: 'warning',
 		description: 'Pages should have an og:description meta tag',
 		essential: false,
-		run(ctx: PageCheckContext): CheckResult[] {
+		run(ctx: PageCheckContext): CheckIssue[] {
 			if (!ctx.pageData.openGraph.description) {
-				return [{
-					checkId: 'seo/og-description',
-					ruleName: 'Open Graph Description',
-					domain: 'seo',
-					severity: 'warning',
-					message: 'Page is missing og:description meta tag',
-					suggestion: 'Add <meta property="og:description" content="..."> inside <head>',
-					pagePath: ctx.pagePath,
-					filePath: ctx.filePath,
-				}]
+				return [{ message: 'Page is missing og:description meta tag', suggestion: 'Add <meta property="og:description" content="..."> inside <head>' }]
 			}
 			return []
 		},
@@ -63,18 +45,9 @@ export function createOgImageCheck(): Check {
 		defaultSeverity: 'warning',
 		description: 'Pages should have an og:image meta tag',
 		essential: false,
-		run(ctx: PageCheckContext): CheckResult[] {
+		run(ctx: PageCheckContext): CheckIssue[] {
 			if (!ctx.pageData.openGraph.image) {
-				return [{
-					checkId: 'seo/og-image',
-					ruleName: 'Open Graph Image',
-					domain: 'seo',
-					severity: 'warning',
-					message: 'Page is missing og:image meta tag',
-					suggestion: 'Add <meta property="og:image" content="..."> inside <head>',
-					pagePath: ctx.pagePath,
-					filePath: ctx.filePath,
-				}]
+				return [{ message: 'Page is missing og:image meta tag', suggestion: 'Add <meta property="og:image" content="..."> inside <head>' }]
 			}
 			return []
 		},

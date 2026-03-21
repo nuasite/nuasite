@@ -1,4 +1,6 @@
 import type { AstroIntegrationLogger } from 'astro'
+import fs from 'node:fs/promises'
+import path from 'node:path'
 import type { CheckReport, CheckResult } from './types'
 
 export function logReport(report: CheckReport, logger: AstroIntegrationLogger): void {
@@ -39,6 +41,34 @@ export function logReport(report: CheckReport, logger: AstroIntegrationLogger): 
 	].filter(Boolean)
 
 	logger.info(`Summary: ${parts.join(', ')}`)
+}
+
+export async function writeJsonReport(report: CheckReport, distDir: string, filename: string): Promise<string> {
+	const filePath = path.join(distDir, filename)
+	const json = {
+		timestamp: new Date().toISOString(),
+		totalPages: report.totalPages,
+		totalChecks: report.totalChecks,
+		passed: report.passed,
+		summary: {
+			errors: report.errors.length,
+			warnings: report.warnings.length,
+			infos: report.infos.length,
+		},
+		results: report.results.map(r => ({
+			checkId: r.checkId,
+			severity: r.severity,
+			domain: r.domain,
+			message: r.message,
+			suggestion: r.suggestion,
+			pagePath: r.pagePath,
+			line: r.line,
+			actual: r.actual,
+			expected: r.expected,
+		})),
+	}
+	await fs.writeFile(filePath, JSON.stringify(json, null, '\t'), 'utf8')
+	return filePath
 }
 
 function formatResult(r: CheckResult): string {

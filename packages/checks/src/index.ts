@@ -5,6 +5,7 @@ export type {
 	AiChecksConfig,
 	Check,
 	CheckDomain,
+	CheckIssue,
 	CheckMode,
 	CheckReport,
 	CheckResult,
@@ -17,4 +18,5 @@ export type {
 	SeoChecksConfig,
 	SiteCheck,
 	SiteCheckContext,
+	SiteCheckIssue,
 } from './types'

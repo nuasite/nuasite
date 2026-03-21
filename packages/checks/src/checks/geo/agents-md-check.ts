@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs'
+import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { CheckResult, SiteCheck, SiteCheckContext } from '../../types'
+import type { SiteCheck, SiteCheckContext, SiteCheckIssue } from '../../types'
 
 export function createAgentsMdCheck(): SiteCheck {
 	return {
@@ -11,18 +11,13 @@ export function createAgentsMdCheck(): SiteCheck {
 		defaultSeverity: 'warning',
 		description: 'Project should have an AGENTS.md file with page summaries',
 		essential: true,
-		run(_ctx: SiteCheckContext): CheckResult[] {
-			// AGENTS.md lives in the project root, not dist
-			const agentsPath = path.join(process.cwd(), 'AGENTS.md')
-			let content: string | undefined
+		async run(ctx: SiteCheckContext): Promise<SiteCheckIssue[]> {
+			const agentsPath = path.join(ctx.projectRoot, 'AGENTS.md')
+			let content: string
 			try {
-				content = readFileSync(agentsPath, 'utf-8')
+				content = await fs.readFile(agentsPath, 'utf-8')
 			} catch {
 				return [{
-					checkId: 'geo/agents-md',
-					ruleName: 'AGENTS.md',
-					domain: 'geo',
-					severity: 'warning',
 					message: 'Project is missing an AGENTS.md file',
 					suggestion: 'Add an AGENTS.md file to make your site discoverable by AI agents',
 					pagePath: '/AGENTS.md',
@@ -31,10 +26,6 @@ export function createAgentsMdCheck(): SiteCheck {
 
 			if (!content.includes('<page_summary>')) {
 				return [{
-					checkId: 'geo/agents-md',
-					ruleName: 'AGENTS.md',
-					domain: 'geo',
-					severity: 'warning',
 					message: 'AGENTS.md does not contain any <page_summary> markers',
 					suggestion: 'Use @nuasite/agent-summary to generate page summaries in AGENTS.md',
 					pagePath: '/AGENTS.md',

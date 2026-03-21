@@ -1,4 +1,4 @@
-import type { Check, CheckResult, PageCheckContext } from '../../types'
+import type { Check, CheckIssue, PageCheckContext } from '../../types'
 
 export function createJsonLdInvalidCheck(): Check {
 	return {
@@ -9,19 +9,13 @@ export function createJsonLdInvalidCheck(): Check {
 		defaultSeverity: 'error',
 		description: 'JSON-LD structured data must be valid',
 		essential: true,
-		run(ctx: PageCheckContext): CheckResult[] {
-			const results: CheckResult[] = []
+		run(ctx: PageCheckContext): CheckIssue[] {
+			const results: CheckIssue[] = []
 			for (const entry of ctx.pageData.jsonLd) {
 				if (!entry.valid) {
 					results.push({
-						checkId: 'seo/json-ld-invalid',
-						ruleName: 'JSON-LD Valid',
-						domain: 'seo',
-						severity: 'error',
 						message: entry.error ?? `Invalid JSON-LD for type "${entry.type}"`,
 						suggestion: 'Fix the JSON-LD structured data so it is valid JSON',
-						pagePath: ctx.pagePath,
-						filePath: ctx.filePath,
 						line: entry.line,
 					})
 				}

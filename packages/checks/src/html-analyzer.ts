@@ -49,6 +49,10 @@ export function analyzeHtml(html: string): { root: ParsedHTMLElement; pageData: 
 		htmlLang: htmlElement?.getAttribute('lang') || undefined,
 		htmlSize: Buffer.byteLength(html, 'utf8'),
 		bodyTextLength,
+		hasViewport: false,
+		hasNoindex: false,
+		inlineScriptBytes: 0,
+		inlineStyleBytes: 0,
 	}
 
 	if (head) {
@@ -57,8 +61,18 @@ export function analyzeHtml(html: string): { root: ParsedHTMLElement; pageData: 
 		categorizeMetaTags(pageData)
 		pageData.canonical = extractCanonical(head, html, lineIndex)
 		pageData.jsonLd = extractJsonLd(root, html, lineIndex)
-		pageData.scripts = extractScripts(head, html, lineIndex)
+		pageData.scripts = extractScripts(root, html, lineIndex)
 		pageData.stylesheets = extractStylesheets(head, html, lineIndex)
+
+		// Compute inline sizes from extracted data
+		pageData.inlineScriptBytes = pageData.scripts
+			.filter(s => s.isInline)
+			.reduce((sum, s) => sum + s.size, 0)
+
+		for (const style of root.querySelectorAll('style')) {
+			const content = style.textContent ?? ''
+			if (content) pageData.inlineStyleBytes += Buffer.byteLength(content, 'utf8')
+		}
 	}
 
 	if (body) {
@@ -94,23 +108,36 @@ function offsetToLine(lineIndex: number[], offset: number): number {
 	return lo // 1-based since offsets[0] = 0 means line 1
 }
 
-/** Find the line of the first occurrence of `search` starting from `startIdx` */
-function findLine(html: string, lineIndex: number[], search: string, startIdx = 0): number {
-	const idx = html.indexOf(search, startIdx)
-	if (idx === -1) return 1
-	return offsetToLine(lineIndex, idx)
+/**
+ * Advancing line finder — tracks position to handle duplicate elements correctly.
+ * Each call advances the search start so identical markup gets distinct line numbers.
+ */
+function createLineFinder(html: string, lineIndex: number[]) {
+	let pos = 0
+	return (search: string): number => {
+		const idx = html.indexOf(search, pos)
+		if (idx !== -1) {
+			pos = idx + 1
+			return offsetToLine(lineIndex, idx)
+		}
+		// Fallback: search from beginning for edge cases
+		const fallback = html.indexOf(search)
+		if (fallback !== -1) return offsetToLine(lineIndex, fallback)
+		return 1
+	}
 }
 
 function extractTitle(head: ParsedHTMLElement, html: string, lineIndex: number[]): ExtractedPageData['title'] {
 	const titleEl = head.querySelector('title')
 	if (!titleEl) return undefined
 	const content = titleEl.textContent?.trim() || ''
-	if (!content) return undefined
-	return { content, line: findLine(html, lineIndex, '<title') }
+	const findLine = createLineFinder(html, lineIndex)
+	return { content, line: findLine('<title') }
 }
 
 function extractMetaTags(head: ParsedHTMLElement, html: string, lineIndex: number[]): MetaTagData[] {
 	const tags: MetaTagData[] = []
+	const findLine = createLineFinder(html, lineIndex)
 	for (const meta of head.querySelectorAll('meta')) {
 		const name = meta.getAttribute('name')
 		const property = meta.getAttribute('property')
@@ -120,7 +147,7 @@ function extractMetaTags(head: ParsedHTMLElement, html: string, lineIndex: numbe
 			name: name || undefined,
 			property: property || undefined,
 			content,
-			line: findLine(html, lineIndex, meta.toString().substring(0, 60)),
+			line: findLine(meta.toString().substring(0, 60)),
 		})
 	}
 	return tags
@@ -130,6 +157,12 @@ function categorizeMetaTags(pageData: ExtractedPageData): void {
 	for (const meta of pageData.metaTags) {
 		if (meta.name === 'description') {
 			pageData.metaDescription = { content: meta.content, line: meta.line }
+		}
+		if (meta.name === 'viewport') {
+			pageData.hasViewport = true
+		}
+		if (meta.name === 'robots' && meta.content.toLowerCase().includes('noindex')) {
+			pageData.hasNoindex = true
 		}
 		if (meta.property?.startsWith('og:')) {
 			const key = meta.property.replace('og:', '')
@@ -147,19 +180,17 @@ function extractCanonical(head: ParsedHTMLElement, html: string, lineIndex: numb
 	if (!link) return undefined
 	const href = link.getAttribute('href')
 	if (!href) return undefined
-	return { href, line: findLine(html, lineIndex, 'rel="canonical"') }
+	const findLine = createLineFinder(html, lineIndex)
+	return { href, line: findLine('rel="canonical"') }
 }
 
 function extractJsonLd(root: ParsedHTMLElement, html: string, lineIndex: number[]): JsonLdData[] {
 	const entries: JsonLdData[] = []
-	let searchFrom = 0
+	const findLine = createLineFinder(html, lineIndex)
 	for (const script of root.querySelectorAll('script[type="application/ld+json"]')) {
 		const raw = script.textContent?.trim() || ''
 		if (!raw) continue
-		// Advance search position so each block gets its own line number
-		const line = findLine(html, lineIndex, 'application/ld+json', searchFrom)
-		const idx = html.indexOf('application/ld+json', searchFrom)
-		if (idx !== -1) searchFrom = idx + 1
+		const line = findLine('application/ld+json')
 		try {
 			const data = JSON.parse(raw)
 			entries.push({ type: data['@type'] || 'Unknown', raw, valid: true, line })
@@ -178,6 +209,7 @@ function extractJsonLd(root: ParsedHTMLElement, html: string, lineIndex: number[
 
 function extractHeadings(body: ParsedHTMLElement, html: string, lineIndex: number[]): HeadingData[] {
 	const headings: HeadingData[] = []
+	const findLine = createLineFinder(html, lineIndex)
 	for (const el of body.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
 		const tag = el.tagName?.toLowerCase() || ''
 		const level = parseInt(tag.replace('h', ''), 10)
@@ -185,7 +217,7 @@ function extractHeadings(body: ParsedHTMLElement, html: string, lineIndex: numbe
 		headings.push({
 			level,
 			text: el.textContent?.trim() || '',
-			line: findLine(html, lineIndex, el.toString().substring(0, 40)),
+			line: findLine(el.toString().substring(0, 40)),
 		})
 	}
 	return headings
@@ -193,12 +225,13 @@ function extractHeadings(body: ParsedHTMLElement, html: string, lineIndex: numbe
 
 function extractImages(root: ParsedHTMLElement, html: string, lineIndex: number[]): ImageData[] {
 	const images: ImageData[] = []
+	const findLine = createLineFinder(html, lineIndex)
 	for (const img of root.querySelectorAll('img')) {
 		images.push({
 			src: img.getAttribute('src') || '',
 			alt: img.getAttribute('alt') ?? undefined,
 			loading: img.getAttribute('loading') || undefined,
-			line: findLine(html, lineIndex, img.toString().substring(0, 60)),
+			line: findLine(img.toString().substring(0, 60)),
 		})
 	}
 	return images
@@ -206,26 +239,33 @@ function extractImages(root: ParsedHTMLElement, html: string, lineIndex: number[
 
 function extractLinks(body: ParsedHTMLElement, html: string, lineIndex: number[]): LinkData[] {
 	const links: LinkData[] = []
+	const findLine = createLineFinder(html, lineIndex)
 	for (const a of body.querySelectorAll('a')) {
 		links.push({
 			href: a.getAttribute('href') || '',
 			text: a.textContent?.trim() || '',
 			rel: a.getAttribute('rel') || undefined,
-			line: findLine(html, lineIndex, a.toString().substring(0, 60)),
+			line: findLine(a.toString().substring(0, 60)),
 		})
 	}
 	return links
 }
 
-function extractScripts(head: ParsedHTMLElement, html: string, lineIndex: number[]): ScriptData[] {
+function extractScripts(root: ParsedHTMLElement, html: string, lineIndex: number[]): ScriptData[] {
 	const scripts: ScriptData[] = []
-	for (const script of head.querySelectorAll('script')) {
+	const findLine = createLineFinder(html, lineIndex)
+	for (const script of root.querySelectorAll('script')) {
+		const src = script.getAttribute('src') || undefined
+		const content = script.textContent ?? ''
+		const isInline = !src && content.trim().length > 0
 		scripts.push({
-			src: script.getAttribute('src') || undefined,
+			src,
 			type: script.getAttribute('type') || undefined,
 			isAsync: script.hasAttribute('async'),
 			isDefer: script.hasAttribute('defer'),
-			line: findLine(html, lineIndex, script.toString().substring(0, 60)),
+			isInline,
+			size: isInline ? Buffer.byteLength(content, 'utf8') : 0,
+			line: findLine(script.toString().substring(0, 60)),
 		})
 	}
 	return scripts
@@ -233,13 +273,14 @@ function extractScripts(head: ParsedHTMLElement, html: string, lineIndex: number
 
 function extractStylesheets(head: ParsedHTMLElement, html: string, lineIndex: number[]): StylesheetData[] {
 	const stylesheets: StylesheetData[] = []
+	const findLine = createLineFinder(html, lineIndex)
 	for (const link of head.querySelectorAll('link[rel="stylesheet"]')) {
 		const href = link.getAttribute('href')
 		if (!href) continue
 		stylesheets.push({
 			href,
 			media: link.getAttribute('media') || undefined,
-			line: findLine(html, lineIndex, link.toString().substring(0, 60)),
+			line: findLine(link.toString().substring(0, 60)),
 		})
 	}
 	return stylesheets
@@ -247,8 +288,10 @@ function extractStylesheets(head: ParsedHTMLElement, html: string, lineIndex: nu
 
 function extractForms(body: ParsedHTMLElement, html: string, lineIndex: number[]): ExtractedFormData[] {
 	const forms: ExtractedFormData[] = []
+	const findLine = createLineFinder(html, lineIndex)
 	for (const form of body.querySelectorAll('form')) {
 		const inputs: ExtractedFormData['inputs'] = []
+		const inputFinder = createLineFinder(html, lineIndex)
 		for (const input of form.querySelectorAll('input, select, textarea')) {
 			const id = input.getAttribute('id')
 			const name = input.getAttribute('name')
@@ -270,12 +313,12 @@ function extractForms(body: ParsedHTMLElement, html: string, lineIndex: number[]
 				name: name || undefined,
 				id: id || undefined,
 				hasLabel,
-				line: findLine(html, lineIndex, input.toString().substring(0, 60)),
+				line: inputFinder(input.toString().substring(0, 60)),
 			})
 		}
 		forms.push({
 			inputs,
-			line: findLine(html, lineIndex, form.toString().substring(0, 40)),
+			line: findLine(form.toString().substring(0, 40)),
 		})
 	}
 	return forms

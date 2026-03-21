@@ -19,22 +19,38 @@ export class CheckRunner {
 		this.siteChecks.push(check)
 	}
 
-	runPageChecks(context: PageCheckContext): CheckResult[] {
+	async runPageChecks(context: PageCheckContext): Promise<CheckResult[]> {
 		const results: CheckResult[] = []
 		for (const check of this.pageChecks) {
 			if (this.isSkipped(check)) continue
-			const checkResults = check.run(context)
-			results.push(...this.applyOverrides(check, checkResults))
+			const issues = await check.run(context)
+			const enriched: CheckResult[] = issues.map(issue => ({
+				checkId: check.id,
+				ruleName: check.name,
+				domain: check.domain,
+				severity: check.defaultSeverity,
+				pagePath: context.pagePath,
+				filePath: context.filePath,
+				...issue,
+			}))
+			results.push(...this.applyOverrides(check, enriched))
 		}
 		return results
 	}
 
-	runSiteChecks(context: SiteCheckContext): CheckResult[] {
+	async runSiteChecks(context: SiteCheckContext): Promise<CheckResult[]> {
 		const results: CheckResult[] = []
 		for (const check of this.siteChecks) {
 			if (this.isSkipped(check)) continue
-			const checkResults = check.run(context)
-			results.push(...this.applyOverrides(check, checkResults))
+			const issues = await check.run(context)
+			const enriched: CheckResult[] = issues.map(issue => ({
+				checkId: check.id,
+				ruleName: check.name,
+				domain: check.domain,
+				severity: check.defaultSeverity,
+				...issue,
+			}))
+			results.push(...this.applyOverrides(check, enriched))
 		}
 		return results
 	}
@@ -61,9 +77,7 @@ export class CheckRunner {
 	}
 
 	private isSkipped(check: Check | SiteCheck): boolean {
-		// Check if disabled via overrides
 		if (this.overrides[check.id] === false) return true
-		// In essential mode, skip non-essential checks
 		if (this.isEssential && !check.essential) return true
 		return false
 	}

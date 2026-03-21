@@ -18,5 +18,10 @@ export function resolveChecksOptions(options: ChecksOptions = {}): ResolvedCheck
 		failOnWarning: options.failOnWarning ?? false,
 		overrides: options.overrides ?? {},
 		customChecks: options.customChecks ?? [],
+		reportJson: options.reportJson === true
+			? 'checks-report.json'
+			: typeof options.reportJson === 'string'
+			? options.reportJson
+			: false,
 	}
 }
