@@ -2,15 +2,19 @@ import type { CheckRunner } from './check-runner'
 import type { ResolvedChecksOptions } from './types'
 
 // SEO checks
+import { createBrokenInternalLinksCheck } from './checks/seo/broken-internal-links-check'
 import { createCanonicalInvalidCheck, createCanonicalMismatchCheck, createCanonicalMissingCheck } from './checks/seo/canonical-check'
 import { createDescriptionLengthCheck, createDescriptionMissingCheck } from './checks/seo/description-check'
 import { createHeadingSkipCheck, createMultipleH1Check, createNoH1Check } from './checks/seo/heading-hierarchy-check'
 import { createImageAltMissingCheck } from './checks/seo/image-alt-check'
 import { createJsonLdInvalidCheck } from './checks/seo/json-ld-check'
 import { createMetaDuplicateCheck } from './checks/seo/meta-duplicates-check'
+import { createNoindexDetectedCheck } from './checks/seo/noindex-check'
 import { createOgDescriptionCheck, createOgImageCheck, createOgTitleCheck } from './checks/seo/open-graph-check'
 import { createRobotsTxtCheck, createSitemapXmlCheck } from './checks/seo/sitemap-robots-check'
 import { createTitleEmptyCheck, createTitleLengthCheck, createTitleMissingCheck } from './checks/seo/title-check'
+import { createTwitterCardCheck } from './checks/seo/twitter-card-check'
+import { createViewportMissingCheck } from './checks/seo/viewport-check'
 
 // GEO checks
 import { createAgentsMdCheck } from './checks/geo/agents-md-check'
@@ -20,8 +24,10 @@ import { createLlmsTxtCheck } from './checks/geo/llms-txt-check'
 // Performance checks
 import { createHtmlSizeCheck } from './checks/performance/html-size-check'
 import { createImageFormatCheck, createImageSizeCheck } from './checks/performance/image-optimization-check'
+import { createInlineSizeCheck } from './checks/performance/inline-size-check'
 import { createLazyLoadingCheck } from './checks/performance/lazy-loading-check'
 import { createRenderBlockingScriptCheck } from './checks/performance/render-blocking-check'
+import { createTotalRequestsCheck } from './checks/performance/total-requests-check'
 
 // Accessibility checks
 import { createAriaLandmarksCheck } from './checks/accessibility/aria-landmarks-check'
@@ -55,8 +61,12 @@ export function registerAllChecks(runner: CheckRunner, options: ResolvedChecksOp
 		runner.registerCheck(createOgImageCheck())
 		runner.registerCheck(createImageAltMissingCheck())
 		runner.registerCheck(createMetaDuplicateCheck())
+		runner.registerCheck(createViewportMissingCheck())
+		runner.registerCheck(createNoindexDetectedCheck())
+		runner.registerCheck(createTwitterCardCheck())
 		runner.registerSiteCheck(createRobotsTxtCheck())
 		runner.registerSiteCheck(createSitemapXmlCheck())
+		runner.registerSiteCheck(createBrokenInternalLinksCheck())
 	}
 
 	// GEO checks
@@ -77,12 +87,16 @@ export function registerAllChecks(runner: CheckRunner, options: ResolvedChecksOp
 		const maxHtml = perf.maxHtmlSize ?? 100_000
 		const maxImg = perf.maxImageSize ?? 500_000
 		const formats = perf.allowedImageFormats ?? ['webp', 'avif', 'svg']
+		const maxInline = perf.maxInlineSize ?? 50_000
+		const maxRequests = perf.maxExternalRequests ?? 20
 
 		runner.registerCheck(createHtmlSizeCheck(maxHtml))
 		runner.registerCheck(createImageFormatCheck(formats))
 		runner.registerCheck(createImageSizeCheck(maxImg))
 		runner.registerCheck(createLazyLoadingCheck())
 		runner.registerCheck(createRenderBlockingScriptCheck())
+		runner.registerCheck(createInlineSizeCheck(maxInline))
+		runner.registerCheck(createTotalRequestsCheck(maxRequests))
 	}
 
 	// Accessibility checks
