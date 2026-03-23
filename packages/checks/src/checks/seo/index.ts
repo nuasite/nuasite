@@ -3,6 +3,7 @@ export { createCanonicalInvalidCheck, createCanonicalMismatchCheck, createCanoni
 export { createDescriptionLengthCheck, createDescriptionMissingCheck } from './description-check'
 export { createHeadingSkipCheck, createMultipleH1Check, createNoH1Check } from './heading-hierarchy-check'
 export { createImageAltMissingCheck } from './image-alt-check'
+export { createImageAltQualityCheck } from './image-alt-quality-check'
 export { createJsonLdInvalidCheck } from './json-ld-check'
 export { createMetaDuplicateCheck } from './meta-duplicates-check'
 export { createNoindexDetectedCheck } from './noindex-check'

@@ -7,6 +7,7 @@ import { createCanonicalInvalidCheck, createCanonicalMismatchCheck, createCanoni
 import { createDescriptionLengthCheck, createDescriptionMissingCheck } from './checks/seo/description-check'
 import { createHeadingSkipCheck, createMultipleH1Check, createNoH1Check } from './checks/seo/heading-hierarchy-check'
 import { createImageAltMissingCheck } from './checks/seo/image-alt-check'
+import { createImageAltQualityCheck } from './checks/seo/image-alt-quality-check'
 import { createJsonLdInvalidCheck } from './checks/seo/json-ld-check'
 import { createMetaDuplicateCheck } from './checks/seo/meta-duplicates-check'
 import { createNoindexDetectedCheck } from './checks/seo/noindex-check'
@@ -60,6 +61,7 @@ export function registerAllChecks(runner: CheckRunner, options: ResolvedChecksOp
 		runner.registerCheck(createOgDescriptionCheck())
 		runner.registerCheck(createOgImageCheck())
 		runner.registerCheck(createImageAltMissingCheck())
+		runner.registerCheck(createImageAltQualityCheck())
 		runner.registerCheck(createMetaDuplicateCheck())
 		runner.registerCheck(createViewportMissingCheck())
 		runner.registerCheck(createNoindexDetectedCheck())

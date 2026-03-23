@@ -3,6 +3,7 @@ import { createCanonicalInvalidCheck, createCanonicalMismatchCheck, createCanoni
 import { createDescriptionLengthCheck, createDescriptionMissingCheck } from '../../../src/checks/seo/description-check'
 import { createHeadingSkipCheck, createMultipleH1Check, createNoH1Check } from '../../../src/checks/seo/heading-hierarchy-check'
 import { createImageAltMissingCheck } from '../../../src/checks/seo/image-alt-check'
+import { createImageAltQualityCheck } from '../../../src/checks/seo/image-alt-quality-check'
 import { createJsonLdInvalidCheck } from '../../../src/checks/seo/json-ld-check'
 import { createMetaDuplicateCheck } from '../../../src/checks/seo/meta-duplicates-check'
 import { createNoindexDetectedCheck } from '../../../src/checks/seo/noindex-check'
@@ -119,6 +120,37 @@ describe('seo/image-alt check', () => {
 	test('warns when alt is missing', () => {
 		const ctx = makeCtx('<html><head></head><body><img src="/a.jpg"></body></html>')
 		expect(check.run(ctx)).toHaveLength(1)
+	})
+})
+
+describe('seo/image-alt-quality check', () => {
+	const check = createImageAltQualityCheck()
+
+	test('passes with descriptive alt text', () => {
+		const ctx = makeCtx('<html><head></head><body><img src="/a.jpg" alt="Team photo at annual retreat"></body></html>')
+		expect(check.run(ctx)).toHaveLength(0)
+	})
+
+	test('skips images with missing or empty alt', () => {
+		const ctx = makeCtx('<html><head></head><body><img src="/a.jpg"><img src="/b.jpg" alt=""></body></html>')
+		expect(check.run(ctx)).toHaveLength(0)
+	})
+
+	test('warns with generic English alt text', () => {
+		const ctx = makeCtx('<html><head></head><body><img src="/a.jpg" alt="image"><img src="/b.jpg" alt="photo"></body></html>')
+		expect(check.run(ctx)).toHaveLength(2)
+	})
+
+	test('warns with generic non-English alt text', () => {
+		const ctx = makeCtx('<html lang="cs"><head></head><body><img src="/a.jpg" alt="obrázek"><img src="/b.jpg" alt="foto"></body></html>')
+		expect(check.run(ctx)).toHaveLength(2)
+	})
+
+	test('uses page lang to scope checks', () => {
+		const ctx = makeCtx('<html lang="ko"><head></head><body><img src="/a.jpg" alt="이미지"><img src="/b.jpg" alt="bild"></body></html>')
+		const results = check.run(ctx)
+		// "이미지" (Korean) should match, "bild" (German) should not match for a Korean page
+		expect(results).toHaveLength(1)
 	})
 })
 
