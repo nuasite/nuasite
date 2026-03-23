@@ -1,6 +1,5 @@
+import { buildPoorTextSet, poorLinkTexts } from '../../i18n/poor-texts'
 import type { Check, CheckIssue, PageCheckContext } from '../../types'
-
-const POOR_LINK_TEXTS = ['click here', 'read more', 'here', 'link', 'more']
 
 export function createLinkTextCheck(): Check {
 	return {
@@ -12,15 +11,16 @@ export function createLinkTextCheck(): Check {
 		description: 'Links should have descriptive text instead of generic phrases',
 		essential: false,
 		run(ctx: PageCheckContext): CheckIssue[] {
+			const poorTexts = buildPoorTextSet(poorLinkTexts, ctx.pageData.htmlLang)
 			const results: CheckIssue[] = []
 			for (const link of ctx.pageData.links) {
-				const text = link.text.trim().toLowerCase()
-				if (POOR_LINK_TEXTS.includes(text)) {
+				const trimmed = link.text.trim()
+				if (poorTexts.has(trimmed.toLowerCase())) {
 					results.push({
-						message: `Link with text "${link.text.trim()}" is not descriptive`,
+						message: `Link with text "${trimmed}" is not descriptive`,
 						suggestion: 'Use descriptive text that explains where the link goes, e.g. "View pricing details" instead of "click here"',
 						line: link.line,
-						actual: link.text.trim(),
+						actual: trimmed,
 					})
 				}
 			}

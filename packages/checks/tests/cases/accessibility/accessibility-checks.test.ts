@@ -118,6 +118,23 @@ describe('accessibility/link-text check', () => {
 		const ctx = makeCtx('<html><head></head><body><a href="/page">here</a></body></html>')
 		expect(check.run(ctx)).toHaveLength(1)
 	})
+
+	test('warns with non-English generic link text', () => {
+		const ctx = makeCtx('<html><head></head><body><a href="/page">cliquez ici</a><a href="/post">leer más</a><a href="/info">hier klicken</a><a href="/cz">klikněte zde</a><a href="/kr">여기를 클릭</a></body></html>')
+		expect(check.run(ctx)).toHaveLength(5)
+	})
+
+	test('scopes to page lang when present', () => {
+		const ctx = makeCtx('<html lang="cs"><head></head><body><a href="/a">klikněte zde</a><a href="/b">cliquez ici</a></body></html>')
+		const results = check.run(ctx)
+		// "klikněte zde" (Czech) should match, "cliquez ici" (French) should not on a Czech page
+		expect(results).toHaveLength(1)
+	})
+
+	test('always includes English on localized pages', () => {
+		const ctx = makeCtx('<html lang="ko"><head></head><body><a href="/a">click here</a><a href="/b">여기를 클릭</a></body></html>')
+		expect(check.run(ctx)).toHaveLength(2)
+	})
 })
 
 describe('accessibility/tabindex check', () => {
