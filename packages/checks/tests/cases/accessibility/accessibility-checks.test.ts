@@ -120,7 +120,9 @@ describe('accessibility/link-text check', () => {
 	})
 
 	test('warns with non-English generic link text', () => {
-		const ctx = makeCtx('<html><head></head><body><a href="/page">cliquez ici</a><a href="/post">leer más</a><a href="/info">hier klicken</a><a href="/cz">klikněte zde</a><a href="/kr">여기를 클릭</a></body></html>')
+		const ctx = makeCtx(
+			'<html><head></head><body><a href="/page">cliquez ici</a><a href="/post">leer más</a><a href="/info">hier klicken</a><a href="/cz">klikněte zde</a><a href="/kr">여기를 클릭</a></body></html>',
+		)
 		expect(check.run(ctx)).toHaveLength(5)
 	})
 

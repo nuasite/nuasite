@@ -18,7 +18,7 @@ export const poorLinkTexts: Record<string, string[]> = {
 export const poorImageAlts: Record<string, string[]> = {
 	en: ['image', 'photo', 'picture', 'img', 'untitled', 'screenshot', 'banner', 'logo', 'icon', 'graphic', 'thumbnail'],
 	es: ['imagen', 'foto', 'fotografía', 'captura de pantalla', 'logotipo', 'ícono'],
-	fr: ['image', 'photo', 'capture d\'écran', 'logo', 'icône', 'graphique', 'vignette'],
+	fr: ['image', 'photo', "capture d'écran", 'logo', 'icône', 'graphique', 'vignette'],
 	de: ['bild', 'foto', 'grafik', 'bildschirmfoto', 'logo', 'symbol'],
 	it: ['immagine', 'foto', 'fotografia', 'schermata', 'logo', 'icona'],
 	pt: ['imagem', 'foto', 'fotografia', 'captura de tela', 'logotipo', 'ícone'],

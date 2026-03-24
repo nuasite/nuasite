@@ -18,7 +18,6 @@ import { createTwitterCardCheck } from './checks/seo/twitter-card-check'
 import { createViewportMissingCheck } from './checks/seo/viewport-check'
 
 // GEO checks
-import { createAgentsMdCheck } from './checks/geo/agents-md-check'
 import { createContentTooShortCheck, createInsufficientHeadingsCheck } from './checks/geo/content-quality-check'
 import { createLlmsTxtCheck } from './checks/geo/llms-txt-check'
 
@@ -78,7 +77,6 @@ export function registerAllChecks(runner: CheckRunner, options: ResolvedChecksOp
 		const minHeadings = geo.minHeadings ?? 2
 
 		runner.registerSiteCheck(createLlmsTxtCheck())
-		runner.registerSiteCheck(createAgentsMdCheck())
 		runner.registerCheck(createContentTooShortCheck(minContent))
 		runner.registerCheck(createInsufficientHeadingsCheck(minHeadings))
 	}
