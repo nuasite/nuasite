@@ -36,6 +36,29 @@ bunx nua build
 agent summary integration) and surfaces errors with inline source excerpts so
 you can diagnose failures quickly.
 
+### `nua init`
+
+Converts a standard Astro project to use the Nua toolchain:
+
+```bash
+nua init            # interactive — previews changes, asks for confirmation
+nua init --dry-run  # show what would change without writing files
+nua init --yes      # skip confirmation prompt
+```
+
+This rewrites your Astro config and `package.json` to adopt `@nuasite/nua`.
+Specifically it:
+
+- Replaces `astro/config` with `@nuasite/nua/config`
+- Removes Nua-managed integration imports (`@astrojs/mdx`, `@astrojs/sitemap`,
+  `@tailwindcss/vite`) and their calls from the config
+- Cleans up empty config structures left behind
+- Removes Nua-provided dependencies and adds `@nuasite/nua`
+- Updates scripts (`astro build` → `nua build`, etc.)
+
+After running, follow the printed next-steps: `bun install`, review the
+config, and run `nua dev`.
+
 ### `nua clean`
 
 Ejects your project from the Nua toolchain back to a standard Astro setup:
