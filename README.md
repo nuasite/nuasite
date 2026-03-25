@@ -15,6 +15,7 @@ hosted service.
 | [`@nuasite/cms`](/packages/cms)                                                       | Astro integration for inline visual editing with a built-in local dev server.                                             |
 | [`@nuasite/components`](/packages/components)                                         | Reusable Astro components (currently the Nua Site form widget) with TypeScript-friendly props.                            |
 | [`@nuasite/agent-summary`](/packages/agent-summary)                                   | Astro integration that produces `AGENTS.md`, a machine-readable catalog of every generated page.                          |
+| [`@nuasite/checks`](/packages/checks)                                                 | Astro integration for SEO, GEO, performance, and accessibility validation at build time.                                  |
 | [`@nuasite/llm-enhancements`](/packages/llm-enhancements)                             | Astro integration that exposes pages as `.md` endpoints in dev and generates markdown files during build.                 |
 | [`packages/playground`](https://github.com/nuasite/nua/tree/main/packages/playground) | Example Astro project used to manually test the packages in this repo.                                                    |
 

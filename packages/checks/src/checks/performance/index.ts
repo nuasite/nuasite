@@ -1,0 +1,6 @@
+export { createHtmlSizeCheck } from './html-size-check'
+export { createImageFormatCheck, createImageSizeCheck } from './image-optimization-check'
+export { createInlineSizeCheck } from './inline-size-check'
+export { createLazyLoadingCheck } from './lazy-loading-check'
+export { createRenderBlockingScriptCheck } from './render-blocking-check'
+export { createTotalRequestsCheck } from './total-requests-check'

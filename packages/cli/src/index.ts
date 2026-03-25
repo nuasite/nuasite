@@ -2,8 +2,8 @@
 import { agentsSummary } from '@nuasite/agent-summary'
 import { type AstroInlineConfig, build as astroBuild, dev, preview } from 'astro'
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { findAstroConfig } from './utils'
 
 const [, , command, ...args] = process.argv
 
@@ -14,23 +14,6 @@ function hasNuaIntegration(configPath: string): boolean {
 	} catch {
 		return false
 	}
-}
-
-function findAstroConfig(): string | null {
-	const possibleConfigs = [
-		'astro.config.mjs',
-		'astro.config.js',
-		'astro.config.ts',
-		'astro.config.mts',
-	]
-
-	for (const config of possibleConfigs) {
-		const configPath = join(process.cwd(), config)
-		if (existsSync(configPath)) {
-			return configPath
-		}
-	}
-	return null
 }
 
 function proxyToAstroCLI(command: string, args: string[]) {
@@ -52,10 +35,11 @@ function proxyToAstroCLI(command: string, args: string[]) {
 function printUsage() {
 	console.log('Usage: nua <command> [options]')
 	console.log('\nCommands:')
-	console.log('  build   Run astro build with the Nua defaults')
-	console.log('  preview Run astro preview with the Nua defaults')
-	console.log('  dev     Run astro dev with the Nua defaults')
-	console.log('  help    Show this message')
+	console.log('  build    Run astro build with the Nua defaults')
+	console.log('  dev      Run astro dev with the Nua defaults')
+	console.log('  preview  Run astro preview with the Nua defaults')
+	console.log('  clean    Eject to a standard Astro project (remove @nuasite/* deps)')
+	console.log('  help     Show this message')
 	console.log('\nAll Astro CLI options are supported.\n')
 }
 
@@ -99,6 +83,15 @@ if (canProxyDirectly && command && ['build', 'dev', 'preview'].includes(command)
 			runner(options).catch((error) => {
 				console.error('Error:', error)
 				process.exit(1)
+			})
+			break
+		}
+		case 'clean': {
+			const { clean } = await import('./clean')
+			await clean({
+				cwd: process.cwd(),
+				dryRun: args.includes('--dry-run'),
+				yes: args.includes('--yes') || args.includes('-y'),
 			})
 			break
 		}

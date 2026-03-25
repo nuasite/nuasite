@@ -1,5 +1,6 @@
 import mdx from '@astrojs/mdx'
 import sitemap from '@astrojs/sitemap'
+import checks from '@nuasite/checks'
 import cms from '@nuasite/cms'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroIntegration } from 'astro'
@@ -50,6 +51,12 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				if (resolved.sitemap !== false) {
 					integrations.push(sitemap(resolved.sitemap))
 					logger.info('Sitemap enabled')
+				}
+
+				// Checks must be last — it validates output from all other integrations
+				if (resolved.checks !== false) {
+					integrations.push(checks(resolved.checks))
+					logger.info('Checks enabled')
 				}
 
 				// Hide Astro's dev toolbar in dev mode.

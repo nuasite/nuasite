@@ -1,10 +1,12 @@
 import type { MdxOptions } from '@astrojs/mdx'
 import type { SitemapOptions } from '@astrojs/sitemap'
+import type { ChecksOptions } from '../../checks/src'
 import type { CmsMarkerOptions } from '../../cms/src'
 import type { PageMarkdownOptions } from '../../llm-enhancements/src'
 
 export type { MdxOptions } from '@astrojs/mdx'
 export type { SitemapOptions } from '@astrojs/sitemap'
+export type { ChecksOptions } from '../../checks/src'
 export type { CmsMarkerOptions } from '../../cms/src'
 export type { PageMarkdownOptions } from '../../llm-enhancements/src'
 
@@ -19,6 +21,8 @@ export interface NuaIntegrationOptions {
 	sitemap?: boolean | SitemapOptions
 	/** Enable/disable @tailwindcss/vite plugin (default: true) */
 	tailwindcss?: boolean
+	/** Enable/disable or configure @nuasite/checks (default: true) */
+	checks?: boolean | ChecksOptions
 }
 
 export interface ResolvedIntegrationOptions {
@@ -27,6 +31,7 @@ export interface ResolvedIntegrationOptions {
 	mdx: MdxOptions | false
 	sitemap: SitemapOptions | false
 	tailwindcss: boolean
+	checks: ChecksOptions | false
 }
 
 /**
@@ -45,5 +50,6 @@ export function resolveOptions(options: NuaIntegrationOptions = {}): ResolvedInt
 		mdx: resolveOption(options.mdx),
 		sitemap: resolveOption(options.sitemap),
 		tailwindcss: options.tailwindcss !== false,
+		checks: resolveOption(options.checks),
 	}
 }
