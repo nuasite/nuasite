@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { detectDisabledFeatures, extractConfigBody, removeProperty, transformConfig, transformPackageJson } from '../src/clean'
+import { detectDisabledFeatures, transformConfig, transformPackageJson } from '../src/clean'
+import { extractConfigBody, removeProperty } from '../src/utils'
 
 describe('detectDisabledFeatures', () => {
 	test('detects disabled features', () => {
