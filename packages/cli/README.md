@@ -32,9 +32,35 @@ bunx nua build
 }
 ```
 
-`nua-build` runs `astro build` with the default Nua configuration (currently the
+`nua build` runs `astro build` with the default Nua configuration (currently the
 agent summary integration) and surfaces errors with inline source excerpts so
 you can diagnose failures quickly.
+
+### `nua clean`
+
+Ejects your project from the Nua toolchain back to a standard Astro setup:
+
+```bash
+nua clean            # interactive — previews changes, asks for confirmation
+nua clean --dry-run  # show what would change without writing files
+nua clean --yes      # skip confirmation prompt
+```
+
+This rewrites your Astro config and `package.json` so the project no longer
+depends on `@nuasite/*` tooling packages. Specifically it:
+
+- Replaces `@nuasite/nua` with explicit Astro integrations (`mdx`, `sitemap`,
+  `tailwindcss`)
+- Removes `@nuasite/*` tooling dependencies and adds their standard Astro
+  equivalents
+- Updates scripts (`nua build` → `astro build`, etc.)
+- Keeps runtime packages (e.g. `@nuasite/components`) if your source files
+  import them
+- Respects disabled features — if a feature is set to `false` in your Nua
+  config, it will be omitted from the ejected config
+
+After running, follow the printed next-steps: `bun install`, review the
+config, and remove any remaining `@nuasite` tooling imports from source files.
 
 ## Programmatic usage
 
