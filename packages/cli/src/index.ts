@@ -35,10 +35,11 @@ function proxyToAstroCLI(command: string, args: string[]) {
 function printUsage() {
 	console.log('Usage: nua <command> [options]')
 	console.log('\nCommands:')
-	console.log('  build   Run astro build with the Nua defaults')
-	console.log('  preview Run astro preview with the Nua defaults')
-	console.log('  dev     Run astro dev with the Nua defaults')
-	console.log('  help    Show this message')
+	console.log('  build    Run astro build with the Nua defaults')
+	console.log('  dev      Run astro dev with the Nua defaults')
+	console.log('  preview  Run astro preview with the Nua defaults')
+	console.log('  clean    Eject to a standard Astro project (remove @nuasite/* deps)')
+	console.log('  help     Show this message')
 	console.log('\nAll Astro CLI options are supported.\n')
 }
 
@@ -82,6 +83,15 @@ if (canProxyDirectly && command && ['build', 'dev', 'preview'].includes(command)
 			runner(options).catch((error) => {
 				console.error('Error:', error)
 				process.exit(1)
+			})
+			break
+		}
+		case 'clean': {
+			const { clean } = await import('./clean')
+			await clean({
+				cwd: process.cwd(),
+				dryRun: args.includes('--dry-run'),
+				yes: args.includes('--yes') || args.includes('-y'),
 			})
 			break
 		}
