@@ -8,8 +8,8 @@
 		"clean": "bun run clean:generated && bun run clean:dependencies",
 		"clean:dependencies": "rm -rf packages/*/node_modules || true; rm -rf node_modules || true",
 		"clean:generated": "rm -rf dist || true; rm -rf packages/*/dist || true; rm -rf packages/*/temp || true",
-		"lint": "biome lint .",
-		"lint:fix": "biome lint . --write",
+		"lint": "oxlint",
+		"lint:fix": "oxlint --fix",
 		"format": "dprint fmt",
 		"format:check": "dprint check",
 		"test": "bun test --conditions=typescript packages",
@@ -19,14 +19,14 @@
 	},
 	"devDependencies": {
 		"@actions/core": "catalog:build",
-		"@biomejs/biome": "catalog:build",
+		"@happy-dom/global-registrator": "catalog:tests",
 		"@types/bun": "catalog:build",
 		"@types/js-yaml": "catalog:build",
-		"@happy-dom/global-registrator": "catalog:tests",
 		"dprint": "catalog:build",
 		"happy-dom": "catalog:tests",
 		"js-yaml": "catalog:build",
 		"json5": "catalog:build",
+		"oxlint": "^1.57.0",
 		"typescript": "catalog:build"
 	},
 	"workspaces": {
