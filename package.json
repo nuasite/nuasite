@@ -36,52 +36,51 @@
 		"catalogs": {
 			"build": {
 				"@actions/core": "^3.0.0",
-				"@biomejs/biome": "^2.4.6",
-				"@types/bun": "1.3.10",
+				"@biomejs/biome": "^2.4.9",
+				"@types/bun": "1.3.11",
 				"@types/js-yaml": "^4.0.9",
-				"dprint": "^0.52.0",
+				"dprint": "^0.53.1",
 				"js-yaml": "^4.1.0",
 				"json5": "^2.2.3",
-				"typescript": "^5",
-				"vite": "^7.3.1"
+				"typescript": "^6.0.2",
+				"vite": "^8.0.3"
 			},
 			"astro": {
-				"@astrojs/check": "0.9.7",
-				"@astrojs/compiler": "^3.0.0",
-				"@astrojs/mdx": "5.0.0",
-				"@astrojs/rss": "4.0.17",
-				"@astrojs/sitemap": "3.7.1",
-				"astro": "^6.0.2"
+				"@astrojs/check": "0.9.8",
+				"@astrojs/compiler": "^3.0.1",
+				"@astrojs/mdx": "5.0.3",
+				"@astrojs/sitemap": "3.7.2",
+				"astro": "^6.1.1"
 			},
 			"parsers": {
-				"@babel/parser": "^7.29.0",
+				"@babel/parser": "^7.29.2",
 				"node-html-parser": "^7.1.0",
-				"stacktracey": "2.1.8",
-				"yaml": "^2.8.2"
+				"stacktracey": "2.2.0",
+				"yaml": "^2.8.3"
 			},
 			"ui": {
-				"@tailwindcss/vite": "^4.2.1",
+				"@tailwindcss/vite": "^4.2.2",
 				"@tailwindcss/typography": "^0.5.19",
 				"flowbite": "4.0.1",
-				"tailwindcss": "4.2.1"
+				"tailwindcss": "4.2.2"
 			},
 			"tests": {
-				"happy-dom": "^20.8.3",
-				"@happy-dom/global-registrator": "^20.8.3"
+				"happy-dom": "^20.8.9",
+				"@happy-dom/global-registrator": "^20.8.9"
 			},
 			"editor": {
-				"@milkdown/core": "^7.19.0",
-				"@milkdown/ctx": "^7.19.0",
-				"@milkdown/plugin-listener": "^7.19.0",
-				"@milkdown/preset-commonmark": "^7.19.0",
-				"@milkdown/preset-gfm": "^7.19.0",
-				"@milkdown/prose": "^7.19.0",
-				"@milkdown/utils": "^7.19.0",
-				"@preact/signals": "^2.8.2",
+				"@milkdown/core": "^7.19.2",
+				"@milkdown/ctx": "^7.19.2",
+				"@milkdown/plugin-listener": "^7.19.2",
+				"@milkdown/preset-commonmark": "^7.19.2",
+				"@milkdown/preset-gfm": "^7.19.2",
+				"@milkdown/prose": "^7.19.2",
+				"@milkdown/utils": "^7.19.2",
+				"@preact/signals": "^2.9.0",
 				"@tailwindcss/postcss": "^4.1.17",
 				"autoprefixer": "^10.4.22",
 				"clsx": "^2.1.1",
-				"marked": "^17.0.4",
+				"marked": "^17.0.5",
 				"postcss": "^8",
 				"preact": "^10.29.0",
 				"prosemirror-commands": "^1.7.1",
