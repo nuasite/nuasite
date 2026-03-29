@@ -11,7 +11,6 @@ Installing `@nuasite/core` adds the following peer dependencies to your project:
 
 - `@astrojs/check` – type-aware diagnostics for Astro/TypeScript.
 - `@astrojs/mdx` – Markdown+JSX content authoring with shared layouts.
-- `@astrojs/rss` – RSS feed generation for blog-style sites.
 - `@astrojs/sitemap` – sitemap generation aligned with Nua Site routing.
 
 Keeping these packages aligned with `@nuasite/core` avoids version drift between

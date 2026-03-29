@@ -12,7 +12,6 @@ Dependency manifest package — **no source code**. Pins versions of shared Astr
 
 - `@astrojs/check` — Type checking for Astro
 - `@astrojs/mdx` — MDX support
-- `@astrojs/rss` — RSS feed generation
 - `@astrojs/sitemap` — Sitemap generation
 
 ### How it Works

@@ -20,7 +20,6 @@
 	"devDependencies": {
 		"@astrojs/check": "catalog:astro",
 		"@astrojs/mdx": "catalog:astro",
-		"@astrojs/rss": "catalog:astro",
 		"@astrojs/sitemap": "catalog:astro"
 	},
 	"peerDependencies": {

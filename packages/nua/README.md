@@ -10,8 +10,7 @@ runs behave exactly like the hosted service.
 Installing `@nuasite/nua` brings along:
 
 - `astro` plus the Nua-specific `nua-build` wrapper (`@nuasite/build`)
-- Official Astro integrations (`@astrojs/check`, `@astrojs/mdx`, `@astrojs/rss`,
-  `@astrojs/sitemap`)
+- Official Astro integrations (`@astrojs/check`, `@astrojs/mdx`, `@astrojs/sitemap`)
 - Tailwind CSS 4 + Flowbite, wired through `@tailwindcss/vite`
 - Shared UI primitives from `@nuasite/components`
 - The baseline dependency manifest from `@nuasite/core`

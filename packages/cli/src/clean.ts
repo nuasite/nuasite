@@ -23,7 +23,6 @@ const PACKAGES_TO_ADD: Record<string, string> = {
 	'astro': '^6.0.2',
 	'@astrojs/check': '^0.9.7',
 	'@astrojs/mdx': '^5.0.0',
-	'@astrojs/rss': '^4.0.17',
 	'@astrojs/sitemap': '^3.7.1',
 	'@tailwindcss/vite': '^4.2.1',
 	'tailwindcss': '^4.2.1',
