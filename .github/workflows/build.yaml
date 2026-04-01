@@ -26,6 +26,9 @@ jobs:
           - job_name: lint-imports
             run_script: ./scripts/lint-module-import/run.sh
 
+          - job_name: lint-deps
+            run_script: bun run lint:deps
+
           - job_name: test
             run_script: |
                 bun run test
