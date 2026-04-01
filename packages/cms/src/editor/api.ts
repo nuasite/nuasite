@@ -1,4 +1,5 @@
 import { API } from './constants'
+import { fetchWithTimeout } from './fetch'
 import { setAvailableTextStyles } from './text-styling'
 import type {
 	CmsManifest,
@@ -79,28 +80,6 @@ export interface CmsAiStreamCallbacks {
 	onAction?: (action: CmsAiAction) => void
 	onError?: (error: string, code?: string) => void
 	onDone?: (summary?: string) => void
-}
-
-/**
- * Create a fetch request with timeout
- */
-async function fetchWithTimeout(
-	url: string,
-	options: RequestInit = {},
-	timeoutMs: number = API.REQUEST_TIMEOUT_MS,
-): Promise<Response> {
-	const controller = new AbortController()
-	const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
-	try {
-		const response = await fetch(url, {
-			...options,
-			signal: controller.signal,
-		})
-		return response
-	} finally {
-		clearTimeout(timeoutId)
-	}
 }
 
 /**

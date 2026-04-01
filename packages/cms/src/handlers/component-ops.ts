@@ -3,7 +3,7 @@ import path from 'node:path'
 import { getProjectRoot } from '../config'
 import type { ManifestWriter } from '../manifest-writer'
 import type { CmsManifest, ComponentDefinition, ComponentInstance } from '../types'
-import { acquireFileLock, escapeRegex, normalizePagePath, resolveAndValidatePath } from '../utils'
+import { acquireFileLock, escapeHtml, escapeRegex, normalizePagePath, resolveAndValidatePath } from '../utils'
 
 export type InsertPosition = 'before' | 'after'
 
@@ -453,15 +453,6 @@ function generateComponentJsx(
 		return `<${componentName} ${propsString} />`
 	}
 	return `<${componentName} />`
-}
-
-function escapeHtml(str: string): string {
-	return str
-		.replace(/&/g, '&amp;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
 }
 
 export function getIndentation(line: string): string {
