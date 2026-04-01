@@ -192,7 +192,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		}
 	}
 
-	const pageItems: MenuItem[] = [
+	topLevelItems.push(
 		{
 			label: 'Edit Page',
 			icon: (
@@ -212,6 +212,9 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 			),
 			onClick: () => signals.setCreatePageOpen(true),
 		},
+	)
+
+	const destructiveItems: MenuItem[] = [
 		{
 			label: 'Delete Page',
 			icon: (
@@ -225,17 +228,6 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 			},
 		},
 	]
-
-	menuSections.push({
-		label: 'Page',
-		icon: (
-			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" />
-				<path d="M14 2v4a2 2 0 0 0 2 2h4" />
-			</svg>
-		),
-		items: pageItems,
-	})
 
 	const settingsItems: MenuItem[] = []
 
@@ -490,6 +482,23 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 													</div>
 												)
 											})}
+											{destructiveItems.length > 0 && (
+												<div class="border-t border-white/10 my-1" />
+											)}
+											{destructiveItems.map((item, index) => (
+												<button
+													key={`destructive-${index}`}
+													onClick={(e) => {
+														e.stopPropagation()
+														item.onClick()
+														setIsMenuOpen(false)
+													}}
+													class="w-full px-4 py-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-red-400/80 hover:bg-red-500/10 hover:text-red-400"
+												>
+													<span class="shrink-0 opacity-70">{item.icon}</span>
+													{item.label}
+												</button>
+											))}
 										</div>
 									</>
 								)}
