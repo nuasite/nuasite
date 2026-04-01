@@ -61,7 +61,7 @@ const processPackage = async (dir: string, projectList: ProjectList) => {
 	const referencedProjectNames = referencedProjects.map(it => it.name)
 
 	for (const module of Array.from(imports.values())) {
-		if (!thisProject.packageJson.dependencies?.[module] && !thisProject.packageJson.peerDependencies?.[module]) {
+		if (!thisProject.packageJson.dependencies?.[module] && !thisProject.packageJson.peerDependencies?.[module] && !thisProject.packageJson.devDependencies?.[module]) {
 			errors.push({ file: dir, message: `Module ${module} is missing in package.json`, type: 'package_missing' })
 		}
 		if (allProjectNames.includes(module) && !referencedProjectNames.includes(module)) {
