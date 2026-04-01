@@ -1,4 +1,5 @@
 import type { AstroIntegrationLogger } from 'astro'
+import type { ComponentInstance } from './types'
 import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -215,7 +216,7 @@ async function parseComponentInvocations(
 async function detectEntrylessComponents(
 	pagePath: string,
 	root: ReturnType<typeof parse>,
-	components: Record<string, import('./types').ComponentInstance>,
+	components: Record<string, ComponentInstance>,
 	componentDirs: string[],
 	relPath: string,
 	idGenerator: () => string,

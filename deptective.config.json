@@ -1,0 +1,26 @@
+{
+	"checkDevDependencies": true,
+	"packageOverrides": {
+		"@nuasite/nua": {
+			"allowedUnusedDependencies": [
+				"@astrojs/check",
+				"@nuasite/cli",
+				"@nuasite/components",
+				"@nuasite/core",
+				"@nuasite/llm-enhancements",
+				"@tailwindcss/typography",
+				"flowbite",
+				"tailwindcss",
+				"typescript",
+				"vite"
+			]
+		},
+		"@nuasite/cms": {
+			"excludePatterns": ["**/*.d.ts", "**/generated/**", "src/editor/**"],
+			"testPatterns": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/test/**", "src/index.ts"]
+		},
+		"playground": {
+			"allowedUnusedDependencies": ["@nuasite/nua"]
+		}
+	}
+}
