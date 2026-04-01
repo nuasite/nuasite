@@ -13,7 +13,7 @@ import { getErrorCollector, resetErrorCollector } from './error-collector'
 import { ManifestWriter } from './manifest-writer'
 import { createLocalStorageAdapter } from './media/local'
 import type { MediaStorageAdapter } from './media/types'
-import type { CmsMarkerOptions, ComponentDefinition } from './types'
+import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
 import { createVitePlugin } from './vite-plugin'
 
 export interface NuaCmsOptions extends CmsMarkerOptions {
@@ -31,6 +31,7 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		debug?: boolean
 		theme?: Record<string, string>
 		themePreset?: string
+		features?: CmsFeatures
 	}
 	/**
 	 * Proxy /_nua/cms requests to this target URL during dev.

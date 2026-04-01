@@ -1404,6 +1404,12 @@ export function setConfig(newConfig: CmsConfig): void {
 	config.value = newConfig
 }
 
+export function setFeatures(features: CmsConfig['features']): void {
+	const current = config.value.features
+	if (current?.selectElement === features?.selectElement) return
+	config.value = { ...config.value, features: { ...current, ...features } }
+}
+
 // ============================================================================
 // Change Navigation Mutations
 // ============================================================================

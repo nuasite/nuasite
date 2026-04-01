@@ -576,6 +576,14 @@ export type CmsPostMessage =
 	| CmsPageNavigatedMessage
 
 // ============================================================================
+// Feature Flags
+// ============================================================================
+
+export interface CmsFeatures {
+	selectElement?: boolean
+}
+
+// ============================================================================
 // Inbound messages (parent → editor iframe)
 // ============================================================================
 
@@ -584,8 +592,13 @@ export interface CmsDeselectElementMessage {
 	type: 'cms-deselect-element'
 }
 
+export interface CmsSetFeaturesMessage {
+	type: 'cms-set-features'
+	features: CmsFeatures
+}
+
 /** All possible CMS postMessage types sent from the parent to the editor iframe */
-export type CmsInboundMessage = CmsDeselectElementMessage
+export type CmsInboundMessage = CmsDeselectElementMessage | CmsSetFeaturesMessage
 
 // ============================================================================
 // Page Operations (shared between server handlers and editor UI)

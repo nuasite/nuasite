@@ -280,6 +280,8 @@ const CmsUI = () => {
 
 			if (msg.type === 'cms-deselect-element') {
 				handleBlockEditorClose()
+			} else if (msg.type === 'cms-set-features') {
+				signals.setFeatures(msg.features)
 			}
 		}
 

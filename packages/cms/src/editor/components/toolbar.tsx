@@ -133,7 +133,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	// Build menu items dynamically
 	const menuItems: Array<{ label: string; icon: ComponentChildren; onClick: () => void; isActive?: boolean }> = []
 
-	if (callbacks.onSelectElement) {
+	if (callbacks.onSelectElement && signals.config.value.features?.selectElement) {
 		menuItems.push({
 			label: 'Select Element',
 			icon: (

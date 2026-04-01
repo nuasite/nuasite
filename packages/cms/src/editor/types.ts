@@ -1,4 +1,4 @@
-import type { Attribute, CmsManifest, CollectionDefinition, ComponentInstance, RedirectRule } from '../types'
+import type { Attribute, CmsFeatures, CmsManifest, CollectionDefinition, ComponentInstance, RedirectRule } from '../types'
 
 // Re-export shared types from @nuasite/cms-marker (source of truth)
 export type {
@@ -50,6 +50,7 @@ export interface CmsConfig {
 	debug: boolean
 	theme?: CmsThemeConfig
 	themePreset?: CmsThemePreset
+	features?: CmsFeatures
 }
 
 export interface ComponentProp {
