@@ -184,3 +184,36 @@ export async function acquireFileLock(filePath: string): Promise<() => void> {
 		release()
 	}
 }
+
+/**
+ * Slugify text for URL paths.
+ * Lowercases, strips non-word characters, collapses whitespace/underscores to hyphens.
+ */
+export function slugify(text: string): string {
+	return text
+		.toLowerCase()
+		.trim()
+		.replace(/[^\w\s\-/]/g, '')
+		.replace(/[\s_]+/g, '-')
+		.replace(/^[-/]+|[-/]+$/g, '')
+}
+
+/**
+ * Type-safe check for Node.js system errors (ENOENT, EEXIST, etc.).
+ */
+export function isNodeError(error: unknown, code: string): boolean {
+	return error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === code
+}
+
+/**
+ * Escape HTML special characters to prevent injection.
+ * Covers &, <, >, ", and ' — the full set needed for both text content and attribute values.
+ */
+export function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;')
+}

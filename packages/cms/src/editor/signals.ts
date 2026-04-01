@@ -18,6 +18,7 @@ import type {
 	ComponentInstance,
 	ConfirmDialogState,
 	CreatePageState,
+	DeletePageState,
 	DeploymentState,
 	DeploymentStatusType,
 	EditorState,
@@ -33,6 +34,7 @@ import type {
 	PendingComponentInsert,
 	PendingImageChange,
 	PendingSeoChange,
+	RedirectsManagerState,
 	SeoEditorState,
 } from './types'
 
@@ -147,6 +149,26 @@ function createInitialCreatePageState(): CreatePageState {
 		isOpen: false,
 		isCreating: false,
 		selectedCollection: null,
+		mode: 'pick',
+	}
+}
+
+function createInitialDeletePageState(): DeletePageState {
+	return {
+		isOpen: false,
+		isDeleting: false,
+		targetPage: null,
+		redirectTo: '/',
+		createRedirect: true,
+	}
+}
+
+function createInitialRedirectsManagerState(): RedirectsManagerState {
+	return {
+		isOpen: false,
+		rules: [],
+		isLoading: false,
+		editingIndex: null,
 	}
 }
 
@@ -345,6 +367,25 @@ export const createPageState = signal<CreatePageState>(
 export const isCreatePageOpen = computed(() => createPageState.value.isOpen)
 export const isCreatingPage = computed(() => createPageState.value.isCreating)
 export const selectedCollection = computed(() => createPageState.value.selectedCollection)
+export const createPageMode = computed(() => createPageState.value.mode)
+
+// ============================================================================
+// Delete Page State Signals
+// ============================================================================
+
+export const deletePageState = signal<DeletePageState>(
+	createInitialDeletePageState(),
+)
+export const isDeletePageOpen = computed(() => deletePageState.value.isOpen)
+
+// ============================================================================
+// Redirects Manager State Signals
+// ============================================================================
+
+export const redirectsManagerState = signal<RedirectsManagerState>(
+	createInitialRedirectsManagerState(),
+)
+export const isRedirectsManagerOpen = computed(() => redirectsManagerState.value.isOpen)
 
 // ============================================================================
 // Collections Browser State Signals
@@ -1012,7 +1053,11 @@ export function resetMediaLibraryState(): void {
 // ============================================================================
 
 export function setCreatePageOpen(open: boolean): void {
-	createPageState.value = { ...createPageState.value, isOpen: open }
+	createPageState.value = { ...createPageState.value, isOpen: open, mode: 'pick' }
+}
+
+export function setCreatePageMode(mode: CreatePageState['mode']): void {
+	createPageState.value = { ...createPageState.value, mode }
 }
 
 export function setCreatingPage(creating: boolean): void {
@@ -1025,6 +1070,54 @@ export function setSelectedCollection(collection: string | null): void {
 
 export function resetCreatePageState(): void {
 	createPageState.value = createInitialCreatePageState()
+}
+
+// ============================================================================
+// Delete Page State Mutations
+// ============================================================================
+
+export function openDeletePageDialog(page: { pathname: string; title?: string }): void {
+	deletePageState.value = {
+		...createInitialDeletePageState(),
+		isOpen: true,
+		targetPage: page,
+	}
+}
+
+export function setDeletePageRedirectTo(redirectTo: string): void {
+	deletePageState.value = { ...deletePageState.value, redirectTo }
+}
+
+export function setDeletePageCreateRedirect(createRedirect: boolean): void {
+	deletePageState.value = { ...deletePageState.value, createRedirect }
+}
+
+export function setDeletingPage(isDeleting: boolean): void {
+	deletePageState.value = { ...deletePageState.value, isDeleting }
+}
+
+export function resetDeletePageState(): void {
+	deletePageState.value = createInitialDeletePageState()
+}
+
+// ============================================================================
+// Redirects Manager State Mutations
+// ============================================================================
+
+export function openRedirectsManager(): void {
+	redirectsManagerState.value = { ...createInitialRedirectsManagerState(), isOpen: true, isLoading: true }
+}
+
+export function setRedirectsManagerRules(rules: RedirectsManagerState['rules']): void {
+	redirectsManagerState.value = { ...redirectsManagerState.value, rules, isLoading: false }
+}
+
+export function setRedirectsManagerEditing(index: number | null): void {
+	redirectsManagerState.value = { ...redirectsManagerState.value, editingIndex: index }
+}
+
+export function closeRedirectsManager(): void {
+	redirectsManagerState.value = createInitialRedirectsManagerState()
 }
 
 // ============================================================================
@@ -1389,6 +1482,8 @@ export function resetAllState(): void {
 		markdownEditorState.value = createInitialMarkdownEditorState()
 		mediaLibraryState.value = createInitialMediaLibraryState()
 		createPageState.value = createInitialCreatePageState()
+		deletePageState.value = createInitialDeletePageState()
+		redirectsManagerState.value = createInitialRedirectsManagerState()
 		collectionsBrowserState.value = createInitialCollectionsBrowserState()
 		deploymentState.value = createInitialDeploymentState()
 		colorEditorState.value = createInitialColorEditorState()

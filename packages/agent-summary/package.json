@@ -25,11 +25,10 @@
 			"default": "./src/index.ts"
 		}
 	},
-	"dependencies": {
-		"astro": "catalog:astro"
-	},
+	"dependencies": {},
 	"devDependencies": {
-		"@types/bun": "catalog:build"
+		"@types/bun": "catalog:build",
+		"astro": "catalog:astro"
 	},
 	"peerDependencies": {
 		"typescript": "catalog:build"

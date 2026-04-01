@@ -2,33 +2,22 @@ import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
-import { scanCollections } from './collection-scanner'
 import { getProjectRoot } from './config'
-import {
-	buildMapPattern,
-	detectArrayPattern,
-	extractArrayElementProps,
-	handleAddArrayItem,
-	handleRemoveArrayItem,
-	parseInlineArrayName,
-} from './handlers/array-ops'
+import { handleCmsApiRoute } from './handlers/api-routes'
+import { buildMapPattern, detectArrayPattern, extractArrayElementProps, parseInlineArrayName } from './handlers/array-ops'
 import {
 	extractPropsFromSource,
 	findComponentInvocationLine,
 	findFrontmatterEnd,
 	getPageFileCandidates,
-	handleInsertComponent,
-	handleRemoveComponent,
 	normalizeFilePath,
 } from './handlers/component-ops'
-import { handleCreateMarkdown, handleDeleteMarkdown, handleGetMarkdownContent, handleUpdateMarkdown } from './handlers/markdown-ops'
-import { handleCors, parseJsonBody, parseMultipartFile, readBody, sendError, sendJson } from './handlers/request-utils'
-import { handleUpdate } from './handlers/source-writer'
+import { handleCors, sendError } from './handlers/request-utils'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
 import { clearSourceFinderCache, findCollectionSource, findImageSourceLocation, initializeSearchIndex, parseMarkdownContent } from './source-finder'
-import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition, PageSeoData } from './types'
+import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition } from './types'
 import { normalizePagePath } from './utils'
 
 /** Minimal ViteDevServer interface to avoid version conflicts between Astro's bundled Vite and root Vite */
@@ -291,188 +280,6 @@ export function createDevMiddleware(
 
 		next()
 	})
-}
-
-async function handleCmsApiRoute(
-	route: string,
-	req: IncomingMessage,
-	res: ServerResponse,
-	manifestWriter: ManifestWriter,
-	contentDir: string,
-	mediaAdapter?: MediaStorageAdapter,
-): Promise<void> {
-	// POST /_nua/cms/update
-	if (route === 'update' && req.method === 'POST') {
-		const body = await parseJsonBody<Parameters<typeof handleUpdate>[0]>(req)
-		const result = await handleUpdate(body, manifestWriter)
-		sendJson(res, result)
-		return
-	}
-
-	// POST /_nua/cms/insert-component
-	if (route === 'insert-component' && req.method === 'POST') {
-		const body = await parseJsonBody<Parameters<typeof handleInsertComponent>[0]>(req)
-		const result = await handleInsertComponent(body, manifestWriter)
-		sendJson(res, result)
-		return
-	}
-
-	// POST /_nua/cms/remove-component
-	if (route === 'remove-component' && req.method === 'POST') {
-		const body = await parseJsonBody<Parameters<typeof handleRemoveComponent>[0]>(req)
-		const result = await handleRemoveComponent(body, manifestWriter)
-		sendJson(res, result)
-		return
-	}
-
-	// POST /_nua/cms/add-array-item
-	if (route === 'add-array-item' && req.method === 'POST') {
-		const body = await parseJsonBody<Parameters<typeof handleAddArrayItem>[0]>(req)
-		const result = await handleAddArrayItem(body, manifestWriter)
-		sendJson(res, result)
-		return
-	}
-
-	// POST /_nua/cms/remove-array-item
-	if (route === 'remove-array-item' && req.method === 'POST') {
-		const body = await parseJsonBody<Parameters<typeof handleRemoveArrayItem>[0]>(req)
-		const result = await handleRemoveArrayItem(body, manifestWriter)
-		sendJson(res, result)
-		return
-	}
-
-	// GET /_nua/cms/markdown/content?filePath=...
-	if (route === 'markdown/content' && req.method === 'GET') {
-		const urlObj = new URL(req.url!, `http://${req.headers.host}`)
-		const filePath = urlObj.searchParams.get('filePath')
-		if (!filePath) {
-			sendError(res, 'filePath query parameter required')
-			return
-		}
-		const result = await handleGetMarkdownContent(filePath)
-		if (!result) {
-			sendError(res, 'File not found', 404)
-			return
-		}
-		sendJson(res, result)
-		return
-	}
-
-	// POST /_nua/cms/markdown/update
-	if (route === 'markdown/update' && req.method === 'POST') {
-		const body = await parseJsonBody<Parameters<typeof handleUpdateMarkdown>[0]>(req)
-		const result = await handleUpdateMarkdown(body)
-		sendJson(res, result)
-		return
-	}
-
-	// POST /_nua/cms/markdown/create
-	if (route === 'markdown/create' && req.method === 'POST') {
-		const body = await parseJsonBody<Parameters<typeof handleCreateMarkdown>[0]>(req)
-		const result = await handleCreateMarkdown(body)
-		sendJson(res, result, result.success ? 200 : 400)
-		return
-	}
-
-	// POST /_nua/cms/markdown/delete
-	if (route === 'markdown/delete' && req.method === 'POST') {
-		const body = await parseJsonBody<Parameters<typeof handleDeleteMarkdown>[0]>(req)
-		// Register expected deletion so the Vite watcher ignores the unlink
-		const fullPath = path.resolve(getProjectRoot(), body.filePath?.replace(/^\//, '') ?? '')
-		expectedDeletions.add(fullPath)
-		const result = await handleDeleteMarkdown(body)
-		if (result.success) {
-			// Re-scan collections so the manifest reflects the deletion
-			const updatedCollections = await scanCollections(contentDir)
-			manifestWriter.setCollectionDefinitions(updatedCollections)
-		} else {
-			expectedDeletions.delete(fullPath)
-		}
-		sendJson(res, result, result.success ? 200 : 400)
-		return
-	}
-
-	// GET /_nua/cms/media/list
-	if (route === 'media/list' && req.method === 'GET') {
-		if (!mediaAdapter) {
-			sendError(res, 'Media storage not configured', 501)
-			return
-		}
-		const urlObj = new URL(req.url!, `http://${req.headers.host}`)
-		const parsedLimit = parseInt(urlObj.searchParams.get('limit') ?? '50', 10)
-		const limit = Number.isNaN(parsedLimit) || parsedLimit < 1 ? 50 : Math.min(parsedLimit, 1000)
-		const cursor = urlObj.searchParams.get('cursor') ?? undefined
-		const result = await mediaAdapter.list({ limit, cursor })
-		sendJson(res, result)
-		return
-	}
-
-	// POST /_nua/cms/media/upload
-	if (route === 'media/upload' && req.method === 'POST') {
-		if (!mediaAdapter) {
-			sendError(res, 'Media storage not configured', 501)
-			return
-		}
-		const contentType = req.headers['content-type'] ?? ''
-		if (!contentType.includes('multipart/form-data')) {
-			sendError(res, 'Expected multipart/form-data')
-			return
-		}
-		// 50 MB limit for file uploads
-		const body = await readBody(req, 50 * 1024 * 1024)
-		const file = parseMultipartFile(body, contentType)
-		if (!file) {
-			sendError(res, 'No file found in request')
-			return
-		}
-
-		// Validate file content type — allow images, videos, PDFs, and common web assets
-		const allowedTypes = [
-			'image/jpeg',
-			'image/png',
-			'image/gif',
-			'image/webp',
-			'image/avif',
-			'image/x-icon',
-			'video/mp4',
-			'video/webm',
-			'application/pdf',
-		]
-		// Block SVG (can contain scripts) unless explicitly served with safe headers
-		if (!allowedTypes.includes(file.contentType)) {
-			sendError(res, `File type not allowed: ${file.contentType}`)
-			return
-		}
-
-		const result = await mediaAdapter.upload(file.buffer, file.filename, file.contentType)
-		sendJson(res, result)
-		return
-	}
-
-	// DELETE /_nua/cms/media/<id> — only match paths with an actual ID segment
-	if (route.startsWith('media/') && req.method === 'DELETE') {
-		if (!mediaAdapter) {
-			sendError(res, 'Media storage not configured', 501)
-			return
-		}
-		const id = route.slice('media/'.length)
-		// Don't match known sub-routes like 'list' or 'upload'
-		if (!id || id === 'list' || id === 'upload') {
-			sendError(res, 'Not found', 404)
-			return
-		}
-		const result = await mediaAdapter.delete(decodeURIComponent(id))
-		sendJson(res, result)
-		return
-	}
-
-	// GET /_nua/cms/deployment/status
-	if (route === 'deployment/status' && req.method === 'GET') {
-		sendJson(res, { currentDeployment: null, pendingCount: 0, deploymentEnabled: false })
-		return
-	}
-
-	sendError(res, 'Not found', 404)
 }
 
 async function processHtmlForDev(

@@ -21,6 +21,7 @@ import {
 	updateAttributeSources,
 	updateColorClassSources,
 } from './source-finder'
+import type { ComponentInstance } from './types'
 import type { CmsMarkerOptions, CollectionEntry } from './types'
 
 // Concurrency limit for parallel processing
@@ -215,7 +216,7 @@ async function parseComponentInvocations(
 async function detectEntrylessComponents(
 	pagePath: string,
 	root: ReturnType<typeof parse>,
-	components: Record<string, import('./types').ComponentInstance>,
+	components: Record<string, ComponentInstance>,
 	componentDirs: string[],
 	relPath: string,
 	idGenerator: () => string,

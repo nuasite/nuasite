@@ -586,3 +586,76 @@ export interface CmsDeselectElementMessage {
 
 /** All possible CMS postMessage types sent from the parent to the editor iframe */
 export type CmsInboundMessage = CmsDeselectElementMessage
+
+// ============================================================================
+// Page Operations (shared between server handlers and editor UI)
+// ============================================================================
+
+export interface CreatePageRequest {
+	title: string
+	slug: string
+	layoutPath?: string
+}
+
+export interface DuplicatePageRequest {
+	sourcePagePath: string
+	slug: string
+	title?: string
+	createRedirect?: boolean
+}
+
+export interface DeletePageRequest {
+	pagePath: string
+	createRedirect?: boolean
+	redirectTo?: string
+}
+
+export interface PageOperationResponse {
+	success: boolean
+	filePath?: string
+	slug?: string
+	url?: string
+	error?: string
+}
+
+export interface LayoutInfo {
+	name: string
+	path: string
+}
+
+// ============================================================================
+// Redirect Operations (shared between server handlers and editor UI)
+// ============================================================================
+
+export interface RedirectRule {
+	source: string
+	destination: string
+	statusCode: number
+	lineIndex: number
+}
+
+export interface AddRedirectRequest {
+	source: string
+	destination: string
+	statusCode?: number
+}
+
+export interface UpdateRedirectRequest {
+	lineIndex: number
+	source: string
+	destination: string
+	statusCode?: number
+}
+
+export interface DeleteRedirectRequest {
+	lineIndex: number
+}
+
+export interface RedirectOperationResponse {
+	success: boolean
+	error?: string
+}
+
+export interface GetRedirectsResponse {
+	rules: RedirectRule[]
+}

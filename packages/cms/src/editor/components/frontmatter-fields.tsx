@@ -624,11 +624,15 @@ export function getPlaceholder(field: FieldDefinition): string {
 	}
 }
 
+/**
+ * Slugify text for URL paths. Mirrors the server-side slugify in utils.ts.
+ * Preserves `/` for nested paths, collapses whitespace/underscores to hyphens.
+ */
 export function slugify(text: string): string {
 	return text
 		.toLowerCase()
 		.trim()
-		.replace(/[^\w\s-]/g, '')
-		.replace(/[\s_-]+/g, '-')
-		.replace(/^-+|-+$/g, '')
+		.replace(/[^\w\s\-/]/g, '')
+		.replace(/[\s_]+/g, '-')
+		.replace(/^[-/]+|[-/]+$/g, '')
 }

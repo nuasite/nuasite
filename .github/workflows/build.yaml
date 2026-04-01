@@ -3,6 +3,7 @@ on:
   push:
     branches: [ 'main' ]
     tags: [ 'v*' ]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -12,15 +13,18 @@ jobs:
       matrix:
         include:
 
-          - job_name: eslint
+          - job_name: lint
             run_script: bun run lint
+
+          - job_name: format
+            run_script: bun run format:check
 
           - job_name: build
             run_script: |
               bun run ts:build
 
-          - job_name: lint-imports
-            run_script: ./scripts/lint-module-import/run.sh
+          - job_name: lint-deps
+            run_script: bun run lint:deps
 
           - job_name: test
             run_script: |
@@ -28,11 +32,11 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.5
+          bun-version: 1.3
       - name: Install deps
         run: bun install --frozen-lockfile
 

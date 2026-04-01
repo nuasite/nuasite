@@ -9,6 +9,7 @@ import { CollectionsBrowser } from './components/collections-browser'
 import { ColorToolbar } from './components/color-toolbar'
 import { ConfirmDialog } from './components/confirm-dialog'
 import { CreatePageModal } from './components/create-page-modal'
+import { DeletePageDialog } from './components/delete-page-dialog'
 import { EditableHighlights } from './components/editable-highlights'
 import { ErrorBoundary } from './components/error-boundary'
 import { ImageOverlay } from './components/image-overlay'
@@ -16,6 +17,7 @@ import { MarkdownEditorOverlay } from './components/markdown-editor-overlay'
 import { MediaLibrary } from './components/media-library'
 import { Outline } from './components/outline'
 import { RedirectCountdown } from './components/redirect-countdown'
+import { RedirectsManager } from './components/redirects-manager'
 import { SelectionHighlight } from './components/selection-highlight'
 import { SeoEditor } from './components/seo-editor'
 import { TextStyleToolbar } from './components/text-style-toolbar'
@@ -611,6 +613,14 @@ const CmsUI = () => {
 
 			<ErrorBoundary componentName="Create Page Modal">
 				<CreatePageModal />
+			</ErrorBoundary>
+
+			<ErrorBoundary componentName="Delete Page Dialog">
+				<DeletePageDialog />
+			</ErrorBoundary>
+
+			<ErrorBoundary componentName="Redirects Manager">
+				<RedirectsManager />
 			</ErrorBoundary>
 
 			<ErrorBoundary componentName="Markdown Editor">
