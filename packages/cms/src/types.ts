@@ -249,6 +249,10 @@ export interface FieldDefinition {
 	fields?: FieldDefinition[]
 	/** Sample values seen across entries */
 	examples?: unknown[]
+	/** Where the field renders in the editor UI */
+	position?: 'sidebar' | 'header'
+	/** Group name for visual grouping with section headers */
+	group?: string
 }
 
 /** Per-entry metadata for collection browsing */
