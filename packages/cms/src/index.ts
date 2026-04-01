@@ -43,6 +43,13 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	 * Defaults to local filesystem (public/uploads) when no proxy is configured.
 	 */
 	media?: MediaStorageAdapter
+	/**
+	 * Per-collection field overrides for position and grouping.
+	 * Highest priority — overrides scanner defaults and frontmatter comment directives.
+	 */
+	collections?: Record<string, {
+		fields?: Record<string, { position?: 'sidebar' | 'header'; group?: string }>
+	}>
 }
 
 const VIRTUAL_CMS_PATH = '/@nuasite/cms-editor.js'
@@ -119,6 +126,21 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				}
 
 				const collectionDefinitions = await scanCollections(contentDir)
+
+				// Apply per-collection field overrides from astro config (highest priority)
+				if (options.collections) {
+					for (const [collectionName, overrides] of Object.entries(options.collections)) {
+						const def = collectionDefinitions[collectionName]
+						if (!def || !overrides.fields) continue
+						for (const field of def.fields) {
+							const fieldOverride = overrides.fields[field.name]
+							if (!fieldOverride) continue
+							if (fieldOverride.position) field.position = fieldOverride.position
+							if (fieldOverride.group) field.group = fieldOverride.group
+						}
+					}
+				}
+
 				manifestWriter.setCollectionDefinitions(collectionDefinitions)
 
 				const collectionCount = Object.keys(collectionDefinitions).length
