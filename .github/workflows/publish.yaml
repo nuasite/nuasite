@@ -1,9 +1,9 @@
 name: Publish
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows: ["Build"]
+    types: [completed]
 
 permissions:
   id-token: write
@@ -11,9 +11,14 @@ permissions:
 
 jobs:
   publish-node:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
 
       - name: Setup node
         uses: actions/setup-node@v4
@@ -37,7 +42,7 @@ jobs:
         id: versions
         uses: ./.github/actions/extract-version
         with:
-          version: ${{ github.ref_name }}
+          version: ${{ github.event.workflow_run.head_branch }}
 
       - name: "Build app"
         run: bun run build
