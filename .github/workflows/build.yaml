@@ -3,6 +3,7 @@ on:
   push:
     branches: [ 'main' ]
     tags: [ 'v*' ]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -14,6 +15,9 @@ jobs:
 
           - job_name: eslint
             run_script: bun run lint
+
+          - job_name: format
+            run_script: bun run format:check
 
           - job_name: build
             run_script: |
