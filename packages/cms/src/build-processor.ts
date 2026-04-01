@@ -1,5 +1,4 @@
 import type { AstroIntegrationLogger } from 'astro'
-import type { ComponentInstance } from './types'
 import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -22,6 +21,7 @@ import {
 	updateAttributeSources,
 	updateColorClassSources,
 } from './source-finder'
+import type { ComponentInstance } from './types'
 import type { CmsMarkerOptions, CollectionEntry } from './types'
 
 // Concurrency limit for parallel processing
