@@ -1,7 +1,23 @@
+import type { ComponentChildren } from 'preact'
 import { useState } from 'preact/hooks'
 import { markdownEditorState, openMediaLibraryWithCallback, updateMarkdownFrontmatter } from '../signals'
 import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
 import { ComboBoxField, ImageField, NumberField, TextField, ToggleField } from './fields'
+import { groupFields } from './frontmatter-sidebar'
+
+function FieldGroupHeader({ group, children }: { group: string | null; children: ComponentChildren }) {
+	return (
+		<>
+			{group && (
+				<div class="col-span-2 pt-2" data-cms-ui>
+					<h4 class="text-xs uppercase tracking-wider text-white/40 font-medium">{group}</h4>
+					<div class="border-t border-white/10 mt-1.5" />
+				</div>
+			)}
+			{children}
+		</>
+	)
+}
 
 // ============================================================================
 // Generic Frontmatter Field (auto-detect by value type)
@@ -141,14 +157,19 @@ export function FrontmatterField({
 interface CreateModeFrontmatterProps {
 	page: MarkdownPageEntry
 	collectionDefinition: CollectionDefinition
+	fields?: FieldDefinition[]
 	onSlugManualEdit: () => void
 }
 
 export function CreateModeFrontmatter({
 	page,
 	collectionDefinition,
+	fields,
 	onSlugManualEdit,
 }: CreateModeFrontmatterProps) {
+	const displayFields = fields ?? collectionDefinition.fields
+	const groups = groupFields(displayFields)
+
 	return (
 		<div class="space-y-4">
 			{/* Slug field */}
@@ -181,13 +202,17 @@ export function CreateModeFrontmatter({
 
 			{/* Schema fields */}
 			<div class="grid grid-cols-2 gap-4">
-				{collectionDefinition.fields.map((field) => (
-					<SchemaFrontmatterField
-						key={field.name}
-						field={field}
-						value={page.frontmatter[field.name]}
-						onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
-					/>
+				{groups.map((group, gi) => (
+					<FieldGroupHeader key={gi} group={group.group}>
+						{group.fields.map((field) => (
+							<SchemaFrontmatterField
+								key={field.name}
+								field={field}
+								value={page.frontmatter[field.name]}
+								onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
+							/>
+						))}
+					</FieldGroupHeader>
 				))}
 			</div>
 		</div>
@@ -201,12 +226,15 @@ export function CreateModeFrontmatter({
 interface EditModeFrontmatterProps {
 	page: MarkdownPageEntry
 	collectionDefinition?: CollectionDefinition
+	fields?: FieldDefinition[]
 }
 
 export function EditModeFrontmatter({
 	page,
 	collectionDefinition,
+	fields,
 }: EditModeFrontmatterProps) {
+	const displayFields = fields ?? collectionDefinition?.fields ?? []
 	// Collect schema field names for filtering extra keys
 	const schemaFieldNames = new Set(
 		collectionDefinition?.fields.map((f) => f.name) ?? [],
@@ -215,6 +243,7 @@ export function EditModeFrontmatter({
 	const extraKeys = Object.keys(page.frontmatter).filter(
 		(key) => !schemaFieldNames.has(key),
 	)
+	const groups = groupFields(displayFields)
 
 	return (
 		<div class="space-y-4">
@@ -235,14 +264,17 @@ export function EditModeFrontmatter({
 				{collectionDefinition
 					? (
 						<>
-							{/* Schema-aware fields */}
-							{collectionDefinition.fields.map((field) => (
-								<SchemaFrontmatterField
-									key={field.name}
-									field={field}
-									value={page.frontmatter[field.name]}
-									onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
-								/>
+							{groups.map((group, gi) => (
+								<FieldGroupHeader key={gi} group={group.group}>
+									{group.fields.map((field) => (
+										<SchemaFrontmatterField
+											key={field.name}
+											field={field}
+											value={page.frontmatter[field.name]}
+											onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
+										/>
+									))}
+								</FieldGroupHeader>
 							))}
 							{/* Extra fields not in schema */}
 							{extraKeys.map((key) => (

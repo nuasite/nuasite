@@ -15,6 +15,7 @@ import {
 	updateMarkdownFrontmatter,
 } from '../signals'
 import { CreateModeFrontmatter, EditModeFrontmatter, slugify } from './frontmatter-fields'
+import { FrontmatterSidebar, partitionFields } from './frontmatter-sidebar'
 import { MarkdownInlineEditor } from './markdown-inline-editor'
 
 /**
@@ -27,6 +28,12 @@ export function MarkdownEditorOverlay() {
 	const isCreateMode = editorState.mode === 'create'
 	const createOptions = editorState.createOptions
 	const collectionDef = editorState.collectionDefinition
+
+	const activeCollectionDef = isCreateMode ? createOptions?.collectionDefinition : collectionDef
+	const { sidebar: sidebarFields, header: headerFields } = activeCollectionDef
+		? partitionFields(activeCollectionDef.fields)
+		: { sidebar: [], header: [] }
+	const hasSidebar = sidebarFields.length > 0
 
 	const [isSaving, setIsSaving] = useState(false)
 	const [showFrontmatter, setShowFrontmatter] = useState(isCreateMode)
@@ -299,7 +306,7 @@ export function MarkdownEditorOverlay() {
 			onClick={stopPropagation}
 		>
 			<div
-				class="bg-cms-dark rounded-cms-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 w-full max-w-4xl max-h-[90vh] flex flex-col"
+				class={`bg-cms-dark rounded-cms-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 w-full max-h-[90vh] flex flex-col ${hasSidebar ? 'max-w-6xl' : 'max-w-4xl'}`}
 				data-cms-ui
 			>
 				{/* Header */}
@@ -467,37 +474,54 @@ export function MarkdownEditorOverlay() {
 					</div>
 				</div>
 
-				{/* Frontmatter Editor */}
-				{showFrontmatter && (
-					<div class="px-5 py-4 border-b border-white/10 bg-white/5">
-						{isCreateMode && createOptions
-							? (
-								<CreateModeFrontmatter
-									page={page}
-									collectionDefinition={createOptions.collectionDefinition}
-									onSlugManualEdit={() => setSlugManuallyEdited(true)}
-								/>
-							)
-							: (
-								<EditModeFrontmatter
-									page={page}
-									collectionDefinition={collectionDef}
-								/>
-							)}
-					</div>
-				)}
+				{/* Content area: main + optional sidebar */}
+				<div class="flex-1 min-h-0 flex">
+					{/* Main: frontmatter header + editor */}
+					<div class="flex-1 min-w-0 flex flex-col">
+						{/* Frontmatter Editor (header-positioned fields only) */}
+						{showFrontmatter && (
+							<div class="px-5 py-4 border-b border-white/10 bg-white/5 overflow-y-auto max-h-[40vh]">
+								{isCreateMode && createOptions
+									? (
+										<CreateModeFrontmatter
+											page={page}
+											collectionDefinition={createOptions.collectionDefinition}
+											fields={headerFields}
+											onSlugManualEdit={() => setSlugManuallyEdited(true)}
+										/>
+									)
+									: (
+										<EditModeFrontmatter
+											page={page}
+											collectionDefinition={collectionDef}
+											fields={headerFields}
+										/>
+									)}
+							</div>
+						)}
 
-				{/* Editor */}
-				<div class="flex-1 min-h-0 overflow-auto bg-black/20">
-					<MarkdownInlineEditor
-						elementId={page.slug || 'new-page'}
-						initialContent={page.content}
-						onSave={isCreateMode ? () => handleCreate() : handleSave}
-						onCancel={handleCancel}
-						onEditorReady={(editor) => {
-							editorInstanceRef.current = editor
-						}}
-					/>
+						{/* Editor */}
+						<div class="flex-1 min-h-0 overflow-auto bg-black/20">
+							<MarkdownInlineEditor
+								elementId={page.slug || 'new-page'}
+								initialContent={page.content}
+								onSave={isCreateMode ? () => handleCreate() : handleSave}
+								onCancel={handleCancel}
+								onEditorReady={(editor) => {
+									editorInstanceRef.current = editor
+								}}
+							/>
+						</div>
+					</div>
+
+					{/* Sidebar (sidebar-positioned fields) */}
+					{hasSidebar && (
+						<FrontmatterSidebar
+							fields={sidebarFields}
+							page={page}
+							collectionDefinition={activeCollectionDef}
+						/>
+					)}
 				</div>
 			</div>
 		</div>
