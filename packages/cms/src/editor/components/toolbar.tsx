@@ -27,6 +27,18 @@ export interface ToolbarProps {
 	collectionDefinitions?: Record<string, CollectionDefinition>
 }
 
+type MenuItem = { label: string; icon: ComponentChildren; onClick: () => void; isActive?: boolean }
+type MenuSection = { label: string; icon: ComponentChildren; items: MenuItem[] }
+
+const GridIcon = () => (
+	<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+		<rect x="3" y="3" width="7" height="7" rx="1" />
+		<rect x="14" y="3" width="7" height="7" rx="1" />
+		<rect x="3" y="14" width="7" height="7" rx="1" />
+		<rect x="14" y="14" width="7" height="7" rx="1" />
+	</svg>
+)
+
 const DeploymentStatusIndicator = ({ onDismiss }: { onDismiss?: () => void }) => {
 	const deploymentStatus = signals.deploymentStatus.value
 	const lastDeployedAt = signals.lastDeployedAt.value
@@ -105,6 +117,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const isPreviewingMarkdown = signals.isMarkdownPreview.value
 	const currentPageCollection = signals.currentPageCollection.value
 	const [isMenuOpen, setIsMenuOpen] = useState(false)
+	const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
 	const [showVersion, setShowVersion] = useState(false)
 	const versionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -130,11 +143,10 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const isSelectMode = signals.isSelectMode.value
 	const isToolbarOpen = isEditing || isSelectMode
 
-	// Build menu items dynamically
-	const menuItems: Array<{ label: string; icon: ComponentChildren; onClick: () => void; isActive?: boolean }> = []
-
+	const menuSections: MenuSection[] = []
+	const topLevelItems: MenuItem[] = []
 	if (callbacks.onSelectElement && signals.config.value.features?.selectElement) {
-		menuItems.push({
+		topLevelItems.push({
 			label: 'Select Element',
 			icon: (
 				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -147,28 +159,88 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		})
 	}
 
-	// Single consolidated collections item
 	if (collectionDefinitions) {
-		const labels = Object.values(collectionDefinitions).map((d) => d.label)
-		const collectionsLabel = labels.length <= 2 ? labels.join(', ') : `${labels.slice(0, 2).join(', ')}, ...`
-		if (labels.length > 0) {
-			menuItems.push({
-				label: collectionsLabel,
-				icon: (
-					<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<rect x="3" y="3" width="7" height="7" rx="1" />
-						<rect x="14" y="3" width="7" height="7" rx="1" />
-						<rect x="3" y="14" width="7" height="7" rx="1" />
-						<rect x="14" y="14" width="7" height="7" rx="1" />
-					</svg>
-				),
-				onClick: () => callbacks.onOpenCollections?.(),
+		const entries = Object.entries(collectionDefinitions)
+		if (entries.length > 0) {
+			const contentItems: MenuItem[] = entries.map(([name, def]) => ({
+				label: def.label,
+				icon: <GridIcon />,
+				onClick: () => callbacks.onOpenCollection?.(name),
+			}))
+
+			if (currentPageCollection && callbacks.onEditContent) {
+				contentItems.unshift({
+					label: 'Edit Content',
+					icon: (
+						<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" />
+							<path d="M14 2v4a2 2 0 0 0 2 2h4" />
+							<path d="M10 13H8" />
+							<path d="M16 17H8" />
+							<path d="M16 13h-2" />
+						</svg>
+					),
+					onClick: () => callbacks.onEditContent?.(),
+				})
+			}
+
+			menuSections.push({
+				label: 'Content',
+				icon: <GridIcon />,
+				items: contentItems,
 			})
 		}
 	}
 
+	const pageItems: MenuItem[] = [
+		{
+			label: 'Edit Page',
+			icon: (
+				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+				</svg>
+			),
+			onClick: () => callbacks.onEdit(),
+			isActive: isEditing,
+		},
+		{
+			label: 'New Page',
+			icon: (
+				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 5v14m-7-7h14" />
+				</svg>
+			),
+			onClick: () => signals.setCreatePageOpen(true),
+		},
+		{
+			label: 'Delete Page',
+			icon: (
+				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+				</svg>
+			),
+			onClick: () => {
+				const pathname = window.location.pathname
+				signals.openDeletePageDialog({ pathname })
+			},
+		},
+	]
+
+	menuSections.push({
+		label: 'Page',
+		icon: (
+			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" />
+				<path d="M14 2v4a2 2 0 0 0 2 2h4" />
+			</svg>
+		),
+		items: pageItems,
+	})
+
+	const settingsItems: MenuItem[] = []
+
 	if (callbacks.onSeoEditor) {
-		menuItems.push({
+		settingsItems.push({
 			label: 'SEO',
 			icon: (
 				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -180,57 +252,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		})
 	}
 
-	menuItems.push({
-		label: 'New Page',
-		icon: (
-			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M12 5v14m-7-7h14" />
-			</svg>
-		),
-		onClick: () => signals.setCreatePageOpen(true),
-	})
-
-	menuItems.push({
-		label: 'Edit Page',
-		icon: (
-			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
-			</svg>
-		),
-		onClick: () => callbacks.onEdit(),
-		isActive: isEditing,
-	})
-
-	if (currentPageCollection && callbacks.onEditContent) {
-		menuItems.push({
-			label: 'Content',
-			icon: (
-				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" />
-					<path d="M14 2v4a2 2 0 0 0 2 2h4" />
-					<path d="M10 13H8" />
-					<path d="M16 17H8" />
-					<path d="M16 13h-2" />
-				</svg>
-			),
-			onClick: () => callbacks.onEditContent?.(),
-		})
-	}
-
-	menuItems.push({
-		label: 'Delete Page',
-		icon: (
-			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-			</svg>
-		),
-		onClick: () => {
-			const pathname = window.location.pathname
-			signals.openDeletePageDialog({ pathname })
-		},
-	})
-
-	menuItems.push({
+	settingsItems.push({
 		label: 'Redirects',
 		icon: (
 			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -239,6 +261,17 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 			</svg>
 		),
 		onClick: () => signals.openRedirectsManager(),
+	})
+
+	menuSections.push({
+		label: 'Settings',
+		icon: (
+			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+				<circle cx="12" cy="12" r="3" />
+			</svg>
+		),
+		items: settingsItems,
 	})
 
 	return (
@@ -379,10 +412,10 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 											}}
 										/>
 										{/* Menu popover */}
-										<div class="absolute bottom-full right-0 mb-4 min-w-[180px] bg-cms-dark rounded-cms-lg shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 overflow-hidden py-1">
-											{menuItems.map((item, index) => (
+										<div class="absolute bottom-full right-0 mb-4 min-w-[200px] bg-cms-dark rounded-cms-lg shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 overflow-hidden py-1">
+											{topLevelItems.map((item, index) => (
 												<button
-													key={index}
+													key={`top-${index}`}
 													onClick={(e) => {
 														e.stopPropagation()
 														item.onClick()
@@ -399,6 +432,64 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 													{item.label}
 												</button>
 											))}
+											{topLevelItems.length > 0 && menuSections.length > 0 && (
+												<div class="border-t border-white/10 my-1" />
+											)}
+											{menuSections.map((section) => {
+												const isExpanded = expandedSections.has(section.label)
+												return (
+													<div key={section.label}>
+														<button
+															onClick={(e) => {
+																e.stopPropagation()
+																setExpandedSections((prev) => {
+																	const next = new Set(prev)
+																	if (next.has(section.label)) {
+																		next.delete(section.label)
+																	} else {
+																		next.add(section.label)
+																	}
+																	return next
+																})
+															}}
+															class="w-full px-4 py-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-white/80 hover:bg-white/10 hover:text-white"
+														>
+															<span class="shrink-0 opacity-70">{section.icon}</span>
+															{section.label}
+															<svg
+																class={cn('w-3.5 h-3.5 ml-auto opacity-50 transition-transform duration-150', isExpanded && 'rotate-180')}
+																viewBox="0 0 24 24"
+																fill="none"
+																stroke="currentColor"
+																stroke-width="2"
+																stroke-linecap="round"
+																stroke-linejoin="round"
+															>
+																<path d="m6 9 6 6 6-6" />
+															</svg>
+														</button>
+														{isExpanded && section.items.map((item, index) => (
+															<button
+																key={index}
+																onClick={(e) => {
+																	e.stopPropagation()
+																	item.onClick()
+																	setIsMenuOpen(false)
+																}}
+																class={cn(
+																	'w-full pl-11 pr-4 py-2 text-sm text-left transition-colors cursor-pointer flex items-center gap-3',
+																	item.isActive
+																		? 'bg-white/20 text-white'
+																		: 'text-white/60 hover:bg-white/10 hover:text-white',
+																)}
+															>
+																<span class="shrink-0 opacity-70">{item.icon}</span>
+																{item.label}
+															</button>
+														))}
+													</div>
+												)
+											})}
 										</div>
 									</>
 								)}
