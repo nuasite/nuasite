@@ -1,4 +1,4 @@
-import type { Attribute, CmsManifest, CollectionDefinition, ComponentInstance } from '../types'
+import type { Attribute, CmsManifest, CollectionDefinition, ComponentInstance, RedirectRule } from '../types'
 
 // Re-export shared types from @nuasite/cms-marker (source of truth)
 export type {
@@ -393,6 +393,37 @@ export interface CreatePageState {
 	isOpen: boolean
 	isCreating: boolean
 	selectedCollection: string | null
+	mode: 'pick' | 'new' | 'duplicate' | 'collection'
+}
+
+export interface DeletePageState {
+	isOpen: boolean
+	isDeleting: boolean
+	targetPage: { pathname: string; title?: string } | null
+	redirectTo: string
+	createRedirect: boolean
+}
+
+// Re-export shared page/redirect types from the canonical source
+export type {
+	AddRedirectRequest,
+	CreatePageRequest,
+	DeletePageRequest,
+	DeleteRedirectRequest,
+	DuplicatePageRequest,
+	GetRedirectsResponse,
+	LayoutInfo,
+	PageOperationResponse,
+	RedirectOperationResponse,
+	RedirectRule,
+	UpdateRedirectRequest,
+} from '../types'
+
+export interface RedirectsManagerState {
+	isOpen: boolean
+	rules: RedirectRule[]
+	isLoading: boolean
+	editingIndex: number | null
 }
 
 export interface CollectionsBrowserState {

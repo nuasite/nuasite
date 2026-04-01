@@ -1,5 +1,6 @@
 import type { AstroIntegration } from 'astro'
 import { existsSync, readFileSync } from 'node:fs'
+import fs from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -260,6 +261,9 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					await processBuildOutput(dir, markerConfig, manifestWriter, idCounter, logger)
 				}
 
+				// Merge CMS-managed redirects (src/_redirects) into dist/_redirects
+				await mergeRedirects(dir, logger)
+
 				const errorCollector = getErrorCollector()
 				if (errorCollector.hasWarnings()) {
 					const warnings = errorCollector.getWarnings()
@@ -271,6 +275,38 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 			},
 		},
 	}
+}
+
+/**
+ * Merge CMS-managed redirects from src/_redirects into the build output's dist/_redirects.
+ * This ensures both Astro config redirects (written by adapters) and CMS-managed redirects coexist.
+ */
+async function mergeRedirects(dir: URL, logger: { info: (msg: string) => void }): Promise<void> {
+	const srcRedirectsPath = join(process.cwd(), 'src', '_redirects')
+
+	let cmsRedirects: string
+	try {
+		cmsRedirects = (await fs.readFile(srcRedirectsPath, 'utf-8')).trim()
+	} catch {
+		return
+	}
+	if (!cmsRedirects) return
+
+	const distDir = fileURLToPath(dir)
+	const distRedirectsPath = join(distDir, '_redirects')
+
+	let existing = ''
+	try {
+		existing = await fs.readFile(distRedirectsPath, 'utf-8')
+	} catch {
+		// File doesn't exist yet — will be created
+	}
+
+	const separator = existing ? '\n\n# CMS-managed redirects\n' : '# CMS-managed redirects\n'
+	await fs.writeFile(distRedirectsPath, existing + separator + cmsRedirects + '\n', 'utf-8')
+
+	const lineCount = cmsRedirects.split('\n').filter((l) => l.trim() && !l.trim().startsWith('#')).length
+	logger.info(`Merged ${lineCount} CMS redirect(s) into _redirects`)
 }
 
 export { createContemberStorageAdapter as contemberMedia } from './media/contember'

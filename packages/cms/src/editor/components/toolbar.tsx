@@ -181,6 +181,16 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	}
 
 	menuItems.push({
+		label: 'New Page',
+		icon: (
+			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M12 5v14m-7-7h14" />
+			</svg>
+		),
+		onClick: () => signals.setCreatePageOpen(true),
+	})
+
+	menuItems.push({
 		label: 'Edit Page',
 		icon: (
 			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -206,6 +216,30 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 			onClick: () => callbacks.onEditContent?.(),
 		})
 	}
+
+	menuItems.push({
+		label: 'Delete Page',
+		icon: (
+			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+			</svg>
+		),
+		onClick: () => {
+			const pathname = window.location.pathname
+			signals.openDeletePageDialog({ pathname })
+		},
+	})
+
+	menuItems.push({
+		label: 'Redirects',
+		icon: (
+			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M9 18l6-6-6-6" />
+				<path d="M15 18l6-6-6-6" />
+			</svg>
+		),
+		onClick: () => signals.openRedirectsManager(),
+	})
 
 	return (
 		<div
