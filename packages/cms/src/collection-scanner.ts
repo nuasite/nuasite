@@ -15,6 +15,24 @@ const MAX_SELECT_OPTIONS = 10
 /** Minimum length for textarea detection */
 const TEXTAREA_MIN_LENGTH = 200
 
+/** Field names that default to sidebar position */
+const SIDEBAR_FIELD_NAMES = new Set([
+	'title',
+	'date',
+	'pubdate',
+	'publishdate',
+	'draft',
+	'image',
+	'featuredimage',
+	'cover',
+	'coverimage',
+	'thumbnail',
+	'author',
+])
+
+/** Directive pattern: # @position <value> or # @group <value> */
+const DIRECTIVE_PATTERN = /^#\s*@(position|group)\s+(.+)$/
+
 /** Field names that should never be inferred as select (always free-text) */
 const FREE_TEXT_FIELD_NAMES = new Set([
 	'title',
@@ -40,14 +58,82 @@ interface FieldObservation {
 	totalEntries: number
 }
 
-/**
- * Parse YAML frontmatter from markdown content
- */
-function parseFrontmatter(content: string): Record<string, unknown> | null {
-	const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
-	if (!match?.[1]) return null
+const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---/
 
-	return parseYaml(match[1]) as Record<string, unknown> | null
+function extractFrontmatterBlock(content: string): string | null {
+	const match = content.match(FRONTMATTER_PATTERN)
+	return match?.[1] ?? null
+}
+
+function parseFrontmatter(content: string): Record<string, unknown> | null {
+	const block = extractFrontmatterBlock(content)
+	if (!block) return null
+	return parseYaml(block) as Record<string, unknown> | null
+}
+
+/**
+ * Parse @position and @group comment directives from raw YAML frontmatter.
+ * Directives apply to the next YAML key below them.
+ */
+function parseFieldDirectives(content: string): Record<string, { position?: 'sidebar' | 'header'; group?: string }> {
+	const block = extractFrontmatterBlock(content)
+	if (!block) return {}
+
+	const lines = block.split('\n')
+	const result: Record<string, { position?: 'sidebar' | 'header'; group?: string }> = {}
+	let pendingDirectives: { position?: 'sidebar' | 'header'; group?: string } = {}
+
+	for (const line of lines) {
+		const trimmed = line.trim()
+		const directiveMatch = trimmed.match(DIRECTIVE_PATTERN)
+
+		if (directiveMatch) {
+			const dirKey = directiveMatch[1]
+			const dirValue = directiveMatch[2]
+			if (dirKey === 'position' && dirValue && (dirValue === 'sidebar' || dirValue === 'header')) {
+				pendingDirectives.position = dirValue
+			} else if (dirKey === 'group' && dirValue) {
+				pendingDirectives.group = dirValue.trim()
+			}
+			continue
+		}
+
+		// Non-directive, non-empty line — check if it's a YAML key
+		if ((pendingDirectives.position || pendingDirectives.group) && trimmed && !trimmed.startsWith('#')) {
+			const keyMatch = trimmed.match(/^(\w[\w-]*)(?:\s*:|:)/)
+			if (keyMatch?.[1]) {
+				result[keyMatch[1]] = { ...pendingDirectives }
+			}
+			pendingDirectives = {}
+		}
+	}
+
+	return result
+}
+
+/**
+ * Assign default positions to fields based on field name heuristics,
+ * then overlay frontmatter comment directives.
+ */
+function assignFieldMetadata(
+	fields: FieldDefinition[],
+	directives: Record<string, { position?: 'sidebar' | 'header'; group?: string }>,
+): void {
+	for (const field of fields) {
+		// Scanner defaults: well-known fields go to sidebar
+		if (SIDEBAR_FIELD_NAMES.has(field.name.toLowerCase()) || field.type === 'image' || field.type === 'boolean') {
+			field.position = 'sidebar'
+		} else {
+			field.position = 'header'
+		}
+
+		// Overlay frontmatter comment directives
+		const directive = directives[field.name]
+		if (directive) {
+			if (directive.position) field.position = directive.position
+			if (directive.group) field.group = directive.group
+		}
+	}
 }
 
 /**
@@ -190,8 +276,9 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 		const hasMd = markdownFiles.some(f => f.name.endsWith('.md'))
 		const fileExtension: 'md' | 'mdx' = hasMd ? 'md' : 'mdx'
 
-		// Collect field observations and entry info across all files
+		// Collect field observations, directives, and entry info across all files
 		const fieldMap = new Map<string, FieldObservation>()
+		const allDirectives: Record<string, { position?: 'sidebar' | 'header'; group?: string }> = {}
 		const entryInfos: CollectionEntryInfo[] = []
 		let hasDraft = false
 
@@ -199,6 +286,14 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 			const filePath = path.join(collectionPath, file.name)
 			const content = await fs.readFile(filePath, 'utf-8')
 			const frontmatter = parseFrontmatter(content)
+
+			// Parse comment directives (first file with a directive for a field wins)
+			const directives = parseFieldDirectives(content)
+			for (const [key, value] of Object.entries(directives)) {
+				if (!allDirectives[key]) {
+					allDirectives[key] = value
+				}
+			}
 
 			// Collect entry info
 			const slug = file.name.replace(/\.(md|mdx)$/, '')
@@ -252,6 +347,7 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 		}
 
 		const fields = mergeFieldObservations(Array.from(fieldMap.values()))
+		assignFieldMetadata(fields, allDirectives)
 
 		// Generate a human-readable label
 		const label = collectionName
