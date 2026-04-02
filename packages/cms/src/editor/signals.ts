@@ -343,6 +343,28 @@ export const currentMarkdownPage = computed(
 export const isMarkdownPreview = signal(false)
 
 // ============================================================================
+// MDX Component Block State Signals
+// ============================================================================
+
+export const mdxPropsEditorState = signal<MdxPropsEditorState>({
+	isOpen: false,
+	nodePos: null,
+	componentName: null,
+	props: {},
+	cursorPos: null,
+})
+
+export const mdxComponentPickerOpen = signal(false)
+
+export function openMdxPropsEditor(nodePos: number, componentName: string, props: Record<string, string>, cursorPos: { x: number; y: number }): void {
+	mdxPropsEditorState.value = { isOpen: true, nodePos, componentName, props, cursorPos }
+}
+
+export function closeMdxPropsEditor(): void {
+	mdxPropsEditorState.value = { isOpen: false, nodePos: null, componentName: null, props: {}, cursorPos: null }
+}
+
+// ============================================================================
 // Media Library State Signals
 // ============================================================================
 
@@ -1044,14 +1066,6 @@ function getDefaultForFieldType(field: FieldDefinition): unknown {
 
 export function setMediaLibraryOpen(open: boolean): void {
 	mediaLibraryState.value = { ...mediaLibraryState.value, isOpen: open }
-}
-
-export function setMediaLibraryItems(items: MediaItem[]): void {
-	mediaLibraryState.value = { ...mediaLibraryState.value, items }
-}
-
-export function setMediaLibraryLoading(loading: boolean): void {
-	mediaLibraryState.value = { ...mediaLibraryState.value, isLoading: loading }
 }
 
 export function setMediaLibrarySelectedItem(item: MediaItem | null): void {

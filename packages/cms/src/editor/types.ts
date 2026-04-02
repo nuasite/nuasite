@@ -691,6 +691,20 @@ export type UndoAction =
 	| UndoSeoAction
 	| UndoBgImageAction
 
+// ============================================================================
+// MDX Component Block Types
+// ============================================================================
+
+export interface MdxPropsEditorState {
+	isOpen: boolean
+	/** ProseMirror document position of the node being edited */
+	nodePos: number | null
+	componentName: string | null
+	props: Record<string, string>
+	/** Position for the floating editor panel */
+	cursorPos: { x: number; y: number } | null
+}
+
 declare global {
 	interface Window {
 		NuaCmsConfig?: Partial<CmsConfig>

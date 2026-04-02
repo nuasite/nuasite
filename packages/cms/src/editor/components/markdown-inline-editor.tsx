@@ -14,11 +14,16 @@ import { gfm, toggleStrikethroughCommand } from '@milkdown/preset-gfm'
 import { callCommand, insert, replaceAll } from '@milkdown/utils'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { uploadMedia } from '../markdown-api'
-import { config, openMediaLibraryWithCallback, resetMarkdownEditorState, showToast, updateMarkdownContent } from '../signals'
+import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-plugin'
+import { config, mdxComponentPickerOpen, openMediaLibraryWithCallback, resetMarkdownEditorState, showToast, updateMarkdownContent } from '../signals'
+import { MdxComponentIcon } from './mdx-block-view'
+import { MdxComponentPicker } from './mdx-component-picker'
+import { MdxPropsEditor } from './mdx-props-editor'
 
 export interface MarkdownInlineEditorProps {
 	elementId: string
 	initialContent: string
+	isMdx?: boolean
 	onSave: (content: string) => void
 	onCancel: () => void
 	onEditorReady?: (editor: Editor) => void
@@ -27,6 +32,7 @@ export interface MarkdownInlineEditorProps {
 export function MarkdownInlineEditor({
 	elementId,
 	initialContent,
+	isMdx,
 	onSave,
 	onCancel,
 	onEditorReady,
@@ -69,6 +75,8 @@ export function MarkdownInlineEditor({
 	// Store onEditorReady in ref to avoid re-initializing editor when callback changes
 	const onEditorReadyRef = useRef(onEditorReady)
 	onEditorReadyRef.current = onEditorReady
+	// Store isMdx in ref for editor initialization
+	const isMdxRef = useRef(isMdx ?? false)
 
 	// Check active formatting at current selection
 	const updateActiveFormats = useCallback(() => {
@@ -154,9 +162,11 @@ export function MarkdownInlineEditor({
 	useEffect(() => {
 		if (!editorRef.current) return
 
+		let formatRaf = 0
+
 		const initEditor = async () => {
 			try {
-				const editor = await Editor.make()
+				const builder = Editor.make()
 					.config((ctx) => {
 						ctx.set(rootCtx, editorRef.current)
 						ctx.set(defaultValueCtx, initialContentRef.current)
@@ -168,19 +178,29 @@ export function MarkdownInlineEditor({
 					.use(commonmark)
 					.use(gfm)
 					.use(listener)
-					.create()
+
+				// Add MDX component support for .mdx files
+				if (isMdxRef.current) {
+					for (const plugin of mdxComponentPlugin) {
+						builder.use(plugin as any)
+					}
+				}
+
+				const editor = await builder.create()
 
 				editorInstanceRef.current = editor
 				setIsReady(true)
 				onEditorReadyRef.current?.(editor)
 
-				// Set up selection change listener
+				// Set up selection change listener — debounce via rAF to avoid
+				// redundant mark-scanning on every keystroke
 				const view = editor.ctx.get(editorViewCtx)
 				const originalDispatch = view.dispatch.bind(view)
 				view.dispatch = (tr) => {
 					originalDispatch(tr)
 					if (tr.selectionSet || tr.docChanged) {
-						updateActiveFormats()
+						cancelAnimationFrame(formatRaf)
+						formatRaf = requestAnimationFrame(updateActiveFormats)
 					}
 				}
 
@@ -195,6 +215,7 @@ export function MarkdownInlineEditor({
 		initEditor()
 
 		return () => {
+			cancelAnimationFrame(formatRaf)
 			editorInstanceRef.current?.destroy()
 			editorInstanceRef.current = null
 		}
@@ -357,6 +378,38 @@ export function MarkdownInlineEditor({
 			} catch (error) {
 				console.error('Failed to insert heading:', error)
 			}
+		}
+	}, [])
+
+	// MDX component insertion
+	const handleInsertMdxComponent = useCallback((componentName: string, props: Record<string, string>) => {
+		if (editorInstanceRef.current) {
+			try {
+				editorInstanceRef.current.action(callCommand(insertMdxComponentCommand.key, { componentName, props }))
+			} catch (error) {
+				console.error('Failed to insert MDX component:', error)
+			}
+		}
+	}, [])
+
+	const handleOpenMdxPicker = useCallback(() => {
+		mdxComponentPickerOpen.value = true
+	}, [])
+
+	const handleUpdateMdxProps = useCallback((nodePos: number, props: Record<string, string>) => {
+		if (!editorInstanceRef.current) return
+		try {
+			const view = editorInstanceRef.current.ctx.get(editorViewCtx)
+			const node = view.state.doc.nodeAt(nodePos)
+			if (node && node.type.name === 'mdx_component') {
+				const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
+					...node.attrs,
+					props: JSON.stringify(props),
+				})
+				view.dispatch(tr)
+			}
+		} catch (error) {
+			console.error('Failed to update MDX component props:', error)
 		}
 	}, [])
 
@@ -682,6 +735,15 @@ export function MarkdownInlineEditor({
 							/>
 						</svg>
 					</ToolbarButton>
+					{isMdx && (
+						<>
+							{/* Divider */}
+							<div class="w-px h-5 bg-white/20 mx-1" />
+							<ToolbarButton onClick={handleOpenMdxPicker} title="Insert Component">
+								<MdxComponentIcon size="md" />
+							</ToolbarButton>
+						</>
+					)}
 				</div>
 			</div>
 
@@ -745,6 +807,12 @@ export function MarkdownInlineEditor({
 					</div>
 				)}
 			</div>
+
+			{/* MDX Component Picker */}
+			{isMdx && <MdxComponentPicker onInsert={handleInsertMdxComponent} />}
+
+			{/* MDX Props Editor */}
+			{isMdx && <MdxPropsEditor onUpdateProps={handleUpdateMdxProps} />}
 		</div>
 	)
 }
