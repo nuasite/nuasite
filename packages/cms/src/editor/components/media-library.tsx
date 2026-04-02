@@ -1,46 +1,47 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { fetchMediaLibrary, uploadMedia } from '../markdown-api'
-import {
-	config,
-	isMediaLibraryLoading,
-	isMediaLibraryOpen,
-	mediaLibraryItems,
-	mediaLibraryState,
-	resetMediaLibraryState,
-	setMediaLibraryItems,
-	setMediaLibraryLoading,
-	showToast,
-} from '../signals'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { fetchMediaLibrary, fetchProjectImages, uploadMedia } from '../markdown-api'
+import { Z_INDEX } from '../constants'
+import { config, isMediaLibraryOpen, mediaLibraryState, resetMediaLibraryState, showToast } from '../signals'
 import type { MediaItem } from '../types'
 
 export function MediaLibrary() {
 	const visible = isMediaLibraryOpen.value
-	const items = mediaLibraryItems.value
-	const isLoading = isMediaLibraryLoading.value
 	const insertCallback = mediaLibraryState.value.insertCallback
 
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 	const [searchQuery, setSearchQuery] = useState('')
+	const [allItems, setAllItems] = useState<MediaItem[]>([])
+	const [isLoading, setIsLoading] = useState(false)
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const containerRef = useRef<HTMLDivElement>(null)
 
-	// Load media items on open
 	// biome-ignore lint/correctness/useExhaustiveDependencies: know what i am doing
 	useEffect(() => {
-		if (visible && items.length === 0) {
-			loadMediaItems()
+		if (visible && allItems.length === 0) {
+			loadAllImages()
 		}
 	}, [visible])
 
-	const loadMediaItems = async () => {
-		setMediaLibraryLoading(true)
+	const loadAllImages = async () => {
+		setIsLoading(true)
 		try {
-			const result = await fetchMediaLibrary(config.value)
-			setMediaLibraryItems(result.items)
+			const [uploads, project] = await Promise.all([
+				fetchMediaLibrary(config.value).catch(() => ({ items: [] })),
+				fetchProjectImages(config.value).catch(() => ({ items: [] })),
+			])
+			const seen = new Set<string>()
+			const combined: MediaItem[] = []
+			for (const item of [...uploads.items, ...project.items]) {
+				if (!seen.has(item.url)) {
+					seen.add(item.url)
+					combined.push(item)
+				}
+			}
+			setAllItems(combined)
 		} catch (error) {
 			showToast('Failed to load media library', 'error')
 		} finally {
-			setMediaLibraryLoading(false)
+			setIsLoading(false)
 		}
 	}
 
@@ -64,11 +65,7 @@ export function MediaLibrary() {
 		fileInputRef.current?.click()
 	}, [])
 
-	const handleFileChange = async (e: Event) => {
-		const target = e.target as HTMLInputElement
-		const file = target.files?.[0]
-		if (!file) return
-
+	const handleUploadFile = async (file: File) => {
 		setUploadProgress(0)
 		try {
 			const result = await uploadMedia(config.value, file, (percent) => {
@@ -76,7 +73,6 @@ export function MediaLibrary() {
 			})
 
 			if (result.success && result.url) {
-				// Add the new item to the list
 				const newItem: MediaItem = {
 					id: result.id || crypto.randomUUID(),
 					url: result.url,
@@ -84,7 +80,7 @@ export function MediaLibrary() {
 					annotation: result.annotation,
 					contentType: file.type,
 				}
-				setMediaLibraryItems([newItem, ...items])
+				setAllItems([newItem, ...allItems])
 				showToast('Image uploaded successfully', 'success')
 			} else {
 				showToast(result.error || 'Upload failed', 'error')
@@ -93,8 +89,15 @@ export function MediaLibrary() {
 			showToast('Upload failed', 'error')
 		} finally {
 			setUploadProgress(null)
-			target.value = ''
 		}
+	}
+
+	const handleFileChange = async (e: Event) => {
+		const target = e.target as HTMLInputElement
+		const file = target.files?.[0]
+		if (!file) return
+		await handleUploadFile(file)
+		target.value = ''
 	}
 
 	const handleDrop = async (e: DragEvent) => {
@@ -106,31 +109,7 @@ export function MediaLibrary() {
 			showToast('Please drop an image file', 'error')
 			return
 		}
-
-		setUploadProgress(0)
-		try {
-			const result = await uploadMedia(config.value, file, (percent) => {
-				setUploadProgress(percent)
-			})
-
-			if (result.success && result.url) {
-				const newItem: MediaItem = {
-					id: result.id || crypto.randomUUID(),
-					url: result.url,
-					filename: result.filename || file.name,
-					annotation: result.annotation,
-					contentType: file.type,
-				}
-				setMediaLibraryItems([newItem, ...items])
-				showToast('Image uploaded successfully', 'success')
-			} else {
-				showToast(result.error || 'Upload failed', 'error')
-			}
-		} catch (error) {
-			showToast('Upload failed', 'error')
-		} finally {
-			setUploadProgress(null)
-		}
+		await handleUploadFile(file)
 	}
 
 	const handleDragOver = (e: DragEvent) => {
@@ -138,16 +117,17 @@ export function MediaLibrary() {
 		e.stopPropagation()
 	}
 
-	// Filter items by search query
-	const filteredItems = searchQuery
-		? items.filter((item) => item.filename.toLowerCase().includes(searchQuery.toLowerCase()))
-		: items
+	const filteredItems = useMemo(() =>
+		searchQuery
+			? allItems.filter((item) => item.filename.toLowerCase().includes(searchQuery.toLowerCase()))
+			: allItems, [searchQuery, allItems])
 
 	if (!visible) return null
 
 	return (
 		<div
-			class="fixed inset-0 z-2147483647 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+			style={{ zIndex: Z_INDEX.MODAL }}
+			class="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm"
 			onClick={handleClose}
 			data-cms-ui
 		>
@@ -159,7 +139,6 @@ export function MediaLibrary() {
 				onDragOver={handleDragOver}
 				data-cms-ui
 			>
-				{/* Header */}
 				<div class="flex items-center justify-between p-5 border-b border-white/10">
 					<h2 class="text-lg font-semibold text-white">Media Library</h2>
 					<button
@@ -174,7 +153,6 @@ export function MediaLibrary() {
 					</button>
 				</div>
 
-				{/* Toolbar */}
 				<div class="flex items-center gap-3 p-4 border-b border-white/10">
 					<input
 						type="text"
@@ -202,7 +180,6 @@ export function MediaLibrary() {
 					/>
 				</div>
 
-				{/* Upload progress */}
 				{uploadProgress !== null && (
 					<div class="px-4 py-3 bg-white/5 border-b border-white/10">
 						<div class="flex items-center gap-3">
@@ -217,7 +194,6 @@ export function MediaLibrary() {
 					</div>
 				)}
 
-				{/* Grid */}
 				<div class="flex-1 overflow-auto p-4">
 					{isLoading
 						? (
@@ -287,7 +263,6 @@ export function MediaLibrary() {
 						)}
 				</div>
 
-				{/* Footer with drop hint */}
 				<div class="px-4 py-4 border-t border-white/10 bg-white/5 text-center text-sm text-white/50 rounded-b-cms-xl">
 					Drag and drop images here to upload
 				</div>

@@ -107,6 +107,16 @@ export function uploadMedia(
 	})
 }
 
+export async function fetchProjectImages(config: CmsConfig): Promise<{ items: MediaItem[] }> {
+	const res = await fetchWithTimeout(`${config.apiBase}/media/project-images`, {
+		method: 'GET',
+		credentials: 'include',
+	})
+
+	if (!res.ok) throw new Error(`Failed to fetch project images (${res.status})`)
+	return res.json()
+}
+
 export async function deleteMedia(config: CmsConfig, mediaId: string): Promise<{ success: boolean; error?: string }> {
 	const res = await fetchWithTimeout(`${config.apiBase}/media/${mediaId}`, {
 		method: 'DELETE',

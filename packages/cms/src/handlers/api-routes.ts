@@ -4,10 +4,11 @@ import { scanCollections } from '../collection-scanner'
 import { getProjectRoot } from '../config'
 import { expectedDeletions } from '../dev-middleware'
 import type { ManifestWriter } from '../manifest-writer'
+import { listProjectImages } from '../media/project-images'
 import type { MediaStorageAdapter } from '../media/types'
 import { handleAddArrayItem, handleRemoveArrayItem } from './array-ops'
 import { handleInsertComponent, handleRemoveComponent } from './component-ops'
-import { handleCreateMarkdown, handleDeleteMarkdown, handleGetMarkdownContent, handleUpdateMarkdown } from './markdown-ops'
+import { handleCreateMarkdown, handleDeleteMarkdown, handleGetMarkdownContent, handleRenameMarkdown, handleUpdateMarkdown } from './markdown-ops'
 import { handleCheckSlugExists, handleCreatePage, handleDeletePage, handleDuplicatePage, handleGetLayouts } from './page-ops'
 import { handleAddRedirect, handleDeleteRedirect, handleGetRedirects, handleUpdateRedirect } from './redirect-ops'
 import { parseJsonBody, parseMultipartFile, readBody, sendError, sendJson } from './request-utils'
@@ -104,6 +105,7 @@ const routeMap = new Map<string, RouteHandler>([
 		sendJson(res, result)
 	}),
 	post('markdown/update', (body: Parameters<typeof handleUpdateMarkdown>[0]) => handleUpdateMarkdown(body)),
+	post('markdown/rename', (body: Parameters<typeof handleRenameMarkdown>[0]) => handleRenameMarkdown(body)),
 	postWithStatus('markdown/create', (body: Parameters<typeof handleCreateMarkdown>[0]) => handleCreateMarkdown(body)),
 	custom('POST', 'markdown/delete', async ({ req, res, manifestWriter, contentDir }) => {
 		const body = await parseJsonBody<Parameters<typeof handleDeleteMarkdown>[0]>(req)
@@ -125,6 +127,11 @@ const routeMap = new Map<string, RouteHandler>([
 		const parsedLimit = parseInt(params.get('limit') ?? '50', 10)
 		const limit = Number.isNaN(parsedLimit) || parsedLimit < 1 ? 50 : Math.min(parsedLimit, 1000)
 		sendJson(ctx.res, await ctx.mediaAdapter.list({ limit, cursor: params.get('cursor') ?? undefined }))
+	}),
+	custom('GET', 'media/project-images', async (ctx) => {
+		const excludeDir = ctx.mediaAdapter?.staticFiles?.dir
+		const items = await listProjectImages({ excludeDir })
+		sendJson(ctx.res, { items })
 	}),
 	custom('POST', 'media/upload', async (ctx) => {
 		if (!requireMedia(ctx)) return
