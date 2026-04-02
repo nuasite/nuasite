@@ -302,6 +302,77 @@ title: 'API Integration'
 		expect(result?.line).toBe(2)
 	})
 
+	test('should find text in multi-line frontmatter value (plain scalar wrapping)', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/multiline.md',
+			`---
+title: Dobrovolníci po celé republice spojí síly a uklidí českou krajinu. Budete
+  u toho?
+slug: dobrovolnici
+date: 10. 3. 2026
+---
+
+Content.
+`,
+		)
+
+		const collectionInfo = {
+			name: 'services',
+			slug: 'multiline',
+			file: 'src/content/services/multiline.md',
+		}
+
+		const result = await findMarkdownSourceLocation(
+			'Dobrovolníci po celé republice spojí síly a uklidí českou krajinu. Budete u toho?',
+			collectionInfo,
+		)
+
+		expect(result).toBeDefined()
+		expect(result?.line).toBe(2)
+		expect(result?.variableName).toBe('title')
+		expect(result?.collectionName).toBe('services')
+		// Snippet should span both lines of the multi-line value
+		expect(result?.snippet).toContain('title:')
+		expect(result?.snippet).toContain('u toho?')
+		expect(result?.snippet).toContain('\n')
+	})
+
+	test('should find text in multi-line excerpt spanning 4 lines', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile(
+			'src/content/services/long-excerpt.md',
+			`---
+title: Short Title
+excerpt: I letos se čeká Českou republiku tradiční jarní úklid. Tisíce
+  dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme
+  Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k
+  nim také!
+---
+
+Content.
+`,
+		)
+
+		const collectionInfo = {
+			name: 'services',
+			slug: 'long-excerpt',
+			file: 'src/content/services/long-excerpt.md',
+		}
+
+		const result = await findMarkdownSourceLocation(
+			'I letos se čeká Českou republiku tradiční jarní úklid. Tisíce dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k nim také!',
+			collectionInfo,
+		)
+
+		expect(result).toBeDefined()
+		expect(result?.line).toBe(3)
+		expect(result?.variableName).toBe('excerpt')
+		// Snippet should span all 4 continuation lines
+		expect(result?.snippet).toContain('excerpt:')
+		expect(result?.snippet).toContain('nim také!')
+	})
+
 	test('should return undefined for text in body (body is handled separately)', async () => {
 		const ctx = getCtx()
 		await ctx.writeFile(
