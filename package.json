@@ -78,6 +78,7 @@
 				"@milkdown/preset-commonmark": "^7.20.0",
 				"@milkdown/preset-gfm": "^7.20.0",
 				"@milkdown/prose": "^7.20.0",
+				"@milkdown/transformer": "^7.20.0",
 				"@milkdown/utils": "^7.20.0",
 				"@preact/signals": "^2.9.0",
 				"@tailwindcss/postcss": "^4.1.17",
@@ -95,6 +96,7 @@
 				"prosemirror-state": "^1.4.4",
 				"prosemirror-transform": "^1.12.0",
 				"prosemirror-view": "^1.41.7",
+				"remark-mdx": "^3.1.0",
 				"tailwind-merge": "^3.5.0"
 			}
 		}
