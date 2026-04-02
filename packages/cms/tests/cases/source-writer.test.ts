@@ -376,7 +376,8 @@ describe('applyTextChange', () => {
 
 	test('multi-line YAML value replacement (title wrapping two lines)', () => {
 		// Note: trailing space after "Budete " before the line break — matches real YAML files
-		const content = '---\ntitle: Dobrovolníci po celé republice spojí síly a uklidí českou krajinu. Budete \n  u toho?\nslug: dobrovolnici\n---\n\nContent.'
+		const content =
+			'---\ntitle: Dobrovolníci po celé republice spojí síly a uklidí českou krajinu. Budete \n  u toho?\nslug: dobrovolnici\n---\n\nContent.'
 		const result = applyTextChange(
 			content,
 			makeChange({
@@ -404,8 +405,10 @@ date: 2026-03-10
 		const result = applyTextChange(
 			content,
 			makeChange({
-				sourceSnippet: 'excerpt: I letos se čeká Českou republiku tradiční jarní úklid. Tisíce\n  dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme\n  Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k\n  nim také!',
-				originalValue: 'I letos se čeká Českou republiku tradiční jarní úklid. Tisíce dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k nim také!',
+				sourceSnippet:
+					'excerpt: I letos se čeká Českou republiku tradiční jarní úklid. Tisíce\n  dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme\n  Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k\n  nim také!',
+				originalValue:
+					'I letos se čeká Českou republiku tradiční jarní úklid. Tisíce dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k nim také!',
 				newValue: 'Updated excerpt.',
 			}),
 			emptyManifest,

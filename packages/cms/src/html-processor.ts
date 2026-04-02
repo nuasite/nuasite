@@ -2,7 +2,16 @@ import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import { processSeoFromHtml } from './seo-processor'
 import { enhanceManifestWithSourceSnippets } from './source-finder'
 import { extractBackgroundImageClasses, extractColorClasses, extractTextStyleClasses } from './tailwind-colors'
-import type { Attribute, BackgroundImageMetadata, ComponentInstance, ImageMetadata, ManifestEntry, PageSeoData, SeoOptions } from './types'
+import type {
+	Attribute,
+	BackgroundImageMetadata,
+	CollectionDefinition,
+	ComponentInstance,
+	ImageMetadata,
+	ManifestEntry,
+	PageSeoData,
+	SeoOptions,
+} from './types'
 import { generateStableId } from './utils'
 
 /** Type for parsed HTML element nodes from node-html-parser */
@@ -70,7 +79,7 @@ export interface ProcessHtmlOptions {
 	/** SEO tracking options */
 	seo?: SeoOptions
 	/** Collection definitions for resolving frontmatter text on listing pages */
-	collectionDefinitions?: Record<string, import('./types').CollectionDefinition>
+	collectionDefinitions?: Record<string, CollectionDefinition>
 }
 
 export interface ProcessHtmlResult {

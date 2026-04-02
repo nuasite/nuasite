@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { fetchMediaLibrary, fetchProjectImages, uploadMedia } from '../markdown-api'
 import { Z_INDEX } from '../constants'
+import { fetchMediaLibrary, fetchProjectImages, uploadMedia } from '../markdown-api'
 import { config, isMediaLibraryOpen, mediaLibraryState, resetMediaLibraryState, showToast } from '../signals'
 import type { MediaItem } from '../types'
 

@@ -1,7 +1,6 @@
 import { render } from 'preact'
 import { useCallback, useEffect, useRef } from 'preact/hooks'
 import type { CmsElementDeselectedMessage, CmsElementSelectedMessage, CmsInboundMessage } from '../types'
-import { Z_INDEX } from './constants'
 import { fetchManifest } from './api'
 import { AttributeEditor } from './components/attribute-editor'
 import { BgImageOverlay } from './components/bg-image-overlay'
@@ -25,6 +24,7 @@ import { TextStyleToolbar } from './components/text-style-toolbar'
 import { ToastContainer } from './components/toast/toast-container'
 import { Toolbar } from './components/toolbar'
 import { getConfig } from './config'
+import { Z_INDEX } from './constants'
 import { disableAllInteractiveElements, enableAllInteractiveElements, logDebug } from './dom'
 import {
 	discardAllChanges,

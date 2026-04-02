@@ -828,4 +828,3 @@ export function getPlaceholder(field: FieldDefinition): string {
 			return `Enter ${formatFieldLabel(field.name).toLowerCase()}...`
 	}
 }
-

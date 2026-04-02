@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from '../config'
@@ -42,9 +43,9 @@ async function scanDirectory(
 ): Promise<void> {
 	if (excludeDir && path.resolve(currentDir) === excludeDir) return
 
-	let entries: import('node:fs').Dirent[]
+	let entries: Dirent[]
 	try {
-		entries = await fs.readdir(currentDir, { withFileTypes: true }) as import('node:fs').Dirent[]
+		entries = await fs.readdir(currentDir, { withFileTypes: true }) as Dirent[]
 	} catch {
 		return
 	}

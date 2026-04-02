@@ -467,9 +467,7 @@ function detectDerivedHrefFields(collections: Record<string, CollectionDefinitio
 async function scanDataCollection(collectionPath: string, collectionName: string, contentDir: string): Promise<CollectionDefinition | null> {
 	try {
 		const entries = await fs.readdir(collectionPath, { withFileTypes: true })
-		const dataFiles = entries.filter(e =>
-			e.isFile() && (e.name.endsWith('.json') || e.name.endsWith('.yaml') || e.name.endsWith('.yml'))
-		)
+		const dataFiles = entries.filter(e => e.isFile() && (e.name.endsWith('.json') || e.name.endsWith('.yaml') || e.name.endsWith('.yml')))
 		if (dataFiles.length === 0) return null
 
 		const fieldMap = new Map<string, FieldObservation>()
@@ -487,7 +485,9 @@ async function scanDataCollection(collectionPath: string, collectionName: string
 			let data: Record<string, unknown> | null = null
 			try {
 				data = file.name.endsWith('.json') ? JSON.parse(raw) : parseYaml(raw) as Record<string, unknown>
-			} catch { continue }
+			} catch {
+				continue
+			}
 			if (!data || typeof data !== 'object') continue
 
 			const slug = file.name.replace(/\.(json|ya?ml)$/, '')

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks'
-import { Z_INDEX, clampPanelPosition } from '../constants'
+import { clampPanelPosition, Z_INDEX } from '../constants'
 import { getComponentDefinition } from '../manifest'
 import { closeMdxPropsEditor, manifest, mdxPropsEditorState } from '../signals'
 import { MdxComponentIcon } from './mdx-block-view'

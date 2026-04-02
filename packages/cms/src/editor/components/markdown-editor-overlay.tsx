@@ -1,5 +1,6 @@
 import { type Editor, editorViewCtx } from '@milkdown/core'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { slugify } from '../../shared'
 import { updateMarkdownPage } from '../api'
 import { STORAGE_KEYS, Z_INDEX } from '../constants'
 import { startDeploymentPolling } from '../editor'
@@ -14,7 +15,6 @@ import {
 	startRedirectCountdown,
 	updateMarkdownFrontmatter,
 } from '../signals'
-import { slugify } from '../../shared'
 import { CreateModeFrontmatter, EditModeFrontmatter } from './frontmatter-fields'
 import { FrontmatterSidebar, partitionFields } from './frontmatter-sidebar'
 import { MarkdownInlineEditor } from './markdown-inline-editor'

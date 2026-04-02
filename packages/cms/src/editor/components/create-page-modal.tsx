@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { slugify } from '../../shared'
 import { checkSlugExists, createPage, duplicatePage, getLayouts } from '../markdown-api'
 import {
 	config,
@@ -12,7 +13,6 @@ import {
 	showToast,
 } from '../signals'
 import type { LayoutInfo } from '../types'
-import { slugify } from '../../shared'
 import { CancelButton, ModalBackdrop, ModalFooter, ModalHeader } from './modal-shell'
 
 export function CreatePageModal() {

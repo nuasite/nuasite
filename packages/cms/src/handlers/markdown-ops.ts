@@ -253,7 +253,6 @@ function isDataFile(filePath: string): boolean {
 	return filePath.endsWith('.json') || filePath.endsWith('.yaml') || filePath.endsWith('.yml')
 }
 
-
 function parseFrontmatter(raw: string): { frontmatter: Record<string, unknown>; content: string } {
 	const trimmed = raw.trimStart()
 	if (!trimmed.startsWith('---')) {
