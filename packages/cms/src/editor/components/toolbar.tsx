@@ -1,6 +1,6 @@
 import type { ComponentChildren, FunctionComponent } from 'preact'
 import { useRef, useState } from 'preact/hooks'
-import { CMS_VERSION } from '../constants'
+import { CMS_VERSION, Z_INDEX } from '../constants'
 import { cn } from '../lib/cn'
 import * as signals from '../signals'
 import { showConfirmDialog } from '../signals'
@@ -268,8 +268,9 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 
 	return (
 		<div
+			style={{ zIndex: Z_INDEX.MODAL }}
 			class={cn(
-				'fixed bottom-4 sm:bottom-8 z-2147483647 font-sans transition-all duration-300',
+				'fixed bottom-4 sm:bottom-8 font-sans transition-all duration-300',
 				isToolbarOpen
 					? 'left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2'
 					: 'right-4 sm:right-8',
@@ -424,9 +425,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 													{item.label}
 												</button>
 											))}
-											{topLevelItems.length > 0 && menuSections.length > 0 && (
-												<div class="border-t border-white/10 my-1" />
-											)}
+											{topLevelItems.length > 0 && menuSections.length > 0 && <div class="border-t border-white/10 my-1" />}
 											{menuSections.map((section) => {
 												const isExpanded = expandedSections.has(section.label)
 												return (
@@ -482,9 +481,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 													</div>
 												)
 											})}
-											{destructiveItems.length > 0 && (
-												<div class="border-t border-white/10 my-1" />
-											)}
+											{destructiveItems.length > 0 && <div class="border-t border-white/10 my-1" />}
 											{destructiveItems.map((item, index) => (
 												<button
 													key={`destructive-${index}`}

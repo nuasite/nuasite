@@ -143,11 +143,14 @@ export function escapeReplacement(str: string): string {
  */
 export function resolveAndValidatePath(filePath: string): string {
 	const projectRoot = getProjectRoot()
-	const fullPath = path.isAbsolute(filePath)
-		? path.resolve(filePath)
-		: path.resolve(projectRoot, filePath)
-
 	const resolvedRoot = path.resolve(projectRoot)
+	// Absolute filesystem paths (e.g. /Users/...) stay intact;
+	// project-relative paths with a leading slash (e.g. /src/content/...) get it stripped
+	const isAbsoluteFs = filePath.startsWith(resolvedRoot)
+	const normalizedPath = (!isAbsoluteFs && filePath.startsWith('/')) ? filePath.slice(1) : filePath
+	const fullPath = path.isAbsolute(normalizedPath) ? path.resolve(normalizedPath) : path.resolve(projectRoot, normalizedPath)
+
+	// Ensure the resolved path is within the project root
 	if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
 		throw new Error(`Path traversal detected: ${filePath}`)
 	}
@@ -185,18 +188,7 @@ export async function acquireFileLock(filePath: string): Promise<() => void> {
 	}
 }
 
-/**
- * Slugify text for URL paths.
- * Lowercases, strips non-word characters, collapses whitespace/underscores to hyphens.
- */
-export function slugify(text: string): string {
-	return text
-		.toLowerCase()
-		.trim()
-		.replace(/[^\w\s\-/]/g, '')
-		.replace(/[\s_]+/g, '-')
-		.replace(/^[-/]+|[-/]+$/g, '')
-}
+export { slugify } from './shared'
 
 /**
  * Type-safe check for Node.js system errors (ENOENT, EEXIST, etc.).

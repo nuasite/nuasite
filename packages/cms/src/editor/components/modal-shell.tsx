@@ -1,4 +1,5 @@
 import type { ComponentChildren } from 'preact'
+import { Z_INDEX } from '../constants'
 
 export function ModalBackdrop({ onClose, maxWidth = 'max-w-lg', extraClass, children }: {
 	onClose: () => void
@@ -8,7 +9,8 @@ export function ModalBackdrop({ onClose, maxWidth = 'max-w-lg', extraClass, chil
 }) {
 	return (
 		<div
-			class="fixed inset-0 z-2147483647 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+			style={{ zIndex: Z_INDEX.MODAL }}
+			class="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm"
 			onClick={onClose}
 			data-cms-ui
 		>

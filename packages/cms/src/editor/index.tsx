@@ -1,6 +1,7 @@
 import { render } from 'preact'
 import { useCallback, useEffect, useRef } from 'preact/hooks'
 import type { CmsElementDeselectedMessage, CmsElementSelectedMessage, CmsInboundMessage } from '../types'
+import { Z_INDEX } from './constants'
 import { fetchManifest } from './api'
 import { AttributeEditor } from './components/attribute-editor'
 import { BgImageOverlay } from './components/bg-image-overlay'
@@ -660,7 +661,7 @@ class CmsEditor {
 	private setupUI(): void {
 		const hostElement = document.createElement('div')
 		hostElement.id = 'cms-app-host'
-		hostElement.style.cssText = 'position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 2147483647;'
+		hostElement.style.cssText = `position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: ${Z_INDEX.MODAL};`
 		document.body.appendChild(hostElement)
 
 		// Create shadow DOM with closed mode for better isolation

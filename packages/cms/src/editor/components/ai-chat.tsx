@@ -1,6 +1,6 @@
 import { marked } from 'marked'
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { CSS } from '../constants'
+import { CSS, Z_INDEX } from '../constants'
 import { getComponentInstance } from '../manifest'
 import * as signals from '../signals'
 
@@ -244,10 +244,10 @@ export const AIChat = ({ callbacks }: AIChatProps) => {
 			ref={containerRef}
 			class={`fixed ${dragPosition ? '' : positionClass} top-5 ${
 				isMinimized ? '' : 'bottom-5'
-			} w-100 max-w-[calc(100vw-40px)] bg-cms-dark shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-cms-xl border border-white/10 z-2147483645 flex flex-col font-sans overflow-hidden ${
+			} w-100 max-w-[calc(100vw-40px)] bg-cms-dark shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-cms-xl border border-white/10 flex flex-col font-sans overflow-hidden ${
 				isDragging ? '' : 'transition-all duration-300'
 			}`}
-			style={containerStyle}
+			style={{ ...containerStyle, zIndex: Z_INDEX.OVERLAY }}
 			data-cms-ui
 			onMouseDown={stopPropagation}
 			onClick={stopPropagation}

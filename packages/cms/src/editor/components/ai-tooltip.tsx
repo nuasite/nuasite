@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
+import { Z_INDEX } from '../constants'
 
 export interface AITooltipCallbacks {
 	onPromptSubmit: (prompt: string, elementId: string) => void
@@ -97,7 +98,7 @@ export function AITooltip({ callbacks, visible, elementId, rect, processing }: A
 				position: 'fixed',
 				left: `${left}px`,
 				top: `${top}px`,
-				zIndex: 2147483645,
+				zIndex: Z_INDEX.OVERLAY,
 				fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
 				fontSize: '12px',
 			}}

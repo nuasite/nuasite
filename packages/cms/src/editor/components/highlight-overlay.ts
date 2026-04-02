@@ -2,6 +2,7 @@
  * Shadow DOM-based highlight overlay for CMS elements.
  * This component renders highlights without modifying the target element's styles.
  */
+import { Z_INDEX } from '../constants'
 
 export interface HighlightState {
 	color: string
@@ -38,7 +39,7 @@ class CmsHighlightOverlay extends HTMLElement {
       :host {
         position: absolute;
         pointer-events: none;
-        z-index: 2147483645;
+        z-index: ${Z_INDEX.OVERLAY};
         box-sizing: border-box;
       }
       
@@ -167,7 +168,7 @@ export function initHighlightContainer(): void {
     width: 0;
     height: 0;
     pointer-events: none;
-    z-index: 2147483645;
+    z-index: ${Z_INDEX.OVERLAY};
   `
 	document.body.appendChild(highlightContainer)
 }
