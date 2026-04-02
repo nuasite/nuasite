@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { LAYOUT } from '../constants'
+import { LAYOUT, Z_INDEX } from '../constants'
 import { getComponentDefinition, getComponentDefinitions, getComponentInstance, getComponentInstances } from '../manifest'
 import { manifest } from '../signals'
-import type { ComponentProp, InsertPosition } from '../types'
+import type { InsertPosition } from '../types'
+import { ComponentCard, getDefaultProps } from './component-card'
+import { PropEditor } from './prop-editor'
 
 export interface BlockEditorProps {
 	visible: boolean
@@ -252,19 +254,10 @@ export function BlockEditor({
 		setInsertPosition(position)
 
 		if (isArrayItem && currentInstance) {
-			// For array items, skip the component picker — use the same component type
 			const definition = componentDefinitions[currentInstance.componentName]
 			if (definition) {
-				const defaultProps: Record<string, any> = {}
-				for (const prop of definition.props) {
-					if (prop.defaultValue !== undefined) {
-						defaultProps[prop.name] = prop.defaultValue
-					} else if (prop.required) {
-						defaultProps[prop.name] = ''
-					}
-				}
 				setSelectedComponent(currentInstance.componentName)
-				setPropValues(defaultProps)
+				setPropValues(getDefaultProps(definition))
 				setMode('insert-props')
 				return
 			}
@@ -279,18 +272,8 @@ export function BlockEditor({
 		const definition = componentDefinitions[componentName]
 		if (!definition) return
 
-		// Initialize with default values
-		const defaultProps: Record<string, any> = {}
-		for (const prop of definition.props) {
-			if (prop.defaultValue !== undefined) {
-				defaultProps[prop.name] = prop.defaultValue
-			} else if (prop.required) {
-				defaultProps[prop.name] = ''
-			}
-		}
-
 		setSelectedComponent(componentName)
-		setPropValues(defaultProps)
+		setPropValues(getDefaultProps(definition))
 		setMode('insert-props')
 	}
 
@@ -316,7 +299,8 @@ export function BlockEditor({
 				data-cms-ui
 				onClick={onClose}
 				onMouseDown={(e: MouseEvent) => e.stopPropagation()}
-				class="fixed inset-0 z-2147483646"
+				style={{ zIndex: Z_INDEX.SELECTION }}
+				class="fixed inset-0"
 			/>
 
 			{/* Editor panel */}
@@ -325,11 +309,12 @@ export function BlockEditor({
 				data-cms-ui
 				onMouseDown={(e: MouseEvent) => e.stopPropagation()}
 				onClick={(e: MouseEvent) => e.stopPropagation()}
-				class="fixed z-2147483647 w-100 max-w-[calc(100vw-32px)] bg-cms-dark shadow-[0_8px_32px_rgba(0,0,0,0.4)] font-sans text-sm overflow-hidden flex flex-col rounded-cms-xl border border-white/10"
+				class="fixed w-100 max-w-[calc(100vw-32px)] bg-cms-dark shadow-[0_8px_32px_rgba(0,0,0,0.4)] font-sans text-sm overflow-hidden flex flex-col rounded-cms-xl border border-white/10"
 				style={{
 					top: `${editorPosition.top}px`,
 					left: `${editorPosition.left}px`,
 					maxHeight: `${editorPosition.maxHeight}px`,
+					zIndex: Z_INDEX.MODAL,
 				}}
 			>
 				{/* Header */}
@@ -515,40 +500,11 @@ export function BlockEditor({
 								</div>
 								<div class="flex flex-col gap-2">
 									{Object.values(componentDefinitions).map((def) => (
-										<button
+										<ComponentCard
 											key={def.name}
+											def={def}
 											onClick={() => handleSelectComponentForInsert(def.name)}
-											class="p-4 bg-white/5 border border-white/10 rounded-cms-md cursor-pointer text-left transition-all hover:border-cms-primary/50 hover:bg-white/10 group"
-										>
-											{def.previewUrl && (
-												<div class="mb-3 rounded overflow-hidden bg-white h-30 relative">
-													{(() => {
-														const pw = def.previewWidth ?? 1280
-														const scale = 320 / pw
-														return (
-															<iframe
-																src={def.previewUrl}
-																class="border-none pointer-events-none"
-																style={{ width: `${pw}px`, height: `${Math.round(120 / scale)}px`, transform: `scale(${scale})`, transformOrigin: 'top left' }}
-																sandbox="allow-same-origin"
-																loading="lazy"
-																tabIndex={-1}
-															/>
-														)
-													})()}
-												</div>
-											)}
-											<div class="font-medium text-white">{def.name}</div>
-											{def.description && (
-												<div class="text-xs text-white/50 mt-1">
-													{def.description}
-												</div>
-											)}
-											<div class="text-[11px] text-white/40 mt-2 font-mono">
-												{def.props.length} props
-												{def.slots && def.slots.length > 0 && ` • ${def.slots.length} slots`}
-											</div>
-										</button>
+										/>
 									))}
 								</div>
 								<div class="mt-5 pt-4 border-t border-white/10">
@@ -570,56 +526,5 @@ export function BlockEditor({
 				</div>
 			</div>
 		</>
-	)
-}
-
-interface PropEditorProps {
-	prop: ComponentProp
-	value: string
-	onChange: (value: string) => void
-}
-
-function PropEditor({ prop, value, onChange }: PropEditorProps) {
-	const isBoolean = prop.type === 'boolean'
-	const isNumber = prop.type === 'number'
-
-	return (
-		<div class="mb-4">
-			<label class="block text-[13px] font-medium text-white mb-1.5">
-				{prop.name}
-				{prop.required && <span class="text-cms-error ml-1">*</span>}
-			</label>
-			{prop.description && (
-				<div class="text-[11px] text-white/50 mb-1.5">
-					{prop.description}
-				</div>
-			)}
-			{isBoolean
-				? (
-					<label class="flex items-center gap-2 cursor-pointer">
-						<input
-							type="checkbox"
-							checked={value === 'true'}
-							onChange={(e) => onChange((e.target as HTMLInputElement).checked ? 'true' : 'false')}
-							class="accent-cms-primary w-5 h-5 rounded"
-						/>
-						<span class="text-[13px] text-white">
-							{value === 'true' ? 'Enabled' : 'Disabled'}
-						</span>
-					</label>
-				)
-				: (
-					<input
-						type={isNumber ? 'number' : 'text'}
-						value={value}
-						onInput={(e) => onChange((e.target as HTMLInputElement).value)}
-						placeholder={prop.defaultValue || `Enter ${prop.name}...`}
-						class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
-					/>
-				)}
-			<div class="text-[10px] text-white/40 mt-1.5 font-mono">
-				{prop.type}
-			</div>
-		</div>
 	)
 }
