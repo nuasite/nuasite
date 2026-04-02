@@ -136,7 +136,11 @@ export async function handleCreateMarkdown(
 		return { success: false, error: 'Could not generate a valid slug from the provided title/slug' }
 	}
 
+	const allowedExtensions = ['md', 'mdx', 'json', 'yaml', 'yml']
 	const ext = request.fileExtension ?? 'md'
+	if (!allowedExtensions.includes(ext)) {
+		return { success: false, error: `Invalid file extension "${ext}". Allowed: ${allowedExtensions.join(', ')}` }
+	}
 	const isData = ext === 'json' || ext === 'yaml' || ext === 'yml'
 	const filePath = `src/content/${collection}/${normalizedSlug}.${ext}`
 	const fullPath = resolveAndValidatePath(filePath)

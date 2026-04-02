@@ -80,7 +80,7 @@ export function MediaLibrary() {
 					annotation: result.annotation,
 					contentType: file.type,
 				}
-				setAllItems([newItem, ...allItems])
+				setAllItems((prev) => [newItem, ...prev])
 				showToast('Image uploaded successfully', 'success')
 			} else {
 				showToast(result.error || 'Upload failed', 'error')

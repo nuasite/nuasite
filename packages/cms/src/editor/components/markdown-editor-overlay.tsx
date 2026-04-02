@@ -36,9 +36,12 @@ export function MarkdownEditorOverlay() {
 		: { sidebar: [], header: [] }
 	const hasSidebar = sidebarFields.length > 0
 	const isDataCollection = activeCollectionDef?.type === 'data'
-	// Derive MDX mode from the actual file extension, not the collection-level default
-	// (a collection can have mixed .md and .mdx files)
-	const isMdx = page?.filePath?.endsWith('.mdx') ?? false
+	// Derive MDX mode from the actual file extension when available
+	// (a collection can have mixed .md and .mdx files),
+	// but fall back to the collection file extension in create mode before a file path exists.
+	const isMdx = page?.filePath
+		? page.filePath.endsWith('.mdx')
+		: activeCollectionDef?.fileExtension === 'mdx'
 
 	const [isSaving, setIsSaving] = useState(false)
 	const [showFrontmatter, setShowFrontmatter] = useState(isCreateMode || isDataCollection)

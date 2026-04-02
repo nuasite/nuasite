@@ -63,10 +63,10 @@ async function scanDirectory(
 			const ext = path.extname(name).toLowerCase()
 			if (!IMAGE_EXTENSIONS.has(ext)) continue
 
-			const relativePath = path.relative(baseDir, fullPath)
+			const relativePath = path.relative(baseDir, fullPath).split(path.sep).join('/')
 			const url = urlPrefix !== null
 				? `/${relativePath}`
-				: `/${path.relative(getProjectRoot(), fullPath)}`
+				: `/${path.relative(getProjectRoot(), fullPath).split(path.sep).join('/')}`
 
 			items.push({
 				id: `project:${url}`,

@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import { renameMarkdownPage } from '../markdown-api'
 import {
 	config,
@@ -248,6 +248,10 @@ function SlugField({ page }: { page: MarkdownPageEntry }) {
 	const [localSlug, setLocalSlug] = useState(page.slug)
 	const [isRenaming, setIsRenaming] = useState(false)
 	const isDirty = localSlug !== page.slug
+
+	useEffect(() => {
+		setLocalSlug(page.slug)
+	}, [page.slug])
 
 	const handleRename = async () => {
 		if (!isDirty || isRenaming) return

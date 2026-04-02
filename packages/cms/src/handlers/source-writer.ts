@@ -1,7 +1,7 @@
 import { NodeType, parse as parseHtml } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { isMap, isPair, isScalar, parse as parseYaml } from 'yaml'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { getProjectRoot } from '../config'
 import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
 import type { ManifestWriter } from '../manifest-writer'
@@ -808,7 +808,10 @@ function tryYamlValueReplacement(
 		return null
 	}
 
-	return `${keyMatch[1]}${resolvedNewText}`
+	// Use the YAML library to safely serialize the new value,
+	// handling characters that would break plain scalars (: # [ ] { } , etc.)
+	const serialized = stringifyYaml(resolvedNewText, { lineWidth: 0 }).trimEnd()
+	return `${keyMatch[1]}${serialized}`
 }
 
 /**
