@@ -2,10 +2,11 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
-import type { Attribute, ManifestEntry } from '../types'
+import type { Attribute, CollectionDefinition, ManifestEntry } from '../types'
 import { escapeRegex, generateSourceHash } from '../utils'
 import { buildDefinitionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
+import { findTextInAnyCollectionFrontmatter } from './collection-finder'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
 
@@ -468,6 +469,7 @@ export async function extractSourceSnippet(
  */
 export async function enhanceManifestWithSourceSnippets(
 	entries: Record<string, ManifestEntry>,
+	collectionDefinitions?: Record<string, CollectionDefinition>,
 ): Promise<Record<string, ManifestEntry>> {
 	const enhanced: Record<string, ManifestEntry> = {}
 
@@ -706,6 +708,29 @@ export async function enhanceManifestWithSourceSnippets(
 							} catch {
 								// Directory doesn't exist
 							}
+						}
+					}
+
+					// Search collection frontmatter — text rendered on listing pages
+					// from collection entries (e.g. {post.data.title}) won't be found
+					// through AST or prop lookups since the value lives in a .md file
+					if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
+						const mdSource = await findTextInAnyCollectionFrontmatter(trimmedText, collectionDefinitions)
+						if (mdSource) {
+							const mdSourceHash = generateSourceHash(mdSource.snippet ?? trimmedText)
+							return [id, {
+								...entry,
+								sourcePath: mdSource.file,
+								sourceLine: mdSource.line,
+								sourceSnippet: mdSource.snippet,
+								variableName: mdSource.variableName,
+								collectionName: mdSource.collectionName,
+								collectionSlug: mdSource.collectionSlug,
+								allowStyling: false,
+								attributes,
+								colorClasses,
+								sourceHash: mdSourceHash,
+							}] as const
 						}
 					}
 				}

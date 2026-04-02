@@ -252,7 +252,7 @@ export function createDevMiddleware(
 			const pagePath = normalizePagePath(requestUrl)
 
 			// Process HTML asynchronously
-			processHtmlForDev(html, pagePath, config, idCounter)
+			processHtmlForDev(html, pagePath, config, idCounter, manifestWriter)
 				.then(({ html: transformed, entries, components, collection, seo }) => {
 					manifestWriter.addPage(pagePath, entries, components, collection, seo)
 
@@ -287,6 +287,7 @@ async function processHtmlForDev(
 	pagePath: string,
 	config: Required<CmsMarkerOptions>,
 	idCounter: { value: number },
+	manifestWriter: ManifestWriter,
 ) {
 	// Clear cached parsed files so variable definitions reflect the latest source
 	clearSourceFinderCache()
@@ -331,6 +332,8 @@ async function processHtmlForDev(
 				: undefined,
 			// Pass SEO options
 			seo: config.seo,
+			// Pass collection definitions for resolving frontmatter text on listing pages
+			collectionDefinitions: manifestWriter.getCollectionDefinitions(),
 		},
 		idGenerator,
 	)

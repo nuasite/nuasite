@@ -1,6 +1,7 @@
 import { NodeType, parse as parseHtml } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { isMap, isPair, isScalar, parse as parseYaml } from 'yaml'
 import { getProjectRoot } from '../config'
 import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
 import type { ManifestWriter } from '../manifest-writer'
@@ -543,6 +544,13 @@ export function applyTextChange(
 	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, resolvedNewText)
 
 	if (updatedSnippet === sourceSnippet) {
+		// Try YAML key-value replacement for multi-line frontmatter values
+		// (e.g., "title: long text\n  that wraps")
+		const yamlResult = tryYamlValueReplacement(sourceSnippet, resolvedOriginal, resolvedNewText)
+		if (yamlResult !== null) {
+			return { success: true, content: content.replace(sourceSnippet, yamlResult) }
+		}
+
 		// Try AST-based <br> normalization (browser normalizes <br class="..." /> to <br>
 		// and collapses surrounding whitespace/indentation)
 		const brResult = tryBrNormalizedChange(sourceSnippet, resolvedOriginal, resolvedNewText)
@@ -772,6 +780,35 @@ function getVisibleText(html: string): string {
 	// Collapse whitespace around newlines (browser behavior around <br>)
 	text = text.replace(/[ \t]*\n[ \t]*/g, '\n')
 	return text.trim()
+}
+
+/**
+ * Try to replace a YAML value in a frontmatter snippet.
+ * Uses the YAML parser to resolve the value (handles all scalar styles:
+ * plain wrapping, single/double quoted, block literal `|`, folded `>`).
+ * Returns the updated snippet, or null if this approach doesn't apply.
+ */
+function tryYamlValueReplacement(
+	sourceSnippet: string,
+	resolvedOriginal: string,
+	resolvedNewText: string,
+): string | null {
+	// Must look like a YAML key: value pair
+	const keyMatch = sourceSnippet.match(/^(\s*([\w][\w-]*):\s*)/)
+	if (!keyMatch) return null
+
+	// Use the YAML parser to resolve the value — handles all scalar styles
+	try {
+		const parsed = parseYaml(sourceSnippet)
+		if (parsed == null || typeof parsed !== 'object') return null
+		const value = (parsed as Record<string, unknown>)[keyMatch[2]!]
+		if (typeof value !== 'string' && typeof value !== 'number') return null
+		if (String(value) !== resolvedOriginal) return null
+	} catch {
+		return null
+	}
+
+	return `${keyMatch[1]}${resolvedNewText}`
 }
 
 /**
