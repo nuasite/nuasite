@@ -30,6 +30,14 @@ export function updateMarkdownPage(config: CmsConfig, request: UpdateMarkdownPag
 	return postJson(`${config.apiBase}/markdown/update`, request, 'Update page failed')
 }
 
+export function renameMarkdownPage(
+	config: CmsConfig,
+	filePath: string,
+	newSlug: string,
+): Promise<{ success: boolean; newFilePath?: string; newSlug?: string; error?: string }> {
+	return postJson(`${config.apiBase}/markdown/rename`, { filePath, newSlug }, 'Rename failed')
+}
+
 export function deleteMarkdownPage(config: CmsConfig, filePath: string): Promise<{ success: boolean; error?: string }> {
 	return postJson(`${config.apiBase}/markdown/delete`, { filePath }, 'Delete failed')
 }

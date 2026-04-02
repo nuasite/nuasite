@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
-import { updateMarkdownFrontmatter } from '../signals'
 import { cn } from '../lib/cn'
-import { FrontmatterField, SchemaFrontmatterField, formatFieldLabel } from './frontmatter-fields'
+import { updateMarkdownFrontmatter } from '../signals'
+import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
+import { formatFieldLabel, FrontmatterField, SchemaFrontmatterField } from './frontmatter-fields'
 
 // ============================================================================
 // Field Utilities
@@ -12,6 +12,7 @@ export function partitionFields(fields: FieldDefinition[]): { sidebar: FieldDefi
 	const sidebar: FieldDefinition[] = []
 	const header: FieldDefinition[] = []
 	for (const field of fields) {
+		if (field.hidden) continue
 		if (field.position === 'sidebar') {
 			sidebar.push(field)
 		} else {
@@ -129,7 +130,10 @@ export function FrontmatterSidebar({ fields, page, collectionDefinition }: Front
 			isResizing.current = false
 			document.body.style.cursor = ''
 			document.body.style.userSelect = ''
-			setState((current) => { saveSidebarState(current); return current })
+			setState((current) => {
+				saveSidebarState(current)
+				return current
+			})
 		}
 
 		document.addEventListener('mousemove', handleMouseMove)

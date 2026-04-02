@@ -253,6 +253,12 @@ export interface FieldDefinition {
 	position?: 'sidebar' | 'header'
 	/** Group name for visual grouping with section headers */
 	group?: string
+	/** Referenced collection name for 'reference' type fields */
+	collection?: string
+	/** Hide from the editor UI (e.g. derived/computed fields) */
+	hidden?: boolean
+	/** Source field name this field is derived from (e.g. categoryHref derived from category) */
+	derivedFrom?: string
 }
 
 /** Per-entry metadata for collection browsing */
@@ -263,6 +269,8 @@ export interface CollectionEntryInfo {
 	draft?: boolean
 	/** URL pathname of the rendered page for this entry */
 	pathname?: string
+	/** Full entry data for data collections (JSON/YAML) */
+	data?: Record<string, unknown>
 }
 
 /** Definition of a content collection with inferred schema */
@@ -279,8 +287,10 @@ export interface CollectionDefinition {
 	fields: FieldDefinition[]
 	/** Whether the collection has draft support */
 	supportsDraft?: boolean
+	/** Collection type: 'content' for markdown, 'data' for JSON/YAML */
+	type?: 'content' | 'data'
 	/** File extension used by entries */
-	fileExtension: 'md' | 'mdx'
+	fileExtension: 'md' | 'mdx' | 'json' | 'yaml' | 'yml'
 	/** Per-entry metadata for browsing */
 	entries?: CollectionEntryInfo[]
 }

@@ -12,7 +12,7 @@ import {
 	showToast,
 } from '../signals'
 import type { LayoutInfo } from '../types'
-import { slugify } from './frontmatter-fields'
+import { slugify } from '../../shared'
 import { CancelButton, ModalBackdrop, ModalFooter, ModalHeader } from './modal-shell'
 
 export function CreatePageModal() {

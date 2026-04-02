@@ -1,4 +1,5 @@
 import { batch, computed, type Signal, signal } from '@preact/signals'
+import { slugifyHref } from '../shared'
 import { fetchManifest, getMarkdownContent } from './api'
 import type { ToastMessage, ToastType } from './components/toast/types'
 import { getConfig } from './config'
@@ -25,6 +26,7 @@ import type {
 	FieldDefinition,
 	MarkdownEditorState,
 	MarkdownPageEntry,
+	MdxPropsEditorState,
 	MediaItem,
 	MediaLibraryState,
 	PendingAttributeChange,
@@ -350,10 +352,6 @@ export const mediaLibraryState = signal<MediaLibraryState>(
 
 // Convenience computed signals for media library
 export const isMediaLibraryOpen = computed(() => mediaLibraryState.value.isOpen)
-export const mediaLibraryItems = computed(() => mediaLibraryState.value.items)
-export const isMediaLibraryLoading = computed(
-	() => mediaLibraryState.value.isLoading,
-)
 
 // ============================================================================
 // Create Page State Signals
@@ -847,6 +845,9 @@ export function setMarkdownActiveElement(elementId: string | null): void {
 
 export function updateMarkdownFrontmatter(updates: Partial<import('./types').BlogFrontmatter>): void {
 	if (markdownEditorState.value.currentPage) {
+		// Auto-sync derived fields (e.g. categoryHref from category)
+		const derivedUpdates = computeDerivedUpdates(updates)
+
 		markdownEditorState.value = {
 			...markdownEditorState.value,
 			currentPage: {
@@ -854,7 +855,35 @@ export function updateMarkdownFrontmatter(updates: Partial<import('./types').Blo
 				frontmatter: {
 					...markdownEditorState.value.currentPage.frontmatter,
 					...updates,
+					...derivedUpdates,
 				},
+				isDirty: true,
+			},
+		}
+	}
+}
+
+function computeDerivedUpdates(updates: Record<string, unknown>): Record<string, unknown> {
+	const fields = markdownEditorState.value.collectionDefinition?.fields
+	if (!fields) return {}
+
+	const result: Record<string, unknown> = {}
+	for (const field of fields) {
+		if (!field.derivedFrom || !field.hidden) continue
+		const sourceValue = updates[field.derivedFrom]
+		if (typeof sourceValue !== 'string') continue
+		result[field.name] = slugifyHref(sourceValue)
+	}
+	return result
+}
+
+export function updateMarkdownPageMeta(patch: Partial<Pick<MarkdownPageEntry, 'slug' | 'filePath'>>): void {
+	if (markdownEditorState.value.currentPage) {
+		markdownEditorState.value = {
+			...markdownEditorState.value,
+			currentPage: {
+				...markdownEditorState.value.currentPage,
+				...patch,
 				isDirty: true,
 			},
 		}
@@ -964,6 +993,7 @@ export function openMarkdownEditorForNewPage(
 	const initialFrontmatter: Record<string, unknown> = {}
 	for (const field of collectionDefinition.fields) {
 		if (field.name === 'title') continue // title handled separately via the header
+		if (field.hidden) continue // derived fields are auto-computed
 		if (field.defaultValue !== undefined) {
 			initialFrontmatter[field.name] = field.defaultValue
 		} else {

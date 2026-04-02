@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'yaml'
 import { getProjectRoot } from '../config'
-import { acquireFileLock } from '../utils'
+import { acquireFileLock, isNodeError, resolveAndValidatePath, slugify } from '../utils'
 
 export interface BlogFrontmatter {
 	title: string
@@ -21,6 +21,8 @@ export interface CreateMarkdownRequest {
 	slug: string
 	frontmatter?: Partial<BlogFrontmatter>
 	content?: string
+	/** File extension override for data collections (e.g. 'json', 'yaml') */
+	fileExtension?: string
 }
 
 export interface CreateMarkdownResponse {
@@ -62,8 +64,17 @@ export async function handleGetMarkdownContent(
 	try {
 		const fullPath = resolveAndValidatePath(filePath)
 		const raw = await fs.readFile(fullPath, 'utf-8')
-		const { frontmatter, content } = parseFrontmatter(raw)
 
+		if (isDataFile(filePath)) {
+			const data = filePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)
+			return {
+				content: '',
+				frontmatter: (data && typeof data === 'object' ? data : {}) as BlogFrontmatter,
+				filePath,
+			}
+		}
+
+		const { frontmatter, content } = parseFrontmatter(raw)
 		return {
 			content,
 			frontmatter: frontmatter as BlogFrontmatter,
@@ -81,18 +92,29 @@ export async function handleUpdateMarkdown(
 		const fullPath = resolveAndValidatePath(request.filePath)
 		const release = await acquireFileLock(fullPath)
 		try {
-			const raw = await fs.readFile(fullPath, 'utf-8')
-			const existing = parseFrontmatter(raw)
+			if (isDataFile(request.filePath)) {
+				// Data collections: merge and write JSON/YAML directly
+				const raw = await fs.readFile(fullPath, 'utf-8')
+				const existing = request.filePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)
+				const merged = { ...(existing ?? {}), ...request.frontmatter }
 
-			const mergedFrontmatter: BlogFrontmatter = {
-				...(existing.frontmatter as BlogFrontmatter),
-				...request.frontmatter,
+				const output = request.filePath.endsWith('.json')
+					? JSON.stringify(merged, null, 2) + '\n'
+					: yaml.stringify(merged)
+				await fs.writeFile(fullPath, output, 'utf-8')
+			} else {
+				const raw = await fs.readFile(fullPath, 'utf-8')
+				const existing = parseFrontmatter(raw)
+
+				const mergedFrontmatter: BlogFrontmatter = {
+					...(existing.frontmatter as BlogFrontmatter),
+					...request.frontmatter,
+				}
+
+				const finalContent = request.content ?? existing.content
+				const markdownContent = serializeFrontmatter(mergedFrontmatter, finalContent)
+				await fs.writeFile(fullPath, markdownContent, 'utf-8')
 			}
-
-			const finalContent = request.content ?? existing.content
-			const markdownContent = serializeFrontmatter(mergedFrontmatter, finalContent)
-
-			await fs.writeFile(fullPath, markdownContent, 'utf-8')
 
 			return { success: true }
 		} finally {
@@ -113,22 +135,31 @@ export async function handleCreateMarkdown(
 	if (!normalizedSlug) {
 		return { success: false, error: 'Could not generate a valid slug from the provided title/slug' }
 	}
-	const filePath = `src/content/${collection}/${normalizedSlug}.md`
+
+	const ext = request.fileExtension ?? 'md'
+	const isData = ext === 'json' || ext === 'yaml' || ext === 'yml'
+	const filePath = `src/content/${collection}/${normalizedSlug}.${ext}`
 	const fullPath = resolveAndValidatePath(filePath)
 
-	const fullFrontmatter: BlogFrontmatter = {
-		title,
-		date: new Date().toISOString().split('T')[0]!,
-		draft: true,
-		...frontmatter,
+	let fileContent: string
+	if (isData) {
+		const data = { ...frontmatter }
+		fileContent = ext === 'json'
+			? JSON.stringify(data, null, 2) + '\n'
+			: yaml.stringify(data)
+	} else {
+		const fullFrontmatter: BlogFrontmatter = {
+			title,
+			date: new Date().toISOString().split('T')[0]!,
+			draft: true,
+			...frontmatter,
+		}
+		fileContent = serializeFrontmatter(fullFrontmatter, content)
 	}
-
-	const markdownContent = serializeFrontmatter(fullFrontmatter, content)
 
 	try {
 		await fs.mkdir(path.dirname(fullPath), { recursive: true })
-		// Use 'wx' flag for atomic exclusive create — fails if file already exists
-		await fs.writeFile(fullPath, markdownContent, { encoding: 'utf-8', flag: 'wx' })
+		await fs.writeFile(fullPath, fileContent, { encoding: 'utf-8', flag: 'wx' })
 
 		return {
 			success: true,
@@ -164,28 +195,64 @@ export async function handleDeleteMarkdown(
 	}
 }
 
+export interface RenameMarkdownRequest {
+	filePath: string
+	newSlug: string
+}
+
+export interface RenameMarkdownResponse {
+	success: boolean
+	newFilePath?: string
+	newSlug?: string
+	error?: string
+}
+
+export async function handleRenameMarkdown(
+	request: RenameMarkdownRequest,
+): Promise<RenameMarkdownResponse> {
+	try {
+		const fullPath = resolveAndValidatePath(request.filePath)
+		const normalizedSlug = slugify(request.newSlug)
+		if (!normalizedSlug) {
+			return { success: false, error: 'Invalid slug' }
+		}
+
+		const dir = path.dirname(fullPath)
+		const ext = path.extname(fullPath)
+		const newFullPath = path.join(dir, `${normalizedSlug}${ext}`)
+
+		if (fullPath === newFullPath) {
+			return { success: true, newFilePath: request.filePath, newSlug: normalizedSlug }
+		}
+
+		// Use link+unlink for atomic rename that fails if target exists
+		try {
+			await fs.link(fullPath, newFullPath)
+			await fs.unlink(fullPath)
+		} catch (err) {
+			if (isNodeError(err, 'EEXIST')) {
+				return { success: false, error: `File already exists: ${normalizedSlug}${ext}` }
+			}
+			throw err
+		}
+
+		// Build project-relative path
+		const projectRoot = getProjectRoot()
+		const newFilePath = path.relative(projectRoot, newFullPath)
+
+		return { success: true, newFilePath, newSlug: normalizedSlug }
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		return { success: false, error: message }
+	}
+}
+
 // --- Internal helpers ---
 
-/**
- * Resolve a user-provided file path and ensure it stays within the project root.
- * Throws if the resolved path escapes the project boundary.
- */
-function resolveAndValidatePath(filePath: string): string {
-	const projectRoot = getProjectRoot()
-	const resolvedRoot = path.resolve(projectRoot)
-	// Absolute filesystem paths (e.g. /Users/...) stay intact;
-	// project-relative paths with a leading slash (e.g. /src/content/...) get it stripped
-	const isAbsoluteFs = filePath.startsWith(resolvedRoot)
-	const normalizedPath = (!isAbsoluteFs && filePath.startsWith('/')) ? filePath.slice(1) : filePath
-	const fullPath = path.isAbsolute(normalizedPath) ? path.resolve(normalizedPath) : path.resolve(projectRoot, normalizedPath)
-
-	// Ensure the resolved path is within the project root
-	if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
-		throw new Error(`Path traversal detected: ${filePath}`)
-	}
-
-	return fullPath
+function isDataFile(filePath: string): boolean {
+	return filePath.endsWith('.json') || filePath.endsWith('.yaml') || filePath.endsWith('.yml')
 }
+
 
 function parseFrontmatter(raw: string): { frontmatter: Record<string, unknown>; content: string } {
 	const trimmed = raw.trimStart()
@@ -222,13 +289,4 @@ function parseFrontmatter(raw: string): { frontmatter: Record<string, unknown>; 
 function serializeFrontmatter(frontmatter: Record<string, unknown>, content: string): string {
 	const yamlStr = yaml.stringify(frontmatter).trim()
 	return `---\n${yamlStr}\n---\n${content}`
-}
-
-function slugify(text: string): string {
-	return text
-		.toLowerCase()
-		.trim()
-		.replace(/[^\w\s-]/g, '')
-		.replace(/[\s_-]+/g, '-')
-		.replace(/^-+|-+$/g, '')
 }

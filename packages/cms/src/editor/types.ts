@@ -444,6 +444,8 @@ export interface CreateMarkdownPageRequest {
 	frontmatter?: Partial<BlogFrontmatter>
 	/** Optional markdown content */
 	content?: string
+	/** File extension override for data collections (e.g. 'json', 'yaml') */
+	fileExtension?: string
 }
 
 export interface CreateMarkdownPageResponse {

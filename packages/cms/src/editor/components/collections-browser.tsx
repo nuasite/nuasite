@@ -112,7 +112,10 @@ export function CollectionsBrowser() {
 					<div class="flex items-center gap-3">
 						<button
 							type="button"
-							onClick={() => { setSearch(''); selectBrowserCollection(null) }}
+							onClick={() => {
+								setSearch('')
+								selectBrowserCollection(null)
+							}}
 							class="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-colors"
 							data-cms-ui
 						>
