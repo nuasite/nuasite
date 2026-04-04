@@ -365,6 +365,47 @@ export function closeMdxPropsEditor(): void {
 }
 
 // ============================================================================
+// Reference Picker State Signals
+// ============================================================================
+
+export interface ReferencePickerState {
+	isOpen: boolean
+	/** CMS ID of the clicked element */
+	cmsId: string | null
+	/** Reference field name in the owning entry (e.g., 'author') */
+	fieldName: string | null
+	/** Collection to pick from (e.g., 'authors') */
+	collection: string | null
+	/** Current reference value (slug) */
+	currentValue: string | null
+	/** File path of the owning entry to update */
+	ownerPath: string | null
+	/** Whether this is an array reference (multi-select) */
+	isArray: boolean
+	/** Current array values for array references */
+	currentValues: string[]
+	/** Position for the floating panel */
+	cursorPos: { x: number; y: number } | null
+}
+
+function createInitialReferencePickerState(): ReferencePickerState {
+	return {
+		isOpen: false, cmsId: null, fieldName: null, collection: null,
+		currentValue: null, ownerPath: null, isArray: false, currentValues: [], cursorPos: null,
+	}
+}
+
+export const referencePickerState = signal<ReferencePickerState>(createInitialReferencePickerState())
+
+export function openReferencePicker(opts: Omit<ReferencePickerState, 'isOpen'>): void {
+	referencePickerState.value = { isOpen: true, ...opts }
+}
+
+export function closeReferencePicker(): void {
+	referencePickerState.value = createInitialReferencePickerState()
+}
+
+// ============================================================================
 // Media Library State Signals
 // ============================================================================
 

@@ -17,6 +17,7 @@ import { MarkdownEditorOverlay } from './components/markdown-editor-overlay'
 import { MediaLibrary } from './components/media-library'
 import { Outline } from './components/outline'
 import { RedirectCountdown } from './components/redirect-countdown'
+import { ReferencePicker } from './components/reference-picker'
 import { RedirectsManager } from './components/redirects-manager'
 import { SelectionHighlight } from './components/selection-highlight'
 import { SeoEditor } from './components/seo-editor'
@@ -633,6 +634,8 @@ const CmsUI = () => {
 			<ErrorBoundary componentName="Media Library">
 				<MediaLibrary />
 			</ErrorBoundary>
+
+			<ReferencePicker />
 
 			<ErrorBoundary componentName="Confirm Dialog">
 				<ConfirmDialog />
