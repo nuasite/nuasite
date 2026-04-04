@@ -180,6 +180,13 @@ export interface ManifestEntry {
 	/** Whether inline text styling (bold, italic, etc.) can be applied.
 	 *  False when text comes from a string variable/prop that cannot contain HTML markup. */
 	allowStyling?: boolean
+
+	// === Reference field metadata ===
+
+	/** Collection the text was found in when it came through a reference (e.g., 'authors') */
+	referenceCollection?: string
+	/** Collections that have reference fields pointing to referenceCollection */
+	referencedBy?: Array<{ collection: string; fieldName: string; isArray?: boolean }>
 }
 
 export interface ComponentInstance {
