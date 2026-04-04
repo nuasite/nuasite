@@ -353,6 +353,7 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 				if (typeof frontmatter.draft === 'boolean' && frontmatter.draft) {
 					entryInfo.draft = true
 				}
+				entryInfo.data = frontmatter
 			}
 			entryInfos.push(entryInfo)
 
@@ -374,10 +375,91 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 }
 
 /**
- * After all collections are scanned, detect reference fields by checking
- * if a field's values match slugs from another collection.
+ * Parse the Astro content config file to extract explicit reference() declarations.
+ * Returns a map: collectionName → { fieldName → { target, isArray } }
  */
-function detectReferenceFields(collections: Record<string, CollectionDefinition>): void {
+async function parseContentConfigReferences(): Promise<Map<string, Map<string, { target: string; isArray: boolean }>>> {
+	const result = new Map<string, Map<string, { target: string; isArray: boolean }>>()
+	const projectRoot = getProjectRoot()
+
+	for (const configPath of ['src/content/config.ts', 'src/content.config.ts']) {
+		try {
+			const fullPath = path.join(projectRoot, configPath)
+			const content = await fs.readFile(fullPath, 'utf-8')
+
+			// Parse defineCollection blocks to extract schema bodies
+			const collectionBlocks = content.matchAll(
+				/(?:const\s+(\w+)\s*=\s*)?defineCollection\s*\(\s*\{[\s\S]*?schema\s*:\s*z\.object\s*\(\s*\{([\s\S]*?)\}\s*\)/g,
+			)
+
+			// Map variable names to collection names from exports
+			const varToName = new Map<string, string>()
+			const exportMatch = content.match(/export\s+const\s+collections\s*=\s*\{([\s\S]*?)\}/)
+			if (exportMatch) {
+				const pairs = exportMatch[1]!.matchAll(/(\w+)\s*:\s*(\w+)/g)
+				for (const m of pairs) {
+					varToName.set(m[2]!, m[1]!)
+				}
+			}
+
+			for (const block of collectionBlocks) {
+				const varName = block[1]
+				const schemaBody = block[2]!
+				const collectionName = varName ? varToName.get(varName) : undefined
+				if (!collectionName) continue
+
+				const fields = new Map<string, { target: string; isArray: boolean }>()
+				const fieldRefs = schemaBody.matchAll(/(\w+)\s*:\s*(z\.array\s*\(\s*)?reference\s*\(\s*['"](\w+)['"]\s*\)/g)
+				for (const m of fieldRefs) {
+					fields.set(m[1]!, { target: m[3]!, isArray: !!m[2] })
+				}
+
+				if (fields.size > 0) {
+					result.set(collectionName, fields)
+				}
+			}
+
+			if (result.size > 0) break // Found a config file with references
+		} catch {
+			// File doesn't exist, try next
+		}
+	}
+	return result
+}
+
+/**
+ * After all collections are scanned, detect reference fields.
+ * Prefers explicit reference() declarations from the content config file.
+ * Falls back to heuristic slug matching when no config is available.
+ */
+async function detectReferenceFields(collections: Record<string, CollectionDefinition>): Promise<void> {
+	// Try parsing the content config first — this is the source of truth
+	const configRefs = await parseContentConfigReferences()
+	if (configRefs.size > 0) {
+		for (const [collectionName, fieldRefs] of configRefs) {
+			const def = collections[collectionName]
+			if (!def) continue
+			for (const [fieldName, ref] of fieldRefs) {
+				const field = def.fields.find(f => f.name === fieldName)
+				if (!field) continue
+				if (ref.isArray) {
+					field.type = 'array'
+					field.itemType = 'reference'
+				} else {
+					field.type = 'reference'
+				}
+				field.collection = ref.target
+				field.options = undefined
+			}
+		}
+		return
+	}
+
+	// Fallback: heuristic detection by matching field values against collection slugs
+	detectReferenceFieldsBySlugMatch(collections)
+}
+
+function detectReferenceFieldsBySlugMatch(collections: Record<string, CollectionDefinition>): void {
 	const collectionSlugs = new Map<string, Set<string>>()
 	for (const [name, def] of Object.entries(collections)) {
 		if (def.entries && def.entries.length > 0) {
@@ -391,30 +473,59 @@ function detectReferenceFields(collections: Record<string, CollectionDefinition>
 				const stringExamples = field.examples.filter((v): v is string => typeof v === 'string')
 				if (stringExamples.length === 0) continue
 
+				// Find all candidate collections where all examples match slugs
+				const candidates: Array<{ name: string; slugs: Set<string> }> = []
 				for (const [targetName, slugs] of collectionSlugs) {
 					if (targetName === collectionName) continue
 					const matchCount = stringExamples.filter(v => slugs.has(v)).length
 					if (matchCount > 0 && matchCount === stringExamples.length) {
-						field.type = 'reference'
-						field.collection = targetName
-						field.options = undefined
-						break
+						candidates.push({ name: targetName, slugs })
 					}
+				}
+
+				let bestTarget: string | undefined
+				if (candidates.length === 1) {
+					bestTarget = candidates[0]!.name
+				} else if (candidates.length > 1) {
+					// Multiple matches — disambiguate using all field values
+					const allValues = def.entries?.flatMap(e => {
+						const v = e.data?.[field.name]
+						return typeof v === 'string' ? [v] : []
+					}) ?? stringExamples
+					let bestOverlap = 0
+					for (const c of candidates) {
+						const overlap = allValues.filter(v => c.slugs.has(v)).length
+						if (overlap > bestOverlap) {
+							bestOverlap = overlap
+							bestTarget = c.name
+						}
+					}
+				}
+				if (bestTarget) {
+					field.type = 'reference'
+					field.collection = bestTarget
+					field.options = undefined
 				}
 			}
 
 			if (field.type === 'array' && field.itemType === 'text' && field.options) {
+				let bestTarget: string | undefined
+				let bestOverlap = 0
 				for (const [targetName, slugs] of collectionSlugs) {
 					if (targetName === collectionName) continue
 					const matchCount = field.options.filter(v => slugs.has(v)).length
-					// ≥50% match threshold avoids false positives from partial overlaps
 					if (matchCount > 0 && matchCount >= field.options.length * 0.5) {
-						field.type = 'array'
-						field.itemType = 'reference'
-						field.collection = targetName
-						field.options = undefined
-						break
+						if (matchCount > bestOverlap) {
+							bestOverlap = matchCount
+							bestTarget = targetName
+						}
 					}
+				}
+				if (bestTarget) {
+					field.type = 'array'
+					field.itemType = 'reference'
+					field.collection = bestTarget
+					field.options = undefined
 				}
 			}
 		}
@@ -535,7 +646,7 @@ export async function scanCollections(contentDir: string = 'src/content'): Promi
 	}
 
 	// Post-scan: detect cross-collection references and derived fields
-	detectReferenceFields(collections)
+	await detectReferenceFields(collections)
 	detectDerivedHrefFields(collections)
 
 	return collections
