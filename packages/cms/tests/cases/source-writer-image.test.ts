@@ -350,6 +350,24 @@ describe('applyImageChange', () => {
 			}
 		})
 
+		test('replaces image value in JSON data file', () => {
+			const content = '{\n  "name": "Test Person",\n  "image": "/assets/old-photo.webp",\n  "role": "Developer"\n}'
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/assets/old-photo.webp',
+					sourceSnippet: '"image": "/assets/old-photo.webp",',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/new-photo.webp' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('"image": "/uploads/new-photo.webp"')
+				expect(result.content).not.toContain('/assets/old-photo.webp')
+			}
+		})
+
 		test('quotes YAML value when new URL contains special characters', () => {
 			const content = '---\nimage: /simple-path.jpg\n---'
 			const result = applyImageChange(
@@ -366,6 +384,44 @@ describe('applyImageChange', () => {
 				// YAML library should quote the value due to special characters
 				expect(result.content).toContain('photo: special [chars].jpg')
 				expect(result.content).not.toContain('/simple-path.jpg')
+			}
+		})
+	})
+
+	describe('data file value replacement', () => {
+		test('returns failure when sourceSnippet does not contain original value', () => {
+			const content = '{\n  "image": "/assets/photo.webp"\n}'
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/assets/photo.webp',
+					sourceSnippet: '"name": "Alice"',
+					sourceLine: 2,
+					imageChange: { newSrc: '/uploads/new.webp' },
+				}),
+			)
+			// The snippet doesn't contain the original value, so YAML/JSON branch
+			// can't extract it — but the static src= fallback may still work.
+			// In a plain JSON file (no src= attribute), this should fail.
+			expect(result.success).toBe(false)
+		})
+
+		test('replaces only the targeted image when JSON has multiple image fields', () => {
+			const content = '{\n  "avatar": "/assets/avatar.webp",\n  "banner": "/assets/banner.webp"\n}'
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/assets/banner.webp',
+					sourceSnippet: '"banner": "/assets/banner.webp"',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/new-banner.webp' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('"banner": "/uploads/new-banner.webp"')
+				// The other image should remain untouched
+				expect(result.content).toContain('"avatar": "/assets/avatar.webp"')
 			}
 		})
 	})

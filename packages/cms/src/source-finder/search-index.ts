@@ -99,6 +99,9 @@ export async function initializeSearchIndex(): Promise<void> {
 		}
 	}))
 
+	// Index image-like values from content collection data files (JSON/YAML)
+	await indexContentCollectionImages()
+
 	setSearchIndexInitialized(true)
 }
 
@@ -525,6 +528,121 @@ export function indexFileImages(cached: CachedParsedFile, relFile: string): void
 					})
 				}
 			}
+		}
+	}
+}
+
+// ============================================================================
+// Content Collection Data File Indexing
+// ============================================================================
+
+/** Image-like file extensions to match in data file values */
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?)$/i
+
+/**
+ * Index image paths found in content collection data files (JSON/YAML).
+ * These are values like `"image": "/assets/photo.webp"` that get rendered
+ * through template expressions (e.g., `src={person.image}`).
+ */
+async function indexContentCollectionImages(): Promise<void> {
+	const contentDir = path.join(getProjectRoot(), 'src', 'content')
+	let entries: import('node:fs').Dirent[]
+	try {
+		entries = await fs.readdir(contentDir, { withFileTypes: true })
+	} catch {
+		return // No content directory
+	}
+
+	const dataFiles: string[] = []
+	for (const entry of entries) {
+		if (entry.isDirectory()) {
+			await collectDataFiles(path.join(contentDir, entry.name), dataFiles)
+		}
+	}
+
+	await Promise.all(dataFiles.map(async (filePath) => {
+		try {
+			const content = await fs.readFile(filePath, 'utf-8')
+			const relFile = path.relative(getProjectRoot(), filePath)
+
+			if (filePath.endsWith('.json')) {
+				indexJsonImages(content, relFile)
+			} else if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
+				indexYamlImages(content, relFile)
+			} else if (filePath.endsWith('.md') || filePath.endsWith('.mdx')) {
+				indexFrontmatterImages(content, relFile)
+			}
+		} catch {
+			// Skip unreadable files
+		}
+	}))
+}
+
+const DATA_FILE_PATTERN = /\.(json|ya?ml|mdx?)$/
+
+async function collectDataFiles(dir: string, results: string[]): Promise<void> {
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+		await Promise.all(entries.map(async (entry) => {
+			const fullPath = path.join(dir, entry.name)
+			if (entry.isDirectory()) {
+				await collectDataFiles(fullPath, results)
+			} else if (entry.isFile() && DATA_FILE_PATTERN.test(entry.name)) {
+				results.push(fullPath)
+			}
+		}))
+	} catch {
+		// Directory doesn't exist
+	}
+}
+
+function indexJsonImages(content: string, relFile: string): void {
+	const lines = content.split('\n')
+	// Match JSON string values that look like image paths
+	const pattern = /:\s*"([^"]+)"/g
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i]!
+		let match
+		pattern.lastIndex = 0
+		while ((match = pattern.exec(line)) !== null) {
+			const value = match[1]!
+			if (IMAGE_EXTENSIONS.test(value)) {
+				addToImageSearchIndex({
+					file: relFile,
+					line: i + 1,
+					snippet: line.trim(),
+					src: value,
+				})
+			}
+		}
+	}
+}
+
+function indexYamlImages(content: string, relFile: string): void {
+	indexYamlLikeLines(content.split('\n'), relFile, 0)
+}
+
+function indexFrontmatterImages(content: string, relFile: string): void {
+	// Only scan YAML frontmatter (between --- markers)
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+	if (!fmMatch) return
+	indexYamlLikeLines(fmMatch[1]!.split('\n'), relFile, 1)
+}
+
+/** Shared YAML key-value image scanner used by both indexYamlImages and indexFrontmatterImages */
+function indexYamlLikeLines(lines: string[], relFile: string, lineOffset: number): void {
+	const pattern = /^\s*[\w-]+:\s*(.+)/
+	for (let i = 0; i < lines.length; i++) {
+		const match = lines[i]!.match(pattern)
+		if (!match) continue
+		const value = match[1]!.trim().replace(/^['"]|['"]$/g, '')
+		if (IMAGE_EXTENSIONS.test(value)) {
+			addToImageSearchIndex({
+				file: relFile,
+				line: i + 1 + lineOffset,
+				snippet: lines[i]!.trim(),
+				src: value,
+			})
 		}
 	}
 }

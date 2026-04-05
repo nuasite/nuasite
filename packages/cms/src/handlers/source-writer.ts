@@ -244,6 +244,19 @@ export function applyImageChange(
 		}
 	}
 
+	// Fallback: direct quoted-value replacement for data files (JSON, YAML, MD frontmatter)
+	// The source file may be a collection data file where the image is a plain string value
+	if (replacedIndex < 0 && change.sourceSnippet) {
+		for (const srcToFind of srcCandidates) {
+			const result = tryDataFileValueReplacement(newContent, change.sourceSnippet, srcToFind, newSrc, change.sourceLine)
+			if (result) {
+				replacedIndex = result.index
+				newContent = result.content
+				break
+			}
+		}
+	}
+
 	// Fallback: if literal src not found, try to find an expression-based src attribute
 	// near the source line (handles src={variable}, src={obj.prop}, etc.)
 	if (replacedIndex < 0 && change.sourceLine > 0) {
@@ -846,6 +859,56 @@ function tryYamlValueReplacement(
 	// handling characters that would break plain scalars (: # [ ] { } , etc.)
 	const serialized = stringifyYaml(resolvedNewText, { lineWidth: 0 }).trimEnd()
 	return `${keyMatch[1]}${serialized}`
+}
+
+/**
+ * Replace an image value in a data file (JSON, YAML, MD frontmatter).
+ * Matches the original value as a quoted string within the source snippet context.
+ */
+function tryDataFileValueReplacement(
+	content: string,
+	sourceSnippet: string,
+	originalValue: string,
+	newValue: string,
+	sourceLine: number,
+): { content: string; index: number } | null {
+	// Check if snippet contains the original value as a quoted string (JSON or YAML)
+	const doubleQuoted = `"${originalValue}"`
+	const singleQuoted = `'${originalValue}'`
+
+	let quotedOriginal: string
+	let quotedNew: string
+	if (sourceSnippet.includes(doubleQuoted)) {
+		quotedOriginal = doubleQuoted
+		quotedNew = `"${newValue}"`
+	} else if (sourceSnippet.includes(singleQuoted)) {
+		quotedOriginal = singleQuoted
+		quotedNew = `'${newValue}'`
+	} else {
+		return null
+	}
+
+	const updatedSnippet = sourceSnippet.replace(quotedOriginal, quotedNew)
+	if (updatedSnippet === sourceSnippet) return null
+
+	// Find the snippet in content near the source line
+	let searchStart = 0
+	if (sourceLine > 1) {
+		let linesFound = 0
+		for (let j = 0; j < content.length; j++) {
+			if (content[j] === '\n' && ++linesFound >= sourceLine - 1) {
+				searchStart = j + 1
+				break
+			}
+		}
+	}
+	const snippetIdx = content.indexOf(sourceSnippet, searchStart)
+	if (snippetIdx < 0) return null
+
+	return {
+		content: content.slice(0, snippetIdx) + updatedSnippet + content.slice(snippetIdx + sourceSnippet.length),
+		index: snippetIdx,
+	}
 }
 
 /**

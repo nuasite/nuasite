@@ -837,6 +837,83 @@ function createMockComponent(
 	} as unknown as AstroNode
 }
 
+// ============================================================================
+// Content Collection Image Indexing Tests
+// ============================================================================
+
+withTempDir('content collection image indexing', (getCtx) => {
+	test('should index images from JSON data files', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/content/people')
+		await ctx.writeFile(
+			'src/content/people/alice.json',
+			'{\n  "name": "Alice",\n  "image": "/assets/alice.webp"\n}',
+		)
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/assets/alice.webp')
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/content/people/alice.json')
+	})
+
+	test('should index images from YAML data files', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/content/config')
+		await ctx.writeFile(
+			'src/content/config/settings.yaml',
+			'logo: /images/logo.png\nfavicon: /images/favicon.ico',
+		)
+
+		await initializeSearchIndex()
+
+		const logoResult = findInImageIndex('/images/logo.png')
+		expect(logoResult).toBeDefined()
+		expect(logoResult?.file).toBe('src/content/config/settings.yaml')
+
+		const faviconResult = findInImageIndex('/images/favicon.ico')
+		expect(faviconResult).toBeDefined()
+		expect(faviconResult?.file).toBe('src/content/config/settings.yaml')
+	})
+
+	test('should index images from MD frontmatter', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/content/blog')
+		await ctx.writeFile(
+			'src/content/blog/post.md',
+			'---\ntitle: Post\nimage: /photos/hero.jpg\n---\nBody',
+		)
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/photos/hero.jpg')
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/content/blog/post.md')
+	})
+
+	test('should NOT index non-image values from data files', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/content/people')
+		await ctx.writeFile(
+			'src/content/people/alice.json',
+			'{\n  "name": "Alice",\n  "email": "alice@test.com"\n}',
+		)
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('alice@test.com')
+		expect(result).toBeUndefined()
+	})
+})
+
+// ============================================================================
+// Helper Functions for Creating Mock Data
+// ============================================================================
+
 function createMockImage(src: string, line: number): AstroNode {
 	return {
 		type: 'element',
