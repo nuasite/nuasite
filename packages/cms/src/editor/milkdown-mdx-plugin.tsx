@@ -227,8 +227,42 @@ export const mdxComponentView = $view(mdxComponentNode, () => {
 	}
 })
 
+/**
+ * Hidden node that preserves `import ... from '...'` statements through the editor round-trip.
+ * remark-mdx parses these as `mdxjsEsm` — without a matching ProseMirror node Milkdown throws.
+ */
+export const mdxEsmNode = $node('mdx_esm', () => ({
+	group: 'block',
+	atom: true,
+	attrs: {
+		value: { default: '' },
+	},
+	toDOM: () => {
+		// Render nothing — imports are invisible in the editor
+		const span = document.createElement('span')
+		span.style.display = 'none'
+		return span as any
+	},
+	parseDOM: [],
+	parseMarkdown: {
+		match: (node: MarkdownNode) => node.type === 'mdxjsEsm',
+		runner: (state, node, proseType: NodeType) => {
+			state.addNode(proseType, { value: (node as any).value ?? '' })
+		},
+	},
+	toMarkdown: {
+		match: (node: PmNode) => node.type.name === 'mdx_esm',
+		runner: (state: SerializerState, node: PmNode) => {
+			state.addNode('mdxjsEsm', undefined, undefined, {
+				value: node.attrs.value as string,
+			} as any)
+		},
+	},
+}))
+
 export const mdxComponentPlugin = [
 	remarkMdxPlugin,
+	mdxEsmNode,
 	mdxComponentNode,
 	mdxComponentView,
 	insertMdxComponentCommand,
