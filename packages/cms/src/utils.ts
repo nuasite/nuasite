@@ -209,3 +209,14 @@ export function escapeHtml(text: string): string {
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&#39;')
 }
+
+/**
+ * Compute a POSIX-style relative import path from one file to another.
+ * Ensures the result starts with `./' or `../` and uses forward slashes.
+ */
+export function relativeImportPath(fromFile: string, toFile: string): string {
+	const fromDir = path.dirname(fromFile)
+	let rel = path.relative(fromDir, toFile).split(path.sep).join('/')
+	if (!rel.startsWith('.')) rel = `./${rel}`
+	return rel
+}
