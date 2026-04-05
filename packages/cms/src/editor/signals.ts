@@ -390,8 +390,15 @@ export interface ReferencePickerState {
 
 function createInitialReferencePickerState(): ReferencePickerState {
 	return {
-		isOpen: false, cmsId: null, fieldName: null, collection: null,
-		currentValue: null, ownerPath: null, isArray: false, currentValues: [], cursorPos: null,
+		isOpen: false,
+		cmsId: null,
+		fieldName: null,
+		collection: null,
+		currentValue: null,
+		ownerPath: null,
+		isArray: false,
+		currentValues: [],
+		cursorPos: null,
 	}
 }
 

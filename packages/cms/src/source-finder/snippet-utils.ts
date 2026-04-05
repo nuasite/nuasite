@@ -7,9 +7,9 @@ import { escapeRegex, generateSourceHash } from '../utils'
 import { buildDefinitionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
 import { findTextInAnyCollectionFrontmatter } from './collection-finder'
-import type { CachedParsedFile, ImageMatch, SourceLocation } from './types'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
+import type { CachedParsedFile, ImageMatch, SourceLocation } from './types'
 
 // ============================================================================
 // Text Normalization
@@ -479,12 +479,17 @@ export async function enhanceManifestWithSourceSnippets(
 	if (collectionDefinitions) {
 		for (const [colName, colDef] of Object.entries(collectionDefinitions)) {
 			for (const field of colDef.fields) {
-				const target = field.type === 'reference' ? field.collection
-					: (field.type === 'array' && field.itemType === 'reference') ? field.collection
+				const target = field.type === 'reference'
+					? field.collection
+					: (field.type === 'array' && field.itemType === 'reference')
+					? field.collection
 					: undefined
 				if (target) {
 					let arr = referenceIndex.get(target)
-					if (!arr) { arr = []; referenceIndex.set(target, arr) }
+					if (!arr) {
+						arr = []
+						referenceIndex.set(target, arr)
+					}
 					arr.push({ collection: colName, fieldName: field.name, ...(field.type === 'array' && { isArray: true }) })
 				}
 			}
@@ -559,7 +564,12 @@ export async function enhanceManifestWithSourceSnippets(
 							// resolveImageExpression includes a collection frontmatter search (step 3)
 							triedCollectionSearch = true
 							const resolvedEntry = await resolveImageExpression(
-								entry, nearbyImg, cached, filePath, collectionDefinitions, referenceIndex,
+								entry,
+								nearbyImg,
+								cached,
+								filePath,
+								collectionDefinitions,
+								referenceIndex,
 							)
 							if (resolvedEntry) {
 								return [id, resolvedEntry] as const
@@ -754,11 +764,14 @@ export async function enhanceManifestWithSourceSnippets(
 					if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
 						const mdSource = await findTextInAnyCollectionFrontmatter(trimmedText, collectionDefinitions)
 						if (mdSource) {
-							return [id, applyCollectionSource(entry, mdSource, referenceIndex, {
-								allowStyling: false,
-								attributes,
-								colorClasses,
-							})] as const
+							return [
+								id,
+								applyCollectionSource(entry, mdSource, referenceIndex, {
+									allowStyling: false,
+									attributes,
+									colorClasses,
+								}),
+							] as const
 						}
 					}
 				}
@@ -795,7 +808,10 @@ export async function enhanceManifestWithSourceSnippets(
 	if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
 		// Cache text→result to avoid redundant file reads when the same text appears
 		// in multiple manifest entries (e.g., author names repeated on listing pages)
-		const textLookupCache = new Map<string, { source: SourceLocation; referencedBy?: Array<{ collection: string; fieldName: string; isArray?: boolean }> } | null>()
+		const textLookupCache = new Map<
+			string,
+			{ source: SourceLocation; referencedBy?: Array<{ collection: string; fieldName: string; isArray?: boolean }> } | null
+		>()
 
 		async function resolveCollectionText(trimmed: string) {
 			const cached = textLookupCache.get(trimmed)

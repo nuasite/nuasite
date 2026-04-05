@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { updateMarkdownPage } from '../markdown-api'
 import { clampPanelPosition, Z_INDEX } from '../constants'
+import { updateMarkdownPage } from '../markdown-api'
 import { closeReferencePicker, config, manifest, referencePickerState, showToast } from '../signals'
 
 const PANEL_WIDTH = 320
@@ -132,7 +132,9 @@ export function ReferencePicker() {
 						<div class="px-4 pt-3 pb-2">
 							<div class="text-xs text-white/50 font-medium mb-1">{fieldLabel}</div>
 							{currentLabel && !state.isArray && (
-								<div class="text-sm text-white/70 mb-2">Current: <span class="text-white">{currentLabel}</span></div>
+								<div class="text-sm text-white/70 mb-2">
+									Current: <span class="text-white">{currentLabel}</span>
+								</div>
 							)}
 							<input
 								ref={inputRef}

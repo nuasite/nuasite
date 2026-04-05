@@ -557,7 +557,10 @@ function detectDerivedHrefFields(collections: Record<string, CollectionDefinitio
 				if (!sourceField) {
 					const lowerBase = baseName.toLowerCase()
 					for (const f of fieldsByName.values()) {
-						if (f.name.toLowerCase() === lowerBase) { sourceField = f; break }
+						if (f.name.toLowerCase() === lowerBase) {
+							sourceField = f
+							break
+						}
 					}
 				}
 				if (!sourceField || !sourceField.examples || !field.examples) continue
@@ -590,17 +593,14 @@ async function scanDataCollection(collectionPath: string, collectionName: string
 
 		const fieldMap = new Map<string, FieldObservation>()
 		const entryInfos: CollectionEntryInfo[] = []
-		const ext =
-			dataFiles.some(file => file.name.endsWith('.json'))
-				? 'json' as const
-				: dataFiles.some(file => file.name.endsWith('.yaml'))
-					? 'yaml' as const
-					: 'yml' as const
+		const ext = dataFiles.some(file => file.name.endsWith('.json'))
+			? 'json' as const
+			: dataFiles.some(file => file.name.endsWith('.yaml'))
+			? 'yaml' as const
+			: 'yml' as const
 
 		const fileContents = await Promise.all(
-			dataFiles.map(file =>
-				fs.readFile(path.join(collectionPath, file.name), 'utf-8').catch(() => null),
-			),
+			dataFiles.map(file => fs.readFile(path.join(collectionPath, file.name), 'utf-8').catch(() => null)),
 		)
 
 		for (let i = 0; i < dataFiles.length; i++) {

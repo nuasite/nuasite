@@ -5,8 +5,8 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { getProjectRoot } from '../config'
 import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
 import type { ManifestWriter } from '../manifest-writer'
-import type { CmsManifest, ManifestEntry } from '../types'
 import { extractAstroImageOriginalUrl } from '../source-finder/snippet-utils'
+import type { CmsManifest, ManifestEntry } from '../types'
 import { acquireFileLock, escapeReplacement, normalizePagePath, resolveAndValidatePath } from '../utils'
 
 export interface SaveBatchResponse {
