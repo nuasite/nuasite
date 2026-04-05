@@ -542,6 +542,7 @@ export function SchemaFrontmatterField({
 						label={label}
 						items={items as Record<string, unknown>[]}
 						onChange={onChange}
+						itemFields={field.fields}
 					/>
 				)
 			}
@@ -617,9 +618,10 @@ interface ArrayOfObjectsFieldProps {
 	label: string
 	items: Record<string, unknown>[]
 	onChange: (value: unknown) => void
+	itemFields?: FieldDefinition[]
 }
 
-function ArrayOfObjectsField({ label, items, onChange }: ArrayOfObjectsFieldProps) {
+function ArrayOfObjectsField({ label, items, onChange, itemFields }: ArrayOfObjectsFieldProps) {
 	const handleItemChange = (index: number, newItem: Record<string, unknown>) => {
 		const updated = [...items]
 		updated[index] = newItem
@@ -645,14 +647,23 @@ function ArrayOfObjectsField({ label, items, onChange }: ArrayOfObjectsFieldProp
 				{items.map((item, index) => (
 					<div key={index} class="flex items-start gap-2 pl-3 border-l-2 border-white/10">
 						<div class="flex-1 min-w-0 space-y-1.5">
-							{Object.entries(item).map(([key, val]) => (
-								<FrontmatterField
-									key={key}
-									fieldKey={key}
-									value={val}
-									onChange={(newValue) => handleItemChange(index, { ...item, [key]: newValue })}
-								/>
-							))}
+							{itemFields
+								? itemFields.map((subField) => (
+									<SchemaFrontmatterField
+										key={subField.name}
+										field={subField}
+										value={item[subField.name]}
+										onChange={(newValue) => handleItemChange(index, { ...item, [subField.name]: newValue })}
+									/>
+								))
+								: Object.entries(item).map(([key, val]) => (
+									<FrontmatterField
+										key={key}
+										fieldKey={key}
+										value={val}
+										onChange={(newValue) => handleItemChange(index, { ...item, [key]: newValue })}
+									/>
+								))}
 						</div>
 						<button
 							type="button"

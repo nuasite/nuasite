@@ -253,6 +253,20 @@ function mergeFieldObservations(observations: FieldObservation[]): FieldDefiniti
 						field.options = uniqueItems.sort()
 					}
 				}
+
+				// Infer sub-field definitions for array-of-objects
+				if (itemType === 'object') {
+					const objectItems = allItems.filter(
+						(v): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v),
+					)
+					if (objectItems.length > 0) {
+						const subFieldMap = new Map<string, FieldObservation>()
+						for (const item of objectItems) {
+							collectFieldObservations(subFieldMap, item, objectItems.length)
+						}
+						field.fields = mergeFieldObservations(Array.from(subFieldMap.values()))
+					}
+				}
 			}
 		}
 
