@@ -552,7 +552,14 @@ function detectDerivedHrefFields(collections: Record<string, CollectionDefinitio
 				const baseName = field.name.slice(0, -suffix.length)
 				if (!baseName) continue
 
-				const sourceField = fieldsByName.get(baseName)
+				// Case-insensitive lookup: exact match first, then scan by lowercased name
+				let sourceField = fieldsByName.get(baseName)
+				if (!sourceField) {
+					const lowerBase = baseName.toLowerCase()
+					for (const f of fieldsByName.values()) {
+						if (f.name.toLowerCase() === lowerBase) { sourceField = f; break }
+					}
+				}
 				if (!sourceField || !sourceField.examples || !field.examples) continue
 
 				const sourceExamples = sourceField.examples.filter((v): v is string => typeof v === 'string')
@@ -564,7 +571,7 @@ function detectDerivedHrefFields(collections: Record<string, CollectionDefinitio
 				const allMatch = derivedExamples.every(v => expectedHrefs.has(v))
 				if (allMatch) {
 					field.hidden = true
-					field.derivedFrom = baseName
+					field.derivedFrom = sourceField.name
 					break
 				}
 			}
@@ -583,16 +590,23 @@ async function scanDataCollection(collectionPath: string, collectionName: string
 
 		const fieldMap = new Map<string, FieldObservation>()
 		const entryInfos: CollectionEntryInfo[] = []
-		const firstFile = dataFiles[0]!
-		const ext = firstFile.name.endsWith('.json') ? 'json' as const : firstFile.name.endsWith('.yaml') ? 'yaml' as const : 'yml' as const
+		const ext =
+			dataFiles.some(file => file.name.endsWith('.json'))
+				? 'json' as const
+				: dataFiles.some(file => file.name.endsWith('.yaml'))
+					? 'yaml' as const
+					: 'yml' as const
 
 		const fileContents = await Promise.all(
-			dataFiles.map(file => fs.readFile(path.join(collectionPath, file.name), 'utf-8')),
+			dataFiles.map(file =>
+				fs.readFile(path.join(collectionPath, file.name), 'utf-8').catch(() => null),
+			),
 		)
 
 		for (let i = 0; i < dataFiles.length; i++) {
 			const file = dataFiles[i]!
 			const raw = fileContents[i]!
+			if (raw === null) continue
 			let data: Record<string, unknown> | null = null
 			try {
 				data = file.name.endsWith('.json') ? JSON.parse(raw) : parseYaml(raw) as Record<string, unknown>
