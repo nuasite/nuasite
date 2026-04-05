@@ -317,7 +317,8 @@ function serializeFrontmatter(frontmatter: Record<string, unknown>, content: str
  * Ensure MDX content has import statements for all components used in the body.
  * Scans for `<ComponentName` tags, checks for existing imports, and prepends missing ones.
  */
-function ensureMdxImports(
+/** @internal Exported for testing */
+export function ensureMdxImports(
 	content: string,
 	filePath: string,
 	componentDefinitions: Record<string, ComponentDefinition>,

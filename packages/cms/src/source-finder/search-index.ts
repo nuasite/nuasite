@@ -546,7 +546,7 @@ const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?)$/i
  */
 async function indexContentCollectionImages(): Promise<void> {
 	const contentDir = path.join(getProjectRoot(), 'src', 'content')
-	let entries: import('node:fs').Dirent[]
+	let entries: Awaited<ReturnType<typeof fs.readdir<true>>>
 	try {
 		entries = await fs.readdir(contentDir, { withFileTypes: true })
 	} catch {
