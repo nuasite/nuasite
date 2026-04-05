@@ -80,9 +80,30 @@ export interface ImageFieldProps {
 }
 
 export function ImageField({ label, value, placeholder, onChange, onBrowse, isDirty, onReset }: ImageFieldProps) {
+	const hasImage = !!value && value.length > 0
+
 	return (
 		<div class="space-y-1.5">
 			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
+			{hasImage && (
+				<div
+					class="relative w-full h-24 rounded-cms-sm overflow-hidden bg-white/5 border border-white/10 cursor-pointer group"
+					onClick={onBrowse}
+					data-cms-ui
+				>
+					<img
+						src={value}
+						alt={label}
+						class="w-full h-full object-cover"
+						onError={(e) => {
+							(e.target as HTMLImageElement).style.display = 'none'
+						}}
+					/>
+					<div class="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+						<span class="text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Change</span>
+					</div>
+				</div>
+			)}
 			<div class="flex gap-2">
 				<input
 					type="text"
