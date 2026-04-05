@@ -274,4 +274,99 @@ describe('applyImageChange', () => {
 			}
 		})
 	})
+
+	describe('YAML frontmatter image replacement', () => {
+		test('replaces image URL in YAML key-value pair', () => {
+			const content = '---\ntitle: My Post\ncoverImage: https://images.unsplash.com/photo-123?w=1200\ndraft: false\n---\n\nContent here.'
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: 'https://images.unsplash.com/photo-123?w=1200',
+					sourceSnippet: 'coverImage: https://images.unsplash.com/photo-123?w=1200',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/new-photo.jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('coverImage: /uploads/new-photo.jpg')
+				expect(result.content).not.toContain('unsplash')
+			}
+		})
+
+		test('replaces image URL in YAML when src= pattern not found', () => {
+			const content = '---\nheroImage: /images/old-hero.jpg\ntitle: Page\n---\n\nBody text.'
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/images/old-hero.jpg',
+					sourceSnippet: 'heroImage: /images/old-hero.jpg',
+					sourceLine: 2,
+					imageChange: { newSrc: '/uploads/new-hero.jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('heroImage: /uploads/new-hero.jpg')
+				expect(result.content).not.toContain('/images/old-hero.jpg')
+			}
+		})
+
+		test('replaces image in YAML when originalValue is Astro-optimized URL', () => {
+			const content = '---\ntitle: My Post\nimage: /images/hero.jpg\n---\n\nContent here.'
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					// Astro Image component transforms the URL in the rendered HTML
+					originalValue: '/_image?href=%2Fimages%2Fhero.jpg&w=1024',
+					sourceSnippet: 'image: /images/hero.jpg',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/new-hero.jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('image: /uploads/new-hero.jpg')
+				expect(result.content).not.toContain('/images/hero.jpg')
+			}
+		})
+
+		test('replaces image in YAML via snippet extraction when originalValue differs', () => {
+			const content = '---\ncoverImage: /photos/sunset.jpg\ntitle: Page\n---\n\nBody.'
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					// Rendered URL differs from authored URL (CDN/optimization)
+					originalValue: 'https://cdn.example.com/photos/sunset.jpg',
+					sourceSnippet: 'coverImage: /photos/sunset.jpg',
+					sourceLine: 2,
+					imageChange: { newSrc: '/uploads/new-sunset.jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('coverImage: /uploads/new-sunset.jpg')
+				expect(result.content).not.toContain('/photos/sunset.jpg')
+			}
+		})
+
+		test('quotes YAML value when new URL contains special characters', () => {
+			const content = '---\nimage: /simple-path.jpg\n---'
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/simple-path.jpg',
+					sourceSnippet: 'image: /simple-path.jpg',
+					sourceLine: 2,
+					imageChange: { newSrc: '/uploads/photo: special [chars].jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				// YAML library should quote the value due to special characters
+				expect(result.content).toContain('photo: special [chars].jpg')
+				expect(result.content).not.toContain('/simple-path.jpg')
+			}
+		})
+	})
 })

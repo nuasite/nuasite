@@ -6,6 +6,7 @@ import { getProjectRoot } from '../config'
 import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
 import type { ManifestWriter } from '../manifest-writer'
 import type { CmsManifest, ManifestEntry } from '../types'
+import { extractAstroImageOriginalUrl } from '../source-finder/snippet-utils'
 import { acquireFileLock, escapeReplacement, normalizePagePath, resolveAndValidatePath } from '../utils'
 
 export interface SaveBatchResponse {
@@ -186,6 +187,12 @@ export function applyImageChange(
 		}
 	}
 
+	// Extract original path from Astro Image optimization URLs (/_image?href=...)
+	const decodedHref = extractAstroImageOriginalUrl(originalSrc)
+	if (decodedHref && !srcCandidates.includes(decodedHref)) {
+		srcCandidates.push(decodedHref)
+	}
+
 	let newContent = content
 	let replacedIndex = -1
 	for (const srcToFind of srcCandidates) {
@@ -207,6 +214,33 @@ export function applyImageChange(
 			newContent = newContent.slice(0, replacedIndex)
 				+ newContent.slice(replacedIndex).replace(srcPatternSingle, `src='${escapedNewSrc}'`)
 			break
+		}
+	}
+
+	// Fallback: try YAML key-value replacement for collection frontmatter fields
+	// Try all srcCandidates since the rendered URL may differ from the authored YAML value
+	if (replacedIndex < 0 && change.sourceSnippet) {
+		for (const srcToFind of srcCandidates) {
+			const yamlResult = tryYamlValueReplacement(change.sourceSnippet, srcToFind, newSrc)
+			if (yamlResult !== null) {
+				// Search near the source line to avoid matching a duplicate snippet elsewhere
+				let searchStart = 0
+				if (change.sourceLine > 1) {
+					let linesFound = 0
+					for (let j = 0; j < newContent.length; j++) {
+						if (newContent[j] === '\n' && ++linesFound >= change.sourceLine - 1) {
+							searchStart = j + 1
+							break
+						}
+					}
+				}
+				const snippetIdx = newContent.indexOf(change.sourceSnippet, searchStart)
+				if (snippetIdx >= 0) {
+					replacedIndex = snippetIdx
+					newContent = newContent.slice(0, snippetIdx) + yamlResult + newContent.slice(snippetIdx + change.sourceSnippet.length)
+					break
+				}
+			}
 		}
 	}
 
