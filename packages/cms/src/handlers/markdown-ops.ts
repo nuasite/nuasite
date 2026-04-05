@@ -229,20 +229,32 @@ export async function handleRenameMarkdown(
 			return { success: true, newFilePath: request.filePath, newSlug: normalizedSlug }
 		}
 
-		// Use link+unlink for atomic rename that fails if target exists
+		// Acquire lock to prevent concurrent access during rename
+		const release = await acquireFileLock(fullPath)
 		try {
-			await fs.link(fullPath, newFullPath)
-			await fs.unlink(fullPath)
-		} catch (err) {
-			if (isNodeError(err, 'EEXIST')) {
-				return { success: false, error: `File already exists: ${normalizedSlug}${ext}` }
+			// Use link+unlink for atomic rename that fails if target exists
+			try {
+				await fs.link(fullPath, newFullPath)
+			} catch (err) {
+				if (isNodeError(err, 'EEXIST')) {
+					return { success: false, error: `File already exists: ${normalizedSlug}${ext}` }
+				}
+				throw err
 			}
-			throw err
+			try {
+				await fs.unlink(fullPath)
+			} catch (err) {
+				// Clean up the new file if unlink of original fails
+				await fs.unlink(newFullPath).catch(() => {})
+				throw err
+			}
+		} finally {
+			release()
 		}
 
-		// Build project-relative path
+		// Build project-relative path (normalize to forward slashes)
 		const projectRoot = getProjectRoot()
-		const newFilePath = path.relative(projectRoot, newFullPath)
+		const newFilePath = path.relative(projectRoot, newFullPath).split(path.sep).join('/')
 
 		return { success: true, newFilePath, newSlug: normalizedSlug }
 	} catch (error) {
