@@ -98,7 +98,15 @@ export class ManifestWriter {
 	 */
 	setCollectionDefinitions(definitions: Record<string, CollectionDefinition>): void {
 		this.collectionDefinitions = definitions
-		this.globalManifest.collectionDefinitions = definitions
+		// Strip entry.data before publishing to the manifest — it's only needed
+		// server-side (for reference detection) and would bloat the browser payload.
+		const stripped: Record<string, CollectionDefinition> = {}
+		for (const [name, def] of Object.entries(definitions)) {
+			stripped[name] = def.entries
+				? { ...def, entries: def.entries.map(({ data, ...rest }) => rest) }
+				: def
+		}
+		this.globalManifest.collectionDefinitions = stripped
 	}
 
 	/**
