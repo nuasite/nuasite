@@ -296,6 +296,8 @@ const CmsUI = () => {
 		if (signals.isEditing.value) {
 			hideTooltip()
 			stopEditMode(updateUI)
+		} else if (signals.currentPageCollection.value) {
+			await openMarkdownEditorForCurrentPage()
 		} else {
 			signals.isSelectMode.value = false
 			await startEditMode(config, updateUI)

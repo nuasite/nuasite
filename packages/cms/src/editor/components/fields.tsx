@@ -96,7 +96,7 @@ export function ImageField({ label, value, placeholder, onChange, onBrowse, isDi
 						alt={label}
 						class="w-full h-full object-cover"
 						onError={(e) => {
-							(e.target as HTMLImageElement).style.display = 'none'
+							;(e.target as HTMLImageElement).style.display = 'none'
 						}}
 					/>
 					<div class="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
