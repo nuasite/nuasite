@@ -307,7 +307,7 @@ function walkYamlNode(
 	node: unknown,
 	normalizedSearch: string,
 	lineCounter: LineCounter,
-): { key: string; startLine: number; endLine: number } | undefined {
+): { key: string | undefined; startLine: number; endLine: number } | undefined {
 	if (isMap(node)) {
 		for (const pair of node.items) {
 			if (!isPair(pair) || !isScalar(pair.key)) continue
@@ -334,7 +334,7 @@ function walkYamlNode(
 					const range = (item as any).range as [number, number, number] | undefined
 					const startLine = range ? lineCounter.linePos(range[0]).line : 1
 					const endLine = range ? lineCounter.linePos(range[1]).line : startLine
-					return { key: '', startLine, endLine }
+					return { key: undefined, startLine, endLine }
 				}
 			} else {
 				const nested = walkYamlNode(item, normalizedSearch, lineCounter)

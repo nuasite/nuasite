@@ -7,7 +7,7 @@ import { escapeRegex, generateSourceHash } from '../utils'
 import { buildDefinitionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
 import { findTextInAnyCollectionFrontmatter } from './collection-finder'
-import type { SourceLocation } from './types'
+import type { CachedParsedFile, ImageMatch, SourceLocation } from './types'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
 
@@ -546,6 +546,7 @@ export async function enhanceManifestWithSourceSnippets(
 			// Fallback for expression-based src attributes (src={variable})
 			// Use the entry's existing sourcePath/sourceLine to find the img tag
 			// by its position in the AST rather than by src value
+			let triedCollectionSearch = false
 			if (entry.sourcePath && entry.sourceLine) {
 				try {
 					const filePath = path.isAbsolute(entry.sourcePath)
@@ -555,6 +556,15 @@ export async function enhanceManifestWithSourceSnippets(
 					if (cached) {
 						const nearbyImg = findImageElementNearLine(cached.ast, entry.sourceLine, cached.lines)
 						if (nearbyImg) {
+							// resolveImageExpression includes a collection frontmatter search (step 3)
+							triedCollectionSearch = true
+							const resolvedEntry = await resolveImageExpression(
+								entry, nearbyImg, cached, filePath, collectionDefinitions, referenceIndex,
+							)
+							if (resolvedEntry) {
+								return [id, resolvedEntry] as const
+							}
+
 							const sourceHash = generateSourceHash(nearbyImg.snippet || entry.imageMetadata.src)
 							return [id, {
 								...entry,
@@ -566,6 +576,15 @@ export async function enhanceManifestWithSourceSnippets(
 					}
 				} catch {
 					// Fallback search failed
+				}
+			}
+
+			// Final fallback: search collection frontmatter directly for the image URL.
+			// Skipped when resolveImageExpression already searched collections.
+			if (!triedCollectionSearch) {
+				const collectionResult = await searchCollectionWithDecodedFallback(entry.imageMetadata.src, collectionDefinitions)
+				if (collectionResult) {
+					return [id, applyCollectionSource(entry, collectionResult, referenceIndex)] as const
 				}
 			}
 
@@ -735,27 +754,11 @@ export async function enhanceManifestWithSourceSnippets(
 					if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
 						const mdSource = await findTextInAnyCollectionFrontmatter(trimmedText, collectionDefinitions)
 						if (mdSource) {
-							const mdSourceHash = generateSourceHash(mdSource.snippet ?? trimmedText)
-							const referencedBy = mdSource.collectionName
-								? referenceIndex.get(mdSource.collectionName)
-								: undefined
-							return [id, {
-								...entry,
-								sourcePath: mdSource.file,
-								sourceLine: mdSource.line,
-								sourceSnippet: mdSource.snippet,
-								variableName: mdSource.variableName,
-								collectionName: mdSource.collectionName,
-								collectionSlug: mdSource.collectionSlug,
+							return [id, applyCollectionSource(entry, mdSource, referenceIndex, {
 								allowStyling: false,
 								attributes,
 								colorClasses,
-								sourceHash: mdSourceHash,
-								...(referencedBy && referencedBy.length > 0 && {
-									referenceCollection: mdSource.collectionName,
-									referencedBy,
-								}),
-							}] as const
+							})] as const
 						}
 					}
 				}
@@ -847,4 +850,149 @@ export async function enhanceManifestWithSourceSnippets(
 	}
 
 	return enhanced
+}
+
+// ============================================================================
+// Collection Source Helpers
+// ============================================================================
+
+/** Search collection frontmatter for a value, falling back to the decoded Astro Image URL */
+async function searchCollectionWithDecodedFallback(
+	src: string,
+	collectionDefinitions?: Record<string, CollectionDefinition>,
+): Promise<SourceLocation | undefined> {
+	if (!collectionDefinitions || Object.keys(collectionDefinitions).length === 0) return undefined
+
+	const mdSource = await findTextInAnyCollectionFrontmatter(src, collectionDefinitions)
+	if (mdSource) return mdSource
+
+	const decodedSrc = extractAstroImageOriginalUrl(src)
+	if (decodedSrc) {
+		return await findTextInAnyCollectionFrontmatter(decodedSrc, collectionDefinitions)
+	}
+	return undefined
+}
+
+/** Build a ManifestEntry from a collection frontmatter match */
+function applyCollectionSource(
+	entry: ManifestEntry,
+	mdSource: SourceLocation,
+	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
+	extra?: Partial<ManifestEntry>,
+): ManifestEntry {
+	const sourceHash = generateSourceHash(mdSource.snippet ?? '')
+	const referencedBy = mdSource.collectionName
+		? referenceIndex?.get(mdSource.collectionName)
+		: undefined
+	return {
+		...entry,
+		sourcePath: mdSource.file,
+		sourceLine: mdSource.line,
+		sourceSnippet: mdSource.snippet,
+		variableName: mdSource.variableName,
+		collectionName: mdSource.collectionName,
+		collectionSlug: mdSource.collectionSlug,
+		sourceHash,
+		...(referencedBy && referencedBy.length > 0 && {
+			referenceCollection: mdSource.collectionName,
+			referencedBy,
+		}),
+		...extra,
+	}
+}
+
+// ============================================================================
+// Image Expression Resolution
+// ============================================================================
+
+/**
+ * Resolve a dynamic image expression (e.g., src={article.image}) to its data source.
+ * Mirrors the text expression resolution flow: tries variable definitions, cross-file
+ * prop tracking, and collection frontmatter search.
+ */
+async function resolveImageExpression(
+	entry: ManifestEntry,
+	nearbyImg: ImageMatch,
+	cached: CachedParsedFile,
+	filePath: string,
+	collectionDefinitions?: Record<string, CollectionDefinition>,
+	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
+): Promise<ManifestEntry | undefined> {
+	const imgSrc = entry.imageMetadata?.src
+	if (!imgSrc) return undefined
+
+	const normalizedSrc = normalizeText(imgSrc)
+
+	// Step 1: Try variable definitions — handles local variables (const image = "...")
+	const matchingDef = cached.variableDefinitions.find(
+		def => normalizeText(def.value) === normalizedSrc,
+	)
+	if (matchingDef) {
+		const defSnippet = cached.lines[matchingDef.line - 1] || ''
+		const sourceHash = generateSourceHash(defSnippet)
+		return {
+			...entry,
+			sourceLine: matchingDef.line,
+			sourceSnippet: defSnippet,
+			variableName: buildDefinitionPath(matchingDef),
+			sourceHash,
+		}
+	}
+
+	// Step 2: Try cross-file prop tracking — handles props from parent components
+	const exprPattern = /\{(\w+(?:\.\w+|\[\d+\])*)\}/g
+	let exprMatch: RegExpExecArray | null
+	while ((exprMatch = exprPattern.exec(nearbyImg.snippet)) !== null) {
+		const exprPath = exprMatch[1]!
+		const baseVar = exprPath.match(/^(\w+)/)?.[1]
+		if (baseVar && cached.propAliases.has(baseVar)) {
+			const propName = cached.propAliases.get(baseVar)!
+			const componentFileName = path.basename(filePath)
+			const result = await searchForExpressionProp(
+				componentFileName,
+				propName,
+				exprPath,
+				imgSrc,
+			)
+			if (result) {
+				const propSnippet = result.snippet ?? imgSrc
+				const sourceHash = generateSourceHash(propSnippet)
+				return {
+					...entry,
+					sourcePath: result.file,
+					sourceLine: result.line,
+					sourceSnippet: propSnippet,
+					variableName: result.variableName,
+					sourceHash,
+				}
+			}
+		}
+	}
+
+	// Step 3: Search collection frontmatter — handles {article.data.image} patterns
+	// where the image URL lives in a markdown/data file's frontmatter
+	const collectionResult = await searchCollectionWithDecodedFallback(imgSrc, collectionDefinitions)
+	if (collectionResult) {
+		return applyCollectionSource(entry, collectionResult, referenceIndex)
+	}
+
+	return undefined
+}
+
+/**
+ * Extract the original image path from an Astro Image optimization URL.
+ * Astro's `<Image>` component rewrites src to `/_image?href=%2Fpath.jpg&w=...` in dev.
+ * Returns the decoded `href` param, or undefined if the URL isn't an Astro image URL.
+ */
+export function extractAstroImageOriginalUrl(src: string): string | undefined {
+	try {
+		const url = new URL(src, 'http://localhost')
+		if (url.pathname === '/_image' || url.pathname.startsWith('/_image/')) {
+			const href = url.searchParams.get('href')
+			if (href && href !== src) return href
+		}
+	} catch {
+		// Not a valid URL
+	}
+	return undefined
 }

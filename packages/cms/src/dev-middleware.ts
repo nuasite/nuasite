@@ -479,6 +479,10 @@ async function processHtmlForDev(
 	// may point to a shared Image component rather than the actual usage site
 	for (const entry of Object.values(result.entries)) {
 		if (entry.imageMetadata?.src) {
+			// Skip entries already resolved to collection frontmatter — the search index
+			// would point back to the listing page's .astro file, losing the .md resolution
+			if (entry.collectionName) continue
+
 			const imageSource = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
 			if (imageSource) {
 				entry.sourcePath = imageSource.file
