@@ -104,7 +104,10 @@ const routeMap = new Map<string, RouteHandler>([
 		}
 		sendJson(res, result)
 	}),
-	post('markdown/update', (body: Parameters<typeof handleUpdateMarkdown>[0]) => handleUpdateMarkdown(body)),
+	custom('POST', 'markdown/update', async ({ req, res, manifestWriter }) => {
+		const body = await parseJsonBody<Parameters<typeof handleUpdateMarkdown>[0]>(req)
+		sendJson(res, await handleUpdateMarkdown(body, manifestWriter.getComponentDefinitions()))
+	}),
 	post('markdown/rename', (body: Parameters<typeof handleRenameMarkdown>[0]) => handleRenameMarkdown(body)),
 	postWithStatus('markdown/create', (body: Parameters<typeof handleCreateMarkdown>[0]) => handleCreateMarkdown(body)),
 	custom('POST', 'markdown/delete', async ({ req, res, manifestWriter, contentDir }) => {

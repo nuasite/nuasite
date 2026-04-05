@@ -2,7 +2,8 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'yaml'
 import { getProjectRoot } from '../config'
-import { acquireFileLock, isNodeError, resolveAndValidatePath, slugify } from '../utils'
+import type { ComponentDefinition } from '../types'
+import { acquireFileLock, isNodeError, relativeImportPath, resolveAndValidatePath, slugify } from '../utils'
 
 export interface BlogFrontmatter {
 	title: string
@@ -87,6 +88,7 @@ export async function handleGetMarkdownContent(
 
 export async function handleUpdateMarkdown(
 	request: UpdateMarkdownRequest,
+	componentDefinitions?: Record<string, ComponentDefinition>,
 ): Promise<UpdateMarkdownResponse> {
 	try {
 		const fullPath = resolveAndValidatePath(request.filePath)
@@ -111,7 +113,12 @@ export async function handleUpdateMarkdown(
 					...request.frontmatter,
 				}
 
-				const finalContent = request.content ?? existing.content
+				let finalContent = request.content ?? existing.content
+
+				if (request.filePath.endsWith('.mdx') && componentDefinitions) {
+					finalContent = ensureMdxImports(finalContent, request.filePath, componentDefinitions)
+				}
+
 				const markdownContent = serializeFrontmatter(mergedFrontmatter, finalContent)
 				await fs.writeFile(fullPath, markdownContent, 'utf-8')
 			}
@@ -304,4 +311,78 @@ function parseFrontmatter(raw: string): { frontmatter: Record<string, unknown>; 
 function serializeFrontmatter(frontmatter: Record<string, unknown>, content: string): string {
 	const yamlStr = yaml.stringify(frontmatter).trim()
 	return `---\n${yamlStr}\n---\n${content}`
+}
+
+/**
+ * Ensure MDX content has import statements for all components used in the body.
+ * Scans for `<ComponentName` tags, checks for existing imports, and prepends missing ones.
+ */
+function ensureMdxImports(
+	content: string,
+	filePath: string,
+	componentDefinitions: Record<string, ComponentDefinition>,
+): string {
+	// Find all component-like tags (capitalized names)
+	const usedComponents = new Set<string>()
+	const tagRegex = /<([A-Z][A-Za-z0-9]*)\b/g
+	let match
+	while ((match = tagRegex.exec(content)) !== null) {
+		if (match[1]) usedComponents.add(match[1])
+	}
+	if (usedComponents.size === 0) return content
+
+	// Find already-imported names and track the last import position in a single pass
+	const importedNames = new Set<string>()
+	const importLineRegex = /^import\s+(.+)\s+from\s+/gm
+	let lastImportEnd = -1
+	while ((match = importLineRegex.exec(content)) !== null) {
+		lastImportEnd = match.index + match[0].length
+		// Advance past the `from '...'` portion to find the true line end
+		const fromRest = content.slice(lastImportEnd)
+		const lineEnd = fromRest.indexOf('\n')
+		if (lineEnd >= 0) lastImportEnd += lineEnd
+		else lastImportEnd = content.length
+
+		const clause = match[1]!
+		// Extract named imports from braces: { A, B as C }
+		const braceMatch = clause.match(/\{([^}]+)\}/)
+		if (braceMatch?.[1]) {
+			for (const name of braceMatch[1].split(',')) {
+				const parts = name.trim().split(/\s+as\s+/)
+				const imported = (parts[1] ?? parts[0])?.trim()
+				if (imported) importedNames.add(imported)
+			}
+		}
+		// Extract default import and namespace import (* as X)
+		const withoutBraces = clause.replace(/\{[^}]*\}/, '').replace(/,/g, ' ').trim()
+		for (const token of withoutBraces.split(/\s+/)) {
+			if (token === '*' || token === 'as' || token === '') continue
+			importedNames.add(token)
+		}
+	}
+
+	const root = getProjectRoot()
+	const mdxFullPath = path.join(root, filePath)
+	const missingImports: string[] = []
+
+	for (const name of usedComponents) {
+		if (importedNames.has(name)) continue
+		const def = componentDefinitions[name]
+		if (!def) continue
+
+		const componentAbsPath = path.join(root, def.file)
+		const rel = relativeImportPath(mdxFullPath, componentAbsPath)
+		missingImports.push(`import ${name} from '${rel}'`)
+	}
+
+	if (missingImports.length === 0) return content
+
+	// Place after any existing import block, or at the top
+	const importBlock = missingImports.join('\n')
+
+	if (lastImportEnd >= 0) {
+		return content.slice(0, lastImportEnd) + '\n' + importBlock + content.slice(lastImportEnd)
+	}
+
+	return importBlock + '\n\n' + content
 }
