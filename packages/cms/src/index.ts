@@ -44,6 +44,12 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	 */
 	media?: MediaStorageAdapter
 	/**
+	 * Directories containing components available in the MDX component picker.
+	 * Only components within these directories (relative to project root) will appear.
+	 * Example: ['src/components/mdx'] or ['src/components/mdx', 'src/components/blocks']
+	 */
+	mdxComponentDirs?: string[]
+	/**
 	 * Per-collection field overrides for position and grouping.
 	 * Highest priority — overrides scanner defaults and frontmatter comment directives.
 	 */
@@ -71,6 +77,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		markComponents = true,
 		componentDirs = ['src/components'],
 		contentDir = 'src/content',
+		mdxComponentDirs,
 		seo = { trackSeo: true, markTitle: true, parseJsonLd: true },
 	} = options
 
@@ -118,6 +125,14 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					await registry.scan()
 					componentDefinitions = registry.getComponents()
 					manifestWriter.setComponentDefinitions(componentDefinitions)
+
+					if (mdxComponentDirs) {
+						const normalizedDirs = mdxComponentDirs.map(dir => dir.endsWith('/') ? dir : dir + '/')
+						const mdxNames = Object.values(componentDefinitions)
+							.filter(def => normalizedDirs.some(dir => def.file.startsWith(dir)))
+							.map(def => def.name)
+						manifestWriter.setMdxComponents(mdxNames)
+					}
 
 					const componentCount = Object.keys(componentDefinitions).length
 					if (componentCount > 0) {

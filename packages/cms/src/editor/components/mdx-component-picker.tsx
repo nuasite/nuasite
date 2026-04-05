@@ -44,10 +44,12 @@ export function MdxComponentPicker({ onInsert }: MdxComponentPickerProps) {
 		}
 	}
 
-	const filteredDefs = Object.values(componentDefinitions).filter((def) =>
-		!searchQuery || def.name.toLowerCase().includes(searchQuery.toLowerCase())
-		|| def.description?.toLowerCase().includes(searchQuery.toLowerCase())
-	)
+	const mdxAllowList = manifest.value?.mdxComponents
+	const filteredDefs = Object.values(componentDefinitions).filter((def) => {
+		if (mdxAllowList && !mdxAllowList.includes(def.name)) return false
+		return !searchQuery || def.name.toLowerCase().includes(searchQuery.toLowerCase())
+			|| def.description?.toLowerCase().includes(searchQuery.toLowerCase())
+	})
 
 	return (
 		<ModalBackdrop onClose={close} maxWidth="max-w-md" extraClass="max-h-[80vh] flex flex-col overflow-hidden">

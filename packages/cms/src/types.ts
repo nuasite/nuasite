@@ -342,6 +342,8 @@ export interface CmsManifest {
 	availableTextStyles?: AvailableTextStyles
 	/** All pages in the site with pathname and title */
 	pages?: PageEntry[]
+	/** Component names allowed in the MDX component picker (undefined = all) */
+	mdxComponents?: string[]
 }
 
 // === SEO Types ===
