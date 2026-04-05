@@ -77,6 +77,7 @@ export function MarkdownInlineEditor({
 	onEditorReadyRef.current = onEditorReady
 	// Store isMdx in ref for editor initialization
 	const isMdxRef = useRef(isMdx ?? false)
+	isMdxRef.current = isMdx ?? false
 
 	// Check active formatting at current selection
 	const updateActiveFormats = useCallback(() => {
