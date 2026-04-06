@@ -348,7 +348,7 @@ test('updatePendingImageChange updates existing change', () => {
 
 	setPendingImageChange('img-3', initialChange)
 
-	updatePendingImageChange('img-3', (change) => ({
+	updatePendingImageChange('img-3', (change: any) => ({
 		...change,
 		newSrc: '/assets/new.webp',
 		newAlt: 'New',
@@ -544,7 +544,7 @@ test('image change isDirty based on src comparison', () => {
 	expect(hasDirtyImageChanges.value).toBe(false)
 
 	// Change the image - becomes dirty
-	updatePendingImageChange('img-compare', (change) => ({
+	updatePendingImageChange('img-compare', (change: any) => ({
 		...change,
 		newSrc: '/assets/new.webp',
 		isDirty: true,
@@ -553,7 +553,7 @@ test('image change isDirty based on src comparison', () => {
 	expect(hasDirtyImageChanges.value).toBe(true)
 
 	// Revert to original - no longer dirty
-	updatePendingImageChange('img-compare', (change) => ({
+	updatePendingImageChange('img-compare', (change: any) => ({
 		...change,
 		newSrc: originalSrc,
 		isDirty: false,

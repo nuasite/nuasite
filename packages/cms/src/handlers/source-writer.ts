@@ -1,9 +1,11 @@
 import { NodeType, parse as parseHtml } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { getProjectRoot } from '../config'
 import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
 import type { ManifestWriter } from '../manifest-writer'
+import { extractAstroImageOriginalUrl } from '../source-finder/snippet-utils'
 import type { CmsManifest, ManifestEntry } from '../types'
 import { acquireFileLock, escapeReplacement, normalizePagePath, resolveAndValidatePath } from '../utils'
 
@@ -59,7 +61,6 @@ export async function handleUpdate(
 					fileChanges,
 					manifest,
 				)
-
 				if (failedChanges.length > 0) {
 					errors.push(...failedChanges)
 				}
@@ -185,6 +186,32 @@ export function applyImageChange(
 		}
 	}
 
+	// Extract original path from Astro Image optimization URLs (/_image?href=...)
+	const decodedHref = extractAstroImageOriginalUrl(originalSrc)
+	if (decodedHref && !srcCandidates.includes(decodedHref)) {
+		srcCandidates.push(decodedHref)
+	}
+
+	// Extract the authored value from YAML/JSON source snippets.
+	// Astro optimizes images from content collections (e.g. ./images/photo.jpg → /assets/hash.webp),
+	// so the rendered URL won't match the value in the data file. Parse the snippet to recover it.
+	if (change.sourceSnippet) {
+		const yamlKeyMatch = change.sourceSnippet.match(/^\s*([\w][\w-]*):\s*/)
+		if (yamlKeyMatch?.[1]) {
+			try {
+				const parsed = parseYaml(change.sourceSnippet)
+				if (parsed && typeof parsed === 'object') {
+					const value = (parsed as Record<string, unknown>)[yamlKeyMatch[1]]
+					if (typeof value === 'string' && !srcCandidates.includes(value)) {
+						srcCandidates.push(value)
+					}
+				}
+			} catch {
+				// Not valid YAML, ignore
+			}
+		}
+	}
+
 	let newContent = content
 	let replacedIndex = -1
 	for (const srcToFind of srcCandidates) {
@@ -206,6 +233,46 @@ export function applyImageChange(
 			newContent = newContent.slice(0, replacedIndex)
 				+ newContent.slice(replacedIndex).replace(srcPatternSingle, `src='${escapedNewSrc}'`)
 			break
+		}
+	}
+
+	// Fallback: try YAML key-value replacement for collection frontmatter fields
+	// Try all srcCandidates since the rendered URL may differ from the authored YAML value
+	if (replacedIndex < 0 && change.sourceSnippet) {
+		for (const srcToFind of srcCandidates) {
+			const yamlResult = tryYamlValueReplacement(change.sourceSnippet, srcToFind, newSrc)
+			if (yamlResult !== null) {
+				// Search near the source line to avoid matching a duplicate snippet elsewhere
+				let searchStart = 0
+				if (change.sourceLine > 1) {
+					let linesFound = 0
+					for (let j = 0; j < newContent.length; j++) {
+						if (newContent[j] === '\n' && ++linesFound >= change.sourceLine - 1) {
+							searchStart = j + 1
+							break
+						}
+					}
+				}
+				const snippetIdx = newContent.indexOf(change.sourceSnippet, searchStart)
+				if (snippetIdx >= 0) {
+					replacedIndex = snippetIdx
+					newContent = newContent.slice(0, snippetIdx) + yamlResult + newContent.slice(snippetIdx + change.sourceSnippet.length)
+					break
+				}
+			}
+		}
+	}
+
+	// Fallback: direct quoted-value replacement for data files (JSON, YAML, MD frontmatter)
+	// The source file may be a collection data file where the image is a plain string value
+	if (replacedIndex < 0 && change.sourceSnippet) {
+		for (const srcToFind of srcCandidates) {
+			const result = tryDataFileValueReplacement(newContent, change.sourceSnippet, srcToFind, newSrc, change.sourceLine)
+			if (result) {
+				replacedIndex = result.index
+				newContent = result.content
+				break
+			}
 		}
 	}
 
@@ -543,6 +610,13 @@ export function applyTextChange(
 	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, resolvedNewText)
 
 	if (updatedSnippet === sourceSnippet) {
+		// Try YAML key-value replacement for multi-line frontmatter values
+		// (e.g., "title: long text\n  that wraps")
+		const yamlResult = tryYamlValueReplacement(sourceSnippet, resolvedOriginal, resolvedNewText)
+		if (yamlResult !== null) {
+			return { success: true, content: content.replace(sourceSnippet, yamlResult) }
+		}
+
 		// Try AST-based <br> normalization (browser normalizes <br class="..." /> to <br>
 		// and collapses surrounding whitespace/indentation)
 		const brResult = tryBrNormalizedChange(sourceSnippet, resolvedOriginal, resolvedNewText)
@@ -772,6 +846,88 @@ function getVisibleText(html: string): string {
 	// Collapse whitespace around newlines (browser behavior around <br>)
 	text = text.replace(/[ \t]*\n[ \t]*/g, '\n')
 	return text.trim()
+}
+
+/**
+ * Try to replace a YAML value in a frontmatter snippet.
+ * Uses the YAML parser to resolve the value (handles all scalar styles:
+ * plain wrapping, single/double quoted, block literal `|`, folded `>`).
+ * Returns the updated snippet, or null if this approach doesn't apply.
+ */
+function tryYamlValueReplacement(
+	sourceSnippet: string,
+	resolvedOriginal: string,
+	resolvedNewText: string,
+): string | null {
+	// Must look like a YAML key: value pair
+	const keyMatch = sourceSnippet.match(/^(\s*([\w][\w-]*):\s*)/)
+	if (!keyMatch) return null
+
+	// Use the YAML parser to resolve the value — handles all scalar styles
+	try {
+		const parsed = parseYaml(sourceSnippet)
+		if (parsed == null || typeof parsed !== 'object') return null
+		const value = (parsed as Record<string, unknown>)[keyMatch[2]!]
+		if (typeof value !== 'string' && typeof value !== 'number') return null
+		if (String(value) !== resolvedOriginal) return null
+	} catch {
+		return null
+	}
+
+	// Use the YAML library to safely serialize the new value,
+	// handling characters that would break plain scalars (: # [ ] { } , etc.)
+	const serialized = stringifyYaml(resolvedNewText, { lineWidth: 0 }).trimEnd()
+	return `${keyMatch[1]}${serialized}`
+}
+
+/**
+ * Replace an image value in a data file (JSON, YAML, MD frontmatter).
+ * Matches the original value as a quoted string within the source snippet context.
+ */
+function tryDataFileValueReplacement(
+	content: string,
+	sourceSnippet: string,
+	originalValue: string,
+	newValue: string,
+	sourceLine: number,
+): { content: string; index: number } | null {
+	// Check if snippet contains the original value as a quoted string (JSON or YAML)
+	const doubleQuoted = `"${originalValue}"`
+	const singleQuoted = `'${originalValue}'`
+
+	let quotedOriginal: string
+	let quotedNew: string
+	if (sourceSnippet.includes(doubleQuoted)) {
+		quotedOriginal = doubleQuoted
+		quotedNew = `"${newValue}"`
+	} else if (sourceSnippet.includes(singleQuoted)) {
+		quotedOriginal = singleQuoted
+		quotedNew = `'${newValue}'`
+	} else {
+		return null
+	}
+
+	const updatedSnippet = sourceSnippet.replace(quotedOriginal, quotedNew)
+	if (updatedSnippet === sourceSnippet) return null
+
+	// Find the snippet in content near the source line
+	let searchStart = 0
+	if (sourceLine > 1) {
+		let linesFound = 0
+		for (let j = 0; j < content.length; j++) {
+			if (content[j] === '\n' && ++linesFound >= sourceLine - 1) {
+				searchStart = j + 1
+				break
+			}
+		}
+	}
+	const snippetIdx = content.indexOf(sourceSnippet, searchStart)
+	if (snippetIdx < 0) return null
+
+	return {
+		content: content.slice(0, snippetIdx) + updatedSnippet + content.slice(snippetIdx + sourceSnippet.length),
+		index: snippetIdx,
+	}
 }
 
 /**

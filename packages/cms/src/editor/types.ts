@@ -1,4 +1,4 @@
-import type { Attribute, CmsManifest, CollectionDefinition, ComponentInstance, RedirectRule } from '../types'
+import type { Attribute, CmsFeatures, CmsManifest, CollectionDefinition, ComponentInstance, RedirectRule } from '../types'
 
 // Re-export shared types from @nuasite/cms-marker (source of truth)
 export type {
@@ -50,6 +50,7 @@ export interface CmsConfig {
 	debug: boolean
 	theme?: CmsThemeConfig
 	themePreset?: CmsThemePreset
+	features?: CmsFeatures
 }
 
 export interface ComponentProp {
@@ -379,7 +380,10 @@ export interface MediaItem {
 	width?: number
 	height?: number
 	uploadedAt?: string
+	folder?: string
 }
+
+export type { MediaFolderItem, MediaTypeFilter } from '../media/types'
 
 export interface MediaLibraryState {
 	isOpen: boolean
@@ -443,6 +447,8 @@ export interface CreateMarkdownPageRequest {
 	frontmatter?: Partial<BlogFrontmatter>
 	/** Optional markdown content */
 	content?: string
+	/** File extension override for data collections (e.g. 'json', 'yaml') */
+	fileExtension?: string
 }
 
 export interface CreateMarkdownPageResponse {
@@ -687,6 +693,20 @@ export type UndoAction =
 	| UndoAttributeAction
 	| UndoSeoAction
 	| UndoBgImageAction
+
+// ============================================================================
+// MDX Component Block Types
+// ============================================================================
+
+export interface MdxPropsEditorState {
+	isOpen: boolean
+	/** ProseMirror document position of the node being edited */
+	nodePos: number | null
+	componentName: string | null
+	props: Record<string, string>
+	/** Position for the floating editor panel */
+	cursorPos: { x: number; y: number } | null
+}
 
 declare global {
 	interface Window {

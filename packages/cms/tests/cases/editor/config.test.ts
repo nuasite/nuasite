@@ -27,7 +27,7 @@ test('getConfig returns default config when no user config', () => {
 
 test('getConfig merges user config with defaults', () => {
 	if (typeof window !== 'undefined') {
-		window.NuaCmsConfig = {
+		;(window as any).NuaCmsConfig = {
 			apiBase: '/custom-api',
 			highlightColor: '#ff0000',
 		}
@@ -41,7 +41,7 @@ test('getConfig merges user config with defaults', () => {
 
 test('getConfig user config overrides all defaults', () => {
 	if (typeof window !== 'undefined') {
-		window.NuaCmsConfig = {
+		;(window as any).NuaCmsConfig = {
 			apiBase: '/api',
 			highlightColor: '#00ff00',
 			debug: false,
@@ -56,7 +56,7 @@ test('getConfig user config overrides all defaults', () => {
 
 test('getConfig handles partial user config', () => {
 	if (typeof window !== 'undefined') {
-		window.NuaCmsConfig = {
+		;(window as any).NuaCmsConfig = {
 			debug: false,
 		}
 	}
@@ -69,7 +69,7 @@ test('getConfig handles partial user config', () => {
 
 test('getConfig preserves type safety', () => {
 	if (typeof window !== 'undefined') {
-		window.NuaCmsConfig = {
+		;(window as any).NuaCmsConfig = {
 			apiBase: '/test',
 		}
 	}

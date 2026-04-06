@@ -682,7 +682,7 @@ describe('wrapSelectionWithStyle', () => {
 
 describe('TAILWIND_STYLES', () => {
 	test('all weight entries have class and label', () => {
-		for (const [key, value] of Object.entries(TAILWIND_STYLES.weight)) {
+		for (const [key, value] of Object.entries(TAILWIND_STYLES.weight) as [string, { class: string; label: string }][]) {
 			expect(typeof value.class).toBe('string')
 			expect(typeof value.label).toBe('string')
 			expect(value.class.length).toBeGreaterThan(0)
@@ -691,7 +691,7 @@ describe('TAILWIND_STYLES', () => {
 	})
 
 	test('all decoration entries have class and label', () => {
-		for (const [key, value] of Object.entries(TAILWIND_STYLES.decoration)) {
+		for (const [key, value] of Object.entries(TAILWIND_STYLES.decoration) as [string, { class: string; label: string }][]) {
 			expect(typeof value.class).toBe('string')
 			expect(typeof value.label).toBe('string')
 			// 'none' decoration has an actual class 'no-underline'
@@ -700,14 +700,14 @@ describe('TAILWIND_STYLES', () => {
 	})
 
 	test('all style entries have class and label', () => {
-		for (const [key, value] of Object.entries(TAILWIND_STYLES.style)) {
+		for (const [key, value] of Object.entries(TAILWIND_STYLES.style) as [string, { class: string; label: string }][]) {
 			expect(typeof value.class).toBe('string')
 			expect(typeof value.label).toBe('string')
 		}
 	})
 
 	test('all color entries have class and label', () => {
-		for (const [key, value] of Object.entries(TAILWIND_STYLES.color)) {
+		for (const [key, value] of Object.entries(TAILWIND_STYLES.color) as [string, { class: string; label: string }][]) {
 			expect(typeof value.class).toBe('string')
 			expect(typeof value.label).toBe('string')
 			expect(value.class.length).toBeGreaterThan(0)
@@ -715,7 +715,7 @@ describe('TAILWIND_STYLES', () => {
 	})
 
 	test('all highlight entries have label', () => {
-		for (const [key, value] of Object.entries(TAILWIND_STYLES.highlight)) {
+		for (const [key, value] of Object.entries(TAILWIND_STYLES.highlight) as [string, { class: string; label: string }][]) {
 			expect(typeof value.class).toBe('string')
 			expect(typeof value.label).toBe('string')
 			// 'none' highlight has empty class which is expected
@@ -723,7 +723,7 @@ describe('TAILWIND_STYLES', () => {
 	})
 
 	test('all size entries have class and label', () => {
-		for (const [key, value] of Object.entries(TAILWIND_STYLES.size)) {
+		for (const [key, value] of Object.entries(TAILWIND_STYLES.size) as [string, { class: string; label: string }][]) {
 			expect(typeof value.class).toBe('string')
 			expect(typeof value.label).toBe('string')
 			expect(value.class.length).toBeGreaterThan(0)

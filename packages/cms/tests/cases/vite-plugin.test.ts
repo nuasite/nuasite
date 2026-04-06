@@ -15,7 +15,7 @@ describe('Vite Plugin', () => {
 		const context = createMockViteContext()
 		const plugins = createVitePlugin(context)
 
-		const manifestPlugin = plugins.find(p => p.name === 'cms-marker-virtual-manifest')
+		const manifestPlugin = plugins.find((p: any) => p.name === 'cms-marker-virtual-manifest')
 		expect(manifestPlugin).toBeDefined()
 		expect(manifestPlugin?.resolveId).toBeDefined()
 		expect(manifestPlugin?.load).toBeDefined()
@@ -24,7 +24,7 @@ describe('Vite Plugin', () => {
 	test('virtual manifest plugin should resolve virtual module IDs', () => {
 		const context = createMockViteContext()
 		const plugins = createVitePlugin(context)
-		const manifestPlugin = plugins.find(p => p.name === 'cms-marker-virtual-manifest')
+		const manifestPlugin = plugins.find((p: any) => p.name === 'cms-marker-virtual-manifest')
 
 		expect(manifestPlugin?.resolveId).toBeDefined()
 
@@ -61,7 +61,7 @@ describe('Vite Plugin', () => {
 		})
 
 		const plugins = createVitePlugin(context)
-		const manifestPlugin = plugins.find(p => p.name === 'cms-marker-virtual-manifest')
+		const manifestPlugin = plugins.find((p: any) => p.name === 'cms-marker-virtual-manifest')
 
 		expect(manifestPlugin?.load).toBeDefined()
 

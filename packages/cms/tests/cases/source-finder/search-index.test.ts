@@ -28,7 +28,7 @@ import {
 	isChildOfArray,
 	resolveMapChain,
 } from '../../../src/source-finder/search-index'
-import type { CachedParsedFile } from '../../../src/source-finder/types'
+import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry } from '../../../src/source-finder/types'
 import { setupAstroProjectStructure, withTempDir } from '../../utils'
 
 // ============================================================================
@@ -45,8 +45,8 @@ withTempDir('collectAstroFiles', (getCtx) => {
 		const files = await collectAstroFiles(`${ctx.tempDir}/src/components`)
 
 		expect(files).toHaveLength(2)
-		expect(files.some(f => f.endsWith('Button.astro'))).toBe(true)
-		expect(files.some(f => f.endsWith('Card.astro'))).toBe(true)
+		expect(files.some((f: string) => f.endsWith('Button.astro'))).toBe(true)
+		expect(files.some((f: string) => f.endsWith('Card.astro'))).toBe(true)
 	})
 
 	test('should collect .tsx files', async () => {
@@ -82,9 +82,9 @@ withTempDir('collectAstroFiles', (getCtx) => {
 		const files = await collectAstroFiles(`${ctx.tempDir}/src/components`)
 
 		expect(files).toHaveLength(3)
-		expect(files.some(f => f.endsWith('Button.astro'))).toBe(true)
-		expect(files.some(f => f.includes('ui/Card.astro'))).toBe(true)
-		expect(files.some(f => f.includes('layout/Header.astro'))).toBe(true)
+		expect(files.some((f: string) => f.endsWith('Button.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('ui/Card.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('layout/Header.astro'))).toBe(true)
 	})
 
 	test('should ignore non-supported file types', async () => {
@@ -215,11 +215,11 @@ withTempDir('initializeSearchIndex', (getCtx) => {
 		await initializeSearchIndex()
 
 		const textIndex = getTextSearchIndex()
-		const files = [...new Set(textIndex.map(e => e.file))]
+		const files = [...new Set(textIndex.map((e: SearchIndexEntry) => e.file))]
 
-		expect(files.some(f => f.includes('components/Button.astro'))).toBe(true)
-		expect(files.some(f => f.includes('pages/index.astro'))).toBe(true)
-		expect(files.some(f => f.includes('layouts/Base.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('components/Button.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('pages/index.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('layouts/Base.astro'))).toBe(true)
 	})
 
 	test('should skip directories that do not exist', async () => {
@@ -260,7 +260,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const entry = index.find(e => e.normalizedText === 'hello world')
+		const entry = index.find((e: SearchIndexEntry) => e.normalizedText === 'hello world')
 
 		expect(entry).toBeDefined()
 		expect(entry?.file).toBe('src/components/Test.astro')
@@ -285,7 +285,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const variableEntry = index.find(e => e.type === 'variable' && e.variableName === 'title')
+		const variableEntry = index.find((e: SearchIndexEntry) => e.type === 'variable' && e.variableName === 'title')
 
 		expect(variableEntry).toBeDefined()
 		expect(variableEntry?.normalizedText).toBe('hello world')
@@ -306,7 +306,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const propEntry = index.find(e => e.type === 'prop' && e.variableName === 'label')
+		const propEntry = index.find((e: SearchIndexEntry) => e.type === 'prop' && e.variableName === 'label')
 
 		expect(propEntry).toBeDefined()
 		expect(propEntry?.normalizedText).toBe('click me')
@@ -326,7 +326,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const entry = index.find(e => e.normalizedText === 'hello world')
+		const entry = index.find((e: SearchIndexEntry) => e.normalizedText === 'hello world')
 
 		expect(entry).toBeDefined()
 	})
@@ -345,7 +345,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const entry = index.find(e => e.normalizedText === 'x')
+		const entry = index.find((e: SearchIndexEntry) => e.normalizedText === 'x')
 
 		expect(entry).toBeUndefined()
 	})
@@ -367,7 +367,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const entry = index.find(e => e.type === 'variable' && e.variableName === 'config.nav.title')
+		const entry = index.find((e: SearchIndexEntry) => e.type === 'variable' && e.variableName === 'config.nav.title')
 
 		expect(entry).toBeDefined()
 		expect(entry?.normalizedText).toBe('home')
@@ -393,7 +393,7 @@ withTempDir('indexFileImages', (getCtx) => {
 		indexFileImages(cached, 'src/components/Hero.astro')
 
 		const index = getImageSearchIndex()
-		const entry = index.find(e => e.src === '/images/hero.png')
+		const entry = index.find((e: ImageIndexEntry) => e.src === '/images/hero.png')
 
 		expect(entry).toBeDefined()
 		expect(entry?.file).toBe('src/components/Hero.astro')
@@ -416,7 +416,7 @@ withTempDir('indexFileImages', (getCtx) => {
 		indexFileImages(cached, 'src/components/Hero.tsx')
 
 		const index = getImageSearchIndex()
-		const entry = index.find(e => e.src === '/images/hero.png')
+		const entry = index.find((e: ImageIndexEntry) => e.src === '/images/hero.png')
 
 		expect(entry).toBeDefined()
 		expect(entry?.file).toBe('src/components/Hero.tsx')
@@ -439,7 +439,7 @@ withTempDir('indexFileImages', (getCtx) => {
 		indexFileImages(cached, 'src/components/Hero.jsx')
 
 		const index = getImageSearchIndex()
-		const entry = index.find(e => e.src === '/images/hero.png')
+		const entry = index.find((e: ImageIndexEntry) => e.src === '/images/hero.png')
 
 		expect(entry).toBeDefined()
 	})
@@ -459,7 +459,7 @@ withTempDir('indexFileImages', (getCtx) => {
 		indexFileImages(cached, 'src/components/Gallery.astro')
 
 		const index = getImageSearchIndex()
-		const entries = index.filter(e => e.file === 'src/components/Gallery.astro')
+		const entries = index.filter((e: ImageIndexEntry) => e.file === 'src/components/Gallery.astro')
 
 		expect(entries).toHaveLength(2)
 	})
@@ -587,6 +587,78 @@ withTempDir('findInTextIndex', (getCtx) => {
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Correct.astro')
+	})
+
+	test('should prefer collection data file over template for exact match', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		// Same text in template and collection data file
+		addToTextSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 10,
+			snippet: '<h2>My Article Title</h2>',
+			type: 'static',
+			normalizedText: 'my article title',
+			tag: 'h2',
+		})
+		addToTextSearchIndex({
+			file: 'src/content/news/my-article.mdx',
+			line: 3,
+			snippet: 'title: My Article Title',
+			type: 'static',
+			normalizedText: 'my article title',
+			tag: 'h2',
+		})
+
+		const result = findInTextIndex('My Article Title', 'h2')
+		expect(result).toBeDefined()
+		expect(result?.file).toContain('src/content/')
+	})
+
+	test('should prefer collection data file over template for any-tag match', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		addToTextSearchIndex({
+			file: 'src/pages/about.astro',
+			line: 5,
+			snippet: '<span>Partner Name</span>',
+			type: 'static',
+			normalizedText: 'partner name',
+			tag: 'span',
+		})
+		addToTextSearchIndex({
+			file: 'src/content/partners/acme.json',
+			line: 2,
+			snippet: '"name": "Partner Name"',
+			type: 'static',
+			normalizedText: 'partner name',
+			tag: 'div', // different tag
+		})
+
+		// Search with a third tag — both are "any tag" matches, collection should win
+		const result = findInTextIndex('Partner Name', 'p')
+		expect(result).toBeDefined()
+		expect(result?.file).toContain('src/content/')
+	})
+
+	test('should return template match when no collection data file has the text', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		addToTextSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 8,
+			snippet: '<h1>Welcome</h1>',
+			type: 'static',
+			normalizedText: 'welcome',
+			tag: 'h1',
+		})
+
+		const result = findInTextIndex('Welcome', 'h1')
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/pages/index.astro')
 	})
 })
 
@@ -836,6 +908,163 @@ function createMockComponent(
 		},
 	} as unknown as AstroNode
 }
+
+// ============================================================================
+// Content Collection Image Indexing Tests
+// ============================================================================
+
+withTempDir('content collection image indexing', (getCtx) => {
+	test('should index images from JSON data files', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/content/people')
+		await ctx.writeFile(
+			'src/content/people/alice.json',
+			'{\n  "name": "Alice",\n  "image": "/assets/alice.webp"\n}',
+		)
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/assets/alice.webp')
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/content/people/alice.json')
+	})
+
+	test('should index images from YAML data files', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/content/config')
+		await ctx.writeFile(
+			'src/content/config/settings.yaml',
+			'logo: /images/logo.png\nfavicon: /images/favicon.ico',
+		)
+
+		await initializeSearchIndex()
+
+		const logoResult = findInImageIndex('/images/logo.png')
+		expect(logoResult).toBeDefined()
+		expect(logoResult?.file).toBe('src/content/config/settings.yaml')
+
+		const faviconResult = findInImageIndex('/images/favicon.ico')
+		expect(faviconResult).toBeDefined()
+		expect(faviconResult?.file).toBe('src/content/config/settings.yaml')
+	})
+
+	test('should index images from MD frontmatter', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/content/blog')
+		await ctx.writeFile(
+			'src/content/blog/post.md',
+			'---\ntitle: Post\nimage: /photos/hero.jpg\n---\nBody',
+		)
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/photos/hero.jpg')
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/content/blog/post.md')
+	})
+
+	test('should NOT index non-image values from data files', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/content/people')
+		await ctx.writeFile(
+			'src/content/people/alice.json',
+			'{\n  "name": "Alice",\n  "email": "alice@test.com"\n}',
+		)
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('alice@test.com')
+		expect(result).toBeUndefined()
+	})
+
+	test('prefers collection data file over template when same URL exists in both', async () => {
+		const ctx = getCtx()
+
+		// Same image URL in a template and a collection data file
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'---',
+				'<img src="/assets/abc123-photo.webp" alt="Photo" />',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/content/news/my-post.md',
+			[
+				'---',
+				'title: My Post',
+				'image: /assets/abc123-photo.webp',
+				'---',
+				'Content.',
+			].join('\n'),
+		)
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/assets/abc123-photo.webp')
+		expect(result).not.toBeUndefined()
+		expect(result!.file).toContain('src/content/news/my-post.md')
+	})
+
+	test('prefers collection data file even when template is indexed first', async () => {
+		const ctx = getCtx()
+
+		// Template files are typically indexed first (src/pages before src/content)
+		await ctx.writeFile(
+			'src/pages/about.astro',
+			[
+				'---',
+				'---',
+				'<img src="/uploads/logo.png" alt="Logo" />',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/content/partners/acme.json',
+			JSON.stringify(
+				{
+					name: 'ACME',
+					logo: '/uploads/logo.png',
+				},
+				null,
+				2,
+			),
+		)
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/uploads/logo.png')
+		expect(result).not.toBeUndefined()
+		expect(result!.file).toContain('src/content/partners/acme.json')
+	})
+
+	test('returns template match when no collection data file has the URL', async () => {
+		const ctx = getCtx()
+
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'---',
+				'<img src="/images/static-hero.jpg" alt="Hero" />',
+			].join('\n'),
+		)
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/images/static-hero.jpg')
+		expect(result).not.toBeUndefined()
+		expect(result!.file).toContain('src/pages/index.astro')
+	})
+})
+
+// ============================================================================
+// Helper Functions for Creating Mock Data
+// ============================================================================
 
 function createMockImage(src: string, line: number): AstroNode {
 	return {

@@ -425,7 +425,7 @@ describe('streamAiChat', () => {
 		}
 
 		const callbacks: CmsAiStreamCallbacks = {
-			onToken: (token, fullText) => tokens.push({ token, fullText }),
+			onToken: (token: string, fullText: string) => tokens.push({ token, fullText }),
 		}
 
 		await streamAiChat(
@@ -462,7 +462,7 @@ describe('streamAiChat', () => {
 		}
 
 		const callbacks: CmsAiStreamCallbacks = {
-			onStatus: (status, message) => statuses.push({ status, message }),
+			onStatus: (status: string, message: string | undefined) => statuses.push({ status, message }),
 		}
 
 		await streamAiChat(
@@ -498,7 +498,7 @@ describe('streamAiChat', () => {
 		}
 
 		const callbacks: CmsAiStreamCallbacks = {
-			onAction: action => actions.push(action),
+			onAction: (action: any) => actions.push(action),
 		}
 
 		await streamAiChat(
@@ -530,7 +530,7 @@ describe('streamAiChat', () => {
 		}
 
 		const callbacks: CmsAiStreamCallbacks = {
-			onError: (error, code) => errors.push({ error, code }),
+			onError: (error: string, code: string | undefined) => errors.push({ error, code }),
 		}
 
 		await streamAiChat(
@@ -563,7 +563,7 @@ describe('streamAiChat', () => {
 		}
 
 		const callbacks: CmsAiStreamCallbacks = {
-			onDone: summary => {
+			onDone: (summary: string | undefined) => {
 				doneReceived = true
 				doneSummary = summary
 			},
@@ -586,7 +586,7 @@ describe('streamAiChat', () => {
 		}
 
 		const callbacks: CmsAiStreamCallbacks = {
-			onError: error => errors.push(error),
+			onError: (error: string) => errors.push(error),
 		}
 
 		await streamAiChat(
@@ -606,7 +606,7 @@ describe('streamAiChat', () => {
 		}
 
 		const callbacks: CmsAiStreamCallbacks = {
-			onError: error => errors.push(error),
+			onError: (error: string) => errors.push(error),
 		}
 
 		await streamAiChat(

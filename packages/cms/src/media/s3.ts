@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import type { MediaListResult, MediaStorageAdapter, MediaUploadResult } from './types'
+import { getFileExtension, mimeFromExt } from './local'
+import type { MediaFolderItem, MediaListResult, MediaStorageAdapter, MediaUploadResult } from './types'
 
 export interface S3StorageOptions {
 	bucket: string
@@ -52,15 +53,36 @@ export function createS3StorageAdapter(options: S3StorageOptions): MediaStorageA
 			const client = await getClient()
 
 			const limit = opts?.limit ?? 50
+			const folder = opts?.folder ?? ''
+
+			// Build the S3 prefix: base prefix + subfolder
+			const listPrefix = [prefix, folder].filter(Boolean).join('/')
+			const delimiterPrefix = listPrefix ? `${listPrefix}/` : ''
+
 			const command = new ListObjectsV2Command({
 				Bucket: bucket,
-				Prefix: prefix,
+				Prefix: delimiterPrefix,
+				Delimiter: '/',
 				MaxKeys: limit + 1,
 				...(opts?.cursor ? { ContinuationToken: opts.cursor } : {}),
 			})
 
 			const result = await client.send(command)
-			const contents = result.Contents ?? []
+
+			// Extract subfolders from CommonPrefixes
+			const folders: MediaFolderItem[] = (result.CommonPrefixes ?? []).map((cp: any) => {
+				const fullPrefix = (cp.Prefix as string).replace(/\/$/, '')
+				const name = fullPrefix.split('/').pop() ?? fullPrefix
+				const relativePath = prefix ? fullPrefix.slice(prefix.length + 1) : fullPrefix
+				return { name, path: relativePath }
+			})
+
+			// Extract files (exclude folder marker keys)
+			const contents = (result.Contents ?? []).filter((obj: any) => {
+				const key = obj.Key as string
+				return key !== delimiterPrefix
+			})
+
 			const hasMore = contents.length > limit
 			const items = contents.slice(0, limit).map((obj: any) => {
 				const key = obj.Key as string
@@ -69,26 +91,30 @@ export function createS3StorageAdapter(options: S3StorageOptions): MediaStorageA
 					id: key,
 					url: getUrl(key),
 					filename,
-					contentType: 'application/octet-stream',
+					contentType: mimeFromExt(path.extname(key).toLowerCase()),
 					uploadedAt: obj.LastModified?.toISOString(),
+					folder: folder || undefined,
 				}
 			})
 
 			return {
 				items,
+				folders,
 				hasMore,
 				cursor: hasMore ? result.NextContinuationToken : undefined,
 			} satisfies MediaListResult
 		},
 
-		async upload(file, filename, contentType) {
+		async upload(file, filename, contentType, uploadOpts) {
 			const { PutObjectCommand } = await loadS3()
 			const client = await getClient()
 
 			const ext = getFileExtension(filename)
 			const uuid = randomUUID()
 			const newFilename = `${uuid}${ext ? `.${ext}` : ''}`
-			const key = prefix ? `${prefix}/${newFilename}` : newFilename
+			const folder = uploadOpts?.folder ?? ''
+			const keyParts = [prefix, folder, newFilename].filter(Boolean)
+			const key = keyParts.join('/')
 
 			const command = new PutObjectCommand({
 				Bucket: bucket,
@@ -125,9 +151,4 @@ export function createS3StorageAdapter(options: S3StorageOptions): MediaStorageA
 			}
 		},
 	}
-}
-
-function getFileExtension(filename: string): string {
-	const parts = filename.split('.')
-	return parts.length > 1 ? (parts.pop()?.toLowerCase() ?? '') : ''
 }

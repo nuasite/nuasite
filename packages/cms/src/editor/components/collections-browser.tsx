@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals'
-import { useMemo } from 'preact/hooks'
+import { useMemo, useState } from 'preact/hooks'
 import { deleteMarkdownPage } from '../markdown-api'
 import {
 	closeCollectionsBrowser,
@@ -18,6 +18,8 @@ import { CloseButton, ModalBackdrop, ModalHeader } from './modal-shell'
 const deletingEntry = signal<string | null>(null)
 const confirmDeleteSlug = signal<string | null>(null)
 
+const EMPTY_ENTRIES: never[] = []
+
 export function CollectionsBrowser() {
 	const visible = isCollectionsBrowserOpen.value
 	const selected = selectedBrowserCollection.value
@@ -28,6 +30,16 @@ export function CollectionsBrowser() {
 		return Object.values(collectionDefinitions).sort((a, b) => a.label.localeCompare(b.label))
 	}, [collectionDefinitions])
 
+	const [search, setSearch] = useState('')
+	const selectedDef = selected ? collectionDefinitions[selected] : undefined
+	const entries = selectedDef?.entries ?? EMPTY_ENTRIES
+
+	const filteredEntries = useMemo(() => {
+		if (!search) return entries
+		const q = search.toLowerCase()
+		return entries.filter(e => (e.title || '').toLowerCase().includes(q) || e.slug.toLowerCase().includes(q))
+	}, [entries, search])
+
 	if (!visible) return null
 
 	const handleClose = () => {
@@ -36,10 +48,8 @@ export function CollectionsBrowser() {
 
 	// View 2: Entry list for selected collection
 	if (selected) {
-		const def = collectionDefinitions[selected]
+		const def = selectedDef
 		if (!def) return null
-
-		const entries = def.entries ?? []
 
 		const handleEntryClick = (slug: string, sourcePath: string, pathname?: string) => {
 			closeCollectionsBrowser()
@@ -102,7 +112,10 @@ export function CollectionsBrowser() {
 					<div class="flex items-center gap-3">
 						<button
 							type="button"
-							onClick={() => selectBrowserCollection(null)}
+							onClick={() => {
+								setSearch('')
+								selectBrowserCollection(null)
+							}}
 							class="text-white/50 hover:text-white p-1 hover:bg-white/10 rounded-full transition-colors"
 							data-cms-ui
 						>
@@ -123,14 +136,42 @@ export function CollectionsBrowser() {
 					</div>
 				</div>
 
-				{/* Entry list */}
-				<div class="p-5 space-y-1 overflow-y-auto flex-1 min-h-0">
+				{entries.length > 0 && (
+					<div class="px-5 pt-4 pb-2 shrink-0">
+						<div class="relative">
+							<svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<circle cx="11" cy="11" r="8" />
+								<path stroke-linecap="round" stroke-width="2" d="m21 21-4.3-4.3" />
+							</svg>
+							<input
+								type="text"
+								placeholder="Search..."
+								value={search}
+								onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+								class="w-full pl-9 pr-3 py-2 text-sm text-white bg-white/5 border border-white/10 rounded-cms-lg placeholder:text-white/30 focus:outline-none focus:border-white/20"
+								data-cms-ui
+							/>
+						</div>
+						<div class="text-white/30 text-xs mt-2">
+							{search
+								? `${filteredEntries.length} of ${entries.length}`
+								: `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`}
+						</div>
+					</div>
+				)}
+
+				<div class="px-5 pb-5 space-y-1 overflow-y-auto flex-1 min-h-0">
 					{entries.length === 0 && (
 						<div class="text-white/50 text-sm text-center py-8">
 							No entries yet. Click "Add New" to create one.
 						</div>
 					)}
-					{entries.map((entry) => (
+					{search && filteredEntries.length === 0 && entries.length > 0 && (
+						<div class="text-white/50 text-sm text-center py-8">
+							No matches for "{search}"
+						</div>
+					)}
+					{filteredEntries.map((entry) => (
 						<div key={entry.slug} class="relative" data-cms-ui>
 							{confirmDeleteSlug.value === entry.slug
 								? (

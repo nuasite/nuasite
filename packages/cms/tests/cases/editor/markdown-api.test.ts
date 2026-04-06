@@ -271,7 +271,7 @@ describe('fetchMediaLibrary', () => {
 			return new Response(JSON.stringify({ items: [], hasMore: false }), { status: 200 })
 		}
 
-		await fetchMediaLibrary(mockConfig, 'cursor123')
+		await fetchMediaLibrary(mockConfig, { cursor: 'cursor123' })
 
 		expect(fetchedUrl).toBe('/_nua/cms/media/list?limit=50&cursor=cursor123')
 	})
@@ -283,7 +283,7 @@ describe('fetchMediaLibrary', () => {
 			return new Response(JSON.stringify({ items: [], hasMore: false }), { status: 200 })
 		}
 
-		await fetchMediaLibrary(mockConfig, undefined, 100)
+		await fetchMediaLibrary(mockConfig, { limit: 100 })
 
 		expect(fetchedUrl).toBe('/_nua/cms/media/list?limit=100')
 	})
@@ -403,7 +403,7 @@ describe('uploadMedia', () => {
 		}
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
-		await uploadMedia(mockConfig, file, percent => progressValues.push(percent))
+		await uploadMedia(mockConfig, file, (percent: number) => progressValues.push(percent))
 
 		expect(progressValues).toContain(50)
 		expect(progressValues).toContain(100)

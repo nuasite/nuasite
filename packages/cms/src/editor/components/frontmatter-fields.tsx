@@ -1,7 +1,36 @@
-import { useState } from 'preact/hooks'
-import { markdownEditorState, openMediaLibraryWithCallback, updateMarkdownFrontmatter } from '../signals'
+import type { ComponentChildren } from 'preact'
+import { useEffect, useState } from 'preact/hooks'
+import { renameMarkdownPage } from '../markdown-api'
+import {
+	config,
+	manifest,
+	markdownEditorState,
+	openMediaLibraryWithCallback,
+	showToast,
+	updateMarkdownFrontmatter,
+	updateMarkdownPageMeta,
+} from '../signals'
 import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
-import { ComboBoxField, ImageField, NumberField, TextField, ToggleField } from './fields'
+import { ComboBoxField, ImageField, MultiSelectField, NumberField, TextField, ToggleField } from './fields'
+import { groupFields } from './frontmatter-sidebar'
+
+function isArrayOfObjects(value: unknown[]): value is Record<string, unknown>[] {
+	return value.length > 0 && typeof value[0] === 'object' && value[0] !== null
+}
+
+function FieldGroupHeader({ group, children }: { group: string | null; children: ComponentChildren }) {
+	return (
+		<>
+			{group && (
+				<div class="col-span-2 pt-2" data-cms-ui>
+					<h4 class="text-xs uppercase tracking-wider text-white/40 font-medium">{group}</h4>
+					<div class="border-t border-white/10 mt-1.5" />
+				</div>
+			)}
+			{children}
+		</>
+	)
+}
 
 // ============================================================================
 // Generic Frontmatter Field (auto-detect by value type)
@@ -18,11 +47,7 @@ export function FrontmatterField({
 	value,
 	onChange,
 }: FrontmatterFieldProps) {
-	// Format field key as label (e.g., "featuredImage" -> "Featured Image")
-	const label = fieldKey
-		.replace(/([A-Z])/g, ' $1')
-		.replace(/^./, (str) => str.toUpperCase())
-		.trim()
+	const label = formatFieldLabel(fieldKey)
 
 	// Detect field type based on value
 	const isBoolean = typeof value === 'boolean'
@@ -64,14 +89,26 @@ export function FrontmatterField({
 		)
 	}
 
-	// Array field (e.g., categories) - comma-separated input
+	// Array field (e.g., categories)
 	if (isArray) {
+		const items = value as unknown[]
+		if (isArrayOfObjects(items)) {
+			return (
+				<ArrayOfObjectsField
+					label={label}
+					items={items as Record<string, unknown>[]}
+					onChange={onChange}
+				/>
+			)
+		}
+		// Array of primitives — comma-separated input
+		const stringItems = items.map(v => typeof v === 'string' ? v : String(v))
 		return (
 			<div class="flex flex-col gap-1 col-span-2" data-cms-ui>
 				<label class="text-xs text-white/60 font-medium">{label}</label>
 				<input
 					type="text"
-					value={(value as unknown[]).join(', ')}
+					value={stringItems.join(', ')}
 					onChange={(e) => {
 						const inputValue = (e.target as HTMLInputElement).value
 						const arrayValue = inputValue
@@ -141,14 +178,19 @@ export function FrontmatterField({
 interface CreateModeFrontmatterProps {
 	page: MarkdownPageEntry
 	collectionDefinition: CollectionDefinition
+	fields?: FieldDefinition[]
 	onSlugManualEdit: () => void
 }
 
 export function CreateModeFrontmatter({
 	page,
 	collectionDefinition,
+	fields,
 	onSlugManualEdit,
 }: CreateModeFrontmatterProps) {
+	const displayFields = fields ?? collectionDefinition.fields
+	const groups = groupFields(displayFields)
+
 	return (
 		<div class="space-y-4">
 			{/* Slug field */}
@@ -181,13 +223,17 @@ export function CreateModeFrontmatter({
 
 			{/* Schema fields */}
 			<div class="grid grid-cols-2 gap-4">
-				{collectionDefinition.fields.map((field) => (
-					<SchemaFrontmatterField
-						key={field.name}
-						field={field}
-						value={page.frontmatter[field.name]}
-						onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
-					/>
+				{groups.map((group, gi) => (
+					<FieldGroupHeader key={gi} group={group.group}>
+						{group.fields.map((field) => (
+							<SchemaFrontmatterField
+								key={field.name}
+								field={field}
+								value={page.frontmatter[field.name]}
+								onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
+							/>
+						))}
+					</FieldGroupHeader>
 				))}
 			</div>
 		</div>
@@ -198,15 +244,81 @@ export function CreateModeFrontmatter({
 // Edit Mode Frontmatter — uses schema fields when available, falls back to generic
 // ============================================================================
 
+function SlugField({ page }: { page: MarkdownPageEntry }) {
+	const [localSlug, setLocalSlug] = useState(page.slug)
+	const [isRenaming, setIsRenaming] = useState(false)
+	const isDirty = localSlug !== page.slug
+
+	useEffect(() => {
+		setLocalSlug(page.slug)
+	}, [page.slug])
+
+	const handleRename = async () => {
+		if (!isDirty || isRenaming) return
+		const trimmed = localSlug.trim()
+		if (!trimmed) {
+			setLocalSlug(page.slug)
+			return
+		}
+		setIsRenaming(true)
+		try {
+			const result = await renameMarkdownPage(config.value, page.filePath, trimmed)
+			if (result.success && result.newSlug && result.newFilePath) {
+				updateMarkdownPageMeta({ slug: result.newSlug, filePath: result.newFilePath })
+				setLocalSlug(result.newSlug)
+				showToast('Slug updated', 'success')
+			} else {
+				showToast(result.error || 'Failed to rename', 'error')
+				setLocalSlug(page.slug)
+			}
+		} catch {
+			showToast('Failed to rename', 'error')
+			setLocalSlug(page.slug)
+		} finally {
+			setIsRenaming(false)
+		}
+	}
+
+	return (
+		<div>
+			<label class="block text-xs font-medium text-white/70 mb-1.5">
+				URL Slug
+			</label>
+			<div class="flex gap-2">
+				<input
+					type="text"
+					value={localSlug}
+					onInput={(e) => setLocalSlug((e.target as HTMLInputElement).value)}
+					onBlur={handleRename}
+					onKeyDown={(e) => {
+						if (e.key === 'Enter') {
+							e.preventDefault()
+							;(e.target as HTMLInputElement).blur()
+						}
+					}}
+					class={`flex-1 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white focus:outline-none focus:border-white/40 ${
+						isDirty ? 'border-cms-primary' : 'border-white/20'
+					}`}
+					disabled={isRenaming}
+					data-cms-ui
+				/>
+			</div>
+		</div>
+	)
+}
+
 interface EditModeFrontmatterProps {
 	page: MarkdownPageEntry
 	collectionDefinition?: CollectionDefinition
+	fields?: FieldDefinition[]
 }
 
 export function EditModeFrontmatter({
 	page,
 	collectionDefinition,
+	fields,
 }: EditModeFrontmatterProps) {
+	const displayFields = fields ?? collectionDefinition?.fields ?? []
 	// Collect schema field names for filtering extra keys
 	const schemaFieldNames = new Set(
 		collectionDefinition?.fields.map((f) => f.name) ?? [],
@@ -215,34 +327,27 @@ export function EditModeFrontmatter({
 	const extraKeys = Object.keys(page.frontmatter).filter(
 		(key) => !schemaFieldNames.has(key),
 	)
+	const groups = groupFields(displayFields)
 
 	return (
 		<div class="space-y-4">
-			{/* Slug field (always disabled in edit mode) */}
-			<div>
-				<label class="block text-xs font-medium text-white/70 mb-1.5">
-					URL Slug
-				</label>
-				<input
-					type="text"
-					value={page.slug}
-					class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white/50 focus:outline-none cursor-not-allowed"
-					disabled
-					data-cms-ui
-				/>
-			</div>
+			{/* Slug field */}
+			<SlugField page={page} />
 			<div class="grid grid-cols-2 gap-4">
 				{collectionDefinition
 					? (
 						<>
-							{/* Schema-aware fields */}
-							{collectionDefinition.fields.map((field) => (
-								<SchemaFrontmatterField
-									key={field.name}
-									field={field}
-									value={page.frontmatter[field.name]}
-									onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
-								/>
+							{groups.map((group, gi) => (
+								<FieldGroupHeader key={gi} group={group.group}>
+									{group.fields.map((field) => (
+										<SchemaFrontmatterField
+											key={field.name}
+											field={field}
+											value={page.frontmatter[field.name]}
+											onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
+										/>
+									))}
+								</FieldGroupHeader>
 							))}
 							{/* Extra fields not in schema */}
 							{extraKeys.map((key) => (
@@ -269,6 +374,20 @@ export function EditModeFrontmatter({
 			</div>
 		</div>
 	)
+}
+
+// ============================================================================
+// Collection Reference Helpers
+// ============================================================================
+
+function getCollectionEntryOptions(collectionName?: string): Array<{ value: string; label: string }> {
+	if (!collectionName) return []
+	const def = manifest.value.collectionDefinitions?.[collectionName]
+	if (!def?.entries) return []
+	return def.entries.map(e => ({
+		value: e.slug,
+		label: e.title ?? e.slug,
+	}))
 }
 
 // ============================================================================
@@ -376,33 +495,55 @@ export function SchemaFrontmatterField({
 				/>
 			)
 
+		case 'reference': {
+			const refOptions = getCollectionEntryOptions(field.collection)
+			return (
+				<ComboBoxField
+					label={label}
+					value={(value as string) ?? ''}
+					placeholder={`Select ${label.toLowerCase()}...`}
+					options={refOptions}
+					onChange={(v) => onChange(v)}
+				/>
+			)
+		}
+
 		case 'array': {
 			const items = Array.isArray(value) ? value : []
+			// Array of references — show multiselect with collection entries
+			if (field.itemType === 'reference' && field.collection) {
+				const refEntries = getCollectionEntryOptions(field.collection)
+				return (
+					<div class="col-span-2" data-cms-ui>
+						<MultiSelectField
+							label={label}
+							selected={items.map(String)}
+							options={refEntries}
+							onChange={(v) => onChange(v)}
+						/>
+					</div>
+				)
+			}
 			if (field.options && field.options.length > 0) {
 				return (
-					<div class="col-span-2 space-y-1.5" data-cms-ui>
-						<label class="text-xs text-white/60 font-medium">{label}</label>
-						<div class="space-y-2">
-							{field.options.map((opt) => (
-								<label key={opt} class="flex items-center gap-2 cursor-pointer">
-									<input
-										type="checkbox"
-										checked={items.includes(opt)}
-										onChange={(e) => {
-											if ((e.target as HTMLInputElement).checked) {
-												onChange([...items, opt])
-											} else {
-												onChange(items.filter((i: unknown) => i !== opt))
-											}
-										}}
-										class="rounded border-white/20 bg-white/10 text-cms-primary focus:ring-cms-primary"
-										data-cms-ui
-									/>
-									<span class="text-sm text-white/80">{opt}</span>
-								</label>
-							))}
-						</div>
+					<div class="col-span-2" data-cms-ui>
+						<MultiSelectField
+							label={label}
+							selected={items.map(String)}
+							options={field.options}
+							onChange={(v) => onChange(v)}
+						/>
 					</div>
+				)
+			}
+			if (isArrayOfObjects(items)) {
+				return (
+					<ArrayOfObjectsField
+						label={label}
+						items={items as Record<string, unknown>[]}
+						onChange={onChange}
+						itemFields={field.fields}
+					/>
 				)
 			}
 			return (
@@ -410,7 +551,7 @@ export function SchemaFrontmatterField({
 					<label class="text-xs text-white/60 font-medium">{label}</label>
 					<input
 						type="text"
-						value={(items as unknown[]).join(', ')}
+						value={items.map(v => typeof v === 'string' ? v : String(v)).join(', ')}
 						onInput={(e) => {
 							const inputValue = (e.target as HTMLInputElement).value
 							const arrayValue = inputValue
@@ -467,6 +608,85 @@ export function SchemaFrontmatterField({
 				</div>
 			)
 	}
+}
+
+// ============================================================================
+// Array of Objects Field — renders each item as nested key/value fields
+// ============================================================================
+
+interface ArrayOfObjectsFieldProps {
+	label: string
+	items: Record<string, unknown>[]
+	onChange: (value: unknown) => void
+	itemFields?: FieldDefinition[]
+}
+
+function ArrayOfObjectsField({ label, items, onChange, itemFields }: ArrayOfObjectsFieldProps) {
+	const handleItemChange = (index: number, newItem: Record<string, unknown>) => {
+		const updated = [...items]
+		updated[index] = newItem
+		onChange(updated)
+	}
+
+	const handleRemoveItem = (index: number) => {
+		onChange(items.filter((_, i) => i !== index))
+	}
+
+	const handleAddItem = () => {
+		// Use the first item's keys as template
+		const template = items.length > 0
+			? Object.fromEntries(Object.keys(items[0]!).map(k => [k, '']))
+			: { name: '' }
+		onChange([...items, template])
+	}
+
+	return (
+		<div class="flex flex-col gap-2 col-span-2" data-cms-ui>
+			<label class="text-xs text-white/60 font-medium">{label}</label>
+			<div class="space-y-2">
+				{items.map((item, index) => (
+					<div key={index} class="flex items-start gap-2 pl-3 border-l-2 border-white/10">
+						<div class="flex-1 min-w-0 space-y-1.5">
+							{itemFields
+								? itemFields.map((subField) => (
+									<SchemaFrontmatterField
+										key={subField.name}
+										field={subField}
+										value={item[subField.name]}
+										onChange={(newValue) => handleItemChange(index, { ...item, [subField.name]: newValue })}
+									/>
+								))
+								: Object.entries(item).map(([key, val]) => (
+									<FrontmatterField
+										key={key}
+										fieldKey={key}
+										value={val}
+										onChange={(newValue) => handleItemChange(index, { ...item, [key]: newValue })}
+									/>
+								))}
+						</div>
+						<button
+							type="button"
+							onClick={() => handleRemoveItem(index)}
+							class="p-1 mt-1 text-white/30 hover:text-red-400 transition-colors shrink-0"
+							title="Remove item"
+							data-cms-ui
+						>
+							<RemoveIcon />
+						</button>
+					</div>
+				))}
+			</div>
+			<button
+				type="button"
+				onClick={handleAddItem}
+				class="self-start px-3 py-1 text-xs text-white/50 hover:text-white border border-white/10 hover:border-white/20 rounded-cms-sm transition-colors"
+				data-cms-ui
+			>
+				+ Add {label.toLowerCase()}
+			</button>
+		</div>
+	)
 }
 
 // ============================================================================
@@ -622,17 +842,4 @@ export function getPlaceholder(field: FieldDefinition): string {
 		default:
 			return `Enter ${formatFieldLabel(field.name).toLowerCase()}...`
 	}
-}
-
-/**
- * Slugify text for URL paths. Mirrors the server-side slugify in utils.ts.
- * Preserves `/` for nested paths, collapses whitespace/underscores to hyphens.
- */
-export function slugify(text: string): string {
-	return text
-		.toLowerCase()
-		.trim()
-		.replace(/[^\w\s\-/]/g, '')
-		.replace(/[\s_]+/g, '-')
-		.replace(/^[-/]+|[-/]+$/g, '')
 }

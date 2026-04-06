@@ -2,7 +2,8 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'yaml'
 import { getProjectRoot } from '../config'
-import { acquireFileLock } from '../utils'
+import type { ComponentDefinition } from '../types'
+import { acquireFileLock, isNodeError, relativeImportPath, resolveAndValidatePath, slugify } from '../utils'
 
 export interface BlogFrontmatter {
 	title: string
@@ -21,6 +22,8 @@ export interface CreateMarkdownRequest {
 	slug: string
 	frontmatter?: Partial<BlogFrontmatter>
 	content?: string
+	/** File extension override for data collections (e.g. 'json', 'yaml') */
+	fileExtension?: string
 }
 
 export interface CreateMarkdownResponse {
@@ -62,8 +65,17 @@ export async function handleGetMarkdownContent(
 	try {
 		const fullPath = resolveAndValidatePath(filePath)
 		const raw = await fs.readFile(fullPath, 'utf-8')
-		const { frontmatter, content } = parseFrontmatter(raw)
 
+		if (isDataFile(filePath)) {
+			const data = filePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)
+			return {
+				content: '',
+				frontmatter: (data && typeof data === 'object' ? data : {}) as BlogFrontmatter,
+				filePath,
+			}
+		}
+
+		const { frontmatter, content } = parseFrontmatter(raw)
 		return {
 			content,
 			frontmatter: frontmatter as BlogFrontmatter,
@@ -76,23 +88,40 @@ export async function handleGetMarkdownContent(
 
 export async function handleUpdateMarkdown(
 	request: UpdateMarkdownRequest,
+	componentDefinitions?: Record<string, ComponentDefinition>,
 ): Promise<UpdateMarkdownResponse> {
 	try {
 		const fullPath = resolveAndValidatePath(request.filePath)
 		const release = await acquireFileLock(fullPath)
 		try {
-			const raw = await fs.readFile(fullPath, 'utf-8')
-			const existing = parseFrontmatter(raw)
+			if (isDataFile(request.filePath)) {
+				// Data collections: merge and write JSON/YAML directly
+				const raw = await fs.readFile(fullPath, 'utf-8')
+				const existing = request.filePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)
+				const merged = { ...(existing ?? {}), ...request.frontmatter }
 
-			const mergedFrontmatter: BlogFrontmatter = {
-				...(existing.frontmatter as BlogFrontmatter),
-				...request.frontmatter,
+				const output = request.filePath.endsWith('.json')
+					? JSON.stringify(merged, null, 2) + '\n'
+					: yaml.stringify(merged)
+				await fs.writeFile(fullPath, output, 'utf-8')
+			} else {
+				const raw = await fs.readFile(fullPath, 'utf-8')
+				const existing = parseFrontmatter(raw)
+
+				const mergedFrontmatter: BlogFrontmatter = {
+					...(existing.frontmatter as BlogFrontmatter),
+					...request.frontmatter,
+				}
+
+				let finalContent = request.content ?? existing.content
+
+				if (request.filePath.endsWith('.mdx') && componentDefinitions) {
+					finalContent = ensureMdxImports(finalContent, request.filePath, componentDefinitions)
+				}
+
+				const markdownContent = serializeFrontmatter(mergedFrontmatter, finalContent)
+				await fs.writeFile(fullPath, markdownContent, 'utf-8')
 			}
-
-			const finalContent = request.content ?? existing.content
-			const markdownContent = serializeFrontmatter(mergedFrontmatter, finalContent)
-
-			await fs.writeFile(fullPath, markdownContent, 'utf-8')
 
 			return { success: true }
 		} finally {
@@ -113,22 +142,35 @@ export async function handleCreateMarkdown(
 	if (!normalizedSlug) {
 		return { success: false, error: 'Could not generate a valid slug from the provided title/slug' }
 	}
-	const filePath = `src/content/${collection}/${normalizedSlug}.md`
+
+	const allowedExtensions = ['md', 'mdx', 'json', 'yaml', 'yml']
+	const ext = request.fileExtension ?? 'md'
+	if (!allowedExtensions.includes(ext)) {
+		return { success: false, error: `Invalid file extension "${ext}". Allowed: ${allowedExtensions.join(', ')}` }
+	}
+	const isData = ext === 'json' || ext === 'yaml' || ext === 'yml'
+	const filePath = `src/content/${collection}/${normalizedSlug}.${ext}`
 	const fullPath = resolveAndValidatePath(filePath)
 
-	const fullFrontmatter: BlogFrontmatter = {
-		title,
-		date: new Date().toISOString().split('T')[0]!,
-		draft: true,
-		...frontmatter,
+	let fileContent: string
+	if (isData) {
+		const data = { ...frontmatter }
+		fileContent = ext === 'json'
+			? JSON.stringify(data, null, 2) + '\n'
+			: yaml.stringify(data)
+	} else {
+		const fullFrontmatter: BlogFrontmatter = {
+			title,
+			date: new Date().toISOString().split('T')[0]!,
+			draft: true,
+			...frontmatter,
+		}
+		fileContent = serializeFrontmatter(fullFrontmatter, content)
 	}
-
-	const markdownContent = serializeFrontmatter(fullFrontmatter, content)
 
 	try {
 		await fs.mkdir(path.dirname(fullPath), { recursive: true })
-		// Use 'wx' flag for atomic exclusive create — fails if file already exists
-		await fs.writeFile(fullPath, markdownContent, { encoding: 'utf-8', flag: 'wx' })
+		await fs.writeFile(fullPath, fileContent, { encoding: 'utf-8', flag: 'wx' })
 
 		return {
 			success: true,
@@ -164,27 +206,74 @@ export async function handleDeleteMarkdown(
 	}
 }
 
+export interface RenameMarkdownRequest {
+	filePath: string
+	newSlug: string
+}
+
+export interface RenameMarkdownResponse {
+	success: boolean
+	newFilePath?: string
+	newSlug?: string
+	error?: string
+}
+
+export async function handleRenameMarkdown(
+	request: RenameMarkdownRequest,
+): Promise<RenameMarkdownResponse> {
+	try {
+		const fullPath = resolveAndValidatePath(request.filePath)
+		const normalizedSlug = slugify(request.newSlug)
+		if (!normalizedSlug) {
+			return { success: false, error: 'Invalid slug' }
+		}
+
+		const dir = path.dirname(fullPath)
+		const ext = path.extname(fullPath)
+		const newFullPath = path.join(dir, `${normalizedSlug}${ext}`)
+
+		if (fullPath === newFullPath) {
+			return { success: true, newFilePath: request.filePath, newSlug: normalizedSlug }
+		}
+
+		// Acquire lock to prevent concurrent access during rename
+		const release = await acquireFileLock(fullPath)
+		try {
+			// Use link+unlink for atomic rename that fails if target exists
+			try {
+				await fs.link(fullPath, newFullPath)
+			} catch (err) {
+				if (isNodeError(err, 'EEXIST')) {
+					return { success: false, error: `File already exists: ${normalizedSlug}${ext}` }
+				}
+				throw err
+			}
+			try {
+				await fs.unlink(fullPath)
+			} catch (err) {
+				// Clean up the new file if unlink of original fails
+				await fs.unlink(newFullPath).catch(() => {})
+				throw err
+			}
+		} finally {
+			release()
+		}
+
+		// Build project-relative path (normalize to forward slashes)
+		const projectRoot = getProjectRoot()
+		const newFilePath = path.relative(projectRoot, newFullPath).split(path.sep).join('/')
+
+		return { success: true, newFilePath, newSlug: normalizedSlug }
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		return { success: false, error: message }
+	}
+}
+
 // --- Internal helpers ---
 
-/**
- * Resolve a user-provided file path and ensure it stays within the project root.
- * Throws if the resolved path escapes the project boundary.
- */
-function resolveAndValidatePath(filePath: string): string {
-	const projectRoot = getProjectRoot()
-	const resolvedRoot = path.resolve(projectRoot)
-	// Absolute filesystem paths (e.g. /Users/...) stay intact;
-	// project-relative paths with a leading slash (e.g. /src/content/...) get it stripped
-	const isAbsoluteFs = filePath.startsWith(resolvedRoot)
-	const normalizedPath = (!isAbsoluteFs && filePath.startsWith('/')) ? filePath.slice(1) : filePath
-	const fullPath = path.isAbsolute(normalizedPath) ? path.resolve(normalizedPath) : path.resolve(projectRoot, normalizedPath)
-
-	// Ensure the resolved path is within the project root
-	if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
-		throw new Error(`Path traversal detected: ${filePath}`)
-	}
-
-	return fullPath
+function isDataFile(filePath: string): boolean {
+	return filePath.endsWith('.json') || filePath.endsWith('.yaml') || filePath.endsWith('.yml')
 }
 
 function parseFrontmatter(raw: string): { frontmatter: Record<string, unknown>; content: string } {
@@ -224,11 +313,77 @@ function serializeFrontmatter(frontmatter: Record<string, unknown>, content: str
 	return `---\n${yamlStr}\n---\n${content}`
 }
 
-function slugify(text: string): string {
-	return text
-		.toLowerCase()
-		.trim()
-		.replace(/[^\w\s-]/g, '')
-		.replace(/[\s_-]+/g, '-')
-		.replace(/^-+|-+$/g, '')
+/**
+ * Ensure MDX content has import statements for all components used in the body.
+ * Scans for `<ComponentName` tags, checks for existing imports, and prepends missing ones.
+ */
+/** @internal Exported for testing */
+export function ensureMdxImports(
+	content: string,
+	filePath: string,
+	componentDefinitions: Record<string, ComponentDefinition>,
+): string {
+	// Find all component-like tags (capitalized names)
+	const usedComponents = new Set<string>()
+	const tagRegex = /<([A-Z][A-Za-z0-9]*)\b/g
+	let match
+	while ((match = tagRegex.exec(content)) !== null) {
+		if (match[1]) usedComponents.add(match[1])
+	}
+	if (usedComponents.size === 0) return content
+
+	// Find already-imported names and track the last import position in a single pass
+	const importedNames = new Set<string>()
+	const importLineRegex = /^import\s+(.+)\s+from\s+/gm
+	let lastImportEnd = -1
+	while ((match = importLineRegex.exec(content)) !== null) {
+		lastImportEnd = match.index + match[0].length
+		// Advance past the `from '...'` portion to find the true line end
+		const fromRest = content.slice(lastImportEnd)
+		const lineEnd = fromRest.indexOf('\n')
+		if (lineEnd >= 0) lastImportEnd += lineEnd
+		else lastImportEnd = content.length
+
+		const clause = match[1]!
+		// Extract named imports from braces: { A, B as C }
+		const braceMatch = clause.match(/\{([^}]+)\}/)
+		if (braceMatch?.[1]) {
+			for (const name of braceMatch[1].split(',')) {
+				const parts = name.trim().split(/\s+as\s+/)
+				const imported = (parts[1] ?? parts[0])?.trim()
+				if (imported) importedNames.add(imported)
+			}
+		}
+		// Extract default import and namespace import (* as X)
+		const withoutBraces = clause.replace(/\{[^}]*\}/, '').replace(/,/g, ' ').trim()
+		for (const token of withoutBraces.split(/\s+/)) {
+			if (token === '*' || token === 'as' || token === '') continue
+			importedNames.add(token)
+		}
+	}
+
+	const root = getProjectRoot()
+	const mdxFullPath = path.join(root, filePath)
+	const missingImports: string[] = []
+
+	for (const name of usedComponents) {
+		if (importedNames.has(name)) continue
+		const def = componentDefinitions[name]
+		if (!def) continue
+
+		const componentAbsPath = path.join(root, def.file)
+		const rel = relativeImportPath(mdxFullPath, componentAbsPath)
+		missingImports.push(`import ${name} from '${rel}'`)
+	}
+
+	if (missingImports.length === 0) return content
+
+	// Place after any existing import block, or at the top
+	const importBlock = missingImports.join('\n')
+
+	if (lastImportEnd >= 0) {
+		return content.slice(0, lastImportEnd) + '\n' + importBlock + content.slice(lastImportEnd)
+	}
+
+	return importBlock + '\n\n' + content
 }

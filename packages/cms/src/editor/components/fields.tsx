@@ -80,9 +80,30 @@ export interface ImageFieldProps {
 }
 
 export function ImageField({ label, value, placeholder, onChange, onBrowse, isDirty, onReset }: ImageFieldProps) {
+	const hasImage = !!value && value.length > 0
+
 	return (
 		<div class="space-y-1.5">
 			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
+			{hasImage && (
+				<div
+					class="relative w-full h-24 rounded-cms-sm overflow-hidden bg-white/5 border border-white/10 cursor-pointer group"
+					onClick={onBrowse}
+					data-cms-ui
+				>
+					<img
+						src={value}
+						alt={label}
+						class="w-full h-full object-cover"
+						onError={(e) => {
+							;(e.target as HTMLImageElement).style.display = 'none'
+						}}
+					/>
+					<div class="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+						<span class="text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Change</span>
+					</div>
+				</div>
+			)}
 			<div class="flex gap-2">
 				<input
 					type="text"
@@ -428,6 +449,160 @@ export function ComboBoxField({ label, value, placeholder, options, onChange, is
 							)}
 						</button>
 					))}
+				</div>
+			)}
+		</div>
+	)
+}
+
+// ============================================================================
+// MultiSelect Field (searchable checkbox list with selected items as pills)
+// ============================================================================
+
+export interface MultiSelectFieldProps {
+	label: string
+	selected: string[]
+	options: string[] | Array<{ value: string; label: string }>
+	onChange: (selected: string[]) => void
+	isDirty?: boolean
+	onReset?: () => void
+}
+
+interface NormalizedOption {
+	value: string
+	label: string
+}
+
+export function MultiSelectField({ label, selected, options, onChange, isDirty, onReset }: MultiSelectFieldProps) {
+	const [query, setQuery] = useState('')
+	const [isOpen, setIsOpen] = useState(false)
+	const inputRef = useRef<HTMLInputElement>(null)
+	const containerRef = useRef<HTMLDivElement>(null)
+
+	const normalizedOptions = useMemo<NormalizedOption[]>(() => options.map(o => typeof o === 'string' ? { value: o, label: o } : o), [options])
+
+	const labelMap = useMemo(() => {
+		const map = new Map<string, string>()
+		for (const o of normalizedOptions) map.set(o.value, o.label)
+		return map
+	}, [normalizedOptions])
+
+	const filtered = useMemo(() => {
+		if (!query) return normalizedOptions
+		const q = query.toLowerCase()
+		return normalizedOptions.filter(o => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q))
+	}, [query, normalizedOptions])
+
+	const toggleOption = useCallback((value: string) => {
+		if (selected.includes(value)) {
+			onChange(selected.filter(s => s !== value))
+		} else {
+			onChange([...selected, value])
+		}
+	}, [selected, onChange])
+
+	// Close on outside click
+	useEffect(() => {
+		if (!isOpen) return
+		const handler = (e: MouseEvent) => {
+			if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+				setIsOpen(false)
+			}
+		}
+		document.addEventListener('mousedown', handler)
+		return () => document.removeEventListener('mousedown', handler)
+	}, [isOpen])
+
+	return (
+		<div class="space-y-1.5 relative" ref={containerRef} data-cms-ui>
+			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
+
+			{/* Selected pills */}
+			{selected.length > 0 && (
+				<div class="flex flex-wrap gap-1.5">
+					{selected.map(val => (
+						<span
+							key={val}
+							class="inline-flex items-center gap-1 px-2 py-0.5 bg-cms-primary/20 text-cms-primary text-xs rounded-full"
+						>
+							{labelMap.get(val) ?? val}
+							<button
+								type="button"
+								onClick={() => toggleOption(val)}
+								class="text-cms-primary/60 hover:text-cms-primary transition-colors cursor-pointer"
+								data-cms-ui
+							>
+								<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+								</svg>
+							</button>
+						</span>
+					))}
+				</div>
+			)}
+
+			{/* Search input */}
+			<input
+				ref={inputRef}
+				type="text"
+				value={query}
+				placeholder={selected.length > 0 ? 'Search to add more...' : 'Search options...'}
+				onInput={(e) => {
+					setQuery((e.target as HTMLInputElement).value)
+					setIsOpen(true)
+				}}
+				onFocus={() => setIsOpen(true)}
+				autocomplete="off"
+				class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-colors"
+				data-cms-ui
+			/>
+
+			{/* Dropdown */}
+			{isOpen && (
+				<div
+					class="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-cms-dark border border-white/15 rounded-cms-sm shadow-lg"
+					data-cms-ui
+				>
+					{filtered.length === 0
+						? <div class="px-3 py-2 text-xs text-white/40">No options found</div>
+						: filtered.map(opt => {
+							const isSelected = selected.includes(opt.value)
+							return (
+								<button
+									key={opt.value}
+									type="button"
+									onMouseDown={(e) => {
+										e.preventDefault()
+										toggleOption(opt.value)
+									}}
+									class={cn(
+										'w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer flex items-center gap-2',
+										isSelected
+											? 'bg-cms-primary/10 text-white'
+											: 'text-white/70 hover:bg-white/10 hover:text-white',
+									)}
+									data-cms-ui
+								>
+									<span
+										class={cn(
+											'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+											isSelected
+												? 'bg-cms-primary border-cms-primary'
+												: 'border-white/30 bg-white/5',
+										)}
+									>
+										{isSelected && (
+											<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+											</svg>
+										)}
+									</span>
+									<span class="truncate font-medium">
+										{query ? <HighlightMatch text={opt.label} query={query} /> : opt.label}
+									</span>
+								</button>
+							)
+						})}
 				</div>
 			)}
 		</div>

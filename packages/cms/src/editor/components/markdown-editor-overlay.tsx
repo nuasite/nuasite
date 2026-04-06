@@ -1,7 +1,8 @@
 import { type Editor, editorViewCtx } from '@milkdown/core'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { slugify } from '../../shared'
 import { updateMarkdownPage } from '../api'
-import { STORAGE_KEYS } from '../constants'
+import { STORAGE_KEYS, Z_INDEX } from '../constants'
 import { startDeploymentPolling } from '../editor'
 import { createMarkdownPage } from '../markdown-api'
 import {
@@ -14,7 +15,8 @@ import {
 	startRedirectCountdown,
 	updateMarkdownFrontmatter,
 } from '../signals'
-import { CreateModeFrontmatter, EditModeFrontmatter, slugify } from './frontmatter-fields'
+import { CreateModeFrontmatter, EditModeFrontmatter } from './frontmatter-fields'
+import { FrontmatterSidebar, partitionFields } from './frontmatter-sidebar'
 import { MarkdownInlineEditor } from './markdown-inline-editor'
 
 /**
@@ -28,8 +30,21 @@ export function MarkdownEditorOverlay() {
 	const createOptions = editorState.createOptions
 	const collectionDef = editorState.collectionDefinition
 
+	const activeCollectionDef = isCreateMode ? createOptions?.collectionDefinition : collectionDef
+	const { sidebar: sidebarFields, header: headerFields } = activeCollectionDef
+		? partitionFields(activeCollectionDef.fields)
+		: { sidebar: [], header: [] }
+	const hasSidebar = sidebarFields.length > 0
+	const isDataCollection = activeCollectionDef?.type === 'data'
+	// Derive MDX mode from the actual file extension when available
+	// (a collection can have mixed .md and .mdx files),
+	// but fall back to the collection file extension in create mode before a file path exists.
+	const isMdx = page?.filePath
+		? page.filePath.endsWith('.mdx')
+		: activeCollectionDef?.fileExtension === 'mdx'
+
 	const [isSaving, setIsSaving] = useState(false)
-	const [showFrontmatter, setShowFrontmatter] = useState(isCreateMode)
+	const [showFrontmatter, setShowFrontmatter] = useState(isCreateMode || isDataCollection)
 	// Track whether the user has manually edited the slug (disables auto-slug from title)
 	const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
 	// Preview mode state
@@ -37,12 +52,11 @@ export function MarkdownEditorOverlay() {
 	const originalHTMLRef = useRef<string | null>(null)
 	const editorInstanceRef = useRef<Editor | null>(null)
 
-	// Open metadata by default when entering create mode
 	useEffect(() => {
-		if (isCreateMode) {
+		if (isCreateMode || isDataCollection) {
 			setShowFrontmatter(true)
 		}
-	}, [isCreateMode])
+	}, [isCreateMode, isDataCollection])
 
 	const handleDeploymentComplete = useCallback(
 		(status: 'completed' | 'failed' | 'timeout') => {
@@ -142,10 +156,13 @@ export function MarkdownEditorOverlay() {
 
 		setIsSaving(true)
 		try {
-			// Build frontmatter excluding title and slug
+			const isData = opts.collectionDefinition.type === 'data'
+
+			// Build frontmatter — for data collections include all fields; for markdown exclude title
 			const frontmatter: Record<string, unknown> = {}
 			for (const [key, value] of Object.entries(currentPage.frontmatter)) {
-				if (key !== 'title' && value !== undefined && value !== '') {
+				if (!isData && key === 'title') continue
+				if (value !== undefined && value !== '') {
 					frontmatter[key] = value
 				}
 			}
@@ -155,7 +172,8 @@ export function MarkdownEditorOverlay() {
 				title: title.trim(),
 				slug,
 				frontmatter,
-				content: currentPage.content || '',
+				content: isData ? '' : (currentPage.content || ''),
+				fileExtension: opts.collectionDefinition.fileExtension,
 			})
 
 			if (result.success) {
@@ -237,7 +255,8 @@ export function MarkdownEditorOverlay() {
 	if (isPreview) {
 		return (
 			<div
-				class="fixed bottom-6 left-1/2 -translate-x-1/2 z-2147483647 flex items-center gap-3 px-5 py-3 bg-cms-dark/95 border border-white/15 rounded-cms-pill shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md"
+				style={{ zIndex: Z_INDEX.MODAL }}
+				class="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-5 py-3 bg-cms-dark/95 border border-white/15 rounded-cms-pill shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md"
 				data-cms-ui
 				onMouseDown={stopPropagation}
 				onClick={stopPropagation}
@@ -293,13 +312,16 @@ export function MarkdownEditorOverlay() {
 
 	return (
 		<div
-			class="fixed inset-0 z-2147483647 bg-black/40 flex items-center justify-center p-4 backdrop-blur-md"
+			style={{ zIndex: Z_INDEX.MODAL }}
+			class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 backdrop-blur-md"
 			data-cms-ui
 			onMouseDown={stopPropagation}
 			onClick={stopPropagation}
 		>
 			<div
-				class="bg-cms-dark rounded-cms-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 w-full max-w-4xl max-h-[90vh] flex flex-col"
+				class={`bg-cms-dark rounded-cms-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 w-full max-h-[90vh] flex flex-col ${
+					hasSidebar ? 'max-w-6xl' : 'max-w-4xl'
+				}`}
 				data-cms-ui
 			>
 				{/* Header */}
@@ -326,11 +348,13 @@ export function MarkdownEditorOverlay() {
 						<div>
 							<input
 								type="text"
-								value={(page.frontmatter.title as string) || ''}
-								placeholder="Page title..."
+								value={(page.frontmatter.title as string) || (page.frontmatter.name as string) || ''}
+								placeholder={isDataCollection ? 'Entry name...' : 'Page title...'}
 								onInput={(e) => {
 									const title = (e.target as HTMLInputElement).value
-									updateMarkdownFrontmatter({ title })
+									// Data collections may use 'name' instead of 'title'
+									const titleField = isDataCollection && !('title' in page.frontmatter) && 'name' in page.frontmatter ? 'name' : 'title'
+									updateMarkdownFrontmatter({ [titleField]: title })
 									// Auto-generate slug in create mode if not manually edited
 									if (isCreateMode && !slugManuallyEdited) {
 										markdownEditorState.value = {
@@ -351,49 +375,51 @@ export function MarkdownEditorOverlay() {
 						</div>
 					</div>
 					<div class="flex items-center gap-2">
-						<button
-							type="button"
-							onClick={() => setShowFrontmatter(!showFrontmatter)}
-							class={`px-3 py-2 text-sm rounded-cms-pill transition-colors flex items-center gap-1.5 ${
-								showFrontmatter
-									? 'bg-white/20 text-white'
-									: 'text-white/70 hover:text-white hover:bg-white/10'
-							}`}
-							data-cms-ui
-						>
-							<svg
-								class="w-4 h-4"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-								stroke-width="2"
+						{!isDataCollection && (
+							<button
+								type="button"
+								onClick={() => setShowFrontmatter(!showFrontmatter)}
+								class={`px-3 py-2 text-sm rounded-cms-pill transition-colors flex items-center gap-1.5 ${
+									showFrontmatter
+										? 'bg-white/20 text-white'
+										: 'text-white/70 hover:text-white hover:bg-white/10'
+								}`}
+								data-cms-ui
 							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-								/>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-								/>
-							</svg>
-							Metadata
-							<svg
-								class={`w-3.5 h-3.5 transition-transform ${showFrontmatter ? 'rotate-180' : ''}`}
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-								stroke-width="2.5"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									d="M19 9l-7 7-7-7"
-								/>
-							</svg>
-						</button>
+								<svg
+									class="w-4 h-4"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="2"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+									/>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+									/>
+								</svg>
+								Metadata
+								<svg
+									class={`w-3.5 h-3.5 transition-transform ${showFrontmatter ? 'rotate-180' : ''}`}
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="2.5"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M19 9l-7 7-7-7"
+									/>
+								</svg>
+							</button>
+						)}
 						{!isCreateMode && editorState.activeElementId && (
 							<button
 								type="button"
@@ -467,37 +493,57 @@ export function MarkdownEditorOverlay() {
 					</div>
 				</div>
 
-				{/* Frontmatter Editor */}
-				{showFrontmatter && (
-					<div class="px-5 py-4 border-b border-white/10 bg-white/5">
-						{isCreateMode && createOptions
-							? (
-								<CreateModeFrontmatter
-									page={page}
-									collectionDefinition={createOptions.collectionDefinition}
-									onSlugManualEdit={() => setSlugManuallyEdited(true)}
-								/>
-							)
-							: (
-								<EditModeFrontmatter
-									page={page}
-									collectionDefinition={collectionDef}
-								/>
-							)}
-					</div>
-				)}
+				{/* Content area: main + optional sidebar */}
+				<div class="flex-1 min-h-0 flex">
+					{/* Main: frontmatter header + editor */}
+					<div class="flex-1 min-w-0 flex flex-col">
+						{/* Frontmatter Editor (header-positioned fields only) */}
+						{(showFrontmatter || isDataCollection) && (
+							<div class={`px-5 py-4 border-b border-white/10 bg-white/5 overflow-y-auto ${isDataCollection ? 'flex-1' : 'max-h-[40vh]'}`}>
+								{isCreateMode && createOptions
+									? (
+										<CreateModeFrontmatter
+											page={page}
+											collectionDefinition={createOptions.collectionDefinition}
+											fields={headerFields}
+											onSlugManualEdit={() => setSlugManuallyEdited(true)}
+										/>
+									)
+									: (
+										<EditModeFrontmatter
+											page={page}
+											collectionDefinition={collectionDef}
+											fields={headerFields}
+										/>
+									)}
+							</div>
+						)}
 
-				{/* Editor */}
-				<div class="flex-1 min-h-0 overflow-auto bg-black/20">
-					<MarkdownInlineEditor
-						elementId={page.slug || 'new-page'}
-						initialContent={page.content}
-						onSave={isCreateMode ? () => handleCreate() : handleSave}
-						onCancel={handleCancel}
-						onEditorReady={(editor) => {
-							editorInstanceRef.current = editor
-						}}
-					/>
+						{/* Editor — hidden for data collections (JSON/YAML have no body) */}
+						{!isDataCollection && (
+							<div class="flex-1 min-h-0 overflow-auto bg-black/20">
+								<MarkdownInlineEditor
+									elementId={page.slug || 'new-page'}
+									initialContent={page.content}
+									isMdx={isMdx}
+									onSave={isCreateMode ? () => handleCreate() : handleSave}
+									onCancel={handleCancel}
+									onEditorReady={(editor) => {
+										editorInstanceRef.current = editor
+									}}
+								/>
+							</div>
+						)}
+					</div>
+
+					{/* Sidebar (sidebar-positioned fields) */}
+					{hasSidebar && (
+						<FrontmatterSidebar
+							fields={sidebarFields}
+							page={page}
+							collectionDefinition={activeCollectionDef}
+						/>
+					)}
 				</div>
 			</div>
 		</div>

@@ -2,7 +2,16 @@ import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import { processSeoFromHtml } from './seo-processor'
 import { enhanceManifestWithSourceSnippets } from './source-finder'
 import { extractBackgroundImageClasses, extractColorClasses, extractTextStyleClasses } from './tailwind-colors'
-import type { Attribute, BackgroundImageMetadata, ComponentInstance, ImageMetadata, ManifestEntry, PageSeoData, SeoOptions } from './types'
+import type {
+	Attribute,
+	BackgroundImageMetadata,
+	CollectionDefinition,
+	ComponentInstance,
+	ImageMetadata,
+	ManifestEntry,
+	PageSeoData,
+	SeoOptions,
+} from './types'
 import { generateStableId } from './utils'
 
 /** Type for parsed HTML element nodes from node-html-parser */
@@ -69,6 +78,8 @@ export interface ProcessHtmlOptions {
 	}
 	/** SEO tracking options */
 	seo?: SeoOptions
+	/** Collection definitions for resolving frontmatter text on listing pages */
+	collectionDefinitions?: Record<string, CollectionDefinition>
 }
 
 export interface ProcessHtmlResult {
@@ -223,6 +234,7 @@ export async function processHtml(
 		skipInlineStyleTags = true,
 		collectionInfo,
 		seo: seoOptions,
+		collectionDefinitions,
 	} = options
 
 	const root = parse(html, {
@@ -1013,7 +1025,7 @@ export async function processHtml(
 
 	// Enhance manifest entries with actual source snippets from source files
 	// This allows the CMS to match and replace dynamic content in source files
-	const enhancedEntries = await enhanceManifestWithSourceSnippets(entries)
+	const enhancedEntries = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions)
 
 	// Get the current HTML for SEO processing
 	let finalHtml = root.toString()

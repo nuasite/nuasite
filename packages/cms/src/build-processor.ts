@@ -352,6 +352,8 @@ async function processFile(
 				: undefined,
 			// Pass SEO options
 			seo: config.seo,
+			// Pass collection definitions for resolving frontmatter text on listing pages
+			collectionDefinitions: manifestWriter.getCollectionDefinitions(),
 		},
 		idGenerator,
 	)

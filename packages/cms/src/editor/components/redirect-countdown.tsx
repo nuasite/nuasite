@@ -1,3 +1,4 @@
+import { Z_INDEX } from '../constants'
 import { redirectCountdown, stopRedirectCountdown } from '../signals'
 
 export function RedirectCountdown() {
@@ -8,7 +9,8 @@ export function RedirectCountdown() {
 
 	return (
 		<div
-			class="fixed bottom-6 left-1/2 -translate-x-1/2 z-2147483647 flex items-center gap-3 px-5 py-3 bg-cms-dark/95 border border-white/15 rounded-cms-pill shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md"
+			style={{ zIndex: Z_INDEX.MODAL }}
+			class="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-5 py-3 bg-cms-dark/95 border border-white/15 rounded-cms-pill shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-md"
 			data-cms-ui
 			onMouseDown={stopPropagation}
 			onClick={stopPropagation}

@@ -23,7 +23,13 @@ export { findAttributeSourceLocation } from './cross-file-tracker'
 export { findImageSourceLocation } from './image-finder'
 
 // Collection/markdown finding
-export { findCollectionSource, findMarkdownSourceLocation, parseMarkdownContent } from './collection-finder'
+export {
+	findCollectionSource,
+	findFieldInCollectionEntry,
+	findMarkdownSourceLocation,
+	findTextInAnyCollectionFrontmatter,
+	parseMarkdownContent,
+} from './collection-finder'
 
 // Snippet utilities (used by html-processor)
 export {

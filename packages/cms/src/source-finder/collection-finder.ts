@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { isMap, isPair, isScalar, LineCounter, parseDocument } from 'yaml'
+import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument } from 'yaml'
 
 import { getProjectRoot } from '../config'
+import type { CollectionDefinition } from '../types'
 import { getMarkdownFileCache } from './cache'
 import { normalizeText } from './snippet-utils'
 import type { CollectionInfo, MarkdownContent, SourceLocation } from './types'
@@ -194,63 +195,240 @@ export async function findMarkdownSourceLocation(
 		const { lines } = cached
 		const normalizedSearch = normalizeText(textContent)
 
-		// Parse frontmatter
+		// Find frontmatter boundaries
+		let frontmatterStart = -1
 		let frontmatterEnd = -1
-		let inFrontmatter = false
-
 		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i]?.trim()
-			if (line === '---') {
-				if (!inFrontmatter) {
-					inFrontmatter = true
+			if (lines[i]?.trim() === '---') {
+				if (frontmatterStart === -1) {
+					frontmatterStart = i
 				} else {
 					frontmatterEnd = i
 					break
 				}
 			}
 		}
+		if (frontmatterEnd <= 0) return undefined
 
-		// Search in frontmatter only (for title, subtitle, etc.)
-		if (frontmatterEnd > 0) {
-			for (let i = 1; i < frontmatterEnd; i++) {
-				const line = lines[i]
-				if (!line) continue
-
-				// Extract value from YAML key: value (keys can contain hyphens)
-				const match = line.match(/^\s*([\w-]+):\s*(.+)$/)
-				if (match) {
-					const key = match[1]
-					let value = match[2]?.trim() || ''
-
-					// Handle quoted strings
-					if (
-						(value.startsWith('"') && value.endsWith('"'))
-						|| (value.startsWith("'") && value.endsWith("'"))
-					) {
-						value = value.slice(1, -1)
-					}
-
-					if (normalizeText(value) === normalizedSearch) {
-						return {
-							file: collectionInfo.file,
-							line: i + 1,
-							snippet: line,
-							type: 'collection',
-							variableName: key,
-							collectionName: collectionInfo.name,
-							collectionSlug: collectionInfo.slug,
-						}
-					}
-				}
-			}
-		}
-
-		// Body content is not searched line-by-line anymore
-		// Use parseMarkdownContent to get the full body as one entry
+		const yamlStr = lines.slice(frontmatterStart + 1, frontmatterEnd).join('\n')
+		const lineOffset = frontmatterStart + 1
+		return findScalarInYamlAst(yamlStr, lineOffset, normalizedSearch, lines, collectionInfo)
 	} catch {
 		// Error reading file
 	}
 
+	return undefined
+}
+
+/**
+ * Search all collection entries for a text value across all formats
+ * (markdown frontmatter, JSON, YAML data files).
+ */
+export async function findTextInAnyCollectionFrontmatter(
+	textContent: string,
+	collections: Record<string, CollectionDefinition>,
+): Promise<SourceLocation | undefined> {
+	const normalizedSearch = normalizeText(textContent)
+
+	for (const def of Object.values(collections)) {
+		if (!def.entries || def.entries.length === 0) continue
+
+		for (const entry of def.entries) {
+			const info: CollectionInfo = { name: def.name, slug: entry.slug, file: entry.sourcePath }
+
+			if (def.type === 'data') {
+				const result = await findTextInDataFile(normalizedSearch, info)
+				if (result) return result
+			} else {
+				const result = await findMarkdownSourceLocation(textContent, info)
+				if (result) return result
+			}
+		}
+	}
+	return undefined
+}
+
+/**
+ * Search a data file (JSON, YAML, YML) for a scalar value using AST parsing.
+ * JSON is valid YAML, so parseDocument handles all formats uniformly.
+ */
+async function findTextInDataFile(
+	normalizedSearch: string,
+	collectionInfo: CollectionInfo,
+): Promise<SourceLocation | undefined> {
+	try {
+		const filePath = path.join(getProjectRoot(), collectionInfo.file)
+		const cached = await getCachedMarkdownFile(filePath)
+		if (!cached) return undefined
+
+		return findScalarInYamlAst(cached.content, 0, normalizedSearch, cached.lines, collectionInfo)
+	} catch {
+		// Error reading file
+	}
+	return undefined
+}
+
+/**
+ * Walk a YAML AST to find a scalar value matching the search text.
+ * Handles nested maps and sequences.
+ */
+function findScalarInYamlAst(
+	yamlStr: string,
+	lineOffset: number,
+	normalizedSearch: string,
+	fileLines: string[],
+	collectionInfo: CollectionInfo,
+): SourceLocation | undefined {
+	const lineCounter = new LineCounter()
+	const doc = parseDocument(yamlStr, { lineCounter })
+
+	const found = walkYamlNode(doc.contents, normalizedSearch, lineCounter)
+	if (!found) return undefined
+
+	const fileStartLine = found.startLine + lineOffset
+	const fileEndLine = found.endLine + lineOffset
+
+	// Build snippet spanning all lines of the key-value pair (handles multi-line YAML values)
+	const snippet = fileLines.slice(fileStartLine - 1, fileEndLine).join('\n')
+
+	return {
+		file: collectionInfo.file,
+		line: fileStartLine,
+		snippet,
+		type: 'collection',
+		variableName: found.key,
+		collectionName: collectionInfo.name,
+		collectionSlug: collectionInfo.slug,
+	}
+}
+
+/** Recursively walk a YAML node to find a scalar matching the search text */
+function walkYamlNode(
+	node: unknown,
+	normalizedSearch: string,
+	lineCounter: LineCounter,
+): { key: string | undefined; startLine: number; endLine: number } | undefined {
+	if (isMap(node)) {
+		for (const pair of node.items) {
+			if (!isPair(pair) || !isScalar(pair.key)) continue
+			const key = String(pair.key.value)
+
+			if (isScalar(pair.value)) {
+				if (normalizeText(String(pair.value.value)) === normalizedSearch) {
+					const keyRange = (pair.key as any).range as [number, number, number] | undefined
+					const valRange = (pair.value as any).range as [number, number, number] | undefined
+					const startLine = keyRange ? lineCounter.linePos(keyRange[0]).line : 1
+					const endLine = valRange ? lineCounter.linePos(valRange[1]).line : startLine
+					return { key, startLine, endLine }
+				}
+			} else {
+				// Recurse into nested maps/sequences
+				const nested = walkYamlNode(pair.value, normalizedSearch, lineCounter)
+				if (nested) return nested
+			}
+		}
+	} else if (isSeq(node)) {
+		for (const item of node.items) {
+			if (isScalar(item)) {
+				if (normalizeText(String(item.value)) === normalizedSearch) {
+					const range = (item as any).range as [number, number, number] | undefined
+					const startLine = range ? lineCounter.linePos(range[0]).line : 1
+					const endLine = range ? lineCounter.linePos(range[1]).line : startLine
+					return { key: undefined, startLine, endLine }
+				}
+			} else {
+				const nested = walkYamlNode(item, normalizedSearch, lineCounter)
+				if (nested) return nested
+			}
+		}
+	}
+	return undefined
+}
+
+/**
+ * Find an image field by name in a specific collection entry's data file.
+ * Used when the rendered image URL has been transformed (e.g., Astro hashed filenames)
+ * and can't be matched by value, but we know the field name from the expression.
+ */
+export async function findFieldInCollectionEntry(
+	fieldName: string,
+	collectionName: string,
+	collectionSlug: string,
+	collectionDefinitions: Record<string, CollectionDefinition>,
+): Promise<SourceLocation | undefined> {
+	const def = collectionDefinitions[collectionName]
+	if (!def?.entries) return undefined
+
+	const entry = def.entries.find((e) => e.slug === collectionSlug)
+	if (!entry) return undefined
+
+	const info: CollectionInfo = { name: collectionName, slug: collectionSlug, file: entry.sourcePath }
+
+	try {
+		const filePath = path.join(getProjectRoot(), entry.sourcePath)
+		const cached = await getCachedMarkdownFile(filePath)
+		if (!cached) return undefined
+
+		if (def.type === 'data') {
+			return findFieldByNameInYaml(cached.content, 0, fieldName, cached.lines, info)
+		}
+
+		// For markdown, search inside frontmatter only
+		const { lines } = cached
+		let fmStart = -1
+		let fmEnd = -1
+		for (let i = 0; i < lines.length; i++) {
+			if (lines[i]?.trim() === '---') {
+				if (fmStart === -1) fmStart = i
+				else {
+					fmEnd = i
+					break
+				}
+			}
+		}
+		if (fmEnd <= 0) return undefined
+		const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
+		return findFieldByNameInYaml(yamlStr, fmStart + 1, fieldName, lines, info)
+	} catch {
+		return undefined
+	}
+}
+
+/**
+ * Walk a YAML AST to find a field by key name (regardless of its value).
+ */
+function findFieldByNameInYaml(
+	yamlStr: string,
+	lineOffset: number,
+	fieldName: string,
+	fileLines: string[],
+	collectionInfo: CollectionInfo,
+): SourceLocation | undefined {
+	const lineCounter = new LineCounter()
+	const doc = parseDocument(yamlStr, { lineCounter })
+	if (!isMap(doc.contents)) return undefined
+
+	for (const pair of doc.contents.items) {
+		if (!isPair(pair) || !isScalar(pair.key)) continue
+		if (String(pair.key.value) !== fieldName) continue
+		if (!isScalar(pair.value)) continue
+
+		const keyRange = (pair.key as any).range as [number, number, number] | undefined
+		const valRange = (pair.value as any).range as [number, number, number] | undefined
+		const startLine = (keyRange ? lineCounter.linePos(keyRange[0]).line : 1) + lineOffset
+		const endLine = (valRange ? lineCounter.linePos(valRange[1]).line : startLine - lineOffset) + lineOffset
+
+		const snippet = fileLines.slice(startLine - 1, endLine).join('\n')
+		return {
+			file: collectionInfo.file,
+			line: startLine,
+			snippet,
+			type: 'collection',
+			variableName: fieldName,
+			collectionName: collectionInfo.name,
+			collectionSlug: collectionInfo.slug,
+		}
+	}
 	return undefined
 }
 

@@ -13,8 +13,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('default')
 		expect(slots).toHaveLength(1)
@@ -28,8 +27,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('default')
 		expect(slots).toHaveLength(1)
@@ -43,8 +41,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('default')
 		expect(slots).toHaveLength(1)
@@ -58,8 +55,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('header')
 		expect(slots).not.toContain('default')
@@ -76,8 +72,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('default')
 		expect(slots).toContain('header')
@@ -93,8 +88,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('default')
 		expect(slots).toHaveLength(1)
@@ -110,8 +104,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('header')
 		expect(slots).toContain('sidebar')
@@ -129,8 +122,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('default')
 		expect(slots).toContain('header')
@@ -146,8 +138,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('default')
 		expect(slots).toContain('header')
@@ -165,8 +156,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('default')
 		expect(slots).toHaveLength(1)
@@ -181,8 +171,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('active')
 		// Note: The current implementation doesn't filter comments, so this might still detect "disabled"
@@ -198,8 +187,7 @@ interface Props {
 </div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const slots = registry.extractSlots(content)
+		const slots = (registry as any).extractSlots(content)
 
 		expect(slots).toContain('default')
 		expect(slots).toContain('header')

@@ -137,6 +137,16 @@ export async function startEditMode(
 			return
 		}
 
+		// Check if this is a reference field element (e.g., author name from a referenced collection)
+		// Reference elements open a picker to change the reference, not inline text editing
+		const manifestEntry = currentManifest.entries[cmsId]
+		if (manifestEntry?.referenceCollection && manifestEntry.referencedBy?.length) {
+			logDebug(config.debug, 'Reference element detected:', cmsId, manifestEntry.referenceCollection)
+			makeElementNonEditable(el)
+			setupReferenceClickHandler(config, el, cmsId, manifestEntry, currentManifest)
+			return
+		}
+
 		// Check if this is a markdown content element
 		// Markdown elements use WYSIWYG editing instead of contentEditable
 		if (el.hasAttribute(MARKDOWN_ATTRIBUTE)) {
@@ -891,6 +901,108 @@ export async function saveAllChanges(
 	} finally {
 		signals.isSaving.value = false
 	}
+}
+
+/**
+ * Setup click handler for reference field elements.
+ * When clicked, resolves the owning entry via DOM traversal and opens a reference picker.
+ */
+function setupReferenceClickHandler(
+	config: CmsConfig,
+	el: HTMLElement,
+	cmsId: string,
+	entry: ManifestEntry,
+	manifest: { entries: Record<string, ManifestEntry> },
+): void {
+	el.style.cursor = 'pointer'
+	// Remove the disabled guard so our click handler can fire
+	// (disableAllInteractiveElements adds a capturing handler that blocks clicks on <a> elements)
+	el.removeAttribute('data-cms-disabled')
+
+	el.addEventListener('click', (e) => {
+		e.preventDefault()
+		e.stopPropagation()
+
+		logDebug(config.debug, 'Reference element clicked:', cmsId, entry.referenceCollection)
+
+		// Find the owning entry by walking up the DOM to find a sibling
+		// that belongs to one of the referencing collections
+		const owner = findOwnerEntry(el, manifest, entry.referencedBy ?? [])
+		if (!owner) {
+			logDebug(config.debug, 'Could not resolve owning entry for reference:', cmsId)
+			return
+		}
+
+		// Look up the owning entry in collection definitions to get the real content file path
+		// (manifest sourcePath may point to a page file if resolved via prop tracking)
+		const collectionDefs = signals.manifest.value.collectionDefinitions
+		const ownerDef = collectionDefs?.[owner.collection]
+		const ownerEntryInfo = ownerDef?.entries?.find(e => e.slug === owner.slug)
+		const contentFilePath = ownerEntryInfo?.sourcePath
+		if (!contentFilePath) {
+			logDebug(config.debug, 'Could not resolve content file path for owner:', owner.collection, owner.slug)
+			return
+		}
+
+		// Use the clicked element's collectionSlug as the current value — it reflects
+		// what's actually rendered on the page, unlike cached collection data which can be stale
+		const rect = el.getBoundingClientRect()
+		signals.openReferencePicker({
+			cmsId,
+			fieldName: owner.fieldName,
+			collection: entry.referenceCollection!,
+			currentValue: owner.isArray ? null : (entry.collectionSlug ?? null),
+			ownerPath: contentFilePath,
+			isArray: owner.isArray ?? false,
+			currentValues: [],
+			cursorPos: { x: rect.left, y: rect.bottom + 4 },
+		})
+	})
+}
+
+/**
+ * Walk up the DOM from a reference element to find the owning collection entry.
+ * At each parent level, only checks direct children (not nested descendants)
+ * to avoid matching elements from adjacent cards on listing pages.
+ */
+function findOwnerEntry(
+	element: HTMLElement,
+	manifest: { entries: Record<string, ManifestEntry> },
+	referencedBy: Array<{ collection: string; fieldName: string; isArray?: boolean }>,
+): { collection: string; slug: string; fieldName: string; isArray?: boolean } | undefined {
+	const refMap = new Map(referencedBy.map(r => [r.collection, r]))
+	let current: HTMLElement | null = element
+
+	while (current && current !== document.body) {
+		const parent: HTMLElement | null = current.parentElement
+		if (!parent) break
+
+		for (const sibling of parent.children) {
+			if (sibling === current || !(sibling instanceof HTMLElement)) continue
+
+			const candidates: Element[] = sibling.hasAttribute('data-cms-id') ? [sibling] : []
+			candidates.push(...sibling.querySelectorAll('[data-cms-id]'))
+
+			for (const el of candidates) {
+				const id = el.getAttribute('data-cms-id')
+				if (!id) continue
+				const entry = manifest.entries[id]
+				if (!entry?.collectionSlug || !entry.collectionName) continue
+
+				const ref = refMap.get(entry.collectionName)
+				if (!ref) continue
+
+				return {
+					collection: entry.collectionName,
+					slug: entry.collectionSlug,
+					fieldName: ref.fieldName,
+					isArray: ref.isArray,
+				}
+			}
+		}
+		current = parent
+	}
+	return undefined
 }
 
 /**

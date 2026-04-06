@@ -13,8 +13,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const props = await registry.extractProps(content)
+		const props = await (registry as any).extractProps(content)
 
 		expect(props).toHaveLength(3)
 		expect(props[0]?.name).toBe('config')
@@ -40,8 +39,7 @@ type Props = {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const props = await registry.extractProps(content)
+		const props = await (registry as any).extractProps(content)
 
 		expect(props).toHaveLength(2)
 		expect(props[0]?.name).toBe('config')
@@ -67,8 +65,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const props = await registry.extractProps(content)
+		const props = await (registry as any).extractProps(content)
 
 		expect(props).toHaveLength(2)
 		expect(props[0]?.name).toBe('theme')
@@ -91,8 +88,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const props = await registry.extractProps(content)
+		const props = await (registry as any).extractProps(content)
 
 		expect(props).toHaveLength(2)
 		expect(props[0]?.name).toBe('items')
@@ -113,8 +109,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const props = await registry.extractProps(content)
+		const props = await (registry as any).extractProps(content)
 
 		expect(props).toHaveLength(3)
 		expect(props[0]?.name).toBe('variant')
@@ -138,8 +133,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const props = await registry.extractProps(content)
+		const props = await (registry as any).extractProps(content)
 
 		expect(props).toHaveLength(3)
 		expect(props[0]?.name).toBe('name')
@@ -165,8 +159,7 @@ interface Props {
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const props = await registry.extractProps(content)
+		const props = await (registry as any).extractProps(content)
 
 		expect(props).toHaveLength(2)
 		expect(props[0]?.name).toBe('config')
@@ -185,8 +178,7 @@ interface Props {}
 <div>Component</div>`
 
 		const registry = new ComponentRegistry([])
-		// @ts-expect-error - accessing private method for testing
-		const props = await registry.extractProps(content)
+		const props = await (registry as any).extractProps(content)
 
 		expect(props).toHaveLength(0)
 	})

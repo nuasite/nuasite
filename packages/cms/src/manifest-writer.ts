@@ -38,6 +38,7 @@ export class ManifestWriter {
 	private collectionDefinitions: Record<string, CollectionDefinition> = {}
 	private availableColors: AvailableColors | undefined
 	private availableTextStyles: AvailableTextStyles | undefined
+	private mdxComponents: string[] | undefined
 	private writeQueue: Promise<void> = Promise.resolve()
 
 	constructor(manifestFile: string, componentDefinitions: Record<string, ComponentDefinition> = {}) {
@@ -65,6 +66,14 @@ export class ManifestWriter {
 	setComponentDefinitions(definitions: Record<string, ComponentDefinition>): void {
 		this.componentDefinitions = definitions
 		this.globalManifest.componentDefinitions = definitions
+	}
+
+	/**
+	 * Set the list of component names allowed in the MDX component picker
+	 */
+	setMdxComponents(names: string[]): void {
+		this.mdxComponents = names
+		this.globalManifest.mdxComponents = names
 	}
 
 	/**
@@ -98,7 +107,15 @@ export class ManifestWriter {
 	 */
 	setCollectionDefinitions(definitions: Record<string, CollectionDefinition>): void {
 		this.collectionDefinitions = definitions
-		this.globalManifest.collectionDefinitions = definitions
+		// Strip entry.data before publishing to the manifest — it's only needed
+		// server-side (for reference detection) and would bloat the browser payload.
+		const stripped: Record<string, CollectionDefinition> = {}
+		for (const [name, def] of Object.entries(definitions)) {
+			stripped[name] = def.entries
+				? { ...def, entries: def.entries.map(({ data, ...rest }) => rest) }
+				: def
+		}
+		this.globalManifest.collectionDefinitions = stripped
 	}
 
 	/**
@@ -325,6 +342,7 @@ export class ManifestWriter {
 			collectionDefinitions: this.collectionDefinitions,
 			availableColors: this.availableColors,
 			availableTextStyles: this.availableTextStyles,
+			mdxComponents: this.mdxComponents,
 		}
 		this.writeQueue = Promise.resolve()
 	}

@@ -226,7 +226,7 @@ describe('ErrorCollector', () => {
 			const lines = summary.split('\n')
 
 			// Detail lines should start with "  - "
-			expect(lines.some(l => l.startsWith('  - '))).toBe(true)
+			expect(lines.some((l: string) => l.startsWith('  - '))).toBe(true)
 		})
 	})
 

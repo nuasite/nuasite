@@ -114,3 +114,29 @@ export const CSS = {
 	/** Data attribute for background image elements */
 	BG_IMAGE_ATTRIBUTE: 'data-cms-bg-img',
 } as const
+
+/**
+ * Clamp a floating panel horizontally within the viewport and compute its max height.
+ */
+export function clampPanelPosition(
+	cursor: { x: number; y: number },
+	panelWidth: number,
+	padding = LAYOUT.VIEWPORT_PADDING,
+): { top: string; left: string; maxHeight: string } {
+	const viewportWidth = window.innerWidth
+	const viewportHeight = window.innerHeight
+
+	let left = cursor.x
+	if (left + panelWidth > viewportWidth - padding) {
+		left = viewportWidth - panelWidth - padding
+	}
+	if (left < padding) left = padding
+
+	const maxHeight = Math.max(viewportHeight - cursor.y - padding, 200)
+
+	return {
+		top: `${cursor.y}px`,
+		left: `${left}px`,
+		maxHeight: `${maxHeight}px`,
+	}
+}

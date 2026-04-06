@@ -1,4 +1,5 @@
 import { batch, computed, type Signal, signal } from '@preact/signals'
+import { slugifyHref } from '../shared'
 import { fetchManifest, getMarkdownContent } from './api'
 import type { ToastMessage, ToastType } from './components/toast/types'
 import { getConfig } from './config'
@@ -25,6 +26,7 @@ import type {
 	FieldDefinition,
 	MarkdownEditorState,
 	MarkdownPageEntry,
+	MdxPropsEditorState,
 	MediaItem,
 	MediaLibraryState,
 	PendingAttributeChange,
@@ -341,6 +343,76 @@ export const currentMarkdownPage = computed(
 export const isMarkdownPreview = signal(false)
 
 // ============================================================================
+// MDX Component Block State Signals
+// ============================================================================
+
+export const mdxPropsEditorState = signal<MdxPropsEditorState>({
+	isOpen: false,
+	nodePos: null,
+	componentName: null,
+	props: {},
+	cursorPos: null,
+})
+
+export const mdxComponentPickerOpen = signal(false)
+
+export function openMdxPropsEditor(nodePos: number, componentName: string, props: Record<string, string>, cursorPos: { x: number; y: number }): void {
+	mdxPropsEditorState.value = { isOpen: true, nodePos, componentName, props, cursorPos }
+}
+
+export function closeMdxPropsEditor(): void {
+	mdxPropsEditorState.value = { isOpen: false, nodePos: null, componentName: null, props: {}, cursorPos: null }
+}
+
+// ============================================================================
+// Reference Picker State Signals
+// ============================================================================
+
+export interface ReferencePickerState {
+	isOpen: boolean
+	/** CMS ID of the clicked element */
+	cmsId: string | null
+	/** Reference field name in the owning entry (e.g., 'author') */
+	fieldName: string | null
+	/** Collection to pick from (e.g., 'authors') */
+	collection: string | null
+	/** Current reference value (slug) */
+	currentValue: string | null
+	/** File path of the owning entry to update */
+	ownerPath: string | null
+	/** Whether this is an array reference (multi-select) */
+	isArray: boolean
+	/** Current array values for array references */
+	currentValues: string[]
+	/** Position for the floating panel */
+	cursorPos: { x: number; y: number } | null
+}
+
+function createInitialReferencePickerState(): ReferencePickerState {
+	return {
+		isOpen: false,
+		cmsId: null,
+		fieldName: null,
+		collection: null,
+		currentValue: null,
+		ownerPath: null,
+		isArray: false,
+		currentValues: [],
+		cursorPos: null,
+	}
+}
+
+export const referencePickerState = signal<ReferencePickerState>(createInitialReferencePickerState())
+
+export function openReferencePicker(opts: Omit<ReferencePickerState, 'isOpen'>): void {
+	referencePickerState.value = { isOpen: true, ...opts }
+}
+
+export function closeReferencePicker(): void {
+	referencePickerState.value = createInitialReferencePickerState()
+}
+
+// ============================================================================
 // Media Library State Signals
 // ============================================================================
 
@@ -350,10 +422,6 @@ export const mediaLibraryState = signal<MediaLibraryState>(
 
 // Convenience computed signals for media library
 export const isMediaLibraryOpen = computed(() => mediaLibraryState.value.isOpen)
-export const mediaLibraryItems = computed(() => mediaLibraryState.value.items)
-export const isMediaLibraryLoading = computed(
-	() => mediaLibraryState.value.isLoading,
-)
 
 // ============================================================================
 // Create Page State Signals
@@ -847,6 +915,9 @@ export function setMarkdownActiveElement(elementId: string | null): void {
 
 export function updateMarkdownFrontmatter(updates: Partial<import('./types').BlogFrontmatter>): void {
 	if (markdownEditorState.value.currentPage) {
+		// Auto-sync derived fields (e.g. categoryHref from category)
+		const derivedUpdates = computeDerivedUpdates(updates)
+
 		markdownEditorState.value = {
 			...markdownEditorState.value,
 			currentPage: {
@@ -854,7 +925,35 @@ export function updateMarkdownFrontmatter(updates: Partial<import('./types').Blo
 				frontmatter: {
 					...markdownEditorState.value.currentPage.frontmatter,
 					...updates,
+					...derivedUpdates,
 				},
+				isDirty: true,
+			},
+		}
+	}
+}
+
+function computeDerivedUpdates(updates: Record<string, unknown>): Record<string, unknown> {
+	const fields = markdownEditorState.value.collectionDefinition?.fields
+	if (!fields) return {}
+
+	const result: Record<string, unknown> = {}
+	for (const field of fields) {
+		if (!field.derivedFrom || !field.hidden) continue
+		const sourceValue = updates[field.derivedFrom]
+		if (typeof sourceValue !== 'string') continue
+		result[field.name] = slugifyHref(sourceValue)
+	}
+	return result
+}
+
+export function updateMarkdownPageMeta(patch: Partial<Pick<MarkdownPageEntry, 'slug' | 'filePath'>>): void {
+	if (markdownEditorState.value.currentPage) {
+		markdownEditorState.value = {
+			...markdownEditorState.value,
+			currentPage: {
+				...markdownEditorState.value.currentPage,
+				...patch,
 				isDirty: true,
 			},
 		}
@@ -964,6 +1063,7 @@ export function openMarkdownEditorForNewPage(
 	const initialFrontmatter: Record<string, unknown> = {}
 	for (const field of collectionDefinition.fields) {
 		if (field.name === 'title') continue // title handled separately via the header
+		if (field.hidden) continue // derived fields are auto-computed
 		if (field.defaultValue !== undefined) {
 			initialFrontmatter[field.name] = field.defaultValue
 		} else {
@@ -1014,14 +1114,6 @@ function getDefaultForFieldType(field: FieldDefinition): unknown {
 
 export function setMediaLibraryOpen(open: boolean): void {
 	mediaLibraryState.value = { ...mediaLibraryState.value, isOpen: open }
-}
-
-export function setMediaLibraryItems(items: MediaItem[]): void {
-	mediaLibraryState.value = { ...mediaLibraryState.value, items }
-}
-
-export function setMediaLibraryLoading(loading: boolean): void {
-	mediaLibraryState.value = { ...mediaLibraryState.value, isLoading: loading }
 }
 
 export function setMediaLibrarySelectedItem(item: MediaItem | null): void {
@@ -1402,6 +1494,12 @@ export function removeToast(id: string): void {
 
 export function setConfig(newConfig: CmsConfig): void {
 	config.value = newConfig
+}
+
+export function setFeatures(features: CmsConfig['features']): void {
+	const current = config.value.features
+	if (current?.selectElement === features?.selectElement) return
+	config.value = { ...config.value, features: { ...current, ...features } }
 }
 
 // ============================================================================

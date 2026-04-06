@@ -13,7 +13,7 @@ import { getErrorCollector, resetErrorCollector } from './error-collector'
 import { ManifestWriter } from './manifest-writer'
 import { createLocalStorageAdapter } from './media/local'
 import type { MediaStorageAdapter } from './media/types'
-import type { CmsMarkerOptions, ComponentDefinition } from './types'
+import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
 import { createVitePlugin } from './vite-plugin'
 
 export interface NuaCmsOptions extends CmsMarkerOptions {
@@ -31,6 +31,7 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		debug?: boolean
 		theme?: Record<string, string>
 		themePreset?: string
+		features?: CmsFeatures
 	}
 	/**
 	 * Proxy /_nua/cms requests to this target URL during dev.
@@ -42,6 +43,19 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	 * Defaults to local filesystem (public/uploads) when no proxy is configured.
 	 */
 	media?: MediaStorageAdapter
+	/**
+	 * Directories containing components available in the MDX component picker.
+	 * Only components within these directories (relative to project root) will appear.
+	 * Example: ['src/components/mdx'] or ['src/components/mdx', 'src/components/blocks']
+	 */
+	mdxComponentDirs?: string[]
+	/**
+	 * Per-collection field overrides for position and grouping.
+	 * Highest priority — overrides scanner defaults and frontmatter comment directives.
+	 */
+	collections?: Record<string, {
+		fields?: Record<string, { position?: 'sidebar' | 'header'; group?: string }>
+	}>
 }
 
 const VIRTUAL_CMS_PATH = '/@nuasite/cms-editor.js'
@@ -63,6 +77,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		markComponents = true,
 		componentDirs = ['src/components'],
 		contentDir = 'src/content',
+		mdxComponentDirs,
 		seo = { trackSeo: true, markTitle: true, parseJsonLd: true },
 	} = options
 
@@ -111,6 +126,14 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					componentDefinitions = registry.getComponents()
 					manifestWriter.setComponentDefinitions(componentDefinitions)
 
+					if (mdxComponentDirs) {
+						const normalizedDirs = mdxComponentDirs.map(dir => dir.endsWith('/') ? dir : dir + '/')
+						const mdxNames = Object.values(componentDefinitions)
+							.filter(def => normalizedDirs.some(dir => def.file.startsWith(dir)))
+							.map(def => def.name)
+						manifestWriter.setMdxComponents(mdxNames)
+					}
+
 					const componentCount = Object.keys(componentDefinitions).length
 					if (componentCount > 0) {
 						logger.info(`Found ${componentCount} component definitions`)
@@ -118,6 +141,21 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				}
 
 				const collectionDefinitions = await scanCollections(contentDir)
+
+				// Apply per-collection field overrides from astro config (highest priority)
+				if (options.collections) {
+					for (const [collectionName, overrides] of Object.entries(options.collections)) {
+						const def = collectionDefinitions[collectionName]
+						if (!def || !overrides.fields) continue
+						for (const field of def.fields) {
+							const fieldOverride = overrides.fields[field.name]
+							if (!fieldOverride) continue
+							if (fieldOverride.position) field.position = fieldOverride.position
+							if (fieldOverride.group) field.group = fieldOverride.group
+						}
+					}
+				}
+
 				manifestWriter.setCollectionDefinitions(collectionDefinitions)
 
 				const collectionCount = Object.keys(collectionDefinitions).length
@@ -312,7 +350,7 @@ async function mergeRedirects(dir: URL, logger: { info: (msg: string) => void })
 export { createContemberStorageAdapter as contemberMedia } from './media/contember'
 export { createLocalStorageAdapter as localMedia } from './media/local'
 export { createS3StorageAdapter as s3Media } from './media/s3'
-export type { MediaItem, MediaStorageAdapter } from './media/types'
+export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, MediaStorageAdapter, MediaTypeFilter } from './media/types'
 
 export { scanCollections } from './collection-scanner'
 export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'

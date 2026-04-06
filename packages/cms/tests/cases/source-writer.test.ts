@@ -374,6 +374,102 @@ describe('applyTextChange', () => {
 		})
 	})
 
+	test('multi-line YAML value replacement (title wrapping two lines)', () => {
+		// Note: trailing space after "Budete " before the line break — matches real YAML files
+		const content =
+			'---\ntitle: Dobrovolníci po celé republice spojí síly a uklidí českou krajinu. Budete \n  u toho?\nslug: dobrovolnici\n---\n\nContent.'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: 'title: Dobrovolníci po celé republice spojí síly a uklidí českou krajinu. Budete \n  u toho?',
+				originalValue: 'Dobrovolníci po celé republice spojí síly a uklidí českou krajinu. Budete u toho?',
+				newValue: 'Nový titulek',
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({
+			success: true,
+			content: '---\ntitle: Nový titulek\nslug: dobrovolnici\n---\n\nContent.',
+		})
+	})
+
+	test('multi-line YAML value replacement (excerpt spanning 4 lines)', () => {
+		const content = `---
+title: Short
+excerpt: I letos se čeká Českou republiku tradiční jarní úklid. Tisíce
+  dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme
+  Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k
+  nim také!
+date: 2026-03-10
+---`
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet:
+					'excerpt: I letos se čeká Českou republiku tradiční jarní úklid. Tisíce\n  dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme\n  Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k\n  nim také!',
+				originalValue:
+					'I letos se čeká Českou republiku tradiční jarní úklid. Tisíce dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k nim také!',
+				newValue: 'Updated excerpt.',
+			}),
+			emptyManifest,
+		)
+		expect(result.success).toBe(true)
+		if (result.success) {
+			expect(result.content).toContain('excerpt: Updated excerpt.')
+			expect(result.content).toContain('date: 2026-03-10')
+			// Should not leave orphaned continuation lines
+			expect(result.content).not.toContain('dobrovolníků')
+		}
+	})
+
+	test('single-line YAML value should not trigger YAML replacement path', () => {
+		const content = '---\ntitle: Hello world\n---'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: 'title: Hello world',
+				originalValue: 'Hello world',
+				newValue: 'Hello universe',
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({ success: true, content: '---\ntitle: Hello universe\n---' })
+	})
+
+	test('YAML folded block scalar (>) replacement', () => {
+		const content = '---\ndescription: >-\n  This is a multi-line\n  folded description\ntag: test\n---'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: 'description: >-\n  This is a multi-line\n  folded description',
+				originalValue: 'This is a multi-line folded description',
+				newValue: 'A short description',
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({
+			success: true,
+			content: '---\ndescription: A short description\ntag: test\n---',
+		})
+	})
+
+	test('YAML double-quoted multi-line value replacement', () => {
+		const content = '---\ntitle: "A title with special chars: colons, #hashes,\n  and continuation"\nslug: test\n---'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: 'title: "A title with special chars: colons, #hashes,\n  and continuation"',
+				originalValue: 'A title with special chars: colons, #hashes, and continuation',
+				newValue: 'Simple title',
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({
+			success: true,
+			content: '---\ntitle: Simple title\nslug: test\n---',
+		})
+	})
+
 	test('preserves surrounding content when replacing snippet', () => {
 		const content = '<div>\n  <h3>Hello <span class="sm">world</span></h3>\n  <p>Other</p>\n</div>'
 		const result = applyTextChange(

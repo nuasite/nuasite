@@ -18,12 +18,14 @@ import { MediaLibrary } from './components/media-library'
 import { Outline } from './components/outline'
 import { RedirectCountdown } from './components/redirect-countdown'
 import { RedirectsManager } from './components/redirects-manager'
+import { ReferencePicker } from './components/reference-picker'
 import { SelectionHighlight } from './components/selection-highlight'
 import { SeoEditor } from './components/seo-editor'
 import { TextStyleToolbar } from './components/text-style-toolbar'
 import { ToastContainer } from './components/toast/toast-container'
 import { Toolbar } from './components/toolbar'
 import { getConfig } from './config'
+import { Z_INDEX } from './constants'
 import { disableAllInteractiveElements, enableAllInteractiveElements, logDebug } from './dom'
 import {
 	discardAllChanges,
@@ -280,6 +282,8 @@ const CmsUI = () => {
 
 			if (msg.type === 'cms-deselect-element') {
 				handleBlockEditorClose()
+			} else if (msg.type === 'cms-set-features') {
+				signals.setFeatures(msg.features)
 			}
 		}
 
@@ -292,6 +296,8 @@ const CmsUI = () => {
 		if (signals.isEditing.value) {
 			hideTooltip()
 			stopEditMode(updateUI)
+		} else if (signals.currentPageCollection.value) {
+			await openMarkdownEditorForCurrentPage()
 		} else {
 			signals.isSelectMode.value = false
 			await startEditMode(config, updateUI)
@@ -631,6 +637,8 @@ const CmsUI = () => {
 				<MediaLibrary />
 			</ErrorBoundary>
 
+			<ReferencePicker />
+
 			<ErrorBoundary componentName="Confirm Dialog">
 				<ConfirmDialog />
 			</ErrorBoundary>
@@ -658,7 +666,7 @@ class CmsEditor {
 	private setupUI(): void {
 		const hostElement = document.createElement('div')
 		hostElement.id = 'cms-app-host'
-		hostElement.style.cssText = 'position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: 2147483647;'
+		hostElement.style.cssText = `position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: ${Z_INDEX.MODAL};`
 		document.body.appendChild(hostElement)
 
 		// Create shadow DOM with closed mode for better isolation

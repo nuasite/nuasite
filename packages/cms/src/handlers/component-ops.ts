@@ -3,7 +3,7 @@ import path from 'node:path'
 import { getProjectRoot } from '../config'
 import type { ManifestWriter } from '../manifest-writer'
 import type { CmsManifest, ComponentDefinition, ComponentInstance } from '../types'
-import { acquireFileLock, escapeHtml, escapeRegex, normalizePagePath, resolveAndValidatePath } from '../utils'
+import { acquireFileLock, escapeHtml, escapeRegex, normalizePagePath, relativeImportPath, resolveAndValidatePath } from '../utils'
 
 export type InsertPosition = 'before' | 'after'
 
@@ -679,14 +679,7 @@ export function ensureComponentImport(
 		}
 	}
 
-	// Compute relative import path from target file to component file
-	const targetDir = path.dirname(targetFile)
-	let relativePath = path.relative(targetDir, componentFile)
-	if (!relativePath.startsWith('.')) {
-		relativePath = './' + relativePath
-	}
-
-	const importStatement = `import ${componentName} from '${relativePath}'`
+	const importStatement = `import ${componentName} from '${relativeImportPath(targetFile, componentFile)}'`
 
 	if (frontmatterEnd > 0) {
 		// Has frontmatter — insert import before the closing ---
