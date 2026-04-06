@@ -53,11 +53,12 @@ export function fetchMarkdownContent(
 
 export async function fetchMediaLibrary(
 	config: CmsConfig,
-	cursor?: string,
-	limit = 50,
-): Promise<{ items: MediaItem[]; hasMore: boolean; cursor?: string }> {
-	const params = new URLSearchParams({ limit: String(limit) })
-	if (cursor) params.set('cursor', cursor)
+	options?: { cursor?: string; limit?: number; folder?: string; type?: string },
+): Promise<{ items: MediaItem[]; folders?: Array<{ name: string; path: string }>; hasMore: boolean; cursor?: string }> {
+	const params = new URLSearchParams({ limit: String(options?.limit ?? 50) })
+	if (options?.cursor) params.set('cursor', options.cursor)
+	if (options?.folder) params.set('folder', options.folder)
+	if (options?.type && options.type !== 'all') params.set('type', options.type)
 
 	const res = await fetchWithTimeout(`${config.apiBase}/media/list?${params}`, {
 		method: 'GET',
@@ -72,9 +73,14 @@ export function uploadMedia(
 	config: CmsConfig,
 	file: File,
 	onProgress?: (percent: number) => void,
+	options?: { folder?: string },
 ): Promise<MediaUploadResponse> {
 	const formData = new FormData()
 	formData.append('file', file)
+
+	const params = new URLSearchParams()
+	if (options?.folder) params.set('folder', options.folder)
+	const qs = params.toString()
 
 	return new Promise((resolve) => {
 		const xhr = new XMLHttpRequest()
@@ -100,11 +106,18 @@ export function uploadMedia(
 		xhr.addEventListener('error', () => resolve({ success: false, error: 'Network error during upload' }))
 		xhr.addEventListener('timeout', () => resolve({ success: false, error: 'Upload timed out' }))
 
-		xhr.open('POST', `${config.apiBase}/media/upload`)
+		xhr.open('POST', `${config.apiBase}/media/upload${qs ? `?${qs}` : ''}`)
 		xhr.withCredentials = true
 		xhr.timeout = API.REQUEST_TIMEOUT_MS * 2
 		xhr.send(formData)
 	})
+}
+
+export async function createMediaFolder(
+	config: CmsConfig,
+	folder: string,
+): Promise<{ success: boolean; error?: string }> {
+	return postJson(`${config.apiBase}/media/folder`, { folder }, 'Create folder failed')
 }
 
 export async function fetchProjectImages(config: CmsConfig): Promise<{ items: MediaItem[] }> {

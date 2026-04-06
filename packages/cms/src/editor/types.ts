@@ -380,7 +380,10 @@ export interface MediaItem {
 	width?: number
 	height?: number
 	uploadedAt?: string
+	folder?: string
 }
+
+export type { MediaFolderItem, MediaTypeFilter } from '../media/types'
 
 export interface MediaLibraryState {
 	isOpen: boolean

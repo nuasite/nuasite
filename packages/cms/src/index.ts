@@ -350,7 +350,7 @@ async function mergeRedirects(dir: URL, logger: { info: (msg: string) => void })
 export { createContemberStorageAdapter as contemberMedia } from './media/contember'
 export { createLocalStorageAdapter as localMedia } from './media/local'
 export { createS3StorageAdapter as s3Media } from './media/s3'
-export type { MediaItem, MediaStorageAdapter } from './media/types'
+export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, MediaStorageAdapter, MediaTypeFilter } from './media/types'
 
 export { scanCollections } from './collection-scanner'
 export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'

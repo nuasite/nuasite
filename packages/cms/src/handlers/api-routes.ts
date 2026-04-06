@@ -129,7 +129,8 @@ const routeMap = new Map<string, RouteHandler>([
 		const params = getQuery(ctx)
 		const parsedLimit = parseInt(params.get('limit') ?? '50', 10)
 		const limit = Number.isNaN(parsedLimit) || parsedLimit < 1 ? 50 : Math.min(parsedLimit, 1000)
-		sendJson(ctx.res, await ctx.mediaAdapter.list({ limit, cursor: params.get('cursor') ?? undefined }))
+		const folder = params.get('folder') ?? undefined
+		sendJson(ctx.res, await ctx.mediaAdapter.list({ limit, cursor: params.get('cursor') ?? undefined, folder }))
 	}),
 	custom('GET', 'media/project-images', async (ctx) => {
 		const excludeDir = ctx.mediaAdapter?.staticFiles?.dir
@@ -143,6 +144,7 @@ const routeMap = new Map<string, RouteHandler>([
 			sendError(ctx.res, 'Expected multipart/form-data')
 			return
 		}
+		const folder = getQuery(ctx).get('folder') ?? undefined
 		const body = await readBody(ctx.req, 50 * 1024 * 1024)
 		const file = parseMultipartFile(body, contentType)
 		if (!file) {
@@ -154,7 +156,25 @@ const routeMap = new Map<string, RouteHandler>([
 			sendError(ctx.res, `File type not allowed: ${file.contentType}`)
 			return
 		}
-		sendJson(ctx.res, await ctx.mediaAdapter.upload(file.buffer, file.filename, file.contentType))
+		sendJson(ctx.res, await ctx.mediaAdapter.upload(file.buffer, file.filename, file.contentType, { folder }))
+	}),
+	custom('POST', 'media/folder', async (ctx) => {
+		if (!requireMedia(ctx)) return
+		if (!ctx.mediaAdapter.createFolder) {
+			sendError(ctx.res, 'Folder creation not supported by this storage adapter', 501)
+			return
+		}
+		const body = await parseJsonBody<{ folder: string }>(ctx.req)
+		if (!body.folder || typeof body.folder !== 'string') {
+			sendError(ctx.res, 'folder field is required')
+			return
+		}
+		if (body.folder.includes('..')) {
+			sendError(ctx.res, 'Invalid folder name')
+			return
+		}
+		const result = await ctx.mediaAdapter.createFolder(body.folder)
+		sendJson(ctx.res, result, result.success ? 200 : 400)
 	}),
 
 	// Page operations

@@ -42,7 +42,8 @@ export function createContemberStorageAdapter(options: ContemberStorageOptions):
 				throw new Error(`Failed to list media (${res.status}): ${await res.text()}`)
 			}
 
-			return (await res.json()) as MediaListResult
+			const data = await res.json()
+			return { folders: [], ...data } as MediaListResult
 		},
 
 		async upload(file, filename, contentType) {
