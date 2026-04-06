@@ -676,7 +676,7 @@ export function findInTextIndex(textContent: string, tag: string): SourceLocatio
 	const index = getTextSearchIndex()
 
 	// Helper to build SourceLocation from a text index entry
-	const toLocation = (entry: TextIndexEntry): SourceLocation => ({
+	const toLocation = (entry: SearchIndexEntry): SourceLocation => ({
 		file: entry.file,
 		line: entry.line,
 		snippet: entry.snippet,
