@@ -16,7 +16,14 @@ import { handleCors, sendError } from './handlers/request-utils'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
-import { clearSourceFinderCache, findCollectionSource, findImageSourceLocation, findSourceLocation, initializeSearchIndex, parseMarkdownContent } from './source-finder'
+import {
+	clearSourceFinderCache,
+	findCollectionSource,
+	findImageSourceLocation,
+	findSourceLocation,
+	initializeSearchIndex,
+	parseMarkdownContent,
+} from './source-finder'
 import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition } from './types'
 import { normalizePagePath } from './utils'
 

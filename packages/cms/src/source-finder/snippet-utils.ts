@@ -542,7 +542,9 @@ export async function enhanceManifestWithSourceSnippets(
 			// directly in the collection entry's data file.
 			if (entry.collectionName && entry.collectionSlug && collectionDefinitions) {
 				const imageLocation = await resolveCollectionImageField(
-					entry, collectionDefinitions, referenceIndex,
+					entry,
+					collectionDefinitions,
+					referenceIndex,
 				)
 				if (imageLocation) {
 					return [id, imageLocation] as const

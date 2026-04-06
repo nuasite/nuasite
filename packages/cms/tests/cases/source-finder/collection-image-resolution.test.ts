@@ -16,7 +16,9 @@ describe('findFieldInCollectionEntry', () => {
 		await cleanupTempDir(ctx)
 	})
 
-	function makeCollectionDefs(overrides: Partial<CollectionDefinition> & { entries: CollectionDefinition['entries'] }): Record<string, CollectionDefinition> {
+	function makeCollectionDefs(
+		overrides: Partial<CollectionDefinition> & { entries: CollectionDefinition['entries'] },
+	): Record<string, CollectionDefinition> {
 		return {
 			news: {
 				name: 'news',
@@ -34,14 +36,17 @@ describe('findFieldInCollectionEntry', () => {
 	}
 
 	test('finds image field in markdown frontmatter', async () => {
-		await ctx.writeFile('src/content/news/my-post.md', [
-			'---',
-			'title: My Post',
-			'image: ./images/hero.jpg',
-			'---',
-			'',
-			'Content here.',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/content/news/my-post.md',
+			[
+				'---',
+				'title: My Post',
+				'image: ./images/hero.jpg',
+				'---',
+				'',
+				'Content here.',
+			].join('\n'),
+		)
 
 		const defs = makeCollectionDefs({
 			entries: [{ slug: 'my-post', sourcePath: 'src/content/news/my-post.md' }],
@@ -58,17 +63,20 @@ describe('findFieldInCollectionEntry', () => {
 	})
 
 	test('finds image field in MDX frontmatter', async () => {
-		await ctx.writeFile('src/content/news/my-post.mdx', [
-			'---',
-			'title: My Post',
-			'image: "/uploads/photo.webp"',
-			'draft: false',
-			'---',
-			'',
-			'import Component from "../../components/Component.astro"',
-			'',
-			'<Component />',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/content/news/my-post.mdx',
+			[
+				'---',
+				'title: My Post',
+				'image: "/uploads/photo.webp"',
+				'draft: false',
+				'---',
+				'',
+				'import Component from "../../components/Component.astro"',
+				'',
+				'<Component />',
+			].join('\n'),
+		)
 
 		const defs = makeCollectionDefs({
 			fileExtension: 'mdx',
@@ -82,11 +90,18 @@ describe('findFieldInCollectionEntry', () => {
 	})
 
 	test('finds image field in JSON data file', async () => {
-		await ctx.writeFile('src/content/people/alice.json', JSON.stringify({
-			name: 'Alice',
-			image: '/uploads/alice.jpg',
-			role: 'Developer',
-		}, null, 2))
+		await ctx.writeFile(
+			'src/content/people/alice.json',
+			JSON.stringify(
+				{
+					name: 'Alice',
+					image: '/uploads/alice.jpg',
+					role: 'Developer',
+				},
+				null,
+				2,
+			),
+		)
 
 		const defs: Record<string, CollectionDefinition> = {
 			people: {
@@ -112,11 +127,14 @@ describe('findFieldInCollectionEntry', () => {
 	})
 
 	test('finds image field in YAML data file', async () => {
-		await ctx.writeFile('src/content/team/bob.yaml', [
-			'name: Bob',
-			'image: /uploads/bob.webp',
-			'role: Designer',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/content/team/bob.yaml',
+			[
+				'name: Bob',
+				'image: /uploads/bob.webp',
+				'role: Designer',
+			].join('\n'),
+		)
 
 		const defs: Record<string, CollectionDefinition> = {
 			team: {
@@ -141,11 +159,18 @@ describe('findFieldInCollectionEntry', () => {
 	})
 
 	test('finds field with different name (e.g. "logo")', async () => {
-		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({
-			name: 'ACME Corp',
-			logo: '/uploads/acme-logo.png',
-			href: 'https://acme.com',
-		}, null, 2))
+		await ctx.writeFile(
+			'src/content/partners/acme.json',
+			JSON.stringify(
+				{
+					name: 'ACME Corp',
+					logo: '/uploads/acme-logo.png',
+					href: 'https://acme.com',
+				},
+				null,
+				2,
+			),
+		)
 
 		const defs: Record<string, CollectionDefinition> = {
 			partners: {
@@ -171,13 +196,16 @@ describe('findFieldInCollectionEntry', () => {
 	})
 
 	test('returns undefined for non-existent field', async () => {
-		await ctx.writeFile('src/content/news/my-post.md', [
-			'---',
-			'title: My Post',
-			'---',
-			'',
-			'No image field here.',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/content/news/my-post.md',
+			[
+				'---',
+				'title: My Post',
+				'---',
+				'',
+				'No image field here.',
+			].join('\n'),
+		)
 
 		const defs = makeCollectionDefs({
 			entries: [{ slug: 'my-post', sourcePath: 'src/content/news/my-post.md' }],
@@ -207,14 +235,17 @@ describe('findFieldInCollectionEntry', () => {
 
 	test('finds hashed Astro URL that was previously written to frontmatter', async () => {
 		// After a successful edit, the frontmatter contains the hashed URL
-		await ctx.writeFile('src/content/news/edited-post.md', [
-			'---',
-			'title: Edited Post',
-			'image: /assets/a1b2c3d4e5f6-1234-jpg.webp',
-			'---',
-			'',
-			'Content.',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/content/news/edited-post.md',
+			[
+				'---',
+				'title: Edited Post',
+				'image: /assets/a1b2c3d4e5f6-1234-jpg.webp',
+				'---',
+				'',
+				'Content.',
+			].join('\n'),
+		)
 
 		const defs = makeCollectionDefs({
 			entries: [{ slug: 'edited-post', sourcePath: 'src/content/news/edited-post.md' }],
@@ -251,14 +282,17 @@ describe('enhanceManifestWithSourceSnippets — collection images', () => {
 	}
 
 	test('resolves collection image to data file when collectionName is on wrapper parent', async () => {
-		await ctx.writeFile('src/content/news/my-post.md', [
-			'---',
-			'title: My Post',
-			'image: ./images/hero.jpg',
-			'---',
-			'',
-			'Content.',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/content/news/my-post.md',
+			[
+				'---',
+				'title: My Post',
+				'image: ./images/hero.jpg',
+				'---',
+				'',
+				'Content.',
+			].join('\n'),
+		)
 
 		const collectionDefinitions: Record<string, CollectionDefinition> = {
 			news: {
@@ -302,11 +336,18 @@ describe('enhanceManifestWithSourceSnippets — collection images', () => {
 	})
 
 	test('resolves collection image with "logo" field name in JSON data file', async () => {
-		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({
-			name: 'ACME Corp',
-			logo: '/uploads/acme-logo.png',
-			href: 'https://acme.com',
-		}, null, 2))
+		await ctx.writeFile(
+			'src/content/partners/acme.json',
+			JSON.stringify(
+				{
+					name: 'ACME Corp',
+					logo: '/uploads/acme-logo.png',
+					href: 'https://acme.com',
+				},
+				null,
+				2,
+			),
+		)
 
 		const collectionDefinitions: Record<string, CollectionDefinition> = {
 			partners: {
@@ -361,10 +402,13 @@ describe('enhanceManifestWithSourceSnippets — collection images', () => {
 	})
 
 	test('propagates collection info from deeply nested wrappers', async () => {
-		await ctx.writeFile('src/content/team/alice.yaml', [
-			'name: Alice',
-			'image: /uploads/alice.jpg',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/content/team/alice.yaml',
+			[
+				'name: Alice',
+				'image: /uploads/alice.jpg',
+			].join('\n'),
+		)
 
 		const collectionDefinitions: Record<string, CollectionDefinition> = {
 			team: {
@@ -428,24 +472,30 @@ describe('findInImageIndex — collection data file preference', () => {
 	test('prefers collection data file when same URL exists in template and data file', async () => {
 		// This reproduces the real-world scenario: a listing page template has
 		// static src="/assets/hash.webp" AND the collection data file has the same URL
-		await ctx.writeFile('src/pages/listing.astro', [
-			'---',
-			'import { getCollection } from "astro:content"',
-			'const items = await getCollection("news")',
-			'---',
-			'<div>',
-			'  <img src="/assets/c65c265604c3-8047-jpg.webp" alt="News image" />',
-			'</div>',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/pages/listing.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const items = await getCollection("news")',
+				'---',
+				'<div>',
+				'  <img src="/assets/c65c265604c3-8047-jpg.webp" alt="News image" />',
+				'</div>',
+			].join('\n'),
+		)
 
-		await ctx.writeFile('src/content/news/my-post.mdx', [
-			'---',
-			'title: "My Post"',
-			'image: "/assets/c65c265604c3-8047-jpg.webp"',
-			'---',
-			'',
-			'Content here.',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/content/news/my-post.mdx',
+			[
+				'---',
+				'title: "My Post"',
+				'image: "/assets/c65c265604c3-8047-jpg.webp"',
+				'---',
+				'',
+				'Content here.',
+			].join('\n'),
+		)
 
 		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
 		await initializeSearchIndex()
@@ -457,16 +507,26 @@ describe('findInImageIndex — collection data file preference', () => {
 	})
 
 	test('prefers collection JSON data file over template', async () => {
-		await ctx.writeFile('src/pages/partners.astro', [
-			'---',
-			'---',
-			'<img src="/uploads/acme-logo.png" alt="ACME" />',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/pages/partners.astro',
+			[
+				'---',
+				'---',
+				'<img src="/uploads/acme-logo.png" alt="ACME" />',
+			].join('\n'),
+		)
 
-		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({
-			name: 'ACME',
-			logo: '/uploads/acme-logo.png',
-		}, null, 2))
+		await ctx.writeFile(
+			'src/content/partners/acme.json',
+			JSON.stringify(
+				{
+					name: 'ACME',
+					logo: '/uploads/acme-logo.png',
+				},
+				null,
+				2,
+			),
+		)
 
 		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
 		await initializeSearchIndex()
@@ -477,11 +537,14 @@ describe('findInImageIndex — collection data file preference', () => {
 	})
 
 	test('returns template match when URL only exists in template', async () => {
-		await ctx.writeFile('src/pages/about.astro', [
-			'---',
-			'---',
-			'<img src="/images/hero.jpg" alt="Hero" />',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/pages/about.astro',
+			[
+				'---',
+				'---',
+				'<img src="/images/hero.jpg" alt="Hero" />',
+			].join('\n'),
+		)
 
 		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
 		await initializeSearchIndex()
@@ -492,16 +555,22 @@ describe('findInImageIndex — collection data file preference', () => {
 	})
 
 	test('suffix matching also prefers collection data files', async () => {
-		await ctx.writeFile('src/pages/index.astro', [
-			'---',
-			'---',
-			'<img src="https://cdn.example.com/uploads/photo.webp" alt="Photo" />',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'---',
+				'<img src="https://cdn.example.com/uploads/photo.webp" alt="Photo" />',
+			].join('\n'),
+		)
 
-		await ctx.writeFile('src/content/team/alice.yaml', [
-			'name: Alice',
-			'image: https://cdn.example.com/uploads/photo.webp',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/content/team/alice.yaml',
+			[
+				'name: Alice',
+				'image: https://cdn.example.com/uploads/photo.webp',
+			].join('\n'),
+		)
 
 		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
 		await initializeSearchIndex()
@@ -529,18 +598,24 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 
 	test('findImageSourceLocation returns wrong file before index is built, correct after', async () => {
 		// Setup: same image URL in both template and collection data file
-		await ctx.writeFile('src/pages/listing.astro', [
-			'---',
-			'---',
-			'<img src="/assets/hash123-photo.webp" alt="Photo" />',
-		].join('\n'))
-		await ctx.writeFile('src/content/news/post.md', [
-			'---',
-			'title: Post',
-			'image: /assets/hash123-photo.webp',
-			'---',
-			'Content.',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/pages/listing.astro',
+			[
+				'---',
+				'---',
+				'<img src="/assets/hash123-photo.webp" alt="Photo" />',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/content/news/post.md',
+			[
+				'---',
+				'title: Post',
+				'image: /assets/hash123-photo.webp',
+				'---',
+				'Content.',
+			].join('\n'),
+		)
 
 		const { findImageSourceLocation, initializeSearchIndex } = await import('../../../src/source-finder')
 
@@ -559,17 +634,23 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 	})
 
 	test('findSourceLocation returns correct file after index rebuild', async () => {
-		await ctx.writeFile('src/pages/index.astro', [
-			'---',
-			'---',
-			'<h2>My Article</h2>',
-		].join('\n'))
-		await ctx.writeFile('src/content/news/article.mdx', [
-			'---',
-			'title: My Article',
-			'---',
-			'Body text.',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'---',
+				'<h2>My Article</h2>',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/content/news/article.mdx',
+			[
+				'---',
+				'title: My Article',
+				'---',
+				'Body text.',
+			].join('\n'),
+		)
 
 		// Note: text from collection frontmatter isn't indexed in the text search index
 		// (only .astro files are), so this tests that the template match works correctly.
@@ -583,15 +664,25 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 	})
 
 	test('clearSourceFinderCache wipes index, requiring re-initialization', async () => {
-		await ctx.writeFile('src/pages/index.astro', [
-			'---',
-			'---',
-			'<img src="/assets/test-image.jpg" alt="Test" />',
-		].join('\n'))
-		await ctx.writeFile('src/content/team/bob.json', JSON.stringify({
-			name: 'Bob',
-			image: '/assets/test-image.jpg',
-		}, null, 2))
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'---',
+				'<img src="/assets/test-image.jpg" alt="Test" />',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/content/team/bob.json',
+			JSON.stringify(
+				{
+					name: 'Bob',
+					image: '/assets/test-image.jpg',
+				},
+				null,
+				2,
+			),
+		)
 
 		const { findImageSourceLocation, initializeSearchIndex, clearSourceFinderCache: clearCache } = await import('../../../src/source-finder')
 
@@ -619,16 +710,19 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 	})
 
 	test('concurrent initializeSearchIndex calls share the same build', async () => {
-		await ctx.writeFile('src/pages/index.astro', [
-			'---',
-			'---',
-			'<img src="/assets/concurrent.jpg" alt="Test" />',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'---',
+				'<img src="/assets/concurrent.jpg" alt="Test" />',
+			].join('\n'),
+		)
 
 		const { initializeSearchIndex, findImageSourceLocation } = await import('../../../src/source-finder')
 
 		// Launch two concurrent initializations
-		const [, ] = await Promise.all([
+		const [,] = await Promise.all([
 			initializeSearchIndex(),
 			initializeSearchIndex(),
 		])

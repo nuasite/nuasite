@@ -380,7 +380,10 @@ export async function findFieldInCollectionEntry(
 		for (let i = 0; i < lines.length; i++) {
 			if (lines[i]?.trim() === '---') {
 				if (fmStart === -1) fmStart = i
-				else { fmEnd = i; break }
+				else {
+					fmEnd = i
+					break
+				}
 			}
 		}
 		if (fmEnd <= 0) return undefined

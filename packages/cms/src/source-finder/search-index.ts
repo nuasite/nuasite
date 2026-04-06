@@ -83,7 +83,6 @@ export async function initializeSearchIndex(): Promise<void> {
 }
 
 async function doInitializeSearchIndex(): Promise<void> {
-
 	const srcDir = path.join(getProjectRoot(), 'src')
 	const searchDirs = [
 		path.join(srcDir, 'components'),

@@ -985,18 +985,24 @@ withTempDir('content collection image indexing', (getCtx) => {
 		const ctx = getCtx()
 
 		// Same image URL in a template and a collection data file
-		await ctx.writeFile('src/pages/index.astro', [
-			'---',
-			'---',
-			'<img src="/assets/abc123-photo.webp" alt="Photo" />',
-		].join('\n'))
-		await ctx.writeFile('src/content/news/my-post.md', [
-			'---',
-			'title: My Post',
-			'image: /assets/abc123-photo.webp',
-			'---',
-			'Content.',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'---',
+				'<img src="/assets/abc123-photo.webp" alt="Photo" />',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/content/news/my-post.md',
+			[
+				'---',
+				'title: My Post',
+				'image: /assets/abc123-photo.webp',
+				'---',
+				'Content.',
+			].join('\n'),
+		)
 
 		await initializeSearchIndex()
 
@@ -1009,15 +1015,25 @@ withTempDir('content collection image indexing', (getCtx) => {
 		const ctx = getCtx()
 
 		// Template files are typically indexed first (src/pages before src/content)
-		await ctx.writeFile('src/pages/about.astro', [
-			'---',
-			'---',
-			'<img src="/uploads/logo.png" alt="Logo" />',
-		].join('\n'))
-		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({
-			name: 'ACME',
-			logo: '/uploads/logo.png',
-		}, null, 2))
+		await ctx.writeFile(
+			'src/pages/about.astro',
+			[
+				'---',
+				'---',
+				'<img src="/uploads/logo.png" alt="Logo" />',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/content/partners/acme.json',
+			JSON.stringify(
+				{
+					name: 'ACME',
+					logo: '/uploads/logo.png',
+				},
+				null,
+				2,
+			),
+		)
 
 		await initializeSearchIndex()
 
@@ -1029,11 +1045,14 @@ withTempDir('content collection image indexing', (getCtx) => {
 	test('returns template match when no collection data file has the URL', async () => {
 		const ctx = getCtx()
 
-		await ctx.writeFile('src/pages/index.astro', [
-			'---',
-			'---',
-			'<img src="/images/static-hero.jpg" alt="Hero" />',
-		].join('\n'))
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'---',
+				'<img src="/images/static-hero.jpg" alt="Hero" />',
+			].join('\n'),
+		)
 
 		await initializeSearchIndex()
 
