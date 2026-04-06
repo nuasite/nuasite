@@ -26,9 +26,6 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Bump npm to latest
-        run: npm install -g npm@latest
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3
