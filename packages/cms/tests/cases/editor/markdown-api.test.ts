@@ -403,7 +403,7 @@ describe('uploadMedia', () => {
 		}
 
 		const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' })
-		await uploadMedia(mockConfig, file, percent => progressValues.push(percent))
+		await uploadMedia(mockConfig, file, (percent: number) => progressValues.push(percent))
 
 		expect(progressValues).toContain(50)
 		expect(progressValues).toContain(100)

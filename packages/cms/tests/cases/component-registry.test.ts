@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { ComponentRegistry, parseComponentUsage } from '../../src/component-registry'
+import type { ComponentProp } from '../../src/types'
 import { setupAstroProjectStructure, withTempDir } from '../utils'
 
 // ============================================================================
@@ -326,9 +327,9 @@ const { type = 'info', dismissible = false } = Astro.props;
 			await registry.scan()
 			const alert = registry.getComponent('Alert')
 
-			expect(alert?.props.find(p => p.name === 'type')?.defaultValue).toBe('info')
+			expect(alert?.props.find((p: ComponentProp) => p.name === 'type')?.defaultValue).toBe('info')
 			// The regex captures trailing characters, so we trim for comparison
-			expect(alert?.props.find(p => p.name === 'dismissible')?.defaultValue?.trim()).toBe('false')
+			expect(alert?.props.find((p: ComponentProp) => p.name === 'dismissible')?.defaultValue?.trim()).toBe('false')
 		})
 
 		test('should handle complex types with nested objects', async () => {

@@ -540,7 +540,7 @@ describe('tailwind-colors', () => {
 
 		test('returns standard shades with values for default colors', async () => {
 			const result = await parseTailwindConfig('/nonexistent/path')
-			const blueColor = result.colors.find(c => c.name === 'blue')
+			const blueColor = result.colors.find((c: any) => c.name === 'blue')
 			expect(blueColor).toBeDefined()
 			// Check that all standard shades have values
 			expect(Object.keys(blueColor?.values ?? {})).toEqual([...STANDARD_SHADES])
@@ -550,7 +550,7 @@ describe('tailwind-colors', () => {
 
 		test('special colors have single empty-key value', async () => {
 			const result = await parseTailwindConfig('/nonexistent/path')
-			const whiteColor = result.colors.find(c => c.name === 'white')
+			const whiteColor = result.colors.find((c: any) => c.name === 'white')
 			expect(whiteColor).toBeDefined()
 			expect(whiteColor?.values).toEqual({ '': '#ffffff' })
 		})

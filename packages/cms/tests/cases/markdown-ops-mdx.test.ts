@@ -76,8 +76,8 @@ withTempDir('ensureMdxImports', (getCtx) => {
 		const result = ensureMdxImports(content, 'src/content/blog/post.mdx', defs)
 
 		const lines = result.split('\n')
-		const somethingIdx = lines.findIndex((l) => l.includes('import Something from'))
-		const heroIdx = lines.findIndex((l) => l.includes('import Hero from'))
+		const somethingIdx = lines.findIndex((l: string) => l.includes('import Something from'))
+		const heroIdx = lines.findIndex((l: string) => l.includes('import Hero from'))
 
 		expect(somethingIdx).toBeGreaterThanOrEqual(0)
 		expect(heroIdx).toBeGreaterThan(somethingIdx)

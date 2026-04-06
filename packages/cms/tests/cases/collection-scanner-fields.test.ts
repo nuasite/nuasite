@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { scanCollections } from '../../src/collection-scanner'
+import type { FieldDefinition } from '../../src/types'
 import { setupContentCollections, withTempDir } from '../utils'
 
 withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx) => {
@@ -29,15 +30,15 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 		const teamDef = result['team']
 		expect(teamDef).toBeDefined()
 
-		const linksField = teamDef!.fields.find(f => f.name === 'links')
+		const linksField = teamDef!.fields.find((f: FieldDefinition) => f.name === 'links')
 		expect(linksField).toBeDefined()
 		expect(linksField!.type).toBe('array')
 		expect(linksField!.itemType).toBe('object')
 		expect(linksField!.fields).toBeDefined()
 		expect(linksField!.fields!.length).toBe(2)
 
-		const labelSub = linksField!.fields!.find(f => f.name === 'label')
-		const urlSub = linksField!.fields!.find(f => f.name === 'url')
+		const labelSub = linksField!.fields!.find((f: FieldDefinition) => f.name === 'label')
+		const urlSub = linksField!.fields!.find((f: FieldDefinition) => f.name === 'url')
 		expect(labelSub).toBeDefined()
 		expect(urlSub).toBeDefined()
 		expect(urlSub!.type).toBe('url')
@@ -56,7 +57,7 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 		const postsDef = result['posts']
 		expect(postsDef).toBeDefined()
 
-		const tagsField = postsDef!.fields.find(f => f.name === 'tags')
+		const tagsField = postsDef!.fields.find((f: FieldDefinition) => f.name === 'tags')
 		expect(tagsField).toBeDefined()
 		expect(tagsField!.type).toBe('array')
 		expect(tagsField!.itemType).toBe('text')
@@ -76,7 +77,7 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 		const postsDef = result['posts']
 		expect(postsDef).toBeDefined()
 
-		const itemsField = postsDef!.fields.find(f => f.name === 'items')
+		const itemsField = postsDef!.fields.find((f: FieldDefinition) => f.name === 'items')
 		expect(itemsField).toBeDefined()
 		expect(itemsField!.type).toBe('array')
 		expect(itemsField!.fields).toBeUndefined()
@@ -99,14 +100,14 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 		const miscDef = result['misc']
 		expect(miscDef).toBeDefined()
 
-		const dataField = miscDef!.fields.find(f => f.name === 'data')
+		const dataField = miscDef!.fields.find((f: FieldDefinition) => f.name === 'data')
 		expect(dataField).toBeDefined()
 		expect(dataField!.type).toBe('array')
 
 		// itemType is inferred from the first item — if it's 'object', sub-fields come from objects only
 		if (dataField!.itemType === 'object') {
 			expect(dataField!.fields).toBeDefined()
-			const keySub = dataField!.fields!.find(f => f.name === 'key')
+			const keySub = dataField!.fields!.find((f: FieldDefinition) => f.name === 'key')
 			expect(keySub).toBeDefined()
 			expect(keySub!.type).toBe('text')
 		}
@@ -128,15 +129,15 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 		const productsDef = result['products']
 		expect(productsDef).toBeDefined()
 
-		const variantsField = productsDef!.fields.find(f => f.name === 'variants')
+		const variantsField = productsDef!.fields.find((f: FieldDefinition) => f.name === 'variants')
 		expect(variantsField).toBeDefined()
 		expect(variantsField!.type).toBe('array')
 		expect(variantsField!.itemType).toBe('object')
 		expect(variantsField!.fields).toBeDefined()
 
-		const sizeSub = variantsField!.fields!.find(f => f.name === 'size')
-		const priceSub = variantsField!.fields!.find(f => f.name === 'price')
-		const inStockSub = variantsField!.fields!.find(f => f.name === 'inStock')
+		const sizeSub = variantsField!.fields!.find((f: FieldDefinition) => f.name === 'size')
+		const priceSub = variantsField!.fields!.find((f: FieldDefinition) => f.name === 'price')
+		const inStockSub = variantsField!.fields!.find((f: FieldDefinition) => f.name === 'inStock')
 
 		expect(sizeSub).toBeDefined()
 		expect(sizeSub!.type).toBe('text')

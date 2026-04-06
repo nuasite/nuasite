@@ -103,7 +103,7 @@ describe('AIService', () => {
 			}
 
 			const callbacks: AIStreamCallbacks = {
-				onToken: (token, fullText) => tokens.push({ token, fullText }),
+				onToken: (token: string, fullText: string) => tokens.push({ token, fullText }),
 			}
 
 			await service.streamRequest(
@@ -137,7 +137,7 @@ describe('AIService', () => {
 			}
 
 			const callbacks: AIStreamCallbacks = {
-				onComplete: finalText => {
+				onComplete: (finalText: string) => {
 					completedText = finalText
 				},
 			}
@@ -172,7 +172,7 @@ describe('AIService', () => {
 			}
 
 			const callbacks: AIStreamCallbacks = {
-				onStatus: (status, message) => statuses.push({ status, message }),
+				onStatus: (status: string, message: string | undefined) => statuses.push({ status, message }),
 			}
 
 			await service.streamRequest(
@@ -206,7 +206,7 @@ describe('AIService', () => {
 			}
 
 			const callbacks: AIStreamCallbacks = {
-				onAction: action => actions.push(action),
+				onAction: (action: any) => actions.push(action),
 			}
 
 			await service.streamRequest(
@@ -239,7 +239,7 @@ describe('AIService', () => {
 			}
 
 			const callbacks: AIStreamCallbacks = {
-				onError: error => {
+				onError: (error: Error) => {
 					errorReceived = error
 				},
 			}

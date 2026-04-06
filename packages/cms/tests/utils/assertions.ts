@@ -175,7 +175,7 @@ export function getEntryByTag(
 	result: ProcessHtmlResult,
 	tag: string,
 ): ProcessHtmlResult['entries'][string] | undefined {
-	return Object.values(result.entries).find((e) => e.tag === tag)
+	return Object.values(result.entries).find((e: any) => e.tag === tag)
 }
 
 // ============================================================================

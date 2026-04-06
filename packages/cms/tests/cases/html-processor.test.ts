@@ -243,7 +243,7 @@ cmsDescribe('collection wrapper', { generateManifest: true }, (ctx) => {
 		const result = await ctx.process(input)
 
 		expect(result.collectionWrapperId).toBeUndefined()
-		for (const entry of Object.values(result.entries)) {
+		for (const entry of Object.values(result.entries) as any[]) {
 			expect(entry.collectionName).toBeUndefined()
 		}
 	})
@@ -407,7 +407,7 @@ cmsDescribe('inline style tags', { generateManifest: true }, (ctx) => {
 		const result = await ctx.process(input)
 
 		expectEntryCount(result, 1)
-		const pEntry = Object.values(result.entries)[0]
+		const pEntry = Object.values(result.entries)[0] as any
 		expect(pEntry?.tag).toBe('p')
 		expect(pEntry?.text).toBe('Start middle end')
 		expect(pEntry?.childCmsIds).toBeUndefined()

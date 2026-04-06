@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import type { ComponentInstance, ManifestEntry } from '../../src/types'
 import { cmsDescribe, expectComponentCount, expectNoComponents, html } from '../utils'
 
 cmsDescribe('Component Detection', { markComponents: true, generateManifest: true }, (ctx) => {
@@ -7,7 +8,7 @@ cmsDescribe('Component Detection', { markComponents: true, generateManifest: tru
 
 		expect(result.html).toContain('data-cms-component-id')
 		expectComponentCount(result, 1)
-		expect(Object.values(result.components)[0]?.componentName).toBe('Welcome')
+		expect((Object.values(result.components) as ComponentInstance[])[0]?.componentName).toBe('Welcome')
 	})
 
 	test('marks components from custom component directory', async () => {
@@ -64,7 +65,7 @@ cmsDescribe('Component Detection', { markComponents: true, generateManifest: tru
 
 		expect(result.html).toContain('data-cms-component-id')
 		expectComponentCount(result, 1)
-		expect(Object.values(result.components)[0]?.componentName).toBe('Button')
+		expect((Object.values(result.components) as ComponentInstance[])[0]?.componentName).toBe('Button')
 	})
 
 	test('marks components from any directory when componentDirs is empty and not excluded', async () => {
@@ -97,7 +98,7 @@ cmsDescribe('Component Detection', { markComponents: true, generateManifest: tru
 		const result = await ctx.process(input)
 
 		expectComponentCount(result, 2)
-		const componentNames = Object.values(result.components).map((c) => c.componentName)
+		const componentNames = (Object.values(result.components) as ComponentInstance[]).map((c) => c.componentName)
 		expect(componentNames).toContain('Header')
 		expect(componentNames).toContain('Footer')
 	})
@@ -112,7 +113,7 @@ cmsDescribe('Component Detection', { markComponents: true, generateManifest: tru
 		const entries = Object.values(result.entries)
 		expect(entries.length).toBeGreaterThan(0)
 
-		for (const entry of entries) {
+		for (const entry of entries as ManifestEntry[]) {
 			expect(entry.parentComponentId).toBe(componentId)
 		}
 	})
@@ -124,7 +125,7 @@ cmsDescribe('Component Detection', { markComponents: true, generateManifest: tru
 		const entries = Object.values(result.entries)
 		expect(entries.length).toBeGreaterThan(0)
 
-		for (const entry of entries) {
+		for (const entry of entries as ManifestEntry[]) {
 			expect(entry.parentComponentId).toBeUndefined()
 		}
 	})

@@ -28,7 +28,7 @@ import {
 	isChildOfArray,
 	resolveMapChain,
 } from '../../../src/source-finder/search-index'
-import type { CachedParsedFile } from '../../../src/source-finder/types'
+import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry } from '../../../src/source-finder/types'
 import { setupAstroProjectStructure, withTempDir } from '../../utils'
 
 // ============================================================================
@@ -45,8 +45,8 @@ withTempDir('collectAstroFiles', (getCtx) => {
 		const files = await collectAstroFiles(`${ctx.tempDir}/src/components`)
 
 		expect(files).toHaveLength(2)
-		expect(files.some(f => f.endsWith('Button.astro'))).toBe(true)
-		expect(files.some(f => f.endsWith('Card.astro'))).toBe(true)
+		expect(files.some((f: string) => f.endsWith('Button.astro'))).toBe(true)
+		expect(files.some((f: string) => f.endsWith('Card.astro'))).toBe(true)
 	})
 
 	test('should collect .tsx files', async () => {
@@ -82,9 +82,9 @@ withTempDir('collectAstroFiles', (getCtx) => {
 		const files = await collectAstroFiles(`${ctx.tempDir}/src/components`)
 
 		expect(files).toHaveLength(3)
-		expect(files.some(f => f.endsWith('Button.astro'))).toBe(true)
-		expect(files.some(f => f.includes('ui/Card.astro'))).toBe(true)
-		expect(files.some(f => f.includes('layout/Header.astro'))).toBe(true)
+		expect(files.some((f: string) => f.endsWith('Button.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('ui/Card.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('layout/Header.astro'))).toBe(true)
 	})
 
 	test('should ignore non-supported file types', async () => {
@@ -215,11 +215,11 @@ withTempDir('initializeSearchIndex', (getCtx) => {
 		await initializeSearchIndex()
 
 		const textIndex = getTextSearchIndex()
-		const files = [...new Set(textIndex.map(e => e.file))]
+		const files = [...new Set(textIndex.map((e: SearchIndexEntry) => e.file))]
 
-		expect(files.some(f => f.includes('components/Button.astro'))).toBe(true)
-		expect(files.some(f => f.includes('pages/index.astro'))).toBe(true)
-		expect(files.some(f => f.includes('layouts/Base.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('components/Button.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('pages/index.astro'))).toBe(true)
+		expect(files.some((f: string) => f.includes('layouts/Base.astro'))).toBe(true)
 	})
 
 	test('should skip directories that do not exist', async () => {
@@ -260,7 +260,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const entry = index.find(e => e.normalizedText === 'hello world')
+		const entry = index.find((e: SearchIndexEntry) => e.normalizedText === 'hello world')
 
 		expect(entry).toBeDefined()
 		expect(entry?.file).toBe('src/components/Test.astro')
@@ -285,7 +285,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const variableEntry = index.find(e => e.type === 'variable' && e.variableName === 'title')
+		const variableEntry = index.find((e: SearchIndexEntry) => e.type === 'variable' && e.variableName === 'title')
 
 		expect(variableEntry).toBeDefined()
 		expect(variableEntry?.normalizedText).toBe('hello world')
@@ -306,7 +306,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const propEntry = index.find(e => e.type === 'prop' && e.variableName === 'label')
+		const propEntry = index.find((e: SearchIndexEntry) => e.type === 'prop' && e.variableName === 'label')
 
 		expect(propEntry).toBeDefined()
 		expect(propEntry?.normalizedText).toBe('click me')
@@ -326,7 +326,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const entry = index.find(e => e.normalizedText === 'hello world')
+		const entry = index.find((e: SearchIndexEntry) => e.normalizedText === 'hello world')
 
 		expect(entry).toBeDefined()
 	})
@@ -345,7 +345,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const entry = index.find(e => e.normalizedText === 'x')
+		const entry = index.find((e: SearchIndexEntry) => e.normalizedText === 'x')
 
 		expect(entry).toBeUndefined()
 	})
@@ -367,7 +367,7 @@ withTempDir('indexFileContent', (getCtx) => {
 		indexFileContent(cached, 'src/components/Test.astro')
 
 		const index = getTextSearchIndex()
-		const entry = index.find(e => e.type === 'variable' && e.variableName === 'config.nav.title')
+		const entry = index.find((e: SearchIndexEntry) => e.type === 'variable' && e.variableName === 'config.nav.title')
 
 		expect(entry).toBeDefined()
 		expect(entry?.normalizedText).toBe('home')
@@ -393,7 +393,7 @@ withTempDir('indexFileImages', (getCtx) => {
 		indexFileImages(cached, 'src/components/Hero.astro')
 
 		const index = getImageSearchIndex()
-		const entry = index.find(e => e.src === '/images/hero.png')
+		const entry = index.find((e: ImageIndexEntry) => e.src === '/images/hero.png')
 
 		expect(entry).toBeDefined()
 		expect(entry?.file).toBe('src/components/Hero.astro')
@@ -416,7 +416,7 @@ withTempDir('indexFileImages', (getCtx) => {
 		indexFileImages(cached, 'src/components/Hero.tsx')
 
 		const index = getImageSearchIndex()
-		const entry = index.find(e => e.src === '/images/hero.png')
+		const entry = index.find((e: ImageIndexEntry) => e.src === '/images/hero.png')
 
 		expect(entry).toBeDefined()
 		expect(entry?.file).toBe('src/components/Hero.tsx')
@@ -439,7 +439,7 @@ withTempDir('indexFileImages', (getCtx) => {
 		indexFileImages(cached, 'src/components/Hero.jsx')
 
 		const index = getImageSearchIndex()
-		const entry = index.find(e => e.src === '/images/hero.png')
+		const entry = index.find((e: ImageIndexEntry) => e.src === '/images/hero.png')
 
 		expect(entry).toBeDefined()
 	})
@@ -459,7 +459,7 @@ withTempDir('indexFileImages', (getCtx) => {
 		indexFileImages(cached, 'src/components/Gallery.astro')
 
 		const index = getImageSearchIndex()
-		const entries = index.filter(e => e.file === 'src/components/Gallery.astro')
+		const entries = index.filter((e: ImageIndexEntry) => e.file === 'src/components/Gallery.astro')
 
 		expect(entries).toHaveLength(2)
 	})

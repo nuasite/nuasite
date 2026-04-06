@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import type { ComponentInstance, ManifestEntry } from '../../src/types'
 import { cmsDescribe, expectComponentCount, html } from '../utils'
 
 cmsDescribe('Multiple Component Instances', { markComponents: true, generateManifest: true }, (ctx) => {
@@ -12,7 +13,7 @@ cmsDescribe('Multiple Component Instances', { markComponents: true, generateMani
 		const result = await ctx.process(input)
 
 		expectComponentCount(result, 2)
-		const components = Object.values(result.components)
+		const components = Object.values(result.components) as ComponentInstance[]
 		expect(components[0]?.componentName).toBe('CTASection')
 		expect(components[1]?.componentName).toBe('CTASection')
 		// Each should have its own unique ID
@@ -31,7 +32,7 @@ cmsDescribe('Multiple Component Instances', { markComponents: true, generateMani
 		const result = await ctx.process(input)
 
 		expectComponentCount(result, 4)
-		const names = Object.values(result.components).map(c => c.componentName)
+		const names = (Object.values(result.components) as ComponentInstance[]).map(c => c.componentName)
 		expect(names.filter(n => n === 'CTASection')).toHaveLength(2)
 		expect(names.filter(n => n === 'HeroSection')).toHaveLength(1)
 		expect(names.filter(n => n === 'ServicesSection')).toHaveLength(1)
@@ -48,13 +49,14 @@ cmsDescribe('Multiple Component Instances', { markComponents: true, generateMani
 
 		expectComponentCount(result, 2)
 
-		const components = Object.values(result.components)
+		const components = Object.values(result.components) as ComponentInstance[]
 		const comp1 = components[0]!
 		const comp2 = components[1]!
 
 		// Each component's entries should reference their own component ID
-		const comp1Entries = Object.values(result.entries).filter(e => e.parentComponentId === comp1.id)
-		const comp2Entries = Object.values(result.entries).filter(e => e.parentComponentId === comp2.id)
+		const allEntries = Object.values(result.entries) as ManifestEntry[]
+		const comp1Entries = allEntries.filter(e => e.parentComponentId === comp1.id)
+		const comp2Entries = allEntries.filter(e => e.parentComponentId === comp2.id)
 
 		expect(comp1Entries.length).toBeGreaterThan(0)
 		expect(comp2Entries.length).toBeGreaterThan(0)
@@ -73,7 +75,7 @@ cmsDescribe('Multiple Component Instances', { markComponents: true, generateMani
 		const result = await ctx.process(input)
 
 		expectComponentCount(result, 3)
-		const names = Object.values(result.components).map(c => c.componentName)
+		const names = (Object.values(result.components) as ComponentInstance[]).map(c => c.componentName)
 		expect(names.every(n => n === 'Banner')).toBe(true)
 	})
 
