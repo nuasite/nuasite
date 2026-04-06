@@ -350,6 +350,25 @@ describe('applyImageChange', () => {
 			}
 		})
 
+		test('replaces image in YAML when originalValue is Astro-hashed filename', () => {
+			const content = '---\ntitle: My Post\nimage: ./images/hero.jpg\n---\n\nContent here.'
+			const result = applyImageChange(
+				content,
+				makeImageChange({
+					// Astro content collection images get hashed filenames in rendered HTML
+					originalValue: '/assets/02ea4e4b132e-5172-jpg.webp',
+					sourceSnippet: 'image: ./images/hero.jpg',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/new-hero.jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('image: /uploads/new-hero.jpg')
+				expect(result.content).not.toContain('./images/hero.jpg')
+			}
+		})
+
 		test('replaces image value in JSON data file', () => {
 			const content = '{\n  "name": "Test Person",\n  "image": "/assets/old-photo.webp",\n  "role": "Developer"\n}'
 			const result = applyImageChange(
@@ -422,6 +441,143 @@ describe('applyImageChange', () => {
 				expect(result.content).toContain('"banner": "/uploads/new-banner.webp"')
 				// The other image should remain untouched
 				expect(result.content).toContain('"avatar": "/assets/avatar.webp"')
+			}
+		})
+	})
+
+	// =========================================================================
+	// Real-world scenarios: collection listing image editing
+	// =========================================================================
+	// These reproduce the exact user scenarios that were failing:
+	// - User clicks image on a listing page (homepage showing news articles)
+	// - Image belongs to a collection entry (MDX/JSON/YAML file)
+	// - Rendered URL is Astro-hashed (/assets/hash.webp)
+
+	describe('scenario: editing collection image on listing page', () => {
+		test('MDX frontmatter image — hashed URL in both template and data file', () => {
+			// The MDX file has the image in frontmatter (previously edited, so it has hashed URL)
+			const mdxContent = '---\ntitle: "Dobrovolníci spojí síly"\nimage: "/assets/c65c265604c3-8047-jpg.webp"\ncategory: "Aktuálně"\n---\n\nContent body.'
+			const result = applyImageChange(
+				mdxContent,
+				makeImageChange({
+					// The rendered <img> src on the listing page
+					originalValue: '/assets/c65c265604c3-8047-jpg.webp',
+					// Snippet from the MDX frontmatter (resolved by search index)
+					sourceSnippet: 'image: "/assets/c65c265604c3-8047-jpg.webp"',
+					sourcePath: 'src/content/news/dobrovolnici.mdx',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/new-photo.jpg', newAlt: 'New photo' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('image: /uploads/new-photo.jpg')
+				expect(result.content).not.toContain('c65c265604c3')
+				// Other frontmatter fields untouched
+				expect(result.content).toContain('title: "Dobrovolníci spojí síly"')
+				expect(result.content).toContain('category: "Aktuálně"')
+			}
+		})
+
+		test('JSON data file — partner logo change', () => {
+			const jsonContent = '{\n  "name": "Nadace OSF",\n  "logo": "/assets/835b883e3fd3-5081-png.webp",\n  "href": "https://osf.cz"\n}'
+			const result = applyImageChange(
+				jsonContent,
+				makeImageChange({
+					originalValue: '/assets/835b883e3fd3-5081-png.webp',
+					sourceSnippet: '  "logo": "/assets/835b883e3fd3-5081-png.webp",',
+					sourcePath: 'src/content/partners/nadace-osf.json',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/new-logo.png' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('"logo": "/uploads/new-logo.png"')
+				expect(result.content).not.toContain('835b883e3fd3')
+				expect(result.content).toContain('"name": "Nadace OSF"')
+			}
+		})
+
+		test('MDX with original authored path — first edit of unmodified collection entry', () => {
+			// Before any CMS edit, the MDX has the original relative path.
+			// Astro renders it as a hashed URL, so originalValue is the hash.
+			const mdxContent = '---\ntitle: "Fresh Post"\nimage: ./images/hero.jpg\ndraft: false\n---\n\nNew content.'
+			const result = applyImageChange(
+				mdxContent,
+				makeImageChange({
+					originalValue: '/assets/a1b2c3d4e5f6-hero-jpg.webp',
+					sourceSnippet: 'image: ./images/hero.jpg',
+					sourcePath: 'src/content/news/fresh-post.mdx',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/replacement.jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('image: /uploads/replacement.jpg')
+				expect(result.content).not.toContain('./images/hero.jpg')
+			}
+		})
+
+		test('repeated edits on same entry work correctly', () => {
+			// After first edit, frontmatter has the uploaded URL
+			const mdxAfterFirstEdit = '---\ntitle: "Post"\nimage: /uploads/first-edit.jpg\n---\n\nBody.'
+			const result = applyImageChange(
+				mdxAfterFirstEdit,
+				makeImageChange({
+					originalValue: '/uploads/first-edit.jpg',
+					sourceSnippet: 'image: /uploads/first-edit.jpg',
+					sourcePath: 'src/content/news/post.mdx',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/second-edit.jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('image: /uploads/second-edit.jpg')
+				expect(result.content).not.toContain('first-edit')
+			}
+		})
+
+		test('YAML data file — team member photo', () => {
+			const yamlContent = 'name: Alice\nimage: /uploads/alice.jpg\nrole: Developer\norder: 1'
+			const result = applyImageChange(
+				yamlContent,
+				makeImageChange({
+					originalValue: '/assets/hash-alice-jpg.webp',
+					sourceSnippet: 'image: /uploads/alice.jpg',
+					sourcePath: 'src/content/team/alice.yaml',
+					sourceLine: 2,
+					imageChange: { newSrc: '/uploads/alice-v2.jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('image: /uploads/alice-v2.jpg')
+				expect(result.content).not.toContain('/uploads/alice.jpg')
+				expect(result.content).toContain('name: Alice')
+				expect(result.content).toContain('role: Developer')
+			}
+		})
+
+		test('fails gracefully when source file is a template with dynamic expression', () => {
+			// If the manifest incorrectly points to the template, the source writer
+			// should refuse rather than corrupting the template
+			const templateContent = '{news.map(article => (\n  <img\n    src={article.image}\n    alt={article.title}\n  />\n))}'
+			const result = applyImageChange(
+				templateContent,
+				makeImageChange({
+					originalValue: '/assets/c65c265604c3-8047-jpg.webp',
+					sourceSnippet: '<img\n    src={article.image}',
+					sourcePath: 'src/pages/index.astro',
+					sourceLine: 3,
+					imageChange: { newSrc: '/uploads/new.jpg' },
+				}),
+			)
+			expect(result.success).toBe(false)
+			if (!result.success) {
+				expect(result.error).toContain('dynamic expression')
 			}
 		})
 	})

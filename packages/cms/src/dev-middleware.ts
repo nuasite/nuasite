@@ -16,7 +16,7 @@ import { handleCors, sendError } from './handlers/request-utils'
 import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
-import { clearSourceFinderCache, findCollectionSource, findImageSourceLocation, initializeSearchIndex, parseMarkdownContent } from './source-finder'
+import { clearSourceFinderCache, findCollectionSource, findImageSourceLocation, findSourceLocation, initializeSearchIndex, parseMarkdownContent } from './source-finder'
 import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition } from './types'
 import { normalizePagePath } from './utils'
 
@@ -473,21 +473,23 @@ async function processHtmlForDev(
 	// (idempotent - only scans files on first call)
 	await initializeSearchIndex()
 
-	// In dev mode, we use the source info from Astro compiler attributes
-	// which is already extracted by html-processor
-	// Always search for image source by src value - the sourcePath from HTML attributes
-	// may point to a shared Image component rather than the actual usage site
+	// Re-resolve sources with the fully-built search index (the earlier enhancement
+	// step runs before the index is ready, so its results may be stale).
 	for (const entry of Object.values(result.entries)) {
 		if (entry.imageMetadata?.src) {
-			// Skip entries already resolved to collection frontmatter — the search index
-			// would point back to the listing page's .astro file, losing the .md resolution
-			if (entry.collectionName) continue
-
 			const imageSource = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
 			if (imageSource) {
 				entry.sourcePath = imageSource.file
 				entry.sourceLine = imageSource.line
 				entry.sourceSnippet = imageSource.snippet
+			}
+		} else if (entry.text && entry.tag) {
+			const textSource = await findSourceLocation(entry.text, entry.tag)
+			if (textSource) {
+				entry.sourcePath = textSource.file
+				entry.sourceLine = textSource.line
+				entry.sourceSnippet = textSource.snippet
+				if (textSource.variableName) entry.variableName = textSource.variableName
 			}
 		}
 	}

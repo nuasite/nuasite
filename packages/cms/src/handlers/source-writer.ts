@@ -61,7 +61,6 @@ export async function handleUpdate(
 					fileChanges,
 					manifest,
 				)
-
 				if (failedChanges.length > 0) {
 					errors.push(...failedChanges)
 				}
@@ -191,6 +190,26 @@ export function applyImageChange(
 	const decodedHref = extractAstroImageOriginalUrl(originalSrc)
 	if (decodedHref && !srcCandidates.includes(decodedHref)) {
 		srcCandidates.push(decodedHref)
+	}
+
+	// Extract the authored value from YAML/JSON source snippets.
+	// Astro optimizes images from content collections (e.g. ./images/photo.jpg → /assets/hash.webp),
+	// so the rendered URL won't match the value in the data file. Parse the snippet to recover it.
+	if (change.sourceSnippet) {
+		const yamlKeyMatch = change.sourceSnippet.match(/^\s*([\w][\w-]*):\s*/)
+		if (yamlKeyMatch?.[1]) {
+			try {
+				const parsed = parseYaml(change.sourceSnippet)
+				if (parsed && typeof parsed === 'object') {
+					const value = (parsed as Record<string, unknown>)[yamlKeyMatch[1]]
+					if (typeof value === 'string' && !srcCandidates.includes(value)) {
+						srcCandidates.push(value)
+					}
+				}
+			} catch {
+				// Not valid YAML, ignore
+			}
+		}
 	}
 
 	let newContent = content

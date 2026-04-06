@@ -588,6 +588,78 @@ withTempDir('findInTextIndex', (getCtx) => {
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Correct.astro')
 	})
+
+	test('should prefer collection data file over template for exact match', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		// Same text in template and collection data file
+		addToTextSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 10,
+			snippet: '<h2>My Article Title</h2>',
+			type: 'static',
+			normalizedText: 'my article title',
+			tag: 'h2',
+		})
+		addToTextSearchIndex({
+			file: 'src/content/news/my-article.mdx',
+			line: 3,
+			snippet: 'title: My Article Title',
+			type: 'static',
+			normalizedText: 'my article title',
+			tag: 'h2',
+		})
+
+		const result = findInTextIndex('My Article Title', 'h2')
+		expect(result).toBeDefined()
+		expect(result?.file).toContain('src/content/')
+	})
+
+	test('should prefer collection data file over template for any-tag match', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		addToTextSearchIndex({
+			file: 'src/pages/about.astro',
+			line: 5,
+			snippet: '<span>Partner Name</span>',
+			type: 'static',
+			normalizedText: 'partner name',
+			tag: 'span',
+		})
+		addToTextSearchIndex({
+			file: 'src/content/partners/acme.json',
+			line: 2,
+			snippet: '"name": "Partner Name"',
+			type: 'static',
+			normalizedText: 'partner name',
+			tag: 'div', // different tag
+		})
+
+		// Search with a third tag — both are "any tag" matches, collection should win
+		const result = findInTextIndex('Partner Name', 'p')
+		expect(result).toBeDefined()
+		expect(result?.file).toContain('src/content/')
+	})
+
+	test('should return template match when no collection data file has the text', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		addToTextSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 8,
+			snippet: '<h1>Welcome</h1>',
+			type: 'static',
+			normalizedText: 'welcome',
+			tag: 'h1',
+		})
+
+		const result = findInTextIndex('Welcome', 'h1')
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/pages/index.astro')
+	})
 })
 
 // ============================================================================
@@ -907,6 +979,67 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		const result = findInImageIndex('alice@test.com')
 		expect(result).toBeUndefined()
+	})
+
+	test('prefers collection data file over template when same URL exists in both', async () => {
+		const ctx = getCtx()
+
+		// Same image URL in a template and a collection data file
+		await ctx.writeFile('src/pages/index.astro', [
+			'---',
+			'---',
+			'<img src="/assets/abc123-photo.webp" alt="Photo" />',
+		].join('\n'))
+		await ctx.writeFile('src/content/news/my-post.md', [
+			'---',
+			'title: My Post',
+			'image: /assets/abc123-photo.webp',
+			'---',
+			'Content.',
+		].join('\n'))
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/assets/abc123-photo.webp')
+		expect(result).not.toBeUndefined()
+		expect(result!.file).toContain('src/content/news/my-post.md')
+	})
+
+	test('prefers collection data file even when template is indexed first', async () => {
+		const ctx = getCtx()
+
+		// Template files are typically indexed first (src/pages before src/content)
+		await ctx.writeFile('src/pages/about.astro', [
+			'---',
+			'---',
+			'<img src="/uploads/logo.png" alt="Logo" />',
+		].join('\n'))
+		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({
+			name: 'ACME',
+			logo: '/uploads/logo.png',
+		}, null, 2))
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/uploads/logo.png')
+		expect(result).not.toBeUndefined()
+		expect(result!.file).toContain('src/content/partners/acme.json')
+	})
+
+	test('returns template match when no collection data file has the URL', async () => {
+		const ctx = getCtx()
+
+		await ctx.writeFile('src/pages/index.astro', [
+			'---',
+			'---',
+			'<img src="/images/static-hero.jpg" alt="Hero" />',
+		].join('\n'))
+
+		await initializeSearchIndex()
+
+		const result = findInImageIndex('/images/static-hero.jpg')
+		expect(result).not.toBeUndefined()
+		expect(result!.file).toContain('src/pages/index.astro')
 	})
 })
 

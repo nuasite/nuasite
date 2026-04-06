@@ -1,14 +1,16 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { parse as parseYaml } from 'yaml'
 
 import { getProjectRoot } from '../config'
 import type { Attribute, CollectionDefinition, ManifestEntry } from '../types'
 import { escapeRegex, generateSourceHash } from '../utils'
 import { buildDefinitionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
-import { findTextInAnyCollectionFrontmatter } from './collection-finder'
+import { findFieldInCollectionEntry, findTextInAnyCollectionFrontmatter } from './collection-finder'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
+import { initializeSearchIndex } from './search-index'
 import type { CachedParsedFile, ImageMatch, SourceLocation } from './types'
 
 // ============================================================================
@@ -472,6 +474,10 @@ export async function enhanceManifestWithSourceSnippets(
 	entries: Record<string, ManifestEntry>,
 	collectionDefinitions?: Record<string, CollectionDefinition>,
 ): Promise<Record<string, ManifestEntry>> {
+	// Ensure the search index is ready (returns immediately if already built,
+	// otherwise waits for the in-flight initialization or triggers a new one).
+	await initializeSearchIndex()
+
 	const enhanced: Record<string, ManifestEntry> = {}
 
 	// Build a reverse-reference index once so we don't recompute per entry
@@ -496,10 +502,54 @@ export async function enhanceManifestWithSourceSnippets(
 		}
 	}
 
+	// Propagate collectionName/collectionSlug from wrapper entries to their children.
+	// The HTML processor only sets collection info on the wrapper element itself;
+	// child entries (images, text) need it for direct data-file resolution.
+	// Build parent→children lookup, then propagate down the tree.
+	const childrenOf = new Map<string, ManifestEntry[]>()
+	for (const entry of Object.values(entries)) {
+		if (entry.parentComponentId) {
+			const siblings = childrenOf.get(entry.parentComponentId)
+			if (siblings) siblings.push(entry)
+			else childrenOf.set(entry.parentComponentId, [entry])
+		}
+	}
+	const propagateCollection = (parentId: string, name: string, slug: string) => {
+		const children = childrenOf.get(parentId)
+		if (!children) return
+		for (const child of children) {
+			if (!child.collectionName) {
+				child.collectionName = name
+				child.collectionSlug = slug
+				propagateCollection(child.id, name, slug)
+			}
+		}
+	}
+	for (const entry of Object.values(entries)) {
+		if (entry.collectionName && entry.collectionSlug) {
+			propagateCollection(entry.id, entry.collectionName, entry.collectionSlug)
+		}
+	}
+
 	// Process entries in parallel for better performance
 	const entryPromises = Object.entries(entries).map(async ([id, entry]) => {
 		// Handle image entries specially - find the line with src attribute
 		if (entry.imageMetadata?.src) {
+			// ── Collection images: resolve directly from the data file ──
+			// When an image belongs to a known collection entry, bypass the search index
+			// entirely. Astro hashes image filenames (e.g. ./photo.jpg → /assets/a1b2c3.webp),
+			// making reverse URL lookup unreliable. Instead, look up the image field(s)
+			// directly in the collection entry's data file.
+			if (entry.collectionName && entry.collectionSlug && collectionDefinitions) {
+				const imageLocation = await resolveCollectionImageField(
+					entry, collectionDefinitions, referenceIndex,
+				)
+				if (imageLocation) {
+					return [id, imageLocation] as const
+				}
+			}
+
+			// ── Non-collection images: find via search index / AST ──
 			const imageLocation = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
 			if (imageLocation) {
 				const sourceHash = generateSourceHash(imageLocation.snippet || entry.imageMetadata.src)
@@ -549,9 +599,6 @@ export async function enhanceManifestWithSourceSnippets(
 			}
 
 			// Fallback for expression-based src attributes (src={variable})
-			// Use the entry's existing sourcePath/sourceLine to find the img tag
-			// by its position in the AST rather than by src value
-			let triedCollectionSearch = false
 			if (entry.sourcePath && entry.sourceLine) {
 				try {
 					const filePath = path.isAbsolute(entry.sourcePath)
@@ -561,8 +608,6 @@ export async function enhanceManifestWithSourceSnippets(
 					if (cached) {
 						const nearbyImg = findImageElementNearLine(cached.ast, entry.sourceLine, cached.lines)
 						if (nearbyImg) {
-							// resolveImageExpression includes a collection frontmatter search (step 3)
-							triedCollectionSearch = true
 							const resolvedEntry = await resolveImageExpression(
 								entry,
 								nearbyImg,
@@ -589,13 +634,10 @@ export async function enhanceManifestWithSourceSnippets(
 				}
 			}
 
-			// Final fallback: search collection frontmatter directly for the image URL.
-			// Skipped when resolveImageExpression already searched collections.
-			if (!triedCollectionSearch) {
-				const collectionResult = await searchCollectionWithDecodedFallback(entry.imageMetadata.src, collectionDefinitions)
-				if (collectionResult) {
-					return [id, applyCollectionSource(entry, collectionResult, referenceIndex)] as const
-				}
+			// Final fallback: search collection frontmatter directly for the image URL
+			const collectionResult = await searchCollectionWithDecodedFallback(entry.imageMetadata.src, collectionDefinitions)
+			if (collectionResult) {
+				return [id, applyCollectionSource(entry, collectionResult, referenceIndex)] as const
 			}
 
 			return [id, entry] as const
@@ -918,6 +960,84 @@ function applyCollectionSource(
 }
 
 // ============================================================================
+// Collection Image Resolution
+// ============================================================================
+
+/**
+ * Resolve a collection image entry directly from the data file.
+ * Uses the collection definition's image fields to find the source location
+ * without relying on URL matching (which fails when Astro hashes filenames).
+ *
+ * For entries with a single image field, the resolution is unambiguous.
+ * For multiple image fields, tries to match by value (exact or suffix).
+ */
+async function resolveCollectionImageField(
+	entry: ManifestEntry,
+	collectionDefinitions: Record<string, CollectionDefinition>,
+	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
+): Promise<ManifestEntry | undefined> {
+	const colDef = collectionDefinitions[entry.collectionName!]
+	if (!colDef) return undefined
+
+	const imageFields = colDef.fields.filter((f) => f.type === 'image')
+	if (imageFields.length === 0) return undefined
+
+	// Single image field — unambiguous
+	if (imageFields.length === 1) {
+		const fieldResult = await findFieldInCollectionEntry(
+			imageFields[0]!.name,
+			entry.collectionName!,
+			entry.collectionSlug!,
+			collectionDefinitions,
+		)
+		if (fieldResult) {
+			return applyCollectionSource(entry, fieldResult, referenceIndex)
+		}
+		return undefined
+	}
+
+	// Multiple image fields — try to match the rendered URL to a field value.
+	const imgSrc = entry.imageMetadata!.src
+	let firstFieldResult: SourceLocation | undefined
+	for (const field of imageFields) {
+		const fieldResult = await findFieldInCollectionEntry(
+			field.name,
+			entry.collectionName!,
+			entry.collectionSlug!,
+			collectionDefinitions,
+		)
+		if (!fieldResult?.snippet) continue
+
+		// Remember the first resolved field as fallback
+		firstFieldResult ??= fieldResult
+
+		// Check if the field's value matches the rendered URL (exact or after Astro processing)
+		const yamlKeyMatch = fieldResult.snippet.match(/^\s*[\w][\w-]*:\s*/)
+		if (yamlKeyMatch) {
+			try {
+				const parsed = parseYaml(fieldResult.snippet)
+				if (parsed && typeof parsed === 'object') {
+					const key = fieldResult.snippet.match(/^\s*([\w][\w-]*):/)?.[1]
+					const value = key ? (parsed as Record<string, unknown>)[key] : undefined
+					if (typeof value === 'string' && (value === imgSrc || imgSrc.includes(value) || value.includes(imgSrc))) {
+						return applyCollectionSource(entry, fieldResult, referenceIndex)
+					}
+				}
+			} catch {
+				// Not valid YAML
+			}
+		}
+	}
+
+	// No value match — fall back to first resolved image field
+	if (firstFieldResult) {
+		return applyCollectionSource(entry, firstFieldResult, referenceIndex)
+	}
+
+	return undefined
+}
+
+// ============================================================================
 // Image Expression Resolution
 // ============================================================================
 
@@ -990,6 +1110,26 @@ async function resolveImageExpression(
 	const collectionResult = await searchCollectionWithDecodedFallback(imgSrc, collectionDefinitions)
 	if (collectionResult) {
 		return applyCollectionSource(entry, collectionResult, referenceIndex)
+	}
+
+	// Step 4: Field-name-based lookup — handles Astro-optimized images where the rendered URL
+	// is a hashed filename (e.g., /assets/02ea4e4b132e.webp) that can't be matched by value.
+	// Extract the field name from the expression (e.g., {article.data.image} → "image")
+	// and look it up directly in the known collection entry's data file.
+	if (entry.collectionName && entry.collectionSlug && collectionDefinitions) {
+		const exprFieldPattern = /\{[\w]+(?:\.data)?\.(\w+)\}/
+		const fieldMatch = nearbyImg.snippet.match(exprFieldPattern)
+		if (fieldMatch?.[1]) {
+			const fieldResult = await findFieldInCollectionEntry(
+				fieldMatch[1],
+				entry.collectionName,
+				entry.collectionSlug,
+				collectionDefinitions,
+			)
+			if (fieldResult) {
+				return applyCollectionSource(entry, fieldResult, referenceIndex)
+			}
+		}
 	}
 
 	return undefined

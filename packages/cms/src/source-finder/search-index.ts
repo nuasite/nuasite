@@ -16,7 +16,14 @@ import {
 	setSearchIndexInitialized,
 } from './cache'
 import { extractImageSnippet, extractInnerHtmlFromSnippet, normalizeText } from './snippet-utils'
-import type { CachedParsedFile, SourceLocation } from './types'
+import type { CachedParsedFile, SearchIndexEntry, SourceLocation } from './types'
+
+/** Collection data files live under this path — used to prefer them over templates */
+const CONTENT_DIR_PREFIX = 'src/content/'
+
+function isCollectionFile(file: string): boolean {
+	return file.includes(CONTENT_DIR_PREFIX)
+}
 
 // ============================================================================
 // File Collection
@@ -56,12 +63,26 @@ export async function collectAstroFiles(dir: string): Promise<string[]> {
 // Index Initialization
 // ============================================================================
 
+/** Shared promise so concurrent callers wait for the same initialization */
+let initPromise: Promise<void> | null = null
+
 /**
  * Initialize search index by pre-scanning all source files.
  * This is much faster than searching per-entry.
+ * Safe to call concurrently — all callers share the same initialization.
  */
 export async function initializeSearchIndex(): Promise<void> {
 	if (isSearchIndexInitialized()) return
+	if (initPromise) return initPromise
+	initPromise = doInitializeSearchIndex()
+	try {
+		await initPromise
+	} finally {
+		initPromise = null
+	}
+}
+
+async function doInitializeSearchIndex(): Promise<void> {
 
 	const srcDir = path.join(getProjectRoot(), 'src')
 	const searchDirs = [
@@ -546,12 +567,8 @@ const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?)$/i
  */
 async function indexContentCollectionImages(): Promise<void> {
 	const contentDir = path.join(getProjectRoot(), 'src', 'content')
-	let entries: Awaited<ReturnType<typeof fs.readdir<true>>>
-	try {
-		entries = await fs.readdir(contentDir, { withFileTypes: true })
-	} catch {
-		return // No content directory
-	}
+	const entries = await fs.readdir(contentDir, { withFileTypes: true }).catch(() => null)
+	if (!entries) return // No content directory
 
 	const dataFiles: string[] = []
 	for (const entry of entries) {
@@ -659,55 +676,51 @@ export function findInTextIndex(textContent: string, tag: string): SourceLocatio
 	const tagLower = tag.toLowerCase()
 	const index = getTextSearchIndex()
 
-	// First try exact match with same tag
+	// Helper to build SourceLocation from a text index entry
+	const toLocation = (entry: TextIndexEntry): SourceLocation => ({
+		file: entry.file,
+		line: entry.line,
+		snippet: entry.snippet,
+		openingTagSnippet: entry.openingTagSnippet,
+		type: entry.type,
+		variableName: entry.variableName,
+		definitionLine: entry.definitionLine,
+	})
+
+	// First try exact match with same tag — prefer collection data files
+	let bestMatch: SourceLocation | undefined
 	for (const entry of index) {
 		if (entry.tag === tagLower && entry.normalizedText === normalizedSearch) {
-			return {
-				file: entry.file,
-				line: entry.line,
-				snippet: entry.snippet,
-				openingTagSnippet: entry.openingTagSnippet,
-				type: entry.type,
-				variableName: entry.variableName,
-				definitionLine: entry.definitionLine,
-			}
+			const result = toLocation(entry)
+			if (isCollectionFile(entry.file)) return result
+			bestMatch ??= result
 		}
 	}
+	if (bestMatch) return bestMatch
 
-	// Then try partial match for longer text
+	// Then try partial match for longer text — prefer collection data files
 	if (normalizedSearch.length > 10) {
 		const textPreview = normalizedSearch.slice(0, Math.min(30, normalizedSearch.length))
 		for (const entry of index) {
 			if (entry.tag === tagLower && entry.normalizedText.includes(textPreview)) {
-				return {
-					file: entry.file,
-					line: entry.line,
-					snippet: entry.snippet,
-					openingTagSnippet: entry.openingTagSnippet,
-					type: entry.type,
-					variableName: entry.variableName,
-					definitionLine: entry.definitionLine,
-				}
+				const result = toLocation(entry)
+				if (isCollectionFile(entry.file)) return result
+				bestMatch ??= result
 			}
 		}
+		if (bestMatch) return bestMatch
 	}
 
-	// Try any tag match
+	// Try any tag match — prefer collection data files
 	for (const entry of index) {
 		if (entry.normalizedText === normalizedSearch) {
-			return {
-				file: entry.file,
-				line: entry.line,
-				snippet: entry.snippet,
-				openingTagSnippet: entry.openingTagSnippet,
-				type: entry.type,
-				variableName: entry.variableName,
-				definitionLine: entry.definitionLine,
-			}
+			const result = toLocation(entry)
+			if (isCollectionFile(entry.file)) return result
+			bestMatch ??= result
 		}
 	}
 
-	return undefined
+	return bestMatch
 }
 
 /**
@@ -727,17 +740,25 @@ function extractPathname(src: string): string {
 export function findInImageIndex(imageSrc: string): SourceLocation | undefined {
 	const index = getImageSearchIndex()
 
-	// Exact match first
+	// Exact match — prefer collection data files (src/content/) over templates.
+	// The same image URL can appear in both a collection data file and a template
+	// that statically renders the collection. The data file is the authoritative source.
+	let bestMatch: SourceLocation | undefined
 	for (const entry of index) {
 		if (entry.src === imageSrc) {
-			return {
+			const result: SourceLocation = {
 				file: entry.file,
 				line: entry.line,
 				snippet: entry.snippet,
 				type: 'static',
 			}
+			if (isCollectionFile(entry.file)) {
+				return result // Collection data file — always preferred
+			}
+			bestMatch ??= result // Keep first non-collection match as fallback
 		}
 	}
+	if (bestMatch) return bestMatch
 
 	// Fallback: path suffix matching for CDN-transformed URLs
 	// e.g., rendered src "/cdn-cgi/image/.../assets/photo.webp" should match
@@ -746,14 +767,18 @@ export function findInImageIndex(imageSrc: string): SourceLocation | undefined {
 	for (const entry of index) {
 		const entryPath = extractPathname(entry.src)
 		if (entryPath.length > 5 && (targetPath.endsWith(entryPath) || entryPath.endsWith(targetPath))) {
-			return {
+			const result: SourceLocation = {
 				file: entry.file,
 				line: entry.line,
 				snippet: entry.snippet,
 				type: 'static',
 			}
+			if (isCollectionFile(entry.file)) {
+				return result
+			}
+			bestMatch ??= result
 		}
 	}
 
-	return undefined
+	return bestMatch
 }

@@ -345,6 +345,90 @@ function walkYamlNode(
 	return undefined
 }
 
+/**
+ * Find an image field by name in a specific collection entry's data file.
+ * Used when the rendered image URL has been transformed (e.g., Astro hashed filenames)
+ * and can't be matched by value, but we know the field name from the expression.
+ */
+export async function findFieldInCollectionEntry(
+	fieldName: string,
+	collectionName: string,
+	collectionSlug: string,
+	collectionDefinitions: Record<string, CollectionDefinition>,
+): Promise<SourceLocation | undefined> {
+	const def = collectionDefinitions[collectionName]
+	if (!def?.entries) return undefined
+
+	const entry = def.entries.find((e) => e.slug === collectionSlug)
+	if (!entry) return undefined
+
+	const info: CollectionInfo = { name: collectionName, slug: collectionSlug, file: entry.sourcePath }
+
+	try {
+		const filePath = path.join(getProjectRoot(), entry.sourcePath)
+		const cached = await getCachedMarkdownFile(filePath)
+		if (!cached) return undefined
+
+		if (def.type === 'data') {
+			return findFieldByNameInYaml(cached.content, 0, fieldName, cached.lines, info)
+		}
+
+		// For markdown, search inside frontmatter only
+		const { lines } = cached
+		let fmStart = -1
+		let fmEnd = -1
+		for (let i = 0; i < lines.length; i++) {
+			if (lines[i]?.trim() === '---') {
+				if (fmStart === -1) fmStart = i
+				else { fmEnd = i; break }
+			}
+		}
+		if (fmEnd <= 0) return undefined
+		const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
+		return findFieldByNameInYaml(yamlStr, fmStart + 1, fieldName, lines, info)
+	} catch {
+		return undefined
+	}
+}
+
+/**
+ * Walk a YAML AST to find a field by key name (regardless of its value).
+ */
+function findFieldByNameInYaml(
+	yamlStr: string,
+	lineOffset: number,
+	fieldName: string,
+	fileLines: string[],
+	collectionInfo: CollectionInfo,
+): SourceLocation | undefined {
+	const lineCounter = new LineCounter()
+	const doc = parseDocument(yamlStr, { lineCounter })
+	if (!isMap(doc.contents)) return undefined
+
+	for (const pair of doc.contents.items) {
+		if (!isPair(pair) || !isScalar(pair.key)) continue
+		if (String(pair.key.value) !== fieldName) continue
+		if (!isScalar(pair.value)) continue
+
+		const keyRange = (pair.key as any).range as [number, number, number] | undefined
+		const valRange = (pair.value as any).range as [number, number, number] | undefined
+		const startLine = (keyRange ? lineCounter.linePos(keyRange[0]).line : 1) + lineOffset
+		const endLine = (valRange ? lineCounter.linePos(valRange[1]).line : startLine - lineOffset) + lineOffset
+
+		const snippet = fileLines.slice(startLine - 1, endLine).join('\n')
+		return {
+			file: collectionInfo.file,
+			line: startLine,
+			snippet,
+			type: 'collection',
+			variableName: fieldName,
+			collectionName: collectionInfo.name,
+			collectionSlug: collectionInfo.slug,
+		}
+	}
+	return undefined
+}
+
 // ============================================================================
 // Markdown Content Parsing
 // ============================================================================
