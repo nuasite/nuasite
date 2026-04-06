@@ -112,6 +112,9 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		name: '@nuasite/cms',
 		hooks: {
 			'astro:config:setup': async ({ updateConfig, command, injectScript, logger }) => {
+				// CMS is only needed during dev — skip all setup during build
+				if (command !== 'dev') return
+
 				// --- CMS Marker setup ---
 				idCounter.value = 0
 				manifestWriter.reset()
@@ -295,21 +298,8 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 			},
 
 			'astro:build:done': async ({ dir, logger }) => {
-				if (generateManifest) {
-					await processBuildOutput(dir, markerConfig, manifestWriter, idCounter, logger)
-				}
-
 				// Merge CMS-managed redirects (src/_redirects) into dist/_redirects
 				await mergeRedirects(dir, logger)
-
-				const errorCollector = getErrorCollector()
-				if (errorCollector.hasWarnings()) {
-					const warnings = errorCollector.getWarnings()
-					logger.warn(`${warnings.length} warning(s) during processing:`)
-					for (const { context, message } of warnings) {
-						logger.warn(`  - ${context}: ${message}`)
-					}
-				}
 			},
 		},
 	}
