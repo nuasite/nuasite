@@ -1,4 +1,4 @@
-import { commandsCtx, defaultValueCtx, Editor, editorViewCtx, rootCtx } from '@milkdown/core'
+import { defaultValueCtx, Editor, editorViewCtx, rootCtx } from '@milkdown/core'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import {
 	commonmark,
@@ -15,10 +15,10 @@ import { callCommand, insert, replaceAll } from '@milkdown/utils'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { uploadMedia } from '../markdown-api'
 import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-plugin'
+import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
 import { config, mdxComponentPickerOpen, openMediaLibraryWithCallback, resetMarkdownEditorState, showToast, updateMarkdownContent } from '../signals'
 import { MdxComponentIcon } from './mdx-block-view'
 import { MdxComponentPicker } from './mdx-component-picker'
-import { MdxPropsEditor } from './mdx-props-editor'
 
 export interface MarkdownInlineEditorProps {
 	elementId: string
@@ -45,27 +45,7 @@ export function MarkdownInlineEditor({
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
 	// Track active formatting for toolbar highlighting
-	const [activeFormats, setActiveFormats] = useState<{
-		bold: boolean
-		italic: boolean
-		strikethrough: boolean
-		link: boolean
-		linkHref: string | null
-		bulletList: boolean
-		orderedList: boolean
-		blockquote: boolean
-		heading: number | null
-	}>({
-		bold: false,
-		italic: false,
-		strikethrough: false,
-		link: false,
-		linkHref: null,
-		bulletList: false,
-		orderedList: false,
-		blockquote: false,
-		heading: null,
-	})
+	const [activeFormats, setActiveFormats] = useState<ActiveFormats>(defaultActiveFormats)
 
 	// Store initial content in ref to avoid stale closure issues
 	const initialContentRef = useRef(initialContent)
@@ -79,91 +59,11 @@ export function MarkdownInlineEditor({
 	const isMdxRef = useRef(isMdx ?? false)
 	isMdxRef.current = isMdx ?? false
 
-	// Check active formatting at current selection
-	const updateActiveFormats = useCallback(() => {
-		if (!editorInstanceRef.current) return
-
-		try {
-			const view = editorInstanceRef.current.ctx.get(editorViewCtx)
-			const { state } = view
-			const { $from, from, to } = state.selection
-
-			// Check marks (inline formatting)
-			let bold = false
-			let italic = false
-			let strikethrough = false
-			let link = false
-			let linkHref: string | null = null
-
-			// Check if marks are active in the selection
-			const marks = state.storedMarks || $from.marks()
-			for (const mark of marks) {
-				if (mark.type.name === 'strong') bold = true
-				if (mark.type.name === 'emphasis') italic = true
-				if (mark.type.name === 'strikethrough') strikethrough = true
-				if (mark.type.name === 'link') {
-					link = true
-					linkHref = mark.attrs.href as string
-				}
-			}
-
-			// Also check marks in the selection range
-			if (from !== to) {
-				state.doc.nodesBetween(from, to, (node) => {
-					if (node.marks) {
-						for (const mark of node.marks) {
-							if (mark.type.name === 'strong') bold = true
-							if (mark.type.name === 'emphasis') italic = true
-							if (mark.type.name === 'strikethrough') strikethrough = true
-							if (mark.type.name === 'link') {
-								link = true
-								linkHref = mark.attrs.href as string
-							}
-						}
-					}
-				})
-			}
-
-			// Check block types (lists, blockquote, heading)
-			let bulletList = false
-			let orderedList = false
-			let blockquote = false
-			let heading: number | null = null
-
-			for (let depth = $from.depth; depth > 0; depth--) {
-				const node = $from.node(depth)
-				if (node.type.name === 'bullet_list') bulletList = true
-				if (node.type.name === 'ordered_list') orderedList = true
-				if (node.type.name === 'blockquote') blockquote = true
-			}
-
-			// Check heading at current position
-			const parentNode = $from.parent
-			if (parentNode.type.name === 'heading') {
-				heading = parentNode.attrs.level as number
-			}
-
-			setActiveFormats({
-				bold,
-				italic,
-				strikethrough,
-				link,
-				linkHref,
-				bulletList,
-				orderedList,
-				blockquote,
-				heading,
-			})
-		} catch {
-			// Ignore errors during format checking
-		}
-	}, [])
-
 	// Initialize Milkdown editor
 	useEffect(() => {
 		if (!editorRef.current) return
 
-		let formatRaf = 0
+		let cleanupTracking: (() => void) | undefined
 
 		const initEditor = async () => {
 			try {
@@ -193,20 +93,8 @@ export function MarkdownInlineEditor({
 				setIsReady(true)
 				onEditorReadyRef.current?.(editor)
 
-				// Set up selection change listener — debounce via rAF to avoid
-				// redundant mark-scanning on every keystroke
-				const view = editor.ctx.get(editorViewCtx)
-				const originalDispatch = view.dispatch.bind(view)
-				view.dispatch = (tr) => {
-					originalDispatch(tr)
-					if (tr.selectionSet || tr.docChanged) {
-						cancelAnimationFrame(formatRaf)
-						formatRaf = requestAnimationFrame(updateActiveFormats)
-					}
-				}
-
-				// Initial format check
-				updateActiveFormats()
+				// Set up selection change listener with shallow equality check
+				cleanupTracking = setupFormatTracking(editor, setActiveFormats)
 			} catch (error) {
 				console.error('Milkdown editor initialization failed:', error)
 				showToast('Failed to initialize markdown editor', 'error')
@@ -216,11 +104,11 @@ export function MarkdownInlineEditor({
 		initEditor()
 
 		return () => {
-			cancelAnimationFrame(formatRaf)
+			cleanupTracking?.()
 			editorInstanceRef.current?.destroy()
 			editorInstanceRef.current = null
 		}
-	}, [updateActiveFormats])
+	}, [])
 
 	const handleSave = useCallback(() => {
 		onSave(content)
@@ -283,18 +171,12 @@ export function MarkdownInlineEditor({
 	)
 
 	// Check if selection is inside a list of given type
-	const isInList = useCallback(
+	const checkInList = useCallback(
 		(listType: 'bullet_list' | 'ordered_list'): boolean => {
 			if (!editorInstanceRef.current) return false
 			try {
 				const view = editorInstanceRef.current.ctx.get(editorViewCtx)
-				const { state } = view
-				const { $from } = state.selection
-				for (let depth = $from.depth; depth > 0; depth--) {
-					const node = $from.node(depth)
-					if (node.type.name === listType) return true
-				}
-				return false
+				return isInListType(view, listType)
 			} catch {
 				return false
 			}
@@ -304,21 +186,21 @@ export function MarkdownInlineEditor({
 
 	// Toggle bullet list - if in bullet list, remove it; otherwise add it
 	const handleBulletList = useCallback(() => {
-		if (isInList('bullet_list')) {
+		if (checkInList('bullet_list')) {
 			runCommand(liftListItemCommand.key)
 		} else {
 			runCommand(wrapInBulletListCommand.key)
 		}
-	}, [runCommand, isInList])
+	}, [runCommand, checkInList])
 
 	// Toggle ordered list - if in ordered list, remove it; otherwise add it
 	const handleOrderedList = useCallback(() => {
-		if (isInList('ordered_list')) {
+		if (checkInList('ordered_list')) {
 			runCommand(liftListItemCommand.key)
 		} else {
 			runCommand(wrapInOrderedListCommand.key)
 		}
-	}, [runCommand, isInList])
+	}, [runCommand, checkInList])
 
 	const handleInsertLink = useCallback(() => {
 		if (!editorInstanceRef.current) return
@@ -369,24 +251,20 @@ export function MarkdownInlineEditor({
 	}, [activeFormats.link, activeFormats.linkHref])
 
 	const handleInsertHeading = useCallback((level: number) => {
-		const prefix = '#'.repeat(level) + ' '
-		const headingMarkdown = `\n\n${prefix}Heading\n\n`
-
-		// Insert at cursor position
-		if (editorInstanceRef.current) {
-			try {
-				editorInstanceRef.current.action(insert(headingMarkdown))
-			} catch (error) {
-				console.error('Failed to insert heading:', error)
-			}
+		if (!editorInstanceRef.current) return
+		try {
+			const view = editorInstanceRef.current.ctx.get(editorViewCtx)
+			toggleHeading(view, level)
+		} catch (error) {
+			console.error('Failed to toggle heading:', error)
 		}
 	}, [])
 
 	// MDX component insertion
-	const handleInsertMdxComponent = useCallback((componentName: string, props: Record<string, string>) => {
+	const handleInsertMdxComponent = useCallback((componentName: string, props: Record<string, string>, children?: string) => {
 		if (editorInstanceRef.current) {
 			try {
-				editorInstanceRef.current.action(callCommand(insertMdxComponentCommand.key, { componentName, props }))
+				editorInstanceRef.current.action(callCommand(insertMdxComponentCommand.key, { componentName, props, children }))
 			} catch (error) {
 				console.error('Failed to insert MDX component:', error)
 			}
@@ -397,42 +275,36 @@ export function MarkdownInlineEditor({
 		mdxComponentPickerOpen.value = true
 	}, [])
 
-	const handleUpdateMdxProps = useCallback((nodePos: number, props: Record<string, string>) => {
-		if (!editorInstanceRef.current) return
-		try {
-			const view = editorInstanceRef.current.ctx.get(editorViewCtx)
-			const node = view.state.doc.nodeAt(nodePos)
-			if (node && node.type.name === 'mdx_component') {
-				const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
-					...node.attrs,
-					props: JSON.stringify(props),
-				})
-				view.dispatch(tr)
-			}
-		} catch (error) {
-			console.error('Failed to update MDX component props:', error)
-		}
-	}, [])
-
 	// Drag and drop handlers for direct image upload
+	// Only intercept external file drags — let ProseMirror handle internal drags (node reorder)
+	const hasFiles = (e: DragEvent) => e.dataTransfer?.types?.includes('Files') ?? false
+
 	const handleDragOver = useCallback((e: DragEvent) => {
+		if (!hasFiles(e)) return
 		e.preventDefault()
 		e.stopPropagation()
 		setIsDragging(true)
 	}, [])
 
 	const handleDragLeave = useCallback((e: DragEvent) => {
+		if (!hasFiles(e)) return
 		e.preventDefault()
 		e.stopPropagation()
 		setIsDragging(false)
 	}, [])
 
 	const handleDrop = useCallback(async (e: DragEvent) => {
+		// Only handle external file drops — let ProseMirror handle internal drags (e.g. node reorder)
+		if (!hasFiles(e)) return
+
 		e.preventDefault()
 		e.stopPropagation()
 		setIsDragging(false)
 
-		const file = e.dataTransfer?.files[0]
+		const files = e.dataTransfer?.files
+		if (!files || files.length === 0) return
+
+		const file = files[0]
 		if (!file || !file.type.startsWith('image/')) {
 			showToast('Please drop an image file', 'error')
 			return
@@ -811,9 +683,6 @@ export function MarkdownInlineEditor({
 
 			{/* MDX Component Picker */}
 			{isMdx && <MdxComponentPicker onInsert={handleInsertMdxComponent} />}
-
-			{/* MDX Props Editor */}
-			{isMdx && <MdxPropsEditor onUpdateProps={handleUpdateMdxProps} />}
 		</div>
 	)
 }

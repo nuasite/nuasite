@@ -26,7 +26,6 @@ import type {
 	FieldDefinition,
 	MarkdownEditorState,
 	MarkdownPageEntry,
-	MdxPropsEditorState,
 	MediaItem,
 	MediaLibraryState,
 	PendingAttributeChange,
@@ -346,23 +345,7 @@ export const isMarkdownPreview = signal(false)
 // MDX Component Block State Signals
 // ============================================================================
 
-export const mdxPropsEditorState = signal<MdxPropsEditorState>({
-	isOpen: false,
-	nodePos: null,
-	componentName: null,
-	props: {},
-	cursorPos: null,
-})
-
 export const mdxComponentPickerOpen = signal(false)
-
-export function openMdxPropsEditor(nodePos: number, componentName: string, props: Record<string, string>, cursorPos: { x: number; y: number }): void {
-	mdxPropsEditorState.value = { isOpen: true, nodePos, componentName, props, cursorPos }
-}
-
-export function closeMdxPropsEditor(): void {
-	mdxPropsEditorState.value = { isOpen: false, nodePos: null, componentName: null, props: {}, cursorPos: null }
-}
 
 // ============================================================================
 // Reference Picker State Signals

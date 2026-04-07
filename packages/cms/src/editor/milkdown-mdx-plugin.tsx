@@ -4,11 +4,20 @@ import type { MarkdownNode, SerializerState } from '@milkdown/transformer'
 import { $command, $node, $remark, $view } from '@milkdown/utils'
 import { render } from 'preact'
 import remarkMdx from 'remark-mdx'
+import remarkParse from 'remark-parse'
+import { unified } from 'unified'
 import { MdxBlockCard } from './components/mdx-block-view'
-import { openMdxPropsEditor } from './signals'
+import { getComponentDefinition } from './manifest'
+import { manifest } from './signals'
 
 /** Prefix used to distinguish expression attributes from string literals in serialized props */
 export const MDX_EXPR_PREFIX = '__mdx_expr__:'
+
+/** HTML void elements that should not be treated as editable MDX components */
+const HTML_VOID_ELEMENTS = new Set(['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'source', 'track', 'wbr'])
+
+/** Cached unified processor for parsing markdown children during serialization */
+const remarkParser = unified().use(remarkParse)
 
 export const remarkMdxPlugin: any = $remark('remarkMdx', () => remarkMdx)
 
@@ -64,21 +73,72 @@ function serializePropsToAttributes(props: Record<string, string>): any[] {
 	return attributes
 }
 
+/** Serialize mdast children back to markdown text */
+function serializeChildren(children: any[]): string {
+	if (!children || children.length === 0) return ''
+	const parts: string[] = []
+	for (const child of children) {
+		if (child.type === 'paragraph') {
+			const text = serializeInlineChildren(child.children ?? [])
+			parts.push(text)
+		} else if (child.type === 'text') {
+			parts.push(child.value ?? '')
+		} else if (child.type === 'mdxJsxFlowElement' || child.type === 'mdxJsxTextElement') {
+			// Nested JSX — reconstruct as string
+			const name = child.name ?? ''
+			const attrs = (child.attributes ?? [])
+				.map((a: any) => {
+					if (a.type === 'mdxJsxAttribute' && a.name) {
+						if (typeof a.value === 'string') return `${a.name}="${a.value}"`
+						if (a.value?.type === 'mdxJsxAttributeValueExpression') return `${a.name}={${a.value.value}}`
+					}
+					return ''
+				})
+				.filter(Boolean)
+				.join(' ')
+			const inner = serializeChildren(child.children ?? [])
+			if (inner) {
+				parts.push(`<${name}${attrs ? ' ' + attrs : ''}>${inner}</${name}>`)
+			} else {
+				parts.push(`<${name}${attrs ? ' ' + attrs : ''} />`)
+			}
+		} else {
+			// Fallback — use value if present
+			if (child.value) parts.push(child.value)
+		}
+	}
+	return parts.join('\n\n')
+}
+
+function serializeInlineChildren(children: any[]): string {
+	return children.map((c: any) => {
+		if (c.type === 'text') return c.value ?? ''
+		if (c.type === 'strong') return `**${serializeInlineChildren(c.children ?? [])}**`
+		if (c.type === 'emphasis') return `*${serializeInlineChildren(c.children ?? [])}*`
+		if (c.type === 'inlineCode') return `\`${c.value ?? ''}\``
+		if (c.type === 'link') return `[${serializeInlineChildren(c.children ?? [])}](${c.url ?? ''})`
+		return c.value ?? ''
+	}).join('')
+}
+
 export const mdxComponentNode = $node('mdx_component', () => ({
 	group: 'block',
 	atom: true,
 	isolating: true,
 	selectable: true,
-	draggable: true,
+	draggable: false,
 	attrs: {
 		componentName: { default: '' },
 		props: { default: '{}' },
 		hasExpressions: { default: false },
+		children: { default: '' },
 	},
 	toDOM: (node: PmNode) => {
 		const div = document.createElement('div')
 		div.setAttribute('data-mdx-component', node.attrs.componentName)
 		div.setAttribute('data-mdx-props', node.attrs.props)
+		if (node.attrs.children) div.setAttribute('data-mdx-children', node.attrs.children)
+		if (node.attrs.hasExpressions) div.setAttribute('data-mdx-expressions', 'true')
 		div.className = 'mdx-component-block'
 		div.textContent = `<${node.attrs.componentName} />`
 		return div as any
@@ -88,6 +148,8 @@ export const mdxComponentNode = $node('mdx_component', () => ({
 		getAttrs: (dom: HTMLElement) => ({
 			componentName: dom.getAttribute('data-mdx-component') || '',
 			props: dom.getAttribute('data-mdx-props') || '{}',
+			children: dom.getAttribute('data-mdx-children') || '',
+			hasExpressions: dom.getAttribute('data-mdx-expressions') === 'true',
 		}),
 	}],
 	parseMarkdown: {
@@ -95,13 +157,17 @@ export const mdxComponentNode = $node('mdx_component', () => ({
 		runner: (state, node, proseType: NodeType) => {
 			const name = (node as any).name as string | null
 			if (!name) return // Skip fragments
+			// Skip HTML void elements — they are not editable components
+			if (HTML_VOID_ELEMENTS.has(name.toLowerCase())) return
 
 			const { props, hasExpressions } = parseJsxAttributes((node as any).attributes)
+			const children = serializeChildren((node as any).children ?? [])
 
 			state.addNode(proseType, {
 				componentName: name,
 				props: JSON.stringify(props),
 				hasExpressions,
+				children,
 			})
 		},
 	},
@@ -110,13 +176,24 @@ export const mdxComponentNode = $node('mdx_component', () => ({
 		runner: (state: SerializerState, node: PmNode) => {
 			const componentName = node.attrs.componentName as string
 			const props: Record<string, string> = JSON.parse(node.attrs.props as string)
+			const childrenText = (node.attrs.children as string) || ''
 			const attributes = serializePropsToAttributes(props)
 
-			state.addNode('mdxJsxFlowElement', undefined, undefined, {
-				name: componentName,
-				attributes,
-				children: [],
-			} as any)
+			if (childrenText.trim()) {
+				// Parse children markdown into proper mdast nodes so headings, lists, etc. are preserved
+				const childrenAst = remarkParser.parse(childrenText)
+				state.addNode('mdxJsxFlowElement', undefined, undefined, {
+					name: componentName,
+					attributes,
+					children: childrenAst.children,
+				} as any)
+			} else {
+				state.addNode('mdxJsxFlowElement', undefined, undefined, {
+					name: componentName,
+					attributes,
+					children: [],
+				} as any)
+			}
 		},
 	},
 }))
@@ -124,6 +201,7 @@ export const mdxComponentNode = $node('mdx_component', () => ({
 export interface InsertMdxComponentPayload {
 	componentName: string
 	props: Record<string, string>
+	children?: string
 }
 
 export const insertMdxComponentCommand = $command('insertMdxComponent', (ctx) => {
@@ -137,6 +215,7 @@ export const insertMdxComponentCommand = $command('insertMdxComponent', (ctx) =>
 				componentName: payload.componentName,
 				props: JSON.stringify(payload.props),
 				hasExpressions: false,
+				children: payload.children || '',
 			})
 
 			if (dispatch) {
@@ -156,27 +235,36 @@ export const mdxComponentView = $view(mdxComponentNode, () => {
 		container.setAttribute('data-cms-ui', '')
 		container.contentEditable = 'false'
 
-		let lastAttrs: { componentName: string; props: string; hasExpressions: boolean } | null = null
+		let lastAttrs: { componentName: string; props: string; hasExpressions: boolean; children: string } | null = null
 
 		const renderCard = (node: PmNode) => {
 			const componentName = node.attrs.componentName as string
 			const propsJson = node.attrs.props as string
 			const props: Record<string, string> = JSON.parse(propsJson)
 			const hasExpressions = node.attrs.hasExpressions as boolean
+			const children = (node.attrs.children as string) || ''
+			const definition = getComponentDefinition(manifest.value, componentName)
+			const hasDefaultSlot = definition?.slots?.includes('default') ?? false
 
-			lastAttrs = { componentName, props: propsJson, hasExpressions }
+			lastAttrs = { componentName, props: propsJson, hasExpressions, children }
+
+			const updateNodeAttrs = (update: Record<string, unknown>) => {
+				const pos = typeof getPos === 'function' ? getPos() : null
+				if (pos != null) {
+					const currentNode = view.state.doc.nodeAt(pos)
+					if (currentNode) {
+						const tr = view.state.tr.setNodeMarkup(pos, undefined, { ...currentNode.attrs, ...update })
+						view.dispatch(tr)
+					}
+				}
+			}
 
 			render(
 				<MdxBlockCard
 					componentName={componentName}
 					props={props}
 					hasExpressions={hasExpressions}
-					onEdit={(cursorPos) => {
-						const pos = typeof getPos === 'function' ? getPos() : null
-						if (pos != null) {
-							openMdxPropsEditor(pos, componentName, props, cursorPos)
-						}
-					}}
+					slotContent={children}
 					onRemove={() => {
 						const pos = typeof getPos === 'function' ? getPos() : null
 						if (pos != null) {
@@ -187,6 +275,12 @@ export const mdxComponentView = $view(mdxComponentNode, () => {
 							}
 						}
 					}}
+					onSlotContentChange={hasDefaultSlot
+						? (newContent: string) => updateNodeAttrs({ children: newContent })
+						: undefined}
+					onPropsChange={!hasExpressions
+						? (newProps: Record<string, string>) => updateNodeAttrs({ props: JSON.stringify(newProps) })
+						: undefined}
 				/>,
 				container,
 			)
@@ -197,11 +291,13 @@ export const mdxComponentView = $view(mdxComponentNode, () => {
 		return {
 			dom: container,
 			stopEvent: (event: Event) => {
+				const target = event.target as HTMLElement
+				// Allow all events on inline editors (textarea, input, contenteditable)
+				if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') return true
+				if (target.isContentEditable || target.closest('[contenteditable]')) return true
+				if (target.closest('[data-mdx-action="children"]') || target.closest('[data-mdx-action="props"]')) return true
 				if (event.type === 'mousedown' || event.type === 'click') {
-					const target = event.target as HTMLElement
-					if (target.closest('button') || target.closest('[data-mdx-action]')) {
-						return true
-					}
+					if (target.closest('button') || target.closest('[data-mdx-action]')) return true
 				}
 				return false
 			},
@@ -214,6 +310,7 @@ export const mdxComponentView = $view(mdxComponentNode, () => {
 					&& attrs.componentName === lastAttrs.componentName
 					&& attrs.props === lastAttrs.props
 					&& attrs.hasExpressions === lastAttrs.hasExpressions
+					&& attrs.children === lastAttrs.children
 				) {
 					return true
 				}

@@ -6,13 +6,14 @@ import { CancelButton, ModalBackdrop, ModalHeader } from './modal-shell'
 import { PropEditor } from './prop-editor'
 
 export interface MdxComponentPickerProps {
-	onInsert: (componentName: string, props: Record<string, string>) => void
+	onInsert: (componentName: string, props: Record<string, string>, children?: string) => void
 }
 
 export function MdxComponentPicker({ onInsert }: MdxComponentPickerProps) {
 	const isOpen = mdxComponentPickerOpen.value
 	const [selectedComponent, setSelectedComponent] = useState<string | null>(null)
 	const [propValues, setPropValues] = useState<Record<string, string>>({})
+	const [childrenValue, setChildrenValue] = useState('')
 	const [searchQuery, setSearchQuery] = useState('')
 
 	if (!isOpen) return null
@@ -22,6 +23,7 @@ export function MdxComponentPicker({ onInsert }: MdxComponentPickerProps) {
 	const resetSelection = () => {
 		setSelectedComponent(null)
 		setPropValues({})
+		setChildrenValue('')
 	}
 
 	const close = () => {
@@ -35,11 +37,12 @@ export function MdxComponentPicker({ onInsert }: MdxComponentPickerProps) {
 		if (!def) return
 		setSelectedComponent(name)
 		setPropValues(getDefaultProps(def))
+		setChildrenValue('')
 	}
 
 	const handleConfirmInsert = () => {
 		if (selectedComponent) {
-			onInsert(selectedComponent, propValues)
+			onInsert(selectedComponent, propValues, childrenValue || undefined)
 			close()
 		}
 	}
@@ -63,21 +66,42 @@ export function MdxComponentPicker({ onInsert }: MdxComponentPickerProps) {
 							</div>
 							{(() => {
 								const selectedDef = componentDefinitions[selectedComponent]
-								if (!selectedDef || selectedDef.props.length === 0) {
+								if (!selectedDef) return null
+								const hasDefaultSlot = selectedDef.slots?.includes('default') ?? false
+								const hasProps = selectedDef.props.length > 0
+								if (!hasProps && !hasDefaultSlot) {
 									return (
 										<div class="text-white/50 text-[13px]">
 											This component has no configurable props.
 										</div>
 									)
 								}
-								return selectedDef.props.map((prop) => (
-									<PropEditor
-										key={prop.name}
-										prop={prop}
-										value={propValues[prop.name] || ''}
-										onChange={(value) => setPropValues((prev) => ({ ...prev, [prop.name]: value }))}
-									/>
-								))
+								return (
+									<>
+										{hasDefaultSlot && (
+											<div class="mb-4">
+												<label class="block text-[13px] font-medium text-white mb-1.5">
+													Content
+												</label>
+												<textarea
+													value={childrenValue}
+													onInput={(e) => setChildrenValue((e.target as HTMLTextAreaElement).value)}
+													placeholder="Enter content..."
+													rows={3}
+													class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md resize-y"
+												/>
+											</div>
+										)}
+										{selectedDef.props.map((prop) => (
+											<PropEditor
+												key={prop.name}
+												prop={prop}
+												value={propValues[prop.name] || ''}
+												onChange={(value) => setPropValues((prev) => ({ ...prev, [prop.name]: value }))}
+											/>
+										))}
+									</>
+								)
 							})()}
 						</div>
 						<div class="px-5 py-4 border-t border-white/10 flex gap-2 justify-end">
