@@ -23,7 +23,15 @@ import {
 	parseMarkdownContent,
 	reindexDirtyFiles,
 } from './source-finder'
-import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition } from './types'
+import type {
+	CmsMarkerOptions,
+	CollectionDefinition,
+	CollectionEntry,
+	ComponentDefinition,
+	ComponentInstance,
+	ManifestEntry,
+	PageSeoData,
+} from './types'
 import { firstNonEmptyLine, normalizePagePath } from './utils'
 
 /** Minimal ViteDevServer interface to avoid version conflicts between Astro's bundled Vite and root Vite */
@@ -374,11 +382,11 @@ async function markHtmlForDev(
  */
 async function enhanceManifestInBackground(
 	pagePath: string,
-	entries: Record<string, import('./types').ManifestEntry>,
-	components: Record<string, import('./types').ComponentInstance>,
+	entries: Record<string, ManifestEntry>,
+	components: Record<string, ComponentInstance>,
 	collection: CollectionEntry | undefined,
-	seo: import('./types').PageSeoData | undefined,
-	collectionDefinitions: Record<string, import('./types').CollectionDefinition> | undefined,
+	seo: PageSeoData | undefined,
+	collectionDefinitions: Record<string, CollectionDefinition> | undefined,
 	config: Required<CmsMarkerOptions>,
 	manifestWriter: ManifestWriter,
 ): Promise<void> {

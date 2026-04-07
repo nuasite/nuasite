@@ -91,7 +91,7 @@ export interface ProcessHtmlResult {
 	/** Extracted SEO data from the page */
 	seo?: PageSeoData
 	/** Collection definitions passed through for deferred enhancement */
-	collectionDefinitions?: Record<string, import('./types').CollectionDefinition>
+	collectionDefinitions?: Record<string, CollectionDefinition>
 }
 
 /**

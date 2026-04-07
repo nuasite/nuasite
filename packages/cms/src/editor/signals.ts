@@ -808,7 +808,7 @@ export function setAIStreamingContent(content: string | null): void {
 }
 
 export function setAIError(error: string | null): void {
-	aiState.value = { ...aiState.value, error: error }
+	aiState.value = { ...aiState.value, error }
 }
 
 export function resetAIState(): void {
