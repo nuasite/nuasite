@@ -83,18 +83,18 @@ export function ImageField({ label, value, placeholder, onChange, onBrowse, isDi
 	const hasImage = !!value && value.length > 0
 
 	return (
-		<div class="space-y-1.5">
+		<div class="space-y-1.5 min-w-0">
 			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
 			{hasImage && (
 				<div
-					class="relative w-full h-24 rounded-cms-sm overflow-hidden bg-white/5 border border-white/10 cursor-pointer group"
+					class="relative w-full rounded-cms-sm overflow-hidden bg-white/5 border border-white/10 cursor-pointer group"
 					onClick={onBrowse}
 					data-cms-ui
 				>
 					<img
 						src={value}
 						alt={label}
-						class="w-full h-full object-cover"
+						class="w-full h-auto max-h-48"
 						onError={(e) => {
 							;(e.target as HTMLImageElement).style.display = 'none'
 						}}
@@ -104,14 +104,14 @@ export function ImageField({ label, value, placeholder, onChange, onBrowse, isDi
 					</div>
 				</div>
 			)}
-			<div class="flex gap-2">
+			<div class="flex gap-2 min-w-0">
 				<input
 					type="text"
 					value={value ?? ''}
 					placeholder={placeholder}
 					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 					class={cn(
-						'flex-1 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
+						'flex-1 min-w-0 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
 						isDirty
 							? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
 							: 'border-white/20 focus:border-white/40 focus:ring-white/10',
@@ -121,7 +121,7 @@ export function ImageField({ label, value, placeholder, onChange, onBrowse, isDi
 				<button
 					type="button"
 					onClick={onBrowse}
-					class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-cms-sm text-sm text-white transition-colors cursor-pointer"
+					class="shrink-0 px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-cms-sm text-sm text-white transition-colors cursor-pointer"
 					data-cms-ui
 				>
 					Browse

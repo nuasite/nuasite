@@ -44,7 +44,7 @@ export function ModalHeader({ title, onBack, onClose }: {
 					</svg>
 				</button>
 			)}
-			<h2 class="text-lg font-semibold text-white flex-1">{title}</h2>
+			<h2 class="text-lg font-semibold text-white flex-1 truncate">{title}</h2>
 			<CloseButton onClick={onClose} />
 		</div>
 	)

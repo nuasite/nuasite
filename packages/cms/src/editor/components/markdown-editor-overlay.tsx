@@ -50,6 +50,7 @@ export function MarkdownEditorOverlay() {
 	// Preview mode state
 	const [isPreview, setIsPreview] = useState(false)
 	const originalHTMLRef = useRef<string | null>(null)
+	const previewTargetRef = useRef<HTMLElement | null>(null)
 	const editorInstanceRef = useRef<Editor | null>(null)
 
 	useEffect(() => {
@@ -57,6 +58,19 @@ export function MarkdownEditorOverlay() {
 			setShowFrontmatter(true)
 		}
 	}, [isCreateMode, isDataCollection])
+
+	// Auto-generate slug from title in create mode (unless user manually edited the slug)
+	useEffect(() => {
+		if (!isCreateMode || slugManuallyEdited) return
+		const title = (page?.frontmatter.title as string) || (page?.frontmatter.name as string) || ''
+		if (!title) return
+		markdownEditorState.value = {
+			...markdownEditorState.value,
+			currentPage: markdownEditorState.value.currentPage
+				? { ...markdownEditorState.value.currentPage, slug: slugify(title), isDirty: true }
+				: null,
+		}
+	}, [isCreateMode, slugManuallyEdited, page?.frontmatter.title, page?.frontmatter.name])
 
 	const handleDeploymentComplete = useCallback(
 		(status: 'completed' | 'failed' | 'timeout') => {
@@ -67,14 +81,21 @@ export function MarkdownEditorOverlay() {
 		[],
 	)
 
+	/** Find the [data-cms-markdown] wrapper element on the actual page (not CMS UI). */
+	const findMarkdownWrapper = useCallback((): HTMLElement | null => {
+		const SKIP_TAGS = new Set(['BODY', 'HTML', 'BUTTON', 'SPAN', 'A'])
+		const candidates = document.querySelectorAll('[data-cms-markdown]:not([data-cms-ui])')
+		for (const c of candidates) {
+			if (!SKIP_TAGS.has(c.tagName)) return c as HTMLElement
+		}
+		return null
+	}, [])
+
 	const restoreOriginalHTML = useCallback(() => {
-		const activeId = markdownEditorState.value.activeElementId
-		if (originalHTMLRef.current !== null && activeId) {
-			const el = document.querySelector(`[data-cms-id="${activeId}"]`)
-			if (el) {
-				el.innerHTML = originalHTMLRef.current
-			}
+		if (originalHTMLRef.current !== null && previewTargetRef.current) {
+			previewTargetRef.current.innerHTML = originalHTMLRef.current
 			originalHTMLRef.current = null
+			previewTargetRef.current = null
 		}
 	}, [])
 
@@ -95,11 +116,8 @@ export function MarkdownEditorOverlay() {
 				if (result.success) {
 					// Keep the preview HTML in place so user sees changes immediately
 					// If not in preview mode, inject editor HTML into the page element
-					const activeId = markdownEditorState.value.activeElementId
-					if (activeId && editorInstanceRef.current && !isPreview) {
-						const el = document.querySelector(
-							`[data-cms-id="${activeId}"]`,
-						)
+					if (editorInstanceRef.current && !isPreview) {
+						const el = findMarkdownWrapper()
 						if (el) {
 							try {
 								const view = editorInstanceRef.current.ctx.get(editorViewCtx)
@@ -133,7 +151,7 @@ export function MarkdownEditorOverlay() {
 				setIsSaving(false)
 			}
 		},
-		[isSaving, isPreview, handleDeploymentComplete],
+		[isSaving, isPreview, handleDeploymentComplete, findMarkdownWrapper],
 	)
 
 	const handleCreate = useCallback(async () => {
@@ -215,19 +233,21 @@ export function MarkdownEditorOverlay() {
 		if (!editorInstanceRef.current || !activeId) return
 
 		if (!isPreview) {
-			// Enter preview
-			const el = document.querySelector(`[data-cms-id="${activeId}"]`)
+			// Enter preview — inject editor HTML into the markdown wrapper element.
+			const el = findMarkdownWrapper()
 			if (!el) {
 				showToast('Could not find page element to preview', 'error')
 				return
 			}
 			originalHTMLRef.current = el.innerHTML
+			previewTargetRef.current = el
 			try {
 				const view = editorInstanceRef.current.ctx.get(editorViewCtx)
 				el.innerHTML = view.dom.innerHTML
 			} catch (error) {
 				console.error('Failed to get editor HTML for preview:', error)
 				originalHTMLRef.current = null
+				previewTargetRef.current = null
 				showToast('Failed to generate preview', 'error')
 				return
 			}
@@ -239,7 +259,7 @@ export function MarkdownEditorOverlay() {
 			setIsPreview(false)
 			isMarkdownPreview.value = false
 		}
-	}, [isPreview, restoreOriginalHTML])
+	}, [isPreview, restoreOriginalHTML, findMarkdownWrapper])
 
 	const handleCancel = useCallback(() => {
 		restoreOriginalHTML()
@@ -326,8 +346,8 @@ export function MarkdownEditorOverlay() {
 			>
 				{/* Header */}
 				<div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
-					<div class="flex items-center gap-3">
-						<div class="flex items-center text-white">
+					<div class="flex items-center gap-3 flex-1 min-w-0">
+						<div class="flex items-center text-white shrink-0">
 							<svg
 								width="20"
 								height="20"
@@ -345,36 +365,11 @@ export function MarkdownEditorOverlay() {
 								<line x1="10" y1="9" x2="8" y2="9" />
 							</svg>
 						</div>
-						<div>
-							<input
-								type="text"
-								value={(page.frontmatter.title as string) || (page.frontmatter.name as string) || ''}
-								placeholder={isDataCollection ? 'Entry name...' : 'Page title...'}
-								onInput={(e) => {
-									const title = (e.target as HTMLInputElement).value
-									// Data collections may use 'name' instead of 'title'
-									const titleField = isDataCollection && !('title' in page.frontmatter) && 'name' in page.frontmatter ? 'name' : 'title'
-									updateMarkdownFrontmatter({ [titleField]: title })
-									// Auto-generate slug in create mode if not manually edited
-									if (isCreateMode && !slugManuallyEdited) {
-										markdownEditorState.value = {
-											...markdownEditorState.value,
-											currentPage: markdownEditorState.value.currentPage
-												? {
-													...markdownEditorState.value.currentPage,
-													slug: slugify(title),
-													isDirty: true,
-												}
-												: null,
-										}
-									}
-								}}
-								class="text-base font-semibold text-white m-0 bg-transparent border-none outline-none placeholder-white/40 w-64"
-								data-cms-ui
-							/>
-						</div>
+						<span class="text-base font-semibold text-white truncate">
+							{(page.frontmatter.title as string) || (page.frontmatter.name as string) || (isDataCollection ? 'Entry name' : 'Page title')}
+						</span>
 					</div>
-					<div class="flex items-center gap-2">
+					<div class="flex items-center gap-2 shrink-0">
 						{!isDataCollection && (
 							<button
 								type="button"
