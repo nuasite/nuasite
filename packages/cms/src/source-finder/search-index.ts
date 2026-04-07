@@ -9,12 +9,17 @@ import { getCachedParsedFile } from './ast-parser'
 import {
 	addToImageSearchIndex,
 	addToTextSearchIndex,
+	clearDirtyFiles,
 	getDirectoryCache,
+	getDirtyFiles,
 	getImageSearchIndex,
+	getMarkdownFileCache,
 	getTextSearchIndex,
 	isSearchIndexInitialized,
+	removeFileFromIndexes,
 	setSearchIndexInitialized,
 } from './cache'
+import { clearCollectionTextIndex } from './collection-finder'
 import { extractImageSnippet, extractInnerHtmlFromSnippet, normalizeText } from './snippet-utils'
 import type { CachedParsedFile, SearchIndexEntry, SourceLocation } from './types'
 
@@ -123,6 +128,80 @@ async function doInitializeSearchIndex(): Promise<void> {
 	await indexContentCollectionImages()
 
 	setSearchIndexInitialized(true)
+}
+
+// ============================================================================
+// Incremental Re-indexing
+// ============================================================================
+
+/** Shared promise so concurrent callers wait for the same re-indexing */
+let reindexPromise: Promise<void> | null = null
+
+/**
+ * Re-index only files that changed since the last indexing.
+ * Much faster than a full rebuild — only re-parses dirty files.
+ * Safe to call concurrently — all callers share the same operation.
+ *
+ * Also clears the markdown file cache so collection content is re-read.
+ */
+export async function reindexDirtyFiles(): Promise<void> {
+	const dirty = getDirtyFiles()
+	if (dirty.size === 0) return
+	if (reindexPromise) return reindexPromise
+	reindexPromise = doReindexDirtyFiles()
+	try {
+		await reindexPromise
+	} finally {
+		reindexPromise = null
+	}
+}
+
+async function doReindexDirtyFiles(): Promise<void> {
+	const dirty = getDirtyFiles()
+	if (dirty.size === 0) return
+
+	const projectRoot = getProjectRoot()
+	const filesToReindex = [...dirty]
+	clearDirtyFiles()
+
+	// Also clear the markdown file cache and collection text index
+	// so collection content is re-read and re-indexed from disk
+	getMarkdownFileCache().clear()
+	clearCollectionTextIndex()
+
+	for (const absPath of filesToReindex) {
+		const relFile = path.relative(projectRoot, absPath)
+
+		// Remove old entries for this file
+		removeFileFromIndexes(relFile)
+
+		// Re-parse and re-index if it's a source file
+		if (absPath.endsWith('.astro') || absPath.endsWith('.tsx') || absPath.endsWith('.jsx')) {
+			try {
+				const cached = await getCachedParsedFile(absPath)
+				if (cached) {
+					indexFileContent(cached, relFile)
+					indexFileImages(cached, relFile)
+				}
+			} catch {
+				// Skip files that fail to parse
+			}
+		} else if (/\.(json|ya?ml|mdx?)$/.test(absPath)) {
+			// Content collection data file — re-index images from it
+			try {
+				const content = await fs.readFile(absPath, 'utf-8')
+				if (absPath.endsWith('.json')) {
+					indexJsonImages(content, relFile)
+				} else if (absPath.endsWith('.yaml') || absPath.endsWith('.yml')) {
+					indexYamlImages(content, relFile)
+				} else if (absPath.endsWith('.md') || absPath.endsWith('.mdx')) {
+					indexFrontmatterImages(content, relFile)
+				}
+			} catch {
+				// Skip unreadable files
+			}
+		}
+	}
 }
 
 // ============================================================================

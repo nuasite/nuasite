@@ -18,6 +18,9 @@ const textSearchIndex: SearchIndexEntry[] = []
 const imageSearchIndex: ImageIndexEntry[] = []
 let searchIndexInitialized = false
 
+/** Files that changed since last indexing — tracked by Vite watcher */
+const dirtyFiles = new Set<string>()
+
 // ============================================================================
 // Cache Access Functions
 // ============================================================================
@@ -59,6 +62,49 @@ export function addToImageSearchIndex(entry: ImageIndexEntry): void {
 }
 
 // ============================================================================
+// Dirty File Tracking (incremental re-indexing)
+// ============================================================================
+
+/**
+ * Mark a file as dirty so its index entries are refreshed on next page load.
+ * Called by the Vite file watcher when source files change.
+ * @param absPath - Absolute path to the changed file
+ */
+export function markFileDirty(absPath: string): void {
+	dirtyFiles.add(absPath)
+	// Also evict the parsed file cache so it's re-read from disk
+	parsedFileCache.delete(absPath)
+}
+
+export function getDirtyFiles(): Set<string> {
+	return dirtyFiles
+}
+
+export function clearDirtyFiles(): void {
+	dirtyFiles.clear()
+}
+
+/**
+ * Remove all index entries for a specific file (by relative path).
+ * Used before re-indexing a changed file to avoid duplicates.
+ */
+export function removeFileFromIndexes(relFile: string): void {
+	filterInPlace(textSearchIndex, (e) => e.file !== relFile)
+	filterInPlace(imageSearchIndex, (e) => e.file !== relFile)
+}
+
+/** Remove non-matching elements in-place (single pass, no per-element splice). */
+function filterInPlace<T>(arr: T[], keep: (item: T) => boolean): void {
+	let write = 0
+	for (const item of arr) {
+		if (keep(item)) {
+			arr[write++] = item
+		}
+	}
+	arr.length = write
+}
+
+// ============================================================================
 // Cache Clear Function
 // ============================================================================
 
@@ -69,6 +115,7 @@ export function clearSourceFinderCache(): void {
 	parsedFileCache.clear()
 	directoryCache.clear()
 	markdownFileCache.clear()
+	dirtyFiles.clear()
 	// Clear arrays in-place to avoid stale references from consumers
 	textSearchIndex.length = 0
 	imageSearchIndex.length = 0

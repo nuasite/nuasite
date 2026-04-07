@@ -8,10 +8,10 @@
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './types'
 
 // Cache management
-export { clearSourceFinderCache } from './cache'
+export { clearSourceFinderCache, markFileDirty } from './cache'
 
 // Search index
-export { initializeSearchIndex } from './search-index'
+export { initializeSearchIndex, reindexDirtyFiles } from './search-index'
 
 // Source location finding
 export { findSourceLocation } from './source-lookup'
@@ -24,10 +24,13 @@ export { findImageSourceLocation } from './image-finder'
 
 // Collection/markdown finding
 export {
+	buildCollectionTextIndex,
+	clearCollectionTextIndex,
 	findCollectionSource,
 	findFieldInCollectionEntry,
 	findMarkdownSourceLocation,
 	findTextInAnyCollectionFrontmatter,
+	lookupCollectionText,
 	parseMarkdownContent,
 } from './collection-finder'
 

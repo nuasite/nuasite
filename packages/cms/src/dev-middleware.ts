@@ -1,4 +1,3 @@
-import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
@@ -17,15 +16,15 @@ import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
 import {
-	clearSourceFinderCache,
 	findCollectionSource,
 	findImageSourceLocation,
 	findSourceLocation,
 	initializeSearchIndex,
 	parseMarkdownContent,
+	reindexDirtyFiles,
 } from './source-finder'
 import type { CmsMarkerOptions, CollectionEntry, ComponentDefinition } from './types'
-import { normalizePagePath } from './utils'
+import { firstNonEmptyLine, normalizePagePath } from './utils'
 
 /** Minimal ViteDevServer interface to avoid version conflicts between Astro's bundled Vite and root Vite */
 interface ViteDevServerLike {
@@ -258,18 +257,23 @@ export function createDevMiddleware(
 			const html = Buffer.concat(chunks!).toString('utf8')
 			const pagePath = normalizePagePath(requestUrl)
 
-			// Process HTML asynchronously
-			processHtmlForDev(html, pagePath, config, idCounter, manifestWriter)
-				.then(({ html: transformed, entries, components, collection, seo }) => {
+			// Phase 1 (fast): mark HTML with CMS IDs and build basic entries
+			markHtmlForDev(html, pagePath, config, idCounter, manifestWriter)
+				.then(({ html: transformed, entries, components, collection, seo, collectionDefinitions: colDefs }) => {
+					// Store basic manifest immediately so editor toolbar has data
 					manifestWriter.addPage(pagePath, entries, components, collection, seo)
 
+					// Send the marked HTML to the browser without waiting for source resolution
 					res.write = originalWrite
 					res.end = originalEnd
 					if (!res.headersSent) {
 						res.removeHeader('content-length')
 					}
+					res.end(transformed, ...args)
 
-					return res.end(transformed, ...args)
+					// Phase 2 (background): resolve source locations and enhance manifest
+					// This runs after the page is already visible to the user
+					enhanceManifestInBackground(pagePath, entries, components, collection, seo, colDefs, config, manifestWriter)
 				})
 				.catch((error) => {
 					console.error('[cms] Error transforming HTML:', error)
@@ -289,35 +293,35 @@ export function createDevMiddleware(
 	})
 }
 
-async function processHtmlForDev(
+/**
+ * Phase 1 (fast): Mark HTML with CMS IDs and build basic manifest entries.
+ * Returns quickly so the page can be sent to the browser without delay.
+ * Source resolution and snippet enhancement are deferred to Phase 2.
+ */
+async function markHtmlForDev(
 	html: string,
 	pagePath: string,
 	config: Required<CmsMarkerOptions>,
 	idCounter: { value: number },
 	manifestWriter: ManifestWriter,
 ) {
-	// Clear cached parsed files so variable definitions reflect the latest source
-	clearSourceFinderCache()
+	// Re-index only files that changed since last page load (tracked by Vite watcher).
+	await reindexDirtyFiles()
 
 	// In dev mode, reset counter per page for consistent IDs during HMR
 	let pageCounter = 0
 	const idGenerator = () => `cms-${pageCounter++}`
 
-	// Check if this is a collection page (e.g., /services/example -> services collection, example slug)
+	// Check if this is a collection page
 	const collectionInfo = await findCollectionSource(pagePath, config.contentDir)
 	const isCollectionPage = !!collectionInfo
 
-	// Parse markdown content if this is a collection page
 	let mdContent: Awaited<ReturnType<typeof parseMarkdownContent>> | undefined
 	if (collectionInfo) {
 		mdContent = await parseMarkdownContent(collectionInfo)
 	}
 
-	// Get the first non-empty line of the markdown body for wrapper detection
-	const bodyFirstLine = mdContent?.body
-		?.split('\n')
-		.find((line) => line.trim().length > 0)
-		?.trim()
+	const bodyFirstLine = firstNonEmptyLine(mdContent?.body)
 
 	const result = await processHtml(
 		html,
@@ -330,137 +334,15 @@ async function processHtmlForDev(
 			generateManifest: config.generateManifest,
 			markComponents: config.markComponents,
 			componentDirs: config.componentDirs,
-			// Skip marking markdown-rendered content on collection pages
-			// The markdown body is treated as a single editable unit
 			skipMarkdownContent: isCollectionPage,
-			// Pass collection info for wrapper element marking
 			collectionInfo: collectionInfo
 				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine, bodyText: mdContent?.body, contentPath: collectionInfo.file }
 				: undefined,
-			// Pass SEO options
 			seo: config.seo,
-			// Pass collection definitions for resolving frontmatter text on listing pages
 			collectionDefinitions: manifestWriter.getCollectionDefinitions(),
 		},
 		idGenerator,
 	)
-
-	// Populate component props from source invocations
-	const projectRoot = getProjectRoot()
-	const fileCache = new Map<string, string[] | null>()
-	const readLines = async (filePath: string): Promise<string[] | null> => {
-		if (fileCache.has(filePath)) return fileCache.get(filePath)!
-		try {
-			const content = await fs.readFile(filePath, 'utf-8')
-			const lines = content.split('\n')
-			fileCache.set(filePath, lines)
-			return lines
-		} catch {
-			fileCache.set(filePath, null)
-			return null
-		}
-	}
-
-	for (const comp of Object.values(result.components)) {
-		// Skip inline array components — they have no <Tag> in source;
-		// their props are resolved in the array-group pass below
-		if (comp.componentName.startsWith('__array:')) continue
-
-		let found = false
-
-		// Try invocationSourcePath first (may point to a layout, not the page)
-		if (comp.invocationSourcePath) {
-			const filePath = normalizeFilePath(comp.invocationSourcePath)
-			const lines = await readLines(path.resolve(projectRoot, filePath))
-			if (lines) {
-				const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
-				if (invLine >= 0) {
-					comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
-					found = true
-				}
-			}
-		}
-
-		// Fallback: search page source file candidates
-		if (!found) {
-			for (const candidate of getPageFileCandidates(pagePath)) {
-				const lines = await readLines(path.resolve(projectRoot, candidate))
-				if (lines) {
-					const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
-					if (invLine >= 0) {
-						comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
-						break
-					}
-				}
-			}
-		}
-	}
-
-	// Resolve spread props for array-rendered components.
-	// Group components by (name, invocationSourcePath) to detect array patterns.
-	const componentGroups = new Map<string, typeof result.components[string][]>()
-	for (const comp of Object.values(result.components)) {
-		const key = `${comp.componentName}::${comp.invocationSourcePath ?? ''}`
-		if (!componentGroups.has(key)) componentGroups.set(key, [])
-		componentGroups.get(key)!.push(comp)
-	}
-
-	for (const group of componentGroups.values()) {
-		if (group.length < 1) continue
-		// Only process groups where at least one component has empty props (spread case)
-		if (!group.some(c => Object.keys(c.props).length === 0)) continue
-
-		const firstComp = group[0]!
-		const filePath = normalizeFilePath(firstComp.invocationSourcePath ?? firstComp.sourcePath)
-		const lines = await readLines(path.resolve(projectRoot, filePath))
-		if (!lines) continue
-
-		// For inline array components (__array:varName or __array:varName#N), find the .map() line
-		// directly instead of searching for a component tag that won't exist
-		let pattern: ReturnType<typeof detectArrayPattern>
-		const parsed = parseInlineArrayName(firstComp.componentName)
-		if (parsed) {
-			const { arrayVarName, mapOccurrence } = parsed
-			const fmEndCheck = findFrontmatterEnd(lines)
-			const mapRegex = new RegExp(buildMapPattern(arrayVarName))
-			let mapLine = -1
-			let seen = 0
-			for (let i = fmEndCheck; i < lines.length; i++) {
-				if (mapRegex.test(lines[i]!)) {
-					if (seen === mapOccurrence) {
-						mapLine = i
-						break
-					}
-					seen++
-				}
-			}
-			if (mapLine < 0) continue
-			pattern = { arrayVarName, mapLineIndex: mapLine }
-		} else {
-			// Find the invocation line (occurrence 0, since .map() has a single <Component> tag)
-			const invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
-			if (invLine < 0) continue
-			pattern = detectArrayPattern(lines, invLine)
-		}
-		if (!pattern) continue
-
-		const fmEnd = findFrontmatterEnd(lines)
-		if (fmEnd === 0) continue
-
-		const frontmatterContent = lines.slice(1, fmEnd - 1).join('\n')
-
-		// Sort group by invocationIndex to match array element order
-		const sorted = [...group].sort((a, b) => (a.invocationIndex ?? 0) - (b.invocationIndex ?? 0))
-		for (let i = 0; i < sorted.length; i++) {
-			const comp = sorted[i]!
-			if (Object.keys(comp.props).length > 0) continue
-
-			const arrayProps = extractArrayElementProps(frontmatterContent, pattern.arrayVarName, i)
-			if (arrayProps) {
-				comp.props = arrayProps
-			}
-		}
-	}
 
 	// Build collection entry if this is a collection page
 	let collectionEntry: CollectionEntry | undefined
@@ -476,68 +358,164 @@ async function processHtmlForDev(
 		}
 	}
 
-	// Ensure the search index is initialized for image source lookups
-	// (idempotent - only scans files on first call)
-	await initializeSearchIndex()
-
-	// Re-resolve sources with the fully-built search index (the earlier enhancement
-	// step runs before the index is ready, so its results may be stale).
-	for (const entry of Object.values(result.entries)) {
-		if (entry.imageMetadata?.src) {
-			const imageSource = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
-			if (imageSource) {
-				entry.sourcePath = imageSource.file
-				entry.sourceLine = imageSource.line
-				entry.sourceSnippet = imageSource.snippet
-			}
-		} else if (entry.text && entry.tag) {
-			const textSource = await findSourceLocation(entry.text, entry.tag)
-			if (textSource) {
-				entry.sourcePath = textSource.file
-				entry.sourceLine = textSource.line
-				entry.sourceSnippet = textSource.snippet
-				if (textSource.variableName) entry.variableName = textSource.variableName
-			}
-		}
-	}
-
-	// Filter out entries without sourcePath - these can't be edited
-	const idsToRemove: string[] = []
-	for (const [id, entry] of Object.entries(result.entries)) {
-		// Keep collection wrapper entries even without sourcePath (they use contentPath)
-		if (entry.collectionName) continue
-		// Remove entries that don't have a resolved sourcePath
-		if (!entry.sourcePath) {
-			idsToRemove.push(id)
-			delete result.entries[id]
-		}
-	}
-
-	// Remove CMS ID attributes from HTML for entries that were filtered out
-	let finalHtml = result.html
-	if (idsToRemove.length > 0) {
-		const root = parse(result.html, {
-			lowerCaseTagName: false,
-			comment: true,
-		})
-		for (const id of idsToRemove) {
-			const element = root.querySelector(`[${config.attributeName}="${id}"]`)
-			if (element) {
-				element.removeAttribute(config.attributeName)
-				// Also remove related CMS attributes
-				element.removeAttribute('data-cms-img')
-				element.removeAttribute('data-cms-markdown')
-			}
-		}
-		finalHtml = root.toString()
-	}
-
 	return {
-		html: finalHtml,
+		html: result.html,
 		entries: result.entries,
 		components: result.components,
 		collection: collectionEntry,
 		seo: result.seo,
+		collectionDefinitions: result.collectionDefinitions,
+	}
+}
+
+/**
+ * Phase 2 (background): Resolve source locations, enhance snippets, populate
+ * component props, and update the manifest. Runs after the HTML response is sent.
+ */
+async function enhanceManifestInBackground(
+	pagePath: string,
+	entries: Record<string, import('./types').ManifestEntry>,
+	components: Record<string, import('./types').ComponentInstance>,
+	collection: CollectionEntry | undefined,
+	seo: import('./types').PageSeoData | undefined,
+	collectionDefinitions: Record<string, import('./types').CollectionDefinition> | undefined,
+	config: Required<CmsMarkerOptions>,
+	manifestWriter: ManifestWriter,
+): Promise<void> {
+	try {
+		// Populate component props from source invocations
+		const projectRoot = getProjectRoot()
+		const fileCache = new Map<string, string[] | null>()
+		const readLines = async (filePath: string): Promise<string[] | null> => {
+			if (fileCache.has(filePath)) return fileCache.get(filePath)!
+			try {
+				const content = await fs.readFile(filePath, 'utf-8')
+				const lines = content.split('\n')
+				fileCache.set(filePath, lines)
+				return lines
+			} catch {
+				fileCache.set(filePath, null)
+				return null
+			}
+		}
+
+		for (const comp of Object.values(components)) {
+			if (comp.componentName.startsWith('__array:')) continue
+
+			let found = false
+
+			if (comp.invocationSourcePath) {
+				const filePath = normalizeFilePath(comp.invocationSourcePath)
+				const lines = await readLines(path.resolve(projectRoot, filePath))
+				if (lines) {
+					const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
+					if (invLine >= 0) {
+						comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
+						found = true
+					}
+				}
+			}
+
+			if (!found) {
+				for (const candidate of getPageFileCandidates(pagePath)) {
+					const lines = await readLines(path.resolve(projectRoot, candidate))
+					if (lines) {
+						const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
+						if (invLine >= 0) {
+							comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
+							break
+						}
+					}
+				}
+			}
+		}
+
+		// Resolve spread props for array-rendered components
+		const componentGroups = new Map<string, typeof components[string][]>()
+		for (const comp of Object.values(components)) {
+			const key = `${comp.componentName}::${comp.invocationSourcePath ?? ''}`
+			if (!componentGroups.has(key)) componentGroups.set(key, [])
+			componentGroups.get(key)!.push(comp)
+		}
+
+		for (const group of componentGroups.values()) {
+			if (group.length < 1) continue
+			if (!group.some(c => Object.keys(c.props).length === 0)) continue
+
+			const firstComp = group[0]!
+			const filePath = normalizeFilePath(firstComp.invocationSourcePath ?? firstComp.sourcePath)
+			const lines = await readLines(path.resolve(projectRoot, filePath))
+			if (!lines) continue
+
+			const fmEnd = findFrontmatterEnd(lines)
+
+			let pattern: ReturnType<typeof detectArrayPattern>
+			const parsed = parseInlineArrayName(firstComp.componentName)
+			if (parsed) {
+				const { arrayVarName, mapOccurrence } = parsed
+				const mapRegex = new RegExp(buildMapPattern(arrayVarName))
+				let mapLine = -1
+				let seen = 0
+				for (let i = fmEnd; i < lines.length; i++) {
+					if (mapRegex.test(lines[i]!)) {
+						if (seen === mapOccurrence) {
+							mapLine = i
+							break
+						}
+						seen++
+					}
+				}
+				if (mapLine < 0) continue
+				pattern = { arrayVarName, mapLineIndex: mapLine }
+			} else {
+				const invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
+				if (invLine < 0) continue
+				pattern = detectArrayPattern(lines, invLine)
+			}
+			if (!pattern) continue
+			if (fmEnd === 0) continue
+
+			const frontmatterContent = lines.slice(1, fmEnd - 1).join('\n')
+
+			const sorted = [...group].sort((a, b) => (a.invocationIndex ?? 0) - (b.invocationIndex ?? 0))
+			for (let i = 0; i < sorted.length; i++) {
+				const comp = sorted[i]!
+				if (Object.keys(comp.props).length > 0) continue
+
+				const arrayProps = extractArrayElementProps(frontmatterContent, pattern.arrayVarName, i)
+				if (arrayProps) {
+					comp.props = arrayProps
+				}
+			}
+		}
+
+		// Ensure the search index is initialized
+		await initializeSearchIndex()
+
+		// Re-resolve sources with the search index
+		for (const entry of Object.values(entries)) {
+			if (entry.imageMetadata?.src) {
+				const imageSource = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
+				if (imageSource) {
+					entry.sourcePath = imageSource.file
+					entry.sourceLine = imageSource.line
+					entry.sourceSnippet = imageSource.snippet
+				}
+			} else if (entry.text && entry.tag) {
+				const textSource = await findSourceLocation(entry.text, entry.tag)
+				if (textSource) {
+					entry.sourcePath = textSource.file
+					entry.sourceLine = textSource.line
+					entry.sourceSnippet = textSource.snippet
+					if (textSource.variableName) entry.variableName = textSource.variableName
+				}
+			}
+		}
+
+		// Update the manifest with fully-resolved entries and component props
+		manifestWriter.addPage(pagePath, entries, components, collection, seo)
+	} catch (error) {
+		console.error('[cms] Background enhancement failed:', error)
 	}
 }
 

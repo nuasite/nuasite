@@ -7,7 +7,7 @@ import type { Attribute, CollectionDefinition, ManifestEntry } from '../types'
 import { escapeRegex, generateSourceHash } from '../utils'
 import { buildDefinitionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
-import { findFieldInCollectionEntry, findTextInAnyCollectionFrontmatter } from './collection-finder'
+import { buildCollectionTextIndex, findFieldInCollectionEntry, findTextInAnyCollectionFrontmatter, lookupCollectionText } from './collection-finder'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
 import { initializeSearchIndex } from './search-index'
@@ -502,6 +502,11 @@ export async function enhanceManifestWithSourceSnippets(
 		}
 	}
 
+	// Build collection text index upfront for O(1) lookups in both entries and augment phases
+	if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
+		await buildCollectionTextIndex(collectionDefinitions)
+	}
+
 	// Propagate collectionName/collectionSlug from wrapper entries to their children.
 	// The HTML processor only sets collection info on the wrapper element itself;
 	// child entries (images, text) need it for direct data-file resolution.
@@ -529,6 +534,19 @@ export async function enhanceManifestWithSourceSnippets(
 		if (entry.collectionName && entry.collectionSlug) {
 			propagateCollection(entry.id, entry.collectionName, entry.collectionSlug)
 		}
+	}
+
+	// Shared file read cache — avoids redundant fs.readFile calls
+	// when many entries share the same source file
+	const fileContentCache = new Map<string, { content: string; lines: string[] }>()
+	const readFileWithCache = async (filePath: string): Promise<{ content: string; lines: string[] }> => {
+		const cached = fileContentCache.get(filePath)
+		if (cached) return cached
+		const content = await fs.readFile(filePath, 'utf-8')
+		const lines = content.split('\n')
+		const result = { content, lines }
+		fileContentCache.set(filePath, result)
+		return result
 	}
 
 	// Process entries in parallel for better performance
@@ -568,8 +586,7 @@ export async function enhanceManifestWithSourceSnippets(
 					const filePath = path.isAbsolute(imageLocation.file)
 						? imageLocation.file
 						: path.join(getProjectRoot(), imageLocation.file)
-					const content = await fs.readFile(filePath, 'utf-8')
-					const lines = content.split('\n')
+					const { lines } = await readFileWithCache(filePath)
 					const openingTagInfo = extractOpeningTagWithLine(lines, imageLocation.line - 1, entry.tag)
 
 					if (openingTagInfo) {
@@ -656,8 +673,7 @@ export async function enhanceManifestWithSourceSnippets(
 				? entry.sourcePath
 				: path.join(getProjectRoot(), entry.sourcePath)
 
-			const content = await fs.readFile(filePath, 'utf-8')
-			const lines = content.split('\n')
+			const { content, lines } = await readFileWithCache(filePath)
 
 			// Extract the complete source element
 			const sourceSnippet = extractCompleteTagSnippet(lines, entry.sourceLine - 1, entry.tag)
@@ -806,7 +822,7 @@ export async function enhanceManifestWithSourceSnippets(
 					// from collection entries (e.g. {post.data.title}) won't be found
 					// through AST or prop lookups since the value lives in a .md file
 					if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
-						const mdSource = await findTextInAnyCollectionFrontmatter(trimmedText, collectionDefinitions)
+						const mdSource = lookupCollectionText(trimmedText, referenceIndex)
 						if (mdSource) {
 							return [
 								id,
@@ -841,72 +857,31 @@ export async function enhanceManifestWithSourceSnippets(
 	for (const [id, entry] of results) {
 		enhanced[id] = entry
 	}
-
 	// Post-processing: augment entries with collection and reference metadata.
-	// Source resolution may find text via prop/expression tracking (pointing to a parent
-	// component) before the collection frontmatter search runs. In that case the source
-	// location is correct for editing, but collection identity and reference metadata are
-	// missing. This pass adds both by checking if text exists in any collection.
-	// collectionName/collectionSlug are needed on owning entries (e.g. news titles) so
-	// that findOwnerEntry in the editor can locate them as siblings of reference elements.
+	// Uses the pre-built collection text index for O(1) lookups instead of
+	// re-parsing YAML/frontmatter for every entry.
 	if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
-		// Cache text→result to avoid redundant file reads when the same text appears
-		// in multiple manifest entries (e.g., author names repeated on listing pages)
-		const textLookupCache = new Map<
-			string,
-			{ source: SourceLocation; referencedBy?: Array<{ collection: string; fieldName: string; isArray?: boolean }> } | null
-		>()
+		await buildCollectionTextIndex(collectionDefinitions)
 
-		async function resolveCollectionText(trimmed: string) {
-			const cached = textLookupCache.get(trimmed)
-			if (cached !== undefined) return cached
-
-			// Search each collection individually so we can prefer referenced collections
-			// (findTextInAnyCollectionFrontmatter returns the first match, which may be wrong
-			// when the same text exists in multiple collections like "team" and "authors")
-			let bestSource: SourceLocation | undefined
-			let bestReferencedBy: Array<{ collection: string; fieldName: string; isArray?: boolean }> | undefined
-			for (const def of Object.values(collectionDefinitions!)) {
-				if (!def.entries || def.entries.length === 0) continue
-				const singleCol = { [def.name]: def }
-				const source = await findTextInAnyCollectionFrontmatter(trimmed, singleCol)
-				if (!source?.collectionName) continue
-				const refs = referenceIndex.get(source.collectionName)
-				if (refs && refs.length > 0) {
-					bestSource = source
-					bestReferencedBy = refs
-					break
-				}
-				if (!bestSource) {
-					bestSource = source
-				}
-			}
-
-			const result = bestSource ? { source: bestSource, referencedBy: bestReferencedBy } : null
-			textLookupCache.set(trimmed, result)
-			return result
-		}
-
-		const augmentPromises = Object.entries(enhanced).map(async ([id, entry]) => {
-			if (!entry.text?.trim()) return
+		for (const [id, entry] of Object.entries(enhanced)) {
+			if (!entry.text?.trim()) continue
 			// Skip if already fully resolved (has collection identity + reference metadata or no references exist)
-			if (entry.collectionName && (entry.referenceCollection || referenceIndex.size === 0)) return
-			const trimmed = entry.text.trim()
+			if (entry.collectionName && (entry.referenceCollection || referenceIndex.size === 0)) continue
 
-			const resolved = await resolveCollectionText(trimmed)
-			if (!resolved) return
+			const source = lookupCollectionText(entry.text.trim(), referenceIndex)
+			if (!source) continue
 
-			const refMeta = resolved.referencedBy
-				? { referenceCollection: resolved.source.collectionName, referencedBy: resolved.referencedBy }
+			const referencedBy = source.collectionName ? referenceIndex.get(source.collectionName) : undefined
+			const refMeta = referencedBy
+				? { referenceCollection: source.collectionName, referencedBy }
 				: {}
 			enhanced[id] = {
 				...entry,
-				collectionName: entry.collectionName ?? resolved.source.collectionName,
-				collectionSlug: entry.collectionSlug ?? resolved.source.collectionSlug,
+				collectionName: entry.collectionName ?? source.collectionName,
+				collectionSlug: entry.collectionSlug ?? source.collectionSlug,
 				...refMeta,
 			}
-		})
-		await Promise.all(augmentPromises)
+		}
 	}
 
 	return enhanced

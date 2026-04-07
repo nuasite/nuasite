@@ -1,6 +1,6 @@
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import { processSeoFromHtml } from './seo-processor'
-import { enhanceManifestWithSourceSnippets } from './source-finder'
+
 import { extractBackgroundImageClasses, extractColorClasses, extractTextStyleClasses } from './tailwind-colors'
 import type {
 	Attribute,
@@ -90,6 +90,8 @@ export interface ProcessHtmlResult {
 	collectionWrapperId?: string
 	/** Extracted SEO data from the page */
 	seo?: PageSeoData
+	/** Collection definitions passed through for deferred enhancement */
+	collectionDefinitions?: Record<string, import('./types').CollectionDefinition>
 }
 
 /**
@@ -440,7 +442,10 @@ export async function processHtml(
 		let foundWrapper = false
 
 		// Strategy 1: Dev mode - look for source file attributes
+		const SKIP_WRAPPER_TAGS = new Set(['html', 'head', 'body', 'script', 'style', 'meta', 'link'])
 		for (const node of allElements) {
+			const tag = node.tagName?.toLowerCase?.() ?? ''
+			if (SKIP_WRAPPER_TAGS.has(tag)) continue
 			const sourceFile = node.getAttribute('data-astro-source-file')
 			if (!sourceFile) continue
 
@@ -1023,10 +1028,6 @@ export async function processHtml(
 		node.removeAttribute('data-astro-source-line')
 	})
 
-	// Enhance manifest entries with actual source snippets from source files
-	// This allows the CMS to match and replace dynamic content in source files
-	const enhancedEntries = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions)
-
 	// Get the current HTML for SEO processing
 	let finalHtml = root.toString()
 
@@ -1048,7 +1049,7 @@ export async function processHtml(
 
 		// If title was marked with CMS ID, add it to entries
 		if (seoResult.titleId && seo.title) {
-			enhancedEntries[seoResult.titleId] = {
+			entries[seoResult.titleId] = {
 				id: seoResult.titleId,
 				tag: 'title',
 				text: seo.title.content,
@@ -1061,10 +1062,11 @@ export async function processHtml(
 
 	return {
 		html: finalHtml,
-		entries: enhancedEntries,
+		entries,
 		components,
 		collectionWrapperId,
 		seo,
+		collectionDefinitions,
 	}
 }
 

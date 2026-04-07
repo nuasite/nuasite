@@ -9,6 +9,187 @@ import { normalizeText } from './snippet-utils'
 import type { CollectionInfo, MarkdownContent, SourceLocation } from './types'
 
 // ============================================================================
+// Collection Text Index — pre-built reverse index for fast text→source lookups
+// ============================================================================
+
+/** Pre-built index: normalizedText → SourceLocation (with collection metadata) */
+let collectionTextIndex: Map<string, SourceLocation[]> | null = null
+let collectionTextIndexPromise: Promise<void> | null = null
+
+/**
+ * Build a reverse index of all text values in collection data/frontmatter files.
+ * After this call, `lookupCollectionText()` returns results in O(1).
+ */
+export async function buildCollectionTextIndex(
+	collections: Record<string, CollectionDefinition>,
+): Promise<void> {
+	if (collectionTextIndex) return
+	if (collectionTextIndexPromise) return collectionTextIndexPromise
+	collectionTextIndexPromise = doBuildCollectionTextIndex(collections)
+	try {
+		await collectionTextIndexPromise
+	} finally {
+		collectionTextIndexPromise = null
+	}
+}
+
+async function doBuildCollectionTextIndex(
+	collections: Record<string, CollectionDefinition>,
+): Promise<void> {
+	const index = new Map<string, SourceLocation[]>()
+
+	for (const def of Object.values(collections)) {
+		if (!def.entries || def.entries.length === 0) continue
+
+		await Promise.all(def.entries.map(async (entry) => {
+			const info: CollectionInfo = { name: def.name, slug: entry.slug, file: entry.sourcePath }
+			try {
+				const filePath = path.join(getProjectRoot(), entry.sourcePath)
+				const cached = await getCachedMarkdownFile(filePath)
+				if (!cached) return
+
+				if (def.type === 'data') {
+					// Data file — index all scalars from the full YAML
+					collectScalarsFromYaml(cached.content, 0, cached.lines, info, index)
+				} else {
+					// Markdown — index scalars from frontmatter only
+					const { lines } = cached
+					let fmStart = -1
+					let fmEnd = -1
+					for (let i = 0; i < lines.length; i++) {
+						if (lines[i]?.trim() === '---') {
+							if (fmStart === -1) fmStart = i
+							else {
+								fmEnd = i
+								break
+							}
+						}
+					}
+					if (fmEnd > 0) {
+						const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
+						collectScalarsFromYaml(yamlStr, fmStart + 1, lines, info, index)
+					}
+				}
+			} catch {
+				// Skip unreadable files
+			}
+		}))
+	}
+
+	collectionTextIndex = index
+}
+
+/**
+ * Walk a YAML document and collect all scalar values into the text index.
+ */
+function collectScalarsFromYaml(
+	yamlStr: string,
+	lineOffset: number,
+	fileLines: string[],
+	collectionInfo: CollectionInfo,
+	index: Map<string, SourceLocation[]>,
+): void {
+	const lineCounter = new LineCounter()
+	const doc = parseDocument(yamlStr, { lineCounter })
+	collectFromYamlNode(doc.contents, lineOffset, fileLines, collectionInfo, lineCounter, index)
+}
+
+function collectFromYamlNode(
+	node: unknown,
+	lineOffset: number,
+	fileLines: string[],
+	collectionInfo: CollectionInfo,
+	lineCounter: LineCounter,
+	index: Map<string, SourceLocation[]>,
+): void {
+	if (isMap(node)) {
+		for (const pair of node.items) {
+			if (!isPair(pair) || !isScalar(pair.key)) continue
+			const key = String(pair.key.value)
+
+			if (isScalar(pair.value)) {
+				const normalized = normalizeText(String(pair.value.value))
+				if (normalized.length < 2) continue
+				const keyRange = (pair.key as any).range as [number, number, number] | undefined
+				const valRange = (pair.value as any).range as [number, number, number] | undefined
+				const startLine = (keyRange ? lineCounter.linePos(keyRange[0]).line : 1) + lineOffset
+				const endLine = (valRange ? lineCounter.linePos(valRange[1]).line : startLine - lineOffset) + lineOffset
+				const snippet = fileLines.slice(startLine - 1, endLine).join('\n')
+
+				const loc: SourceLocation = {
+					file: collectionInfo.file,
+					line: startLine,
+					snippet,
+					type: 'collection',
+					variableName: key,
+					collectionName: collectionInfo.name,
+					collectionSlug: collectionInfo.slug,
+				}
+				const existing = index.get(normalized)
+				if (existing) existing.push(loc)
+				else index.set(normalized, [loc])
+			} else {
+				collectFromYamlNode(pair.value, lineOffset, fileLines, collectionInfo, lineCounter, index)
+			}
+		}
+	} else if (isSeq(node)) {
+		for (const item of node.items) {
+			if (isScalar(item)) {
+				const normalized = normalizeText(String(item.value))
+				if (normalized.length < 2) continue
+				const range = (item as any).range as [number, number, number] | undefined
+				const startLine = (range ? lineCounter.linePos(range[0]).line : 1) + lineOffset
+				const endLine = (range ? lineCounter.linePos(range[1]).line : startLine - lineOffset) + lineOffset
+				const snippet = fileLines.slice(startLine - 1, endLine).join('\n')
+
+				const loc: SourceLocation = {
+					file: collectionInfo.file,
+					line: startLine,
+					snippet,
+					type: 'collection',
+					collectionName: collectionInfo.name,
+					collectionSlug: collectionInfo.slug,
+				}
+				const existing = index.get(normalized)
+				if (existing) existing.push(loc)
+				else index.set(normalized, [loc])
+			} else {
+				collectFromYamlNode(item, lineOffset, fileLines, collectionInfo, lineCounter, index)
+			}
+		}
+	}
+}
+
+/**
+ * O(1) lookup in the pre-built collection text index.
+ * Returns all matching source locations, preferring referenced collections.
+ */
+export function lookupCollectionText(
+	textContent: string,
+	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
+): SourceLocation | undefined {
+	if (!collectionTextIndex) return undefined
+	const normalized = normalizeText(textContent)
+	const locations = collectionTextIndex.get(normalized)
+	if (!locations || locations.length === 0) return undefined
+
+	// Prefer locations from referenced collections
+	if (referenceIndex) {
+		for (const loc of locations) {
+			if (loc.collectionName && referenceIndex.has(loc.collectionName)) {
+				return loc
+			}
+		}
+	}
+	return locations[0]
+}
+
+/** Clear the collection text index (called when collection files change) */
+export function clearCollectionTextIndex(): void {
+	collectionTextIndex = null
+}
+
+// ============================================================================
 // Markdown File Cache
 // ============================================================================
 

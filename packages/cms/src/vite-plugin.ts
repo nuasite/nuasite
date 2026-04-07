@@ -1,6 +1,7 @@
 import type { Plugin } from 'vite'
 import { expectedDeletions } from './dev-middleware'
 import type { ManifestWriter } from './manifest-writer'
+import { markFileDirty } from './source-finder'
 import type { CmsMarkerOptions, ComponentDefinition } from './types'
 import { createArrayTransformPlugin } from './vite-plugin-array-transform'
 
@@ -35,17 +36,36 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 		},
 	}
 
-	// Intercept Vite's file watcher to suppress full page reloads when the CMS
-	// deletes a content collection entry. Without this, Vite/Astro detects the
-	// unlink and forces a reload, undoing the optimistic UI update.
+	// File extensions that are indexed by the CMS search index
+	const INDEXED_EXTENSIONS = /\.(astro|tsx|jsx|json|ya?ml|mdx?)$/
+
+	// Stable handler reference so configureServer re-entry doesn't leak listeners
+	const onFileChange = (filePath: string) => {
+		if (INDEXED_EXTENSIONS.test(filePath)) {
+			markFileDirty(filePath)
+		}
+	}
+
+	// Intercept Vite's file watcher to:
+	// 1. Mark changed source files dirty for incremental re-indexing
+	// 2. Suppress full page reloads when the CMS deletes a content collection entry
 	const watcherPlugin: Plugin = {
 		name: 'cms-suppress-delete-reload',
 		configureServer(server) {
 			if (command !== 'dev') return
 
+			const watcher = server.watcher
+
+			// Mark changed files dirty so the search index re-indexes only them.
+			// Remove first to avoid duplicate listeners on Astro dev server restarts.
+			watcher.off('change', onFileChange).on('change', onFileChange)
+			watcher.off('add', onFileChange).on('add', onFileChange)
+			// Astro + Vite plugins collectively add many 'change' listeners to the
+			// shared watcher. Raise the limit to suppress the spurious warning.
+			watcher.setMaxListeners(20)
+
 			// Monkey-patch the watcher to intercept unlink events before Vite/Astro
 			// processes them. We use prependListener so our handler runs first.
-			const watcher = server.watcher
 			const origEmit = watcher.emit.bind(watcher)
 			watcher.emit = ((event: string, filePath: string, ...args: any[]) => {
 				if ((event === 'unlink' || event === 'unlinkDir') && expectedDeletions.has(filePath)) {

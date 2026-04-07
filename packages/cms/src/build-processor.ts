@@ -10,6 +10,7 @@ import { extractComponentName, processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import { generateComponentPreviews } from './preview-generator'
 import {
+	clearCollectionTextIndex,
 	clearSourceFinderCache,
 	extractOpeningTagWithLine,
 	findCollectionSource,
@@ -23,6 +24,7 @@ import {
 } from './source-finder'
 import type { ComponentInstance } from './types'
 import type { CmsMarkerOptions, CollectionEntry } from './types'
+import { firstNonEmptyLine } from './utils'
 
 // Concurrency limit for parallel processing
 const MAX_CONCURRENT = 10
@@ -323,10 +325,7 @@ async function processFile(
 	}
 
 	// Get the first non-empty line of the markdown body for wrapper detection
-	const bodyFirstLine = mdContent?.body
-		?.split('\n')
-		.find((line) => line.trim().length > 0)
-		?.trim()
+	const bodyFirstLine = firstNonEmptyLine(mdContent?.body)
 
 	// Create ID generator - use atomic increment
 	const pageIdStart = idCounter.value
@@ -780,6 +779,7 @@ export async function processBuildOutput(
 
 	// Clear caches from previous builds and initialize search index
 	clearSourceFinderCache()
+	clearCollectionTextIndex()
 
 	const htmlFiles = await findHtmlFiles(outDir)
 

@@ -191,6 +191,16 @@ export async function acquireFileLock(filePath: string): Promise<() => void> {
 export { slugify } from './shared'
 
 /**
+ * Return the first non-empty, trimmed line from a text block (e.g. markdown body).
+ */
+export function firstNonEmptyLine(text: string | undefined): string | undefined {
+	return text
+		?.split('\n')
+		.find((line) => line.trim().length > 0)
+		?.trim()
+}
+
+/**
  * Type-safe check for Node.js system errors (ENOENT, EEXIST, etc.).
  */
 export function isNodeError(error: unknown, code: string): boolean {
