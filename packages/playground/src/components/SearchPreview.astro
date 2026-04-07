@@ -1,0 +1,88 @@
+---
+import Search from '@nuasite/components/Search.astro'
+---
+
+<div class="space-y-4">
+	<p class="text-sm text-slate-300">
+		Type a query below to search site content via <code class="rounded border border-slate-800 bg-slate-900 px-1 py-0.5 text-xs">pagefind</code>.
+	</p>
+	<div class="relative max-w-sm">
+		<Search placeholder="Try searching..." class="relative" />
+	</div>
+</div>
+
+<style>
+	nua-search [data-search-input] {
+		width: 100%;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		border: 1px solid rgb(51 65 85);
+		background: rgb(15 23 42 / 0.6);
+		color: rgb(226 232 240);
+		font-size: 0.875rem;
+		outline: none;
+		transition: border-color 0.15s;
+	}
+	nua-search [data-search-input]:focus {
+		border-color: rgb(99 102 241 / 0.5);
+	}
+	nua-search [data-search-input]::placeholder {
+		color: rgb(100 116 139);
+	}
+	nua-search:not([data-has-query]) [data-search-results] {
+		display: none;
+	}
+	nua-search [data-search-results] {
+		position: absolute;
+		left: 0;
+		right: 0;
+		top: 100%;
+		margin-top: 0.5rem;
+		border-radius: 0.5rem;
+		border: 1px solid rgb(51 65 85);
+		background: rgb(15 23 42);
+		box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.4);
+		padding: 0.25rem;
+		max-height: 20rem;
+		overflow-y: auto;
+	}
+	nua-search [data-search-list] {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+	nua-search [data-search-result-link] {
+		display: block;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.375rem;
+		text-decoration: none;
+		transition: background-color 0.1s;
+	}
+	nua-search [data-search-result-link]:hover {
+		background: rgb(51 65 85 / 0.4);
+	}
+	nua-search [data-search-result-title] {
+		display: block;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: rgb(226 232 240);
+	}
+	nua-search [data-search-result-excerpt] {
+		display: block;
+		font-size: 0.75rem;
+		color: rgb(148 163 184);
+		margin-top: 0.125rem;
+	}
+	nua-search [data-search-result-excerpt] :global(mark) {
+		background: rgb(99 102 241 / 0.3);
+		color: rgb(199 210 254);
+		border-radius: 0.125rem;
+		padding: 0 0.125rem;
+	}
+	nua-search [data-search-loading],
+	nua-search [data-search-no-results] {
+		padding: 0.75rem;
+		font-size: 0.8125rem;
+		color: rgb(148 163 184);
+	}
+</style>

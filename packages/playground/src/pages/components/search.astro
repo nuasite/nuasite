@@ -1,0 +1,119 @@
+---
+import DocLayout from '../../components/DocLayout.astro'
+import PageHeader from '../../components/PageHeader.astro'
+import SectionHeading from '../../components/SectionHeading.astro'
+import CodeBlock from '../../components/CodeBlock.astro'
+import ConfigTable from '../../components/ConfigTable.astro'
+import SearchPreview from '../../components/SearchPreview.astro'
+
+const props = [
+	{ name: 'placeholder', type: 'string', default: '"Search..."', description: 'Placeholder text for the search input.' },
+	{ name: 'debounce', type: 'number', default: '200', description: 'Debounce delay in milliseconds before triggering search.' },
+	{ name: 'class', type: 'string', description: 'CSS class applied to the <nua-search> container element.' },
+]
+
+const slots = [
+	{ name: 'input', type: 'slot', description: 'Override the default search input. Must contain an element matching [data-search-input] or input[type="search"].' },
+	{ name: 'loading', type: 'slot', description: 'Custom loading indicator shown while fetching results.' },
+	{ name: 'no-results', type: 'slot', description: 'Custom message shown when no results match the query.' },
+]
+
+const events = [
+	{ name: 'search', type: 'CustomEvent', description: 'Dispatched after results are rendered. detail contains { query, results }.' },
+]
+
+const attributes = [
+	{ name: 'data-has-query', type: 'attribute', description: 'Present on <nua-search> when the input has a non-empty query. Use for CSS-driven show/hide of the results panel.' },
+	{ name: 'data-has-results', type: 'attribute', description: 'Present on <nua-search> when results are displayed. Useful for conditional styling.' },
+]
+---
+
+<DocLayout title="Search Component | Nua Playground" description="Full-text site search powered by Pagefind — lazy-loaded, debounced, and fully customizable via slots.">
+	<PageHeader
+		badge="Component"
+		title="Search"
+		description="Add full-text site search powered by Pagefind. Lazy-loads the search index on first interaction, debounces input, and renders results — all in a headless web component you can style however you want."
+	/>
+
+	<div class="mx-auto max-w-6xl space-y-16 px-6 py-16">
+
+		<section class="space-y-8">
+			<SectionHeading title="Live preview" id="preview" />
+			<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-8">
+				<SearchPreview />
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading
+				title="How it works"
+				description="The Search component wraps Pagefind in a web component — no framework dependency, no upfront cost."
+				id="how-it-works"
+			/>
+			<div class="grid gap-6 sm:grid-cols-3">
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">1</div>
+					<h4 class="text-sm font-semibold text-white">Lazy loading</h4>
+					<p class="text-sm text-slate-400">Pagefind's JS and index are only fetched when the user types their first query — zero cost on initial page load.</p>
+				</div>
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">2</div>
+					<h4 class="text-sm font-semibold text-white">Debounced search</h4>
+					<p class="text-sm text-slate-400">Input is debounced (200ms default) so searches only fire after the user pauses typing. Stale results are automatically discarded.</p>
+				</div>
+				<div class="rounded-xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+					<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-sm font-bold text-indigo-300">3</div>
+					<h4 class="text-sm font-semibold text-white">Headless & slotted</h4>
+					<p class="text-sm text-slate-400">No imposed styles. Override input, loading, and empty states via named slots. Style results with data-attribute selectors.</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Usage" id="usage" />
+			<CodeBlock
+				filename="src/pages/index.astro"
+				code={`---
+import Search from '@nuasite/components/Search.astro'
+---
+
+<Search placeholder="Search the docs..." />`}
+			/>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Custom slots" id="slots" />
+			<CodeBlock
+				filename="src/components/CustomSearch.astro"
+				code={`---
+import Search from '@nuasite/components/Search.astro'
+---
+
+<Search debounce={300} class="relative">
+  <input slot="input" type="search" data-search-input
+    placeholder="Find articles..."
+    class="my-input-class" />
+  <div slot="loading">Searching...</div>
+  <div slot="no-results">Nothing found — try a different term.</div>
+</Search>`}
+			/>
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Props reference" id="props" />
+			<ConfigTable title="Search Props" rows={props} />
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Slots" id="slots-ref" />
+			<ConfigTable title="Named Slots" rows={slots} />
+		</section>
+
+		<section class="space-y-8">
+			<SectionHeading title="Events & attributes" id="events" />
+			<ConfigTable title="Events" rows={events} />
+			<ConfigTable title="Data Attributes" rows={attributes} />
+		</section>
+
+	</div>
+</DocLayout>
