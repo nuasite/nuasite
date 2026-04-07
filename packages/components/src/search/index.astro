@@ -1,0 +1,141 @@
+---
+export interface Props {
+	/** Debounce delay in ms (default: 200) */
+	debounce?: number
+	/** Placeholder text for the input */
+	placeholder?: string
+	/** CSS class for the container */
+	class?: string
+}
+
+const { debounce = 200, placeholder = 'Search...', class: className } = Astro.props
+---
+
+<nua-search data-debounce={debounce} class={className}>
+	<slot name="input">
+		<input type="search" placeholder={placeholder} data-search-input />
+	</slot>
+	<div data-search-results>
+		<slot name="loading">
+			<div data-search-loading hidden>Loading...</div>
+		</slot>
+		<slot name="no-results">
+			<div data-search-no-results hidden>No results found.</div>
+		</slot>
+		<ul data-search-list></ul>
+	</div>
+</nua-search>
+
+<script>
+	class NuaSearch extends HTMLElement {
+		private pagefind: Promise<any> | null = null
+		private debounceTimer: ReturnType<typeof setTimeout> | null = null
+		private searchId = 0
+		private input: HTMLInputElement | null = null
+		private list: Element | null = null
+		private loading: Element | null = null
+		private noResults: Element | null = null
+		private handler = () => this.handleInput()
+
+		connectedCallback() {
+			this.input = this.querySelector<HTMLInputElement>('[data-search-input], input[type="search"], input[type="text"]')
+			this.list = this.querySelector('[data-search-list]')
+			this.loading = this.querySelector('[data-search-loading]')
+			this.noResults = this.querySelector('[data-search-no-results]')
+			if (!this.input) return
+
+			this.input.addEventListener('input', this.handler)
+		}
+
+		disconnectedCallback() {
+			this.input?.removeEventListener('input', this.handler)
+			if (this.debounceTimer) clearTimeout(this.debounceTimer)
+		}
+
+		private handleInput() {
+			const delay = Number(this.dataset.debounce) || 200
+
+			if (this.debounceTimer) clearTimeout(this.debounceTimer)
+			this.debounceTimer = setTimeout(() => this.search(), delay)
+		}
+
+		private async search() {
+			const currentId = ++this.searchId
+			const query = this.input?.value?.trim() ?? ''
+
+			if (!query) {
+				this.list?.replaceChildren()
+				this.loading?.toggleAttribute('hidden', true)
+				this.noResults?.toggleAttribute('hidden', true)
+				this.removeAttribute('data-has-results')
+				this.removeAttribute('data-has-query')
+				return
+			}
+
+			this.setAttribute('data-has-query', '')
+
+			this.loading?.toggleAttribute('hidden', false)
+			this.noResults?.toggleAttribute('hidden', true)
+
+			if (!this.pagefind) {
+				const path = '/pagefind/pagefind.js'
+				this.pagefind = import(/* @vite-ignore */ path).then(async (pf) => { await pf.init(); return pf })
+			}
+
+			let pf
+			try {
+				pf = await this.pagefind
+			} catch {
+				this.pagefind = null
+				this.loading?.toggleAttribute('hidden', true)
+				this.removeAttribute('data-has-query')
+				return
+			}
+
+			const response = await pf.search(query)
+			const results = await Promise.all(response.results.slice(0, 10).map((r: any) => r.data()))
+
+			if (currentId !== this.searchId) return
+
+			this.loading?.toggleAttribute('hidden', true)
+
+			if (results.length === 0) {
+				this.list?.replaceChildren()
+				this.noResults?.toggleAttribute('hidden', false)
+				this.removeAttribute('data-has-results')
+				return
+			}
+
+			this.setAttribute('data-has-results', '')
+
+			if (this.list) {
+				const fragment = document.createDocumentFragment()
+				for (const result of results) {
+					const li = document.createElement('li')
+					li.setAttribute('data-search-result', '')
+
+					const a = document.createElement('a')
+					a.href = result.url
+					a.setAttribute('data-search-result-link', '')
+
+					const title = document.createElement('span')
+					title.setAttribute('data-search-result-title', '')
+					title.textContent = result.meta?.title ?? result.url
+
+					const excerpt = document.createElement('span')
+					excerpt.setAttribute('data-search-result-excerpt', '')
+					excerpt.innerHTML = result.excerpt
+
+					a.append(title, excerpt)
+					li.append(a)
+					fragment.append(li)
+				}
+				this.list.replaceChildren(fragment)
+			}
+
+			this.dispatchEvent(new CustomEvent('search', { detail: { query, results } }))
+		}
+	}
+
+	customElements.define('nua-search', NuaSearch)
+</script>

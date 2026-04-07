@@ -51,6 +51,11 @@
 			"types": "./src/reservation/status/index.astro",
 			"import": "./src/reservation/status/index.astro",
 			"default": "./src/reservation/status/index.astro"
+		},
+		"./Search.astro": {
+			"types": "./src/search/index.astro",
+			"import": "./src/search/index.astro",
+			"default": "./src/search/index.astro"
 		}
 	},
 	"peerDependencies": {
