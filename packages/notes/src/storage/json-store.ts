@@ -16,7 +16,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { generateNoteId } from './id-gen'
 import { normalizePagePath, pageToSlug } from './slug'
-import type { NoteItem, NoteItemPatch, NotesPageFile } from './types'
+import type { NoteHistoryAction, NoteHistoryEntry, NoteItem, NoteItemPatch, NoteRole, NotesPageFile } from './types'
 
 const FILE_VERSION_HEADER = '// @nuasite/notes v1\n'
 
@@ -77,11 +77,20 @@ export class NotesJsonStore {
 			// Tolerate the optional version header
 			const stripped = raw.startsWith('//') ? raw.slice(raw.indexOf('\n') + 1) : raw
 			const parsed = JSON.parse(stripped) as NotesPageFile
-			// Normalize legacy / partial files
+			// Normalize legacy / partial files: items predating the history
+			// field get an empty array, items predating replies get an empty
+			// array. Everything else passes through untouched.
+			const items = Array.isArray(parsed.items)
+				? parsed.items.map((it) => ({
+					...it,
+					replies: Array.isArray(it.replies) ? it.replies : [],
+					history: Array.isArray((it as Partial<NoteItem>).history) ? (it as NoteItem).history : [],
+				}))
+				: []
 			return {
 				page: parsed.page ?? normalized,
 				lastUpdated: parsed.lastUpdated ?? nowIso(),
-				items: Array.isArray(parsed.items) ? parsed.items : [],
+				items,
 			}
 		} catch (err) {
 			if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -104,16 +113,19 @@ export class NotesJsonStore {
 	/** Add a new item. Generates the id, createdAt, and defaults status to "open". */
 	async addItem(
 		page: string,
-		input: Omit<NoteItem, 'id' | 'createdAt' | 'status' | 'replies'> & {
+		input: Omit<NoteItem, 'id' | 'createdAt' | 'status' | 'replies' | 'history'> & {
 			id?: string
 			createdAt?: string
 			status?: NoteItem['status']
 			replies?: NoteItem['replies']
+			history?: NoteItem['history']
 		},
+		role: NoteRole = 'client',
 	): Promise<NoteItem> {
 		const normalized = normalizePagePath(page)
 		return withLock(normalized, async () => {
 			const file = await this.readPage(normalized)
+			const now = input.createdAt ?? nowIso()
 			const item: NoteItem = {
 				id: input.id ?? generateNoteId(),
 				type: input.type,
@@ -124,9 +136,10 @@ export class NotesJsonStore {
 				range: input.range ?? null,
 				body: input.body,
 				author: input.author,
-				createdAt: input.createdAt ?? nowIso(),
+				createdAt: now,
 				status: input.status ?? 'open',
 				replies: input.replies ?? [],
+				history: input.history ?? [{ at: now, action: 'created', role }],
 			}
 			file.items.push(item)
 			file.page = normalized
@@ -136,34 +149,65 @@ export class NotesJsonStore {
 		})
 	}
 
-	/** Patch an existing item. Returns the updated item, or null if not found. */
-	async updateItem(page: string, id: string, patch: NoteItemPatch): Promise<NoteItem | null> {
+	/**
+	 * Patch an existing item. Returns the updated item, or null if not found.
+	 *
+	 * `historyAction` is appended to the item's audit trail. Default is
+	 * `'updated'`; status-changing helpers (`setStatus`) supply more specific
+	 * actions like `'resolved'` or `'applied'`.
+	 */
+	async updateItem(
+		page: string,
+		id: string,
+		patch: NoteItemPatch,
+		role: NoteRole = 'client',
+		historyAction: NoteHistoryAction = 'updated',
+		historyNote?: string,
+	): Promise<NoteItem | null> {
 		const normalized = normalizePagePath(page)
 		return withLock(normalized, async () => {
 			const file = await this.readPage(normalized)
-			const idx = file.items.findIndex(it => it.id === id)
+			const idx = file.items.findIndex((it) => it.id === id)
 			if (idx === -1) return null
 			const existing = file.items[idx]!
+			const now = nowIso()
+			const entry: NoteHistoryEntry = { at: now, action: historyAction, role }
+			if (historyNote) entry.note = historyNote
 			const updated: NoteItem = {
 				...existing,
 				...patch,
 				// `range: null` is a meaningful patch (clearing a range), preserve it
 				range: 'range' in patch ? (patch.range ?? null) : existing.range,
-				updatedAt: nowIso(),
+				updatedAt: now,
+				history: [...existing.history, entry],
 			}
 			file.items[idx] = updated
-			file.lastUpdated = nowIso()
+			file.lastUpdated = now
 			await this.writePageFile(normalized, file)
 			return updated
 		})
 	}
 
-	/** Delete an item by id. Returns true if it existed. */
-	async deleteItem(page: string, id: string): Promise<boolean> {
+	/**
+	 * Soft-delete an item — flip its status to `'deleted'` and append a
+	 * history entry. The item stays in the JSON file so the agency can
+	 * always see what happened. Returns the updated item, or null if not
+	 * found. Use `purgeItem` to hard-remove.
+	 */
+	async deleteItem(page: string, id: string, role: NoteRole = 'client'): Promise<NoteItem | null> {
+		return this.updateItem(page, id, { status: 'deleted' }, role, 'deleted')
+	}
+
+	/**
+	 * Hard-remove an item from the file. The agency uses this on items that
+	 * have already been soft-deleted (or that they explicitly want gone).
+	 * Returns true if the item existed.
+	 */
+	async purgeItem(page: string, id: string): Promise<boolean> {
 		const normalized = normalizePagePath(page)
 		return withLock(normalized, async () => {
 			const file = await this.readPage(normalized)
-			const idx = file.items.findIndex(it => it.id === id)
+			const idx = file.items.findIndex((it) => it.id === id)
 			if (idx === -1) return false
 			file.items.splice(idx, 1)
 			file.lastUpdated = nowIso()

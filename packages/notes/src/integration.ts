@@ -29,6 +29,7 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 	const {
 		enabled = true,
 		urlFlag = 'nua-notes',
+		agencyFlag = 'nua-agency',
 		notesDir = 'data/notes',
 	} = options
 
@@ -79,7 +80,7 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 					(function () {
 						if (window.__nuasiteNotesAlive) return;
 						window.__nuasiteNotesAlive = true;
-						window.__NuaNotesConfig = ${JSON.stringify({ urlFlag })};
+						window.__NuaNotesConfig = ${JSON.stringify({ urlFlag, agencyFlag })};
 						if (!document.querySelector('script[data-nuasite-notes]')) {
 							const s = document.createElement('script');
 							s.type = 'module';

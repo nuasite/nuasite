@@ -10,18 +10,39 @@ interface SidebarProps {
 	error: string | null
 	staleIds: Set<string>
 	applyingId: string | null
+	isAgency: boolean
 	onFocus: (id: string) => void
 	onResolve: (id: string) => void
 	onReopen: (id: string) => void
 	onDelete: (id: string) => void
+	onPurge: (id: string) => void
 	onApply: (id: string) => void
 }
 
 export function Sidebar(
-	{ page, items, activeId, picking, error, staleIds, applyingId, onFocus, onResolve, onReopen, onDelete, onApply }: SidebarProps,
+	{
+		page,
+		items,
+		activeId,
+		picking,
+		error,
+		staleIds,
+		applyingId,
+		isAgency,
+		onFocus,
+		onResolve,
+		onReopen,
+		onDelete,
+		onPurge,
+		onApply,
+	}: SidebarProps,
 ) {
-	const open = items.filter((i) => i.status !== 'resolved' && i.status !== 'applied')
-	const closed = items.filter((i) => i.status === 'resolved' || i.status === 'applied')
+	// Sort items into three buckets. Clients never see deleted items at all.
+	const open = items.filter((i) => i.status === 'open' || i.status === 'stale' || i.status === 'rejected')
+	const resolved = items.filter((i) => i.status === 'resolved' || i.status === 'applied')
+	const deleted = isAgency ? items.filter((i) => i.status === 'deleted') : []
+	const visible = [...open, ...resolved, ...deleted]
+
 	const renderItem = (item: NoteItem) => (
 		<SidebarItem
 			key={item.id}
@@ -29,24 +50,28 @@ export function Sidebar(
 			active={item.id === activeId}
 			stale={staleIds.has(item.id)}
 			applying={applyingId === item.id}
+			isAgency={isAgency}
 			onFocus={() => onFocus(item.id)}
 			onResolve={() => onResolve(item.id)}
 			onReopen={() => onReopen(item.id)}
 			onDelete={() => onDelete(item.id)}
+			onPurge={() => onPurge(item.id)}
 			onApply={() => onApply(item.id)}
 		/>
 	)
+
 	return (
 		<aside class="notes-sidebar">
 			<header class="notes-sidebar__header">
 				<h3 class="notes-sidebar__title">Review notes</h3>
 				<div class="notes-sidebar__meta">
-					{open.length} open · {closed.length} resolved · <code>{page}</code>
+					{open.length} open · {resolved.length} resolved
+					{isAgency && deleted.length > 0 ? ` · ${deleted.length} deleted` : ''} · <code>{page}</code>
 				</div>
 			</header>
 			<div class="notes-sidebar__list">
 				{error ? <div class="notes-banner">{error}</div> : null}
-				{items.length === 0
+				{visible.length === 0
 					? (
 						<div class="notes-sidebar__empty">
 							{picking
@@ -56,12 +81,20 @@ export function Sidebar(
 					)
 					: null}
 				{open.map(renderItem)}
-				{closed.length > 0
+				{resolved.length > 0
 					? (
 						<>
-							<div class="notes-sidebar__meta" style={{ marginTop: '4px' }}>Resolved</div>
-							{closed.map(renderItem)}
+							<div class="notes-sidebar__section">Resolved</div>
+							{resolved.map(renderItem)}
 						</>
+					)
+					: null}
+				{isAgency && deleted.length > 0
+					? (
+						<details class="notes-sidebar__deleted">
+							<summary>Deleted ({deleted.length})</summary>
+							{deleted.map(renderItem)}
+						</details>
 					)
 					: null}
 			</div>

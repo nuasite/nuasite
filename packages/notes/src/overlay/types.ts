@@ -8,7 +8,9 @@
  */
 
 export type NoteType = 'comment' | 'suggestion'
-export type NoteStatus = 'open' | 'resolved' | 'applied' | 'rejected' | 'stale'
+export type NoteStatus = 'open' | 'resolved' | 'applied' | 'rejected' | 'stale' | 'deleted'
+export type NoteRole = 'agency' | 'client'
+export type NoteHistoryAction = 'created' | 'updated' | 'resolved' | 'reopened' | 'applied' | 'deleted' | 'purged' | 'stale'
 
 export interface NoteRange {
 	anchorText: string
@@ -22,6 +24,13 @@ export interface NoteReply {
 	author: string
 	body: string
 	createdAt: string
+}
+
+export interface NoteHistoryEntry {
+	at: string
+	action: NoteHistoryAction
+	role?: NoteRole
+	note?: string
 }
 
 export interface NoteItem {
@@ -38,6 +47,7 @@ export interface NoteItem {
 	updatedAt?: string
 	status: NoteStatus
 	replies: NoteReply[]
+	history: NoteHistoryEntry[]
 }
 
 export interface NotesPageFile {

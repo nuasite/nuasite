@@ -40,6 +40,17 @@ export interface NuaNotesOptions {
 	urlFlag?: string
 
 	/**
+	 * URL query flag that activates agency mode. When set on a URL it grants
+	 * agency permissions (Apply, Resolve, Delete, Purge) and persists a sticky
+	 * cookie so subsequent navigation stays in agency mode without re-typing.
+	 * Without this flag — and without the cookie — the overlay runs in client
+	 * mode and the destructive actions are hidden.
+	 *
+	 * Default: `nua-agency`
+	 */
+	agencyFlag?: string
+
+	/**
 	 * Forward `/_nua/notes/*` requests through this proxy target. Mirrors the
 	 * pattern used by `@nuasite/cms` for sandbox/hosted dev. The target backend
 	 * must implement the matching `/notes/*` endpoints.
