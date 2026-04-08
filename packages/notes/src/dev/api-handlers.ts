@@ -80,8 +80,8 @@ export async function handleNotesApiRoute(
 	// POST /create
 	if (method === 'POST' && route === 'create') {
 		const body = await parseJsonBody<CreateBody>(req)
-		if (!body.page || !body.type || !body.targetCmsId || !body.body || !body.author) {
-			sendError(res, 'Missing required fields: page, type, targetCmsId, body, author', 400, req)
+		if (!body.page || !body.type || !body.targetCmsId || !body.author) {
+			sendError(res, 'Missing required fields: page, type, targetCmsId, author', 400, req)
 			return
 		}
 		if (body.type !== 'comment' && body.type !== 'suggestion') {
@@ -92,6 +92,12 @@ export async function handleNotesApiRoute(
 			sendError(res, 'Suggestion items require a range payload', 400, req)
 			return
 		}
+		// Comments must have a body; suggestions may have an empty body since
+		// the diff itself communicates the change.
+		if (body.type === 'comment' && !body.body?.trim()) {
+			sendError(res, 'Comment items require a non-empty body', 400, req)
+			return
+		}
 		const item = await store.addItem(body.page, {
 			type: body.type,
 			targetCmsId: body.targetCmsId,
@@ -99,7 +105,7 @@ export async function handleNotesApiRoute(
 			targetSourceLine: body.targetSourceLine,
 			targetSnippet: body.targetSnippet,
 			range: body.range ?? null,
-			body: body.body,
+			body: body.body ?? '',
 			author: body.author,
 		})
 		sendJson(res, { item }, 201, req)

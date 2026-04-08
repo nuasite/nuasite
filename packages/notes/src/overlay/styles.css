@@ -364,6 +364,152 @@ textarea {
 	gap: 8px;
 }
 
+/* Selection tooltip */
+.notes-selection-tooltip {
+	position: fixed;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 6px;
+	background: #0f172a;
+	color: #ffffff;
+	border-radius: 8px;
+	box-shadow: var(--notes-shadow);
+	pointer-events: auto;
+	z-index: calc(var(--notes-z) + 5);
+}
+
+.notes-selection-tooltip .notes-btn {
+	background: rgba(255, 255, 255, 0.08);
+	color: #ffffff;
+	font-size: 12px;
+	padding: 4px 8px;
+}
+
+.notes-selection-tooltip .notes-btn--primary {
+	background: var(--notes-accent);
+	color: var(--notes-accent-fg);
+}
+
+.notes-selection-tooltip .notes-btn--ghost {
+	color: #e2e8f0;
+}
+
+.notes-selection-tooltip .notes-btn--ghost:hover {
+	background: rgba(255, 255, 255, 0.16);
+	color: #ffffff;
+}
+
+/* Suggest popover variations */
+.notes-popover--suggest {
+	width: 360px;
+}
+
+.notes-popover__label {
+	display: block;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--notes-muted);
+	margin-bottom: 4px;
+}
+
+.notes-popover__original {
+	background: #fef3c7;
+	border: 1px solid #fde68a;
+	border-radius: 6px;
+	padding: 8px 10px;
+	font-size: 13px;
+	color: #78350f;
+	max-height: 80px;
+	overflow-y: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.notes-strikethrough {
+	text-decoration: line-through;
+	text-decoration-color: rgba(220, 38, 38, 0.6);
+	text-decoration-thickness: 2px;
+}
+
+/* Diff preview in sidebar */
+.notes-diff {
+	font-size: 13px;
+	border-radius: 6px;
+	background: #f8fafc;
+	border: 1px solid var(--notes-border);
+	overflow: hidden;
+	margin-bottom: 8px;
+}
+
+.notes-diff__row {
+	padding: 6px 10px;
+	display: flex;
+	gap: 6px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.notes-diff__row--del {
+	background: #fef2f2;
+	color: #7f1d1d;
+	border-bottom: 1px solid #fee2e2;
+}
+
+.notes-diff__row--ins {
+	background: #f0fdf4;
+	color: #14532d;
+}
+
+.notes-diff__marker {
+	font-weight: 700;
+	font-family: ui-monospace, SFMono-Regular, monospace;
+	width: 12px;
+	flex-shrink: 0;
+	text-align: center;
+}
+
+.notes-item__rationale {
+	font-size: 12px;
+	color: var(--notes-muted);
+	margin-bottom: 6px;
+	font-style: italic;
+}
+
+.notes-item__rationale-label {
+	font-style: normal;
+	font-weight: 600;
+	color: var(--notes-fg);
+	margin-right: 4px;
+}
+
+/* Stale warning */
+.notes-stale {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: #fef3c7;
+	border: 1px solid #fde68a;
+	color: #92400e;
+	font-size: 12px;
+	padding: 6px 8px;
+	border-radius: 6px;
+	margin-bottom: 8px;
+}
+
+.notes-stale__icon {
+	font-size: 14px;
+}
+
+/* Persistent highlight variant for suggestion ranges */
+.notes-highlight--suggestion {
+	border-color: rgba(250, 204, 21, 0.9);
+	box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.18);
+	background: rgba(254, 243, 199, 0.25);
+}
+
 /* Banner shown when notes API fails to load */
 .notes-banner {
 	position: fixed;

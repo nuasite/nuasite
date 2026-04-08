@@ -8,15 +8,28 @@ interface SidebarProps {
 	activeId: string | null
 	picking: boolean
 	error: string | null
+	staleIds: Set<string>
 	onFocus: (id: string) => void
 	onResolve: (id: string) => void
 	onReopen: (id: string) => void
 	onDelete: (id: string) => void
 }
 
-export function Sidebar({ page, items, activeId, picking, error, onFocus, onResolve, onReopen, onDelete }: SidebarProps) {
+export function Sidebar({ page, items, activeId, picking, error, staleIds, onFocus, onResolve, onReopen, onDelete }: SidebarProps) {
 	const open = items.filter((i) => i.status !== 'resolved' && i.status !== 'applied')
 	const closed = items.filter((i) => i.status === 'resolved' || i.status === 'applied')
+	const renderItem = (item: NoteItem) => (
+		<SidebarItem
+			key={item.id}
+			item={item}
+			active={item.id === activeId}
+			stale={staleIds.has(item.id)}
+			onFocus={() => onFocus(item.id)}
+			onResolve={() => onResolve(item.id)}
+			onReopen={() => onReopen(item.id)}
+			onDelete={() => onDelete(item.id)}
+		/>
+	)
 	return (
 		<aside class='notes-sidebar'>
 			<header class='notes-sidebar__header'>
@@ -32,36 +45,16 @@ export function Sidebar({ page, items, activeId, picking, error, onFocus, onReso
 						<div class='notes-sidebar__empty'>
 							{picking
 								? 'Click any text or element on the page to add a comment.'
-								: 'No notes on this page yet. Click "Pick element" to add one.'}
+								: 'Select text on the page to suggest an edit, or click "Pick element" to comment.'}
 						</div>
 					)
 					: null}
-				{open.map((item) => (
-					<SidebarItem
-						key={item.id}
-						item={item}
-						active={item.id === activeId}
-						onFocus={() => onFocus(item.id)}
-						onResolve={() => onResolve(item.id)}
-						onReopen={() => onReopen(item.id)}
-						onDelete={() => onDelete(item.id)}
-					/>
-				))}
+				{open.map(renderItem)}
 				{closed.length > 0
 					? (
 						<>
 							<div class='notes-sidebar__meta' style={{ marginTop: '4px' }}>Resolved</div>
-							{closed.map((item) => (
-								<SidebarItem
-									key={item.id}
-									item={item}
-									active={item.id === activeId}
-									onFocus={() => onFocus(item.id)}
-									onResolve={() => onResolve(item.id)}
-									onReopen={() => onReopen(item.id)}
-									onDelete={() => onDelete(item.id)}
-								/>
-							))}
+							{closed.map(renderItem)}
 						</>
 					)
 					: null}

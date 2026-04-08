@@ -1,9 +1,12 @@
 /** @jsxImportSource preact */
 import type { NoteItem } from '../types'
+import { DiffPreview } from './DiffPreview'
+import { StaleWarning } from './StaleWarning'
 
 interface SidebarItemProps {
 	item: NoteItem
 	active: boolean
+	stale: boolean
 	onFocus: () => void
 	onResolve: () => void
 	onReopen: () => void
@@ -29,11 +32,13 @@ function formatTime(iso: string): string {
 }
 
 /**
- * One note card in the sidebar list. Phase 2 only renders the comment shape;
- * suggestion-specific UI (diff preview, apply button) ships in Phase 3/4.
+ * One note card in the sidebar list. Renders both comment and suggestion
+ * shapes from a unified data model: comments show the body; suggestions
+ * show the inline diff and (if any) a rationale + body.
  */
-export function SidebarItem({ item, active, onFocus, onResolve, onReopen, onDelete }: SidebarItemProps) {
+export function SidebarItem({ item, active, stale, onFocus, onResolve, onReopen, onDelete }: SidebarItemProps) {
 	const isResolved = item.status === 'resolved' || item.status === 'applied'
+	const isSuggestion = item.type === 'suggestion' && item.range
 	return (
 		<div
 			class={`notes-item ${active ? 'notes-item--active' : ''} ${isResolved ? 'notes-item--resolved' : ''}`}
@@ -51,10 +56,32 @@ export function SidebarItem({ item, active, onFocus, onResolve, onReopen, onDele
 				</div>
 				<span class='notes-item__time'>{formatTime(item.createdAt)}</span>
 			</div>
-			{item.targetSnippet
-				? <div class='notes-item__snippet'>{item.targetSnippet}</div>
-				: null}
-			<div class='notes-item__body'>{item.body}</div>
+
+			{stale && isSuggestion ? <StaleWarning /> : null}
+
+			{isSuggestion && item.range
+				? (
+					<>
+						<DiffPreview original={item.range.originalText} suggested={item.range.suggestedText} />
+						{item.range.rationale
+							? (
+								<div class='notes-item__rationale'>
+									<span class='notes-item__rationale-label'>Why:</span> {item.range.rationale}
+								</div>
+							)
+							: null}
+						{item.body ? <div class='notes-item__body'>{item.body}</div> : null}
+					</>
+				)
+				: (
+					<>
+						{item.targetSnippet
+							? <div class='notes-item__snippet'>{item.targetSnippet}</div>
+							: null}
+						<div class='notes-item__body'>{item.body}</div>
+					</>
+				)}
+
 			<div class='notes-item__actions'>
 				{isResolved
 					? <button class='notes-btn notes-btn--ghost' onClick={onReopen}>Reopen</button>
