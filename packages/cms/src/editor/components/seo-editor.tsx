@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'preact/hooks'
 import { saveBatchChanges } from '../api'
+import { schedulePageReload } from '../constants'
 import { isApplyingUndoRedo, recordChange } from '../history'
 import {
 	clearPendingSeoChanges,
@@ -226,6 +227,7 @@ export function SeoEditor() {
 				showToast(`Saved ${result.updated} SEO change(s) successfully!`, 'success')
 				clearPendingSeoChanges()
 				closeSeoEditor()
+				schedulePageReload()
 			}
 		} catch (error) {
 			showToast(error instanceof Error ? error.message : 'Failed to save SEO changes', 'error')

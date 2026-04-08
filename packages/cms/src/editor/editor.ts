@@ -1,5 +1,5 @@
 import { fetchManifest, getMarkdownContent, saveBatchChanges } from './api'
-import { CSS, TIMING } from './constants'
+import { CSS, schedulePageReload, TIMING } from './constants'
 import {
 	cleanupHighlightSystem,
 	disableAllInteractiveElements,
@@ -877,6 +877,9 @@ export async function saveAllChanges(
 		}
 
 		onStateChange?.()
+
+		schedulePageReload()
+
 		return { success: true, updated: result.updated }
 	} catch (err) {
 		console.error('[CMS] Save failed:', err)

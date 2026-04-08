@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'preact/hooks'
+import { schedulePageReload, TIMING } from '../constants'
 import { logDebug } from '../dom'
 import { getComponentInstances } from '../manifest'
 import * as signals from '../signals'
@@ -152,6 +153,7 @@ export function useBlockEditorHandlers({
 					}
 
 					showToast(`Item added ${position} current item`, 'success')
+					schedulePageReload()
 				} else {
 					// Standard component insertion
 					const response = await fetch(`${config.apiBase}/insert-component`, {
@@ -176,6 +178,7 @@ export function useBlockEditorHandlers({
 					}
 
 					showToast(`${componentName} inserted ${position} component`, 'success')
+					schedulePageReload()
 				}
 			} catch (error) {
 				console.error('[CMS] Failed to insert component:', error)
@@ -234,10 +237,11 @@ export function useBlockEditorHandlers({
 
 				showToast(arrayMode ? 'Item removed' : 'Component removed', 'success')
 
-				// Visually collapse and hide the component until HMR refreshes the page
+				// Visually collapse the component then reload to pick up file changes
 				if (componentEl) {
 					collapseElement(componentEl)
 				}
+				schedulePageReload(TIMING.RELOAD_COLLAPSE_DELAY_MS)
 			} catch (error) {
 				console.error('[CMS] Failed to remove component:', error)
 				showToast(arrayMode ? 'Failed to remove item' : 'Failed to remove component', 'error')

@@ -44,9 +44,6 @@ interface ViteDevServerLike {
 		on: (event: string, listener: (...args: any[]) => void) => any
 		removeListener: (event: string, listener: (...args: any[]) => void) => any
 	}
-	ws?: {
-		send: (payload: { type: string; path?: string }) => void
-	}
 }
 
 /**
@@ -115,14 +112,6 @@ export function createDevMiddleware(
 			const route = url.replace('/_nua/cms/', '').split('?')[0]!
 
 			handleCmsApiRoute(route, req, res, manifestWriter, config.contentDir, options.mediaAdapter)
-				.then(() => {
-					// Explicitly trigger full-reload after content-modifying routes.
-					// In sandboxed environments (e.g. E2B), chokidar file watcher events
-					// may not fire reliably, so we send the HMR event directly.
-					if (req.method === 'POST' && server.ws) {
-						server.ws.send({ type: 'full-reload' })
-					}
-				})
 				.catch((error) => {
 					console.error('[astro-cms] API error:', error)
 					sendError(res, 'Internal server error', 500)

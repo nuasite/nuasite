@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { clampPanelPosition, Z_INDEX } from '../constants'
+import { clampPanelPosition, schedulePageReload, Z_INDEX } from '../constants'
 import { updateMarkdownPage } from '../markdown-api'
 import { closeReferencePicker, config, manifest, referencePickerState, showToast } from '../signals'
 
@@ -57,6 +57,7 @@ export function ReferencePicker() {
 			})
 			if (result.success) {
 				showToast('Reference updated', 'success')
+				schedulePageReload()
 			} else {
 				showToast(result.error || 'Failed to update reference', 'error')
 			}
