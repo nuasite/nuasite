@@ -94,13 +94,23 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 			let fsWatcher: ReturnType<typeof watch> | undefined
 			let debounce: ReturnType<typeof setTimeout> | undefined
 
+			const invalidate = () => {
+				// Replicate Astro's invalidateDataStore which never fires because
+				// Vite's bundled chokidar 3.6.0 misses atomic-write changes.
+				const ssr = server.environments.ssr
+				const mod = ssr.moduleGraph.getModuleById('\0astro:data-store')
+				if (mod) {
+					ssr.moduleGraph.invalidateModule(mod, undefined, Date.now(), true)
+				}
+				ssr.hot.send('astro:content-changed', {})
+				server.environments.client.hot.send({ type: 'full-reload', path: '*' })
+			}
+
 			const startWatching = () => {
 				try {
 					fsWatcher = watch(dataStorePath, () => {
 						clearTimeout(debounce)
-						debounce = setTimeout(() => {
-							server.environments.client.hot.send({ type: 'full-reload', path: '*' })
-						}, 80)
+						debounce = setTimeout(invalidate, 80)
 					})
 				} catch {
 					// File doesn't exist yet — retry when it appears
