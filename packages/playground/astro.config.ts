@@ -1,4 +1,4 @@
-import nuaNotes from '@nuasite/notes'
+import notes from '@nuasite/notes'
 import { defineConfig } from '@nuasite/nua/config'
 
 // https://astro.build/config
@@ -7,6 +7,6 @@ export default defineConfig({
 		'config': 'new-config',
 	},
 	integrations: [
-		nuaNotes(),
+		notes(),
 	],
 })
