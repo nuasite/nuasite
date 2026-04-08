@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
+import { getCollectionEntryOptions } from '../manifest'
 import { renameMarkdownPage } from '../markdown-api'
 import {
 	config,
@@ -377,20 +378,6 @@ export function EditModeFrontmatter({
 }
 
 // ============================================================================
-// Collection Reference Helpers
-// ============================================================================
-
-function getCollectionEntryOptions(collectionName?: string): Array<{ value: string; label: string }> {
-	if (!collectionName) return []
-	const def = manifest.value.collectionDefinitions?.[collectionName]
-	if (!def?.entries) return []
-	return def.entries.map(e => ({
-		value: e.slug,
-		label: e.title ?? e.slug,
-	}))
-}
-
-// ============================================================================
 // Schema-aware Frontmatter Field
 // ============================================================================
 
@@ -496,7 +483,7 @@ export function SchemaFrontmatterField({
 			)
 
 		case 'reference': {
-			const refOptions = getCollectionEntryOptions(field.collection)
+			const refOptions = getCollectionEntryOptions(manifest.value, field.collection)
 			return (
 				<ComboBoxField
 					label={label}
@@ -512,7 +499,7 @@ export function SchemaFrontmatterField({
 			const items = Array.isArray(value) ? value : []
 			// Array of references — show multiselect with collection entries
 			if (field.itemType === 'reference' && field.collection) {
-				const refEntries = getCollectionEntryOptions(field.collection)
+				const refEntries = getCollectionEntryOptions(manifest.value, field.collection)
 				return (
 					<div class="col-span-2" data-cms-ui>
 						<MultiSelectField

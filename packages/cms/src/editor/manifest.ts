@@ -23,3 +23,13 @@ export const getManifestEntryCount: GetManifestEntryCount = (manifest: CmsManife
 
 type GetAvailableComponentNames = (manifest: CmsManifest) => string[]
 export const getAvailableComponentNames: GetAvailableComponentNames = manifest => Object.keys(getComponentDefinitions(manifest))
+
+export function getCollectionEntryOptions(manifest: CmsManifest, collectionName?: string): Array<{ value: string; label: string }> {
+	if (!collectionName) return []
+	const def = manifest.collectionDefinitions?.[collectionName]
+	if (!def?.entries) return []
+	return def.entries.map(e => ({
+		value: e.slug,
+		label: e.title ?? e.slug,
+	}))
+}

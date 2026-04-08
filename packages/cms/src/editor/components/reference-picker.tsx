@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { clampPanelPosition, Z_INDEX } from '../constants'
+import { getCollectionEntryOptions } from '../manifest'
 import { updateMarkdownPage } from '../markdown-api'
 import { closeReferencePicker, config, manifest, referencePickerState, showToast } from '../signals'
 
 const PANEL_WIDTH = 320
-
-function getCollectionEntryOptions(collectionName?: string): Array<{ value: string; label: string }> {
-	if (!collectionName) return []
-	const def = manifest.value.collectionDefinitions?.[collectionName]
-	if (!def?.entries) return []
-	return def.entries.map(e => ({
-		value: e.slug,
-		label: e.title ?? e.slug,
-	}))
-}
 
 export function ReferencePicker() {
 	const state = referencePickerState.value
@@ -23,7 +14,7 @@ export function ReferencePicker() {
 	const [saving, setSaving] = useState(false)
 
 	const options = useMemo(
-		() => getCollectionEntryOptions(state.collection ?? undefined),
+		() => manifest.value ? getCollectionEntryOptions(manifest.value, state.collection ?? undefined) : [],
 		[state.collection],
 	)
 
