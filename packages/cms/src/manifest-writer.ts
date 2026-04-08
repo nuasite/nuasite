@@ -386,4 +386,11 @@ export class ManifestWriter {
 	getAvailableTextStyles(): AvailableTextStyles | undefined {
 		return this.availableTextStyles
 	}
+
+	/**
+	 * Get the list of component names allowed in the MDX component picker
+	 */
+	getMdxComponents(): string[] | undefined {
+		return this.mdxComponents
+	}
 }

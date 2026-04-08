@@ -91,6 +91,8 @@ export async function fetchManifest(): Promise<CmsManifest> {
 		metadata: pageManifest?.metadata,
 		// SEO data from page-specific manifest
 		seo: pageManifest?.seo,
+		// MDX component allowlist from global manifest
+		mdxComponents: globalManifest?.mdxComponents,
 	} as CmsManifest
 }
 

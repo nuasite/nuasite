@@ -167,6 +167,10 @@ export function createDevMiddleware(
 			if (Object.keys(collectionDefs).length > 0) {
 				manifest.collectionDefinitions = collectionDefs
 			}
+			const mdxComponents = manifestWriter.getMdxComponents()
+			if (mdxComponents) {
+				manifest.mdxComponents = mdxComponents
+			}
 			res.end(JSON.stringify(manifest, null, 2))
 			return
 		}
