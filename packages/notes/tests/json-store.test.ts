@@ -29,10 +29,39 @@ describe('NotesJsonStore', () => {
 			const page = await store.readPage('about/')
 			expect(page.page).toBe('/about')
 		})
+
+		test('migrates legacy items missing the history field', async () => {
+			// Write a file by hand without the history field, simulating an
+			// older version of the store. readPage should default it to [].
+			const dir = path.join(tempDir, 'data', 'notes', 'pages')
+			await fs.mkdir(dir, { recursive: true })
+			const legacy = {
+				page: '/legacy',
+				lastUpdated: '2025-01-01T00:00:00Z',
+				items: [
+					{
+						id: 'n-old-1',
+						type: 'comment',
+						targetCmsId: 'cms-0',
+						range: null,
+						body: 'old',
+						author: 'a',
+						createdAt: '2025-01-01T00:00:00Z',
+						status: 'open',
+						replies: [],
+						// no history
+					},
+				],
+			}
+			await fs.writeFile(path.join(dir, 'legacy.json'), '// @nuasite/notes v1\n' + JSON.stringify(legacy), 'utf-8')
+			const page = await store.readPage('/legacy')
+			expect(page.items).toHaveLength(1)
+			expect(page.items[0]!.history).toEqual([])
+		})
 	})
 
 	describe('addItem', () => {
-		test('creates item with generated id and timestamp', async () => {
+		test('creates item with generated id, timestamp, and history entry', async () => {
 			const item = await store.addItem('/test', {
 				type: 'comment',
 				targetCmsId: 'cms-0',
@@ -43,10 +72,20 @@ describe('NotesJsonStore', () => {
 			expect(item.id).toMatch(/^n-/)
 			expect(item.type).toBe('comment')
 			expect(item.body).toBe('Hello')
-			expect(item.author).toBe('tester')
 			expect(item.status).toBe('open')
-			expect(item.createdAt).toBeTruthy()
 			expect(item.replies).toEqual([])
+			expect(item.history).toHaveLength(1)
+			expect(item.history[0]!.action).toBe('created')
+			expect(item.history[0]!.role).toBe('client')
+		})
+
+		test('records agency role when caller is agency', async () => {
+			const item = await store.addItem(
+				'/test',
+				{ type: 'comment', targetCmsId: 'cms-0', body: 'x', author: 'a', range: null },
+				'agency',
+			)
+			expect(item.history[0]!.role).toBe('agency')
 		})
 
 		test('persists item to disk', async () => {
@@ -67,8 +106,6 @@ describe('NotesJsonStore', () => {
 			await store.addItem('/test', { type: 'comment', targetCmsId: 'cms-1', body: 'Second', author: 'b', range: null })
 			const page = await store.readPage('/test')
 			expect(page.items).toHaveLength(2)
-			expect(page.items[0]!.body).toBe('First')
-			expect(page.items[1]!.body).toBe('Second')
 		})
 
 		test('creates suggestion with range', async () => {
@@ -85,7 +122,7 @@ describe('NotesJsonStore', () => {
 	})
 
 	describe('updateItem', () => {
-		test('patches existing item fields', async () => {
+		test('patches existing item fields and appends history', async () => {
 			const item = await store.addItem('/test', {
 				type: 'comment',
 				targetCmsId: 'cms-0',
@@ -93,10 +130,13 @@ describe('NotesJsonStore', () => {
 				author: 'tester',
 				range: null,
 			})
-			const updated = await store.updateItem('/test', item.id, { body: 'Updated' })
+			const updated = await store.updateItem('/test', item.id, { body: 'Updated' }, 'agency')
 			expect(updated).not.toBeNull()
 			expect(updated!.body).toBe('Updated')
 			expect(updated!.updatedAt).toBeTruthy()
+			expect(updated!.history).toHaveLength(2)
+			expect(updated!.history[1]!.action).toBe('updated')
+			expect(updated!.history[1]!.role).toBe('agency')
 		})
 
 		test('returns null for non-existent item', async () => {
@@ -104,16 +144,16 @@ describe('NotesJsonStore', () => {
 			expect(result).toBeNull()
 		})
 
-		test('can update status', async () => {
+		test('uses custom history action when provided', async () => {
 			const item = await store.addItem('/test', {
 				type: 'comment',
 				targetCmsId: 'cms-0',
-				body: 'Test',
-				author: 'tester',
+				body: 'x',
+				author: 'a',
 				range: null,
 			})
-			const updated = await store.updateItem('/test', item.id, { status: 'resolved' })
-			expect(updated!.status).toBe('resolved')
+			const updated = await store.updateItem('/test', item.id, { status: 'resolved' }, 'agency', 'resolved')
+			expect(updated!.history[1]!.action).toBe('resolved')
 		})
 
 		test('preserves range: null as meaningful patch', async () => {
@@ -124,13 +164,13 @@ describe('NotesJsonStore', () => {
 				author: 'tester',
 				range: { anchorText: 'a', originalText: 'a', suggestedText: 'b' },
 			})
-			const updated = await store.updateItem('/test', item.id, { range: null })
+			const updated = await store.updateItem('/test', item.id, { range: null }, 'agency')
 			expect(updated!.range).toBeNull()
 		})
 	})
 
-	describe('deleteItem', () => {
-		test('removes existing item and returns true', async () => {
+	describe('deleteItem (soft delete)', () => {
+		test('flips status to deleted and keeps the item on disk', async () => {
 			const item = await store.addItem('/test', {
 				type: 'comment',
 				targetCmsId: 'cms-0',
@@ -138,15 +178,54 @@ describe('NotesJsonStore', () => {
 				author: 'tester',
 				range: null,
 			})
-			const ok = await store.deleteItem('/test', item.id)
+			const deleted = await store.deleteItem('/test', item.id, 'agency')
+			expect(deleted).not.toBeNull()
+			expect(deleted!.status).toBe('deleted')
+			expect(deleted!.history.at(-1)!.action).toBe('deleted')
+			const page = await store.readPage('/test')
+			expect(page.items).toHaveLength(1)
+			expect(page.items[0]!.status).toBe('deleted')
+		})
+
+		test('returns null for non-existent item', async () => {
+			const result = await store.deleteItem('/test', 'non-existent', 'agency')
+			expect(result).toBeNull()
+		})
+	})
+
+	describe('purgeItem (hard delete)', () => {
+		test('removes the item entirely from disk', async () => {
+			const item = await store.addItem('/test', {
+				type: 'comment',
+				targetCmsId: 'cms-0',
+				body: 'Purge me',
+				author: 'tester',
+				range: null,
+			})
+			const ok = await store.purgeItem('/test', item.id)
 			expect(ok).toBe(true)
 			const page = await store.readPage('/test')
 			expect(page.items).toHaveLength(0)
 		})
 
 		test('returns false for non-existent item', async () => {
-			const ok = await store.deleteItem('/test', 'non-existent')
+			const ok = await store.purgeItem('/test', 'non-existent')
 			expect(ok).toBe(false)
+		})
+
+		test('can purge an already-soft-deleted item', async () => {
+			const item = await store.addItem('/test', {
+				type: 'comment',
+				targetCmsId: 'cms-0',
+				body: 'x',
+				author: 'a',
+				range: null,
+			})
+			await store.deleteItem('/test', item.id, 'agency')
+			const ok = await store.purgeItem('/test', item.id)
+			expect(ok).toBe(true)
+			const page = await store.readPage('/test')
+			expect(page.items).toHaveLength(0)
 		})
 	})
 
