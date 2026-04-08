@@ -87,6 +87,7 @@ export interface VitePluginContext {
 	config: Required<CmsMarkerOptions>
 	idCounter: { value: number }
 	command: 'dev' | 'build' | 'preview' | 'sync'
+	contentDir: string
 }
 
 /**
@@ -108,6 +109,7 @@ export function createMockViteContext(
 		config: { ...defaultMockConfig },
 		idCounter: { value: 0 },
 		command: 'build',
+		contentDir: 'src/content',
 		...overrides,
 	}
 }

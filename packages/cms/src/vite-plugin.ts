@@ -11,10 +11,11 @@ export interface VitePluginContext {
 	config: Required<CmsMarkerOptions>
 	idCounter: { value: number }
 	command: 'dev' | 'build' | 'preview' | 'sync'
+	contentDir: string
 }
 
 export function createVitePlugin(context: VitePluginContext): Plugin[] {
-	const { manifestWriter, componentDefinitions, command } = context
+	const { manifestWriter, componentDefinitions, command, contentDir } = context
 
 	const virtualManifestPlugin: Plugin = {
 		name: 'cms-marker-virtual-manifest',
@@ -78,10 +79,29 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 		},
 	}
 
+	// Suppress immediate HMR page reload for content collection files.
+	// Without this, Astro's vite-plugin-content-imports invalidates the module and
+	// triggers a browser reload BEFORE the content layer has flushed the updated
+	// data store to disk — causing a brief render of stale frontmatter data.
+	// By returning [] the module graph still marks the module stale (so the MDX body
+	// gets re-compiled on next request), but the browser reload is deferred until
+	// the content layer writes data-store.json and fires `astro:content-changed`.
+	const contentHmrPlugin: Plugin = {
+		name: 'cms-defer-content-hmr',
+		enforce: 'pre',
+		handleHotUpdate({ file }) {
+			if (command !== 'dev') return
+			const contentSuffix = `/${contentDir}/`
+			if (file.includes(contentSuffix)) {
+				return []
+			}
+		},
+	}
+
 	// Note: We cannot use transformIndexHtml for static Astro builds because
 	// Astro generates HTML files directly without going through Vite's HTML pipeline.
 	// HTML processing is done in build-processor.ts after pages are generated.
 	// Source location attributes are provided natively by Astro's compiler
 	// (data-astro-source-file, data-astro-source-loc) in dev mode.
-	return [virtualManifestPlugin, watcherPlugin, createArrayTransformPlugin()]
+	return [virtualManifestPlugin, watcherPlugin, contentHmrPlugin, createArrayTransformPlugin()]
 }
