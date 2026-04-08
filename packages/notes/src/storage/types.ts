@@ -10,13 +10,55 @@
  */
 
 /**
- * Item lifecycle. Notes start as `open`. Reviewers (or the agency) move them
- * through the other states. `applied` is reserved for suggestions that have
- * been written back to the source file via the apply flow (Phase 4).
+ * Item lifecycle. Notes start as `open`. The agency moves them through the
+ * other states.
+ *
+ *   - `open`     — created, not yet acted on
+ *   - `resolved` — agency marked it handled (no source change)
+ *   - `applied`  — suggestion was written back to the source file
+ *   - `rejected` — agency declined the suggestion
+ *   - `stale`    — anchor text drifted; the suggestion can no longer be applied
+ *   - `deleted`  — soft-deleted by the agency. Items in this state stay on
+ *                  disk so the audit trail is preserved; the client UI hides
+ *                  them and the agency UI shows them in a collapsed section.
+ *                  A subsequent `purge` call hard-removes the file entry.
  */
-export type NoteStatus = 'open' | 'resolved' | 'applied' | 'rejected' | 'stale'
+export type NoteStatus = 'open' | 'resolved' | 'applied' | 'rejected' | 'stale' | 'deleted'
 
 export type NoteType = 'comment' | 'suggestion'
+
+/**
+ * Permission roles. Drives both UI affordances and server-side gating:
+ *
+ *   - `client` — the reviewer (default). Can create comments and suggestions
+ *                and nothing else. Cannot resolve, apply, delete, or purge.
+ *                Cannot see deleted items.
+ *   - `agency` — the agency owner. Full controls. The role is identified by
+ *                the `?nua-agency` URL flag (which sets a sticky cookie) and
+ *                a matching `x-nua-role: agency` header on every API call.
+ *
+ * v0.2 ships role enforcement on a per-instance trust basis: the role flag
+ * is unauthenticated and anyone who knows the URL can become "agency".
+ * That's intentional for v0.2 — the surface is dev-only and the threat model
+ * is "stop a non-technical client from accidentally clicking Apply", not
+ * "harden against an adversary". A real auth handshake can come later.
+ */
+export type NoteRole = 'agency' | 'client'
+
+/**
+ * One entry in an item's audit trail. Every mutation appends one of these
+ * to `item.history` so the agency can always see what happened to an item,
+ * even after a soft delete.
+ */
+export type NoteHistoryAction = 'created' | 'updated' | 'resolved' | 'reopened' | 'applied' | 'deleted' | 'purged' | 'stale'
+
+export interface NoteHistoryEntry {
+	at: string
+	action: NoteHistoryAction
+	role?: NoteRole
+	/** Optional one-line note for context. Currently used by 'applied' to record file path. */
+	note?: string
+}
 
 /**
  * Range payload for `type: "suggestion"` items.
@@ -73,6 +115,14 @@ export interface NoteItem {
 
 	status: NoteStatus
 	replies: NoteReply[]
+
+	/**
+	 * Audit trail of every mutation that has touched this item, in
+	 * chronological order. Always contains at least one entry (`created`).
+	 * Items predating this field get an empty array on read; the create
+	 * timestamp is preserved separately on `createdAt`.
+	 */
+	history: NoteHistoryEntry[]
 }
 
 /**

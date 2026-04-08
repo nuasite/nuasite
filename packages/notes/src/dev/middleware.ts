@@ -47,11 +47,16 @@ export function createNotesDevMiddleware(
 
 		handleNotesApiRoute(route, req, res, ctx)
 			.then(() => {
-				// Mirror CMS: explicitly trigger full-reload after content-modifying
-				// routes. In sandboxed dev environments (E2B etc.) chokidar events
-				// may not fire reliably for note JSON files, so we send the HMR
+				// Mirror CMS: trigger full-reload after content-modifying routes.
+				// In sandboxed dev environments (E2B etc.) chokidar events may
+				// not fire reliably for note JSON files, so we send the HMR
 				// event directly. The overlay re-fetches `/list` on reload.
-				if (req.method === 'POST' && server.ws) {
+				//
+				// Only trigger on 2xx — a 403/404/400 shouldn't force a reload
+				// because nothing changed and the reload races with whatever
+				// the client is doing next.
+				const statusCode = res.statusCode
+				if (req.method === 'POST' && server.ws && statusCode >= 200 && statusCode < 300) {
 					server.ws.send({ type: 'full-reload' })
 				}
 			})

@@ -6,14 +6,34 @@ import { SelectionTooltip } from './components/SelectionTooltip'
 import { Sidebar } from './components/Sidebar'
 import { SuggestPopover } from './components/SuggestPopover'
 import { Toolbar } from './components/Toolbar'
+import { isSidebarCollapsed, setSidebarCollapsed } from './lib/cms-bridge'
 import { fetchPageManifest } from './lib/manifest-fetch'
-import { applyNote, createNote, deleteNote, listNotes, setNoteStatus } from './lib/notes-fetch'
+import { applyNote, createNote, deleteNote, listNotes, purgeNote, setNoteStatus } from './lib/notes-fetch'
 import { findAnchorRange, selectionInsideElement } from './lib/range-anchor'
-import { exitReviewMode, getCurrentPagePath } from './lib/url-mode'
-import type { CmsPageManifest, NoteItem } from './types'
+import { exitReviewMode, getCurrentPagePath, resolveRole } from './lib/url-mode'
+import type { CmsPageManifest, NoteItem, NoteRole } from './types'
+
+const COLLAPSED_KEY = 'nua-notes-sidebar-collapsed'
+
+function loadCollapsed(): boolean {
+	try {
+		return localStorage.getItem(COLLAPSED_KEY) === '1'
+	} catch {
+		return false
+	}
+}
+
+function saveCollapsed(value: boolean): void {
+	try {
+		localStorage.setItem(COLLAPSED_KEY, value ? '1' : '0')
+	} catch {
+		// ignore
+	}
+}
 
 interface AppProps {
 	urlFlag: string
+	agencyFlag: string
 }
 
 interface PickState {
@@ -66,8 +86,13 @@ function findCmsAncestor(target: EventTarget | null): Element | null {
 	return null
 }
 
-export function App({ urlFlag }: AppProps) {
+export function App({ urlFlag, agencyFlag }: AppProps) {
 	const page = useMemo(() => getCurrentPagePath(), [])
+	// Role is resolved once at mount. Visiting `?nua-agency` persists the
+	// cookie so subsequent navigation stays in agency mode without re-typing.
+	const role: NoteRole = useMemo(() => resolveRole(agencyFlag), [agencyFlag])
+	const isAgency = role === 'agency'
+
 	const [items, setItems] = useState<NoteItem[]>([])
 	const [manifest, setManifest] = useState<CmsPageManifest | null>(null)
 	const [picking, setPicking] = useState(false)
@@ -81,6 +106,25 @@ export function App({ urlFlag }: AppProps) {
 	const [author, setAuthor] = useState<string>(() => loadAuthor())
 	const [staleIds, setStaleIds] = useState<Set<string>>(new Set())
 	const [applyingId, setApplyingId] = useState<string | null>(null)
+	const [collapsed, setCollapsedState] = useState<boolean>(() => loadCollapsed())
+
+	// Sync the body padding via cms-bridge whenever collapsed changes.
+	// Persist to localStorage so the preference sticks across navigation.
+	useEffect(() => {
+		setSidebarCollapsed(collapsed)
+		saveCollapsed(collapsed)
+	}, [collapsed])
+
+	// Initialize the body padding to match the loaded preference on mount.
+	// This runs once before the first render so there's no flash of
+	// uncollapsed sidebar when the user has it saved as collapsed.
+	useEffect(() => {
+		setSidebarCollapsed(loadCollapsed())
+	}, [])
+
+	const toggleCollapsed = useCallback(() => {
+		setCollapsedState((c) => !c)
+	}, [])
 
 	// Load notes + manifest on mount
 	useEffect(() => {
@@ -321,7 +365,21 @@ export function App({ urlFlag }: AppProps) {
 
 	const handleDelete = useCallback(async (id: string) => {
 		try {
-			await deleteNote(page, id)
+			// Soft delete: server flips status to 'deleted' and returns the
+			// updated item. We keep it in the list so the agency sees it move
+			// into the collapsed Deleted section. (Clients never see this
+			// path because the Delete button is hidden for them.)
+			const item = await deleteNote(page, id)
+			setItems((prev) => prev.map((i) => (i.id === id ? item : i)))
+			if (activeId === id) setActiveId(null)
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err))
+		}
+	}, [page, activeId])
+
+	const handlePurge = useCallback(async (id: string) => {
+		try {
+			await purgeNote(page, id)
 			setItems((prev) => prev.filter((i) => i.id !== id))
 			if (activeId === id) setActiveId(null)
 		} catch (err) {
@@ -368,29 +426,38 @@ export function App({ urlFlag }: AppProps) {
 		<div class="notes-root">
 			<Toolbar
 				page={page}
-				count={items.length}
+				count={items.filter((i) => i.status !== 'deleted').length}
 				picking={picking}
+				role={role}
+				collapsed={collapsed}
 				onTogglePick={() => {
 					setPicking((p) => !p)
 					setPendingPick(null)
 					setPendingSuggest(null)
 				}}
-				onExit={() => exitReviewMode(urlFlag)}
+				onToggleCollapse={toggleCollapsed}
+				onExit={() => exitReviewMode(urlFlag, agencyFlag)}
 			/>
-			<Sidebar
-				page={page}
-				items={items}
-				activeId={activeId}
-				picking={picking}
-				error={error}
-				staleIds={staleIds}
-				applyingId={applyingId}
-				onFocus={setActiveId}
-				onResolve={handleResolve}
-				onReopen={handleReopen}
-				onDelete={handleDelete}
-				onApply={handleApply}
-			/>
+			{collapsed
+				? null
+				: (
+					<Sidebar
+						page={page}
+						items={items}
+						activeId={activeId}
+						picking={picking}
+						error={error}
+						staleIds={staleIds}
+						applyingId={applyingId}
+						isAgency={isAgency}
+						onFocus={setActiveId}
+						onResolve={handleResolve}
+						onReopen={handleReopen}
+						onDelete={handleDelete}
+						onPurge={handlePurge}
+						onApply={handleApply}
+					/>
+				)}
 			{picking && hoverRect ? <ElementHighlight rect={hoverRect.rect} /> : null}
 			{activeRect ? <ElementHighlight rect={activeRect} persistent /> : null}
 			{pendingSelection && !pendingPick && !pendingSuggest

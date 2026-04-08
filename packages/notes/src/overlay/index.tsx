@@ -20,6 +20,7 @@ import OVERLAY_STYLES from './styles.css?inline'
 
 interface NuaNotesConfig {
 	urlFlag?: string
+	agencyFlag?: string
 }
 
 declare global {
@@ -34,6 +35,7 @@ function init(): void {
 
 	const config = window.__NuaNotesConfig ?? {}
 	const urlFlag = config.urlFlag ?? 'nua-notes'
+	const agencyFlag = config.agencyFlag ?? 'nua-agency'
 
 	if (!isReviewMode(urlFlag)) return
 	window.__nuasiteNotesMounted = true
@@ -59,7 +61,7 @@ function init(): void {
 	root.id = 'nua-notes-root'
 	shadow.appendChild(root)
 
-	render(<App urlFlag={urlFlag} />, root)
+	render(<App urlFlag={urlFlag} agencyFlag={agencyFlag} />, root)
 }
 
 if (typeof window !== 'undefined') {

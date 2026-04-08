@@ -7,20 +7,40 @@
  * Routes (all mounted under `/_nua/notes/`):
  *
  *   GET    /list?page=/<page>      → list items for one page
- *   GET    /inbox                   → list items across all pages (Phase 5 use)
- *   POST   /create                  → create a comment or suggestion
- *   POST   /update                  → patch an existing item
- *   POST   /resolve                 → mark item as resolved
- *   POST   /reopen                  → reopen a resolved item
- *   POST   /delete                  → delete an item
- *   POST   /apply                   → write a suggestion's replacement back to source
+ *   GET    /inbox                   → list items across all pages
+ *   POST   /create                  → create a comment or suggestion (any role)
+ *   POST   /update                  → patch an existing item (agency only)
+ *   POST   /resolve                 → mark item as resolved (agency only)
+ *   POST   /reopen                  → reopen a resolved item (agency only)
+ *   POST   /delete                  → soft-delete an item (agency only)
+ *   POST   /purge                   → hard-remove a soft-deleted item (agency only)
+ *   POST   /apply                   → write a suggestion to source (agency only)
+ *
+ * Role gating: `client` is the default and can only create. `agency` is
+ * granted by the `x-nua-role: agency` request header. The header is
+ * unauthenticated — anyone who knows it can claim agency. The point is to
+ * stop a client from accidentally clicking Apply or Delete, not to harden
+ * against an adversary. The dev server is local; auth is out of scope.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { applySuggestion } from '../apply/apply-suggestion'
 import type { NotesJsonStore } from '../storage/json-store'
-import type { NoteItem, NoteItemPatch, NoteRange, NoteStatus, NoteType } from '../storage/types'
+import type { NoteItem, NoteItemPatch, NoteRange, NoteRole, NoteStatus, NoteType } from '../storage/types'
 import { parseJsonBody, sendError, sendJson } from './request-utils'
+
+/** Read the requester's role from a request header. Defaults to client. */
+function readRole(req: IncomingMessage): NoteRole {
+	const raw = req.headers['x-nua-role']
+	const value = Array.isArray(raw) ? raw[0] : raw
+	return value === 'agency' ? 'agency' : 'client'
+}
+
+function requireAgency(role: NoteRole, res: ServerResponse, req: IncomingMessage, action: string): boolean {
+	if (role === 'agency') return true
+	sendError(res, `${action} requires agency role`, 403, req)
+	return false
+}
 
 export interface NotesApiContext {
 	store: NotesJsonStore
@@ -63,6 +83,7 @@ export async function handleNotesApiRoute(
 ): Promise<void> {
 	const { store } = ctx
 	const method = req.method ?? 'GET'
+	const role = readRole(req)
 
 	// GET /list?page=/some-page
 	if (method === 'GET' && route === 'list') {
@@ -105,28 +126,33 @@ export async function handleNotesApiRoute(
 			sendError(res, 'Comment items require a non-empty body', 400, req)
 			return
 		}
-		const item = await store.addItem(body.page, {
-			type: body.type,
-			targetCmsId: body.targetCmsId,
-			targetSourcePath: body.targetSourcePath,
-			targetSourceLine: body.targetSourceLine,
-			targetSnippet: body.targetSnippet,
-			range: body.range ?? null,
-			body: body.body ?? '',
-			author: body.author,
-		})
+		const item = await store.addItem(
+			body.page,
+			{
+				type: body.type,
+				targetCmsId: body.targetCmsId,
+				targetSourcePath: body.targetSourcePath,
+				targetSourceLine: body.targetSourceLine,
+				targetSnippet: body.targetSnippet,
+				range: body.range ?? null,
+				body: body.body ?? '',
+				author: body.author,
+			},
+			role,
+		)
 		sendJson(res, { item }, 201, req)
 		return
 	}
 
-	// POST /update
+	// POST /update — agency only
 	if (method === 'POST' && route === 'update') {
+		if (!requireAgency(role, res, req, 'update')) return
 		const body = await parseJsonBody<UpdateBody>(req)
 		if (!body.page || !body.id || !body.patch) {
 			sendError(res, 'Missing required fields: page, id, patch', 400, req)
 			return
 		}
-		const updated = await store.updateItem(body.page, body.id, body.patch)
+		const updated = await store.updateItem(body.page, body.id, body.patch, role)
 		if (!updated) {
 			sendError(res, `Item not found: ${body.id}`, 404, req)
 			return
@@ -135,15 +161,17 @@ export async function handleNotesApiRoute(
 		return
 	}
 
-	// POST /resolve and POST /reopen — convenience wrappers around update
+	// POST /resolve and POST /reopen — agency only
 	if (method === 'POST' && (route === 'resolve' || route === 'reopen')) {
+		if (!requireAgency(role, res, req, route)) return
 		const body = await parseJsonBody<IdBody>(req)
 		if (!body.page || !body.id) {
 			sendError(res, 'Missing required fields: page, id', 400, req)
 			return
 		}
 		const status: NoteStatus = route === 'resolve' ? 'resolved' : 'open'
-		const updated = await store.updateItem(body.page, body.id, { status })
+		const action = route === 'resolve' ? 'resolved' : 'reopened'
+		const updated = await store.updateItem(body.page, body.id, { status }, role, action)
 		if (!updated) {
 			sendError(res, `Item not found: ${body.id}`, 404, req)
 			return
@@ -152,14 +180,32 @@ export async function handleNotesApiRoute(
 		return
 	}
 
-	// POST /delete
+	// POST /delete — agency only, soft delete (status flips to 'deleted')
 	if (method === 'POST' && route === 'delete') {
+		if (!requireAgency(role, res, req, 'delete')) return
 		const body = await parseJsonBody<IdBody>(req)
 		if (!body.page || !body.id) {
 			sendError(res, 'Missing required fields: page, id', 400, req)
 			return
 		}
-		const ok = await store.deleteItem(body.page, body.id)
+		const updated = await store.deleteItem(body.page, body.id, role)
+		if (!updated) {
+			sendError(res, `Item not found: ${body.id}`, 404, req)
+			return
+		}
+		sendJson(res, { item: updated }, 200, req)
+		return
+	}
+
+	// POST /purge — agency only, hard delete from disk
+	if (method === 'POST' && route === 'purge') {
+		if (!requireAgency(role, res, req, 'purge')) return
+		const body = await parseJsonBody<IdBody>(req)
+		if (!body.page || !body.id) {
+			sendError(res, 'Missing required fields: page, id', 400, req)
+			return
+		}
+		const ok = await store.purgeItem(body.page, body.id)
 		if (!ok) {
 			sendError(res, `Item not found: ${body.id}`, 404, req)
 			return
@@ -168,15 +214,16 @@ export async function handleNotesApiRoute(
 		return
 	}
 
-	// POST /apply — write the suggestion's replacement back to the source file
+	// POST /apply — agency only. Write the suggestion's replacement back to the source file.
 	if (method === 'POST' && route === 'apply') {
+		if (!requireAgency(role, res, req, 'apply')) return
 		const body = await parseJsonBody<IdBody>(req)
 		if (!body.page || !body.id) {
 			sendError(res, 'Missing required fields: page, id', 400, req)
 			return
 		}
 		const file = await store.readPage(body.page)
-		const item = file.items.find(it => it.id === body.id)
+		const item = file.items.find((it) => it.id === body.id)
 		if (!item) {
 			sendError(res, `Item not found: ${body.id}`, 404, req)
 			return
@@ -192,7 +239,7 @@ export async function handleNotesApiRoute(
 			// Drift detected — mark the item as stale so the sidebar can warn
 			// the agency without losing the suggestion.
 			if (result.reason === 'not-found' || result.reason === 'ambiguous') {
-				const updated = await store.updateItem(body.page, body.id, { status: 'stale' })
+				const updated = await store.updateItem(body.page, body.id, { status: 'stale' }, role, 'stale', result.message)
 				sendJson(res, { item: updated, error: result.message, reason: result.reason }, 409, req)
 				return
 			}
@@ -203,7 +250,14 @@ export async function handleNotesApiRoute(
 		// Successful write — flip the item to `applied`. The middleware will
 		// fire a Vite full-reload after this returns; CMS's own watcher also
 		// notices the source-file change and triggers HMR.
-		const updated = await store.updateItem(body.page, body.id, { status: 'applied' })
+		const updated = await store.updateItem(
+			body.page,
+			body.id,
+			{ status: 'applied' },
+			role,
+			'applied',
+			result.file,
+		)
 		sendJson(res, { item: updated, file: result.file, before: result.before, after: result.after }, 200, req)
 		return
 	}
