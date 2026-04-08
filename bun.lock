@@ -20,7 +20,7 @@
     },
     "packages/agent-summary": {
       "name": "@nuasite/agent-summary",
-      "version": "0.19.1",
+      "version": "0.20.2",
       "devDependencies": {
         "@types/bun": "catalog:build",
         "astro": "catalog:astro",
@@ -31,7 +31,7 @@
     },
     "packages/checks": {
       "name": "@nuasite/checks",
-      "version": "0.19.1",
+      "version": "0.20.2",
       "dependencies": {
         "node-html-parser": "catalog:parsers",
       },
@@ -45,7 +45,7 @@
     },
     "packages/cli": {
       "name": "@nuasite/cli",
-      "version": "0.19.1",
+      "version": "0.20.2",
       "bin": {
         "nua": "src/index.ts",
       },
@@ -63,7 +63,7 @@
     },
     "packages/cms": {
       "name": "@nuasite/cms",
-      "version": "0.19.1",
+      "version": "0.20.2",
       "dependencies": {
         "@astrojs/compiler": "catalog:astro",
         "@babel/parser": "catalog:parsers",
@@ -109,14 +109,14 @@
     },
     "packages/components": {
       "name": "@nuasite/components",
-      "version": "0.19.1",
+      "version": "0.20.2",
       "peerDependencies": {
         "typescript": "catalog:build",
       },
     },
     "packages/core": {
       "name": "@nuasite/core",
-      "version": "0.19.1",
+      "version": "0.20.2",
       "devDependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -130,7 +130,7 @@
     },
     "packages/llm-enhancements": {
       "name": "@nuasite/llm-enhancements",
-      "version": "0.19.1",
+      "version": "0.20.2",
       "dependencies": {
         "node-html-parser": "catalog:parsers",
       },
@@ -147,9 +147,21 @@
         "@nuasite/cms",
       ],
     },
+    "packages/notes": {
+      "name": "@nuasite/notes",
+      "version": "0.20.2",
+      "devDependencies": {
+        "@types/bun": "catalog:build",
+        "astro": "catalog:astro",
+      },
+      "peerDependencies": {
+        "astro": "catalog:astro",
+        "typescript": "catalog:build",
+      },
+    },
     "packages/nua": {
       "name": "@nuasite/nua",
-      "version": "0.19.1",
+      "version": "0.20.2",
       "dependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -171,8 +183,9 @@
     },
     "packages/playground": {
       "name": "playground",
-      "version": "0.19.1",
+      "version": "0.20.2",
       "dependencies": {
+        "@nuasite/notes": "workspace:*",
         "@nuasite/nua": "workspace:*",
         "astro": "catalog:astro",
       },
@@ -479,6 +492,8 @@
     "@nuasite/core": ["@nuasite/core@workspace:packages/core"],
 
     "@nuasite/llm-enhancements": ["@nuasite/llm-enhancements@workspace:packages/llm-enhancements"],
+
+    "@nuasite/notes": ["@nuasite/notes@workspace:packages/notes"],
 
     "@nuasite/nua": ["@nuasite/nua@workspace:packages/nua"],
 
