@@ -12,5 +12,8 @@
 	"dependencies": {
 		"@nuasite/nua": "workspace:*",
 		"astro": "catalog:astro"
+	},
+	"devDependencies": {
+		"@nuasite/notes": "workspace:*"
 	}
 }
