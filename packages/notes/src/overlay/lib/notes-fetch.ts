@@ -1,0 +1,75 @@
+/**
+ * Thin wrapper around `/_nua/notes/*` endpoints.
+ *
+ * All methods return parsed JSON. Errors throw with the server-provided
+ * message so the overlay can surface them in a banner.
+ */
+
+import type { NoteItem, NoteRange, NoteStatus, NoteType, NotesPageFile } from '../types'
+
+const BASE = '/_nua/notes'
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+	const res = await fetch(`${BASE}${path}`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	})
+	const text = await res.text()
+	let parsed: any
+	try {
+		parsed = text ? JSON.parse(text) : {}
+	} catch {
+		throw new Error(`notes: invalid JSON response from ${path}`)
+	}
+	if (!res.ok) {
+		throw new Error(parsed?.error ?? `notes: ${path} failed (${res.status})`)
+	}
+	return parsed as T
+}
+
+export async function listNotes(page: string): Promise<NotesPageFile> {
+	const res = await fetch(`${BASE}/list?page=${encodeURIComponent(page)}`, {
+		headers: { Accept: 'application/json' },
+	})
+	if (!res.ok) throw new Error(`notes: list failed (${res.status})`)
+	return (await res.json()) as NotesPageFile
+}
+
+export interface CreateInput {
+	page: string
+	type: NoteType
+	targetCmsId: string
+	targetSourcePath?: string
+	targetSourceLine?: number
+	targetSnippet?: string
+	range?: NoteRange | null
+	body: string
+	author: string
+}
+
+export async function createNote(input: CreateInput): Promise<NoteItem> {
+	const res = await postJson<{ item: NoteItem }>('/create', input)
+	return res.item
+}
+
+export async function updateNote(page: string, id: string, patch: Partial<Pick<NoteItem, 'body' | 'status' | 'targetSnippet'>> & { range?: NoteRange | null }): Promise<NoteItem> {
+	const res = await postJson<{ item: NoteItem }>('/update', { page, id, patch })
+	return res.item
+}
+
+export async function setNoteStatus(page: string, id: string, status: NoteStatus): Promise<NoteItem> {
+	if (status === 'resolved') {
+		const res = await postJson<{ item: NoteItem }>('/resolve', { page, id })
+		return res.item
+	}
+	if (status === 'open') {
+		const res = await postJson<{ item: NoteItem }>('/reopen', { page, id })
+		return res.item
+	}
+	return updateNote(page, id, { status })
+}
+
+export async function deleteNote(page: string, id: string): Promise<void> {
+	await postJson<{ ok: true }>('/delete', { page, id })
+}

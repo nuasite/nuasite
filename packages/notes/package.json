@@ -28,7 +28,8 @@
 	"dependencies": {},
 	"devDependencies": {
 		"@types/bun": "catalog:build",
-		"astro": "catalog:astro"
+		"astro": "catalog:astro",
+		"preact": "catalog:editor"
 	},
 	"peerDependencies": {
 		"astro": "catalog:astro",
