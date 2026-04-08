@@ -58,9 +58,9 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	}>
 	/**
 	 * Enable polling for file watching.
-	 * Ensures reliable change detection after CMS edits.
-	 * Set to `false` to use native fs events instead.
-	 * @default true
+	 * Set to `true` on filesystems that don't support native events (e.g. network mounts).
+	 * E2B sandboxes use ext4 with full inotify support, so polling is unnecessary.
+	 * @default false
 	 */
 	usePolling?: boolean
 }
@@ -85,7 +85,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		componentDirs = ['src/components'],
 		contentDir = 'src/content',
 		mdxComponentDirs,
-		usePolling = true,
+		usePolling = false,
 		seo = { trackSeo: true, markTitle: true, parseJsonLd: true },
 	} = options
 
