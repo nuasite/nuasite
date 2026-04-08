@@ -27,14 +27,7 @@ import { Toolbar } from './components/toolbar'
 import { getConfig } from './config'
 import { Z_INDEX } from './constants'
 import { disableAllInteractiveElements, enableAllInteractiveElements, logDebug } from './dom'
-import {
-	discardAllChanges,
-	handleColorChange,
-	saveAllChanges,
-	startEditMode,
-	stopEditMode,
-	toggleShowOriginal,
-} from './editor'
+import { discardAllChanges, handleColorChange, saveAllChanges, startEditMode, stopEditMode, toggleShowOriginal } from './editor'
 import { canRedo, canUndo, performRedo, performUndo } from './history'
 import {
 	useBgImageHoverDetection,

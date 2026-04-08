@@ -177,7 +177,6 @@ export function useBlockEditorHandlers({
 
 					showToast(`${componentName} inserted ${position} component`, 'success')
 				}
-
 			} catch (error) {
 				console.error('[CMS] Failed to insert component:', error)
 

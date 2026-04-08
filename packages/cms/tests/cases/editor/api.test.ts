@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import {
-	fetchManifest,
-	getPageManifestUrl,
-	insertComponent,
-	saveBatchChanges,
-} from '../../../src/editor/api'
+import { fetchManifest, getPageManifestUrl, insertComponent, saveBatchChanges } from '../../../src/editor/api'
 import type { CmsManifest, SaveBatchRequest } from '../../../src/editor/types'
 
 describe('getPageManifestUrl', () => {
@@ -261,4 +256,3 @@ describe('insertComponent', () => {
 		).rejects.toThrow('Insert component failed (404)')
 	})
 })
-
