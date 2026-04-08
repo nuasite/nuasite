@@ -12,7 +12,7 @@ import {
 	updateMarkdownPageMeta,
 } from '../signals'
 import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
-import { ComboBoxField, ImageField, MultiSelectField, NumberField, TextField, ToggleField } from './fields'
+import { ColorField, ComboBoxField, ImageField, MultiSelectField, NumberField, TextField, ToggleField } from './fields'
 import { groupFields } from './frontmatter-sidebar'
 
 function isArrayOfObjects(value: unknown[]): value is Record<string, unknown>[] {
@@ -189,7 +189,9 @@ export function CreateModeFrontmatter({
 	fields,
 	onSlugManualEdit,
 }: CreateModeFrontmatterProps) {
-	const displayFields = fields ?? collectionDefinition.fields
+	const allFields = fields ?? collectionDefinition.fields
+	// In create mode, skip complex fields (arrays, objects) — they can be edited after creation
+	const displayFields = allFields.filter(f => f.type !== 'array' && f.type !== 'object')
 	const groups = groupFields(displayFields)
 
 	return (
@@ -397,12 +399,14 @@ export function SchemaFrontmatterField({
 	switch (field.type) {
 		case 'text':
 		case 'url':
+		case 'email':
 			return (
 				<TextField
 					label={label}
 					value={(value as string) ?? ''}
 					placeholder={getPlaceholder(field)}
 					onChange={(v) => onChange(v)}
+					inputType={field.type === 'text' ? undefined : field.type}
 				/>
 			)
 
@@ -418,6 +422,16 @@ export function SchemaFrontmatterField({
 							onChange(url)
 						})
 					}}
+				/>
+			)
+
+		case 'color':
+			return (
+				<ColorField
+					label={label}
+					value={(value as string) ?? ''}
+					placeholder={getPlaceholder(field)}
+					onChange={(v) => onChange(v)}
 				/>
 			)
 
@@ -437,11 +451,13 @@ export function SchemaFrontmatterField({
 			)
 
 		case 'date':
+		case 'datetime':
+		case 'time':
 			return (
 				<div class="flex flex-col gap-1" data-cms-ui>
 					<label class="text-xs text-white/60 font-medium">{label}</label>
 					<input
-						type="date"
+						type={field.type === 'datetime' ? 'datetime-local' : field.type}
 						value={(value as string) ?? ''}
 						onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 						class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white focus:outline-none focus:border-white/40"
@@ -523,7 +539,7 @@ export function SchemaFrontmatterField({
 					</div>
 				)
 			}
-			if (isArrayOfObjects(items)) {
+			if (field.itemType === 'object' || isArrayOfObjects(items)) {
 				return (
 					<ArrayOfObjectsField
 						label={label}
@@ -822,10 +838,18 @@ export function getPlaceholder(field: FieldDefinition): string {
 	switch (field.type) {
 		case 'url':
 			return 'https://...'
+		case 'email':
+			return 'name@example.com'
 		case 'image':
 			return '/images/...'
+		case 'color':
+			return '#000000'
 		case 'date':
 			return 'YYYY-MM-DD'
+		case 'datetime':
+			return 'YYYY-MM-DDTHH:MM'
+		case 'time':
+			return 'HH:MM'
 		default:
 			return `Enter ${formatFieldLabel(field.name).toLowerCase()}...`
 	}

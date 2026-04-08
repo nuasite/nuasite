@@ -42,14 +42,15 @@ export interface TextFieldProps {
 	onChange: (value: string) => void
 	isDirty?: boolean
 	onReset?: () => void
+	inputType?: string
 }
 
-export function TextField({ label, value, placeholder, onChange, isDirty, onReset }: TextFieldProps) {
+export function TextField({ label, value, placeholder, onChange, isDirty, onReset, inputType = 'text' }: TextFieldProps) {
 	return (
 		<div class="space-y-1.5">
 			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
 			<input
-				type="text"
+				type={inputType}
 				value={value ?? ''}
 				placeholder={placeholder}
 				onInput={(e) => onChange((e.target as HTMLInputElement).value)}

@@ -389,11 +389,10 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 }
 
 /**
- * Parse the Astro content config file to extract explicit reference() declarations.
- * Returns a map: collectionName → { fieldName → { target, isArray } }
+ * Read and parse the Astro content config file, extracting schema blocks for each collection.
+ * Returns parsed blocks with collection names and their raw schema bodies.
  */
-async function parseContentConfigReferences(): Promise<Map<string, Map<string, { target: string; isArray: boolean }>>> {
-	const result = new Map<string, Map<string, { target: string; isArray: boolean }>>()
+async function parseContentConfigSchemaBlocks(): Promise<Array<{ collectionName: string; schemaBody: string }>> {
 	const projectRoot = getProjectRoot()
 
 	for (const configPath of ['src/content/config.ts', 'src/content.config.ts']) {
@@ -401,7 +400,6 @@ async function parseContentConfigReferences(): Promise<Map<string, Map<string, {
 			const fullPath = path.join(projectRoot, configPath)
 			const content = await fs.readFile(fullPath, 'utf-8')
 
-			// Parse defineCollection blocks to extract schema bodies
 			const collectionBlocks = content.matchAll(
 				/(?:const\s+(\w+)\s*=\s*)?defineCollection\s*\(\s*\{[\s\S]*?schema\s*:\s*z\.object\s*\(\s*\{([\s\S]*?)\}\s*\)/g,
 			)
@@ -416,29 +414,105 @@ async function parseContentConfigReferences(): Promise<Map<string, Map<string, {
 				}
 			}
 
+			const blocks: Array<{ collectionName: string; schemaBody: string }> = []
 			for (const block of collectionBlocks) {
 				const varName = block[1]
 				const schemaBody = block[2]!
 				const collectionName = varName ? varToName.get(varName) : undefined
 				if (!collectionName) continue
-
-				const fields = new Map<string, { target: string; isArray: boolean }>()
-				const fieldRefs = schemaBody.matchAll(/(\w+)\s*:\s*(z\.array\s*\(\s*)?reference\s*\(\s*['"](\w+)['"]\s*\)/g)
-				for (const m of fieldRefs) {
-					fields.set(m[1]!, { target: m[3]!, isArray: !!m[2] })
-				}
-
-				if (fields.size > 0) {
-					result.set(collectionName, fields)
-				}
+				blocks.push({ collectionName, schemaBody })
 			}
 
-			if (result.size > 0) break // Found a config file with references
+			if (blocks.length > 0) return blocks
 		} catch {
 			// File doesn't exist, try next
 		}
 	}
+	return []
+}
+
+/**
+ * Parse the Astro content config file to extract explicit reference() declarations.
+ * Returns a map: collectionName → { fieldName → { target, isArray } }
+ */
+function parseContentConfigReferences(schemaBlocks: Array<{ collectionName: string; schemaBody: string }>): Map<string, Map<string, { target: string; isArray: boolean }>> {
+	const result = new Map<string, Map<string, { target: string; isArray: boolean }>>()
+
+	for (const { collectionName, schemaBody } of schemaBlocks) {
+		const fields = new Map<string, { target: string; isArray: boolean }>()
+		const fieldRefs = schemaBody.matchAll(/(\w+)\s*:\s*(z\.array\s*\(\s*)?reference\s*\(\s*['"](\w+)['"]\s*\)/g)
+		for (const m of fieldRefs) {
+			fields.set(m[1]!, { target: m[3]!, isArray: !!m[2] })
+		}
+
+		if (fields.size > 0) {
+			result.set(collectionName, fields)
+		}
+	}
 	return result
+}
+
+/** Valid field type names exported by `field` helper from @nuasite/cms */
+const FIELD_HELPER_TYPES = new Set(['image', 'url', 'email', 'color', 'date', 'datetime', 'time', 'textarea'])
+
+/**
+ * Parse the content config file to extract explicit field type hints:
+ * - `field.image(...)`, `field.url(...)`, etc. from @nuasite/cms
+ * - `z.enum([...])` for select options
+ *
+ * Returns a map: collectionName → fieldName → { type, options? }
+ */
+function parseContentConfigFieldTypes(schemaBlocks: Array<{ collectionName: string; schemaBody: string }>): Map<string, Map<string, { type: FieldType; options?: string[] }>> {
+	const result = new Map<string, Map<string, { type: FieldType; options?: string[] }>>()
+
+	for (const { collectionName, schemaBody } of schemaBlocks) {
+		const fields = new Map<string, { type: FieldType; options?: string[] }>()
+
+		// Detect field.image(...), field.url(...), etc.
+		const fieldHelpers = schemaBody.matchAll(/(\w+)\s*:\s*field\.(\w+)\s*\(/g)
+		for (const m of fieldHelpers) {
+			const fieldName = m[1]!
+			const helperName = m[2]!
+			if (FIELD_HELPER_TYPES.has(helperName)) {
+				fields.set(fieldName, { type: helperName as FieldType })
+			}
+		}
+
+		// Detect z.enum(['a', 'b', 'c'])
+		const enumFields = schemaBody.matchAll(/(\w+)\s*:\s*z\.enum\s*\(\s*\[([\s\S]*?)\]\s*\)/g)
+		for (const m of enumFields) {
+			const fieldName = m[1]!
+			const enumBody = m[2]!
+			const options = [...enumBody.matchAll(/['"]([^'"]+)['"]/g)].map(o => o[1]!)
+			if (options.length > 0) {
+				fields.set(fieldName, { type: 'select', options })
+			}
+		}
+
+		if (fields.size > 0) {
+			result.set(collectionName, fields)
+		}
+	}
+	return result
+}
+
+/**
+ * Apply field type overrides from config parsing to scanned collections.
+ */
+function applyConfigFieldTypes(collections: Record<string, CollectionDefinition>, schemaBlocks: Array<{ collectionName: string; schemaBody: string }>): void {
+	const configTypes = parseContentConfigFieldTypes(schemaBlocks)
+	for (const [collectionName, fieldTypes] of configTypes) {
+		const def = collections[collectionName]
+		if (!def) continue
+		for (const [fieldName, override] of fieldTypes) {
+			const field = def.fields.find(f => f.name === fieldName)
+			if (!field) continue
+			field.type = override.type
+			if (override.options) {
+				field.options = override.options
+			}
+		}
+	}
 }
 
 /**
@@ -446,9 +520,9 @@ async function parseContentConfigReferences(): Promise<Map<string, Map<string, {
  * Prefers explicit reference() declarations from the content config file.
  * Falls back to heuristic slug matching when no config is available.
  */
-async function detectReferenceFields(collections: Record<string, CollectionDefinition>): Promise<void> {
+async function detectReferenceFields(collections: Record<string, CollectionDefinition>, schemaBlocks: Array<{ collectionName: string; schemaBody: string }>): Promise<void> {
 	// Try parsing the content config first — this is the source of truth
-	const configRefs = await parseContentConfigReferences()
+	const configRefs = parseContentConfigReferences(schemaBlocks)
 	if (configRefs.size > 0) {
 		for (const [collectionName, fieldRefs] of configRefs) {
 			const def = collections[collectionName]
@@ -673,8 +747,10 @@ export async function scanCollections(contentDir: string = 'src/content'): Promi
 		// Content directory doesn't exist or isn't readable
 	}
 
-	// Post-scan: detect cross-collection references and derived fields
-	await detectReferenceFields(collections)
+	// Post-scan: apply explicit type hints, detect references, and derived fields
+	const schemaBlocks = await parseContentConfigSchemaBlocks()
+	applyConfigFieldTypes(collections, schemaBlocks)
+	await detectReferenceFields(collections, schemaBlocks)
 	detectDerivedHrefFields(collections)
 
 	return collections

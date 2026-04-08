@@ -41,3 +41,6 @@ export type Email = string
 
 /** Multiline text area */
 export type Textarea = string
+
+/** Collection entry reference — renders a dropdown of entries from the named collection */
+export type Reference<_Collection extends string = string> = string
