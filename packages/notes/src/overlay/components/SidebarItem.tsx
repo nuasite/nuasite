@@ -7,10 +7,12 @@ interface SidebarItemProps {
 	item: NoteItem
 	active: boolean
 	stale: boolean
+	applying: boolean
 	onFocus: () => void
 	onResolve: () => void
 	onReopen: () => void
 	onDelete: () => void
+	onApply: () => void
 }
 
 function formatTime(iso: string): string {
@@ -36,9 +38,11 @@ function formatTime(iso: string): string {
  * shapes from a unified data model: comments show the body; suggestions
  * show the inline diff and (if any) a rationale + body.
  */
-export function SidebarItem({ item, active, stale, onFocus, onResolve, onReopen, onDelete }: SidebarItemProps) {
+export function SidebarItem({ item, active, stale, applying, onFocus, onResolve, onReopen, onDelete, onApply }: SidebarItemProps) {
 	const isResolved = item.status === 'resolved' || item.status === 'applied'
+	const isApplied = item.status === 'applied'
 	const isSuggestion = item.type === 'suggestion' && item.range
+	const canApply = isSuggestion && !isApplied && !stale
 	return (
 		<div
 			class={`notes-item ${active ? 'notes-item--active' : ''} ${isResolved ? 'notes-item--resolved' : ''}`}
@@ -83,6 +87,13 @@ export function SidebarItem({ item, active, stale, onFocus, onResolve, onReopen,
 				)}
 
 			<div class='notes-item__actions'>
+				{canApply
+					? (
+						<button class='notes-btn notes-btn--primary' onClick={onApply} disabled={applying}>
+							{applying ? 'Applying...' : 'Apply'}
+						</button>
+					)
+					: null}
 				{isResolved
 					? <button class='notes-btn notes-btn--ghost' onClick={onReopen}>Reopen</button>
 					: <button class='notes-btn' onClick={onResolve}>Resolve</button>}

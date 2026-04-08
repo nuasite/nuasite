@@ -7,7 +7,7 @@ import { Sidebar } from './components/Sidebar'
 import { SuggestPopover } from './components/SuggestPopover'
 import { Toolbar } from './components/Toolbar'
 import { fetchPageManifest } from './lib/manifest-fetch'
-import { createNote, deleteNote, listNotes, setNoteStatus } from './lib/notes-fetch'
+import { applyNote, createNote, deleteNote, listNotes, setNoteStatus } from './lib/notes-fetch'
 import { findAnchorRange, selectionInsideElement } from './lib/range-anchor'
 import { exitReviewMode, getCurrentPagePath } from './lib/url-mode'
 import type { CmsPageManifest, NoteItem } from './types'
@@ -80,6 +80,7 @@ export function App({ urlFlag }: AppProps) {
 	const [error, setError] = useState<string | null>(null)
 	const [author, setAuthor] = useState<string>(() => loadAuthor())
 	const [staleIds, setStaleIds] = useState<Set<string>>(new Set())
+	const [applyingId, setApplyingId] = useState<string | null>(null)
 
 	// Load notes + manifest on mount
 	useEffect(() => {
@@ -328,6 +329,24 @@ export function App({ urlFlag }: AppProps) {
 		}
 	}, [page, activeId])
 
+	const handleApply = useCallback(async (id: string) => {
+		setApplyingId(id)
+		try {
+			const result = await applyNote(page, id)
+			// On both success and 409 the server returns an updated item
+			setItems((prev) => prev.map((i) => (i.id === id ? result.item : i)))
+			if (result.error) {
+				setError(result.error)
+			} else {
+				setError(null)
+			}
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err))
+		} finally {
+			setApplyingId(null)
+		}
+	}, [page])
+
 	const handleSelectionComment = useCallback(() => {
 		if (!pendingSelection) return
 		// Convert the selection into a comment on the parent element
@@ -365,10 +384,12 @@ export function App({ urlFlag }: AppProps) {
 				picking={picking}
 				error={error}
 				staleIds={staleIds}
+				applyingId={applyingId}
 				onFocus={setActiveId}
 				onResolve={handleResolve}
 				onReopen={handleReopen}
 				onDelete={handleDelete}
+				onApply={handleApply}
 			/>
 			{picking && hoverRect ? <ElementHighlight rect={hoverRect.rect} /> : null}
 			{activeRect ? <ElementHighlight rect={activeRect} persistent /> : null}

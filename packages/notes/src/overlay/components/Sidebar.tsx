@@ -9,13 +9,15 @@ interface SidebarProps {
 	picking: boolean
 	error: string | null
 	staleIds: Set<string>
+	applyingId: string | null
 	onFocus: (id: string) => void
 	onResolve: (id: string) => void
 	onReopen: (id: string) => void
 	onDelete: (id: string) => void
+	onApply: (id: string) => void
 }
 
-export function Sidebar({ page, items, activeId, picking, error, staleIds, onFocus, onResolve, onReopen, onDelete }: SidebarProps) {
+export function Sidebar({ page, items, activeId, picking, error, staleIds, applyingId, onFocus, onResolve, onReopen, onDelete, onApply }: SidebarProps) {
 	const open = items.filter((i) => i.status !== 'resolved' && i.status !== 'applied')
 	const closed = items.filter((i) => i.status === 'resolved' || i.status === 'applied')
 	const renderItem = (item: NoteItem) => (
@@ -24,10 +26,12 @@ export function Sidebar({ page, items, activeId, picking, error, staleIds, onFoc
 			item={item}
 			active={item.id === activeId}
 			stale={staleIds.has(item.id)}
+			applying={applyingId === item.id}
 			onFocus={() => onFocus(item.id)}
 			onResolve={() => onResolve(item.id)}
 			onReopen={() => onReopen(item.id)}
 			onDelete={() => onDelete(item.id)}
+			onApply={() => onApply(item.id)}
 		/>
 	)
 	return (

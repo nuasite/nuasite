@@ -13,13 +13,19 @@
  *   POST   /resolve                 → mark item as resolved
  *   POST   /reopen                  → reopen a resolved item
  *   POST   /delete                  → delete an item
- *   POST   /apply                   → apply a suggestion (stubbed in Phase 1, real in Phase 4)
+ *   POST   /apply                   → write a suggestion's replacement back to source
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { applySuggestion } from '../apply/apply-suggestion'
 import type { NotesJsonStore } from '../storage/json-store'
 import type { NoteItem, NoteItemPatch, NoteRange, NoteStatus, NoteType } from '../storage/types'
 import { parseJsonBody, sendError, sendJson } from './request-utils'
+
+export interface NotesApiContext {
+	store: NotesJsonStore
+	projectRoot: string
+}
 
 interface CreateBody {
 	page: string
@@ -53,8 +59,9 @@ export async function handleNotesApiRoute(
 	route: string,
 	req: IncomingMessage,
 	res: ServerResponse,
-	store: NotesJsonStore,
+	ctx: NotesApiContext,
 ): Promise<void> {
+	const { store } = ctx
 	const method = req.method ?? 'GET'
 
 	// GET /list?page=/some-page
@@ -161,7 +168,7 @@ export async function handleNotesApiRoute(
 		return
 	}
 
-	// POST /apply — stub for Phase 1, real implementation in Phase 4
+	// POST /apply — write the suggestion's replacement back to the source file
 	if (method === 'POST' && route === 'apply') {
 		const body = await parseJsonBody<IdBody>(req)
 		if (!body.page || !body.id) {
@@ -178,11 +185,26 @@ export async function handleNotesApiRoute(
 			sendError(res, 'Only suggestion items can be applied', 400, req)
 			return
 		}
-		// Phase 4 will: peer-import @nuasite/cms findSourceLocation, replace
-		// item.range.originalText with item.range.suggestedText in the resolved
-		// source file, then mark the item as 'applied'. For now we just refuse
-		// loudly so the route exists and the overlay can show "coming soon".
-		sendError(res, 'apply flow ships in Phase 4 (peer-imports @nuasite/cms source-finder)', 501, req)
+
+		const result = await applySuggestion(item, { projectRoot: ctx.projectRoot })
+
+		if (!result.ok) {
+			// Drift detected — mark the item as stale so the sidebar can warn
+			// the agency without losing the suggestion.
+			if (result.reason === 'not-found' || result.reason === 'ambiguous') {
+				const updated = await store.updateItem(body.page, body.id, { status: 'stale' })
+				sendJson(res, { item: updated, error: result.message, reason: result.reason }, 409, req)
+				return
+			}
+			sendError(res, result.message, 400, req)
+			return
+		}
+
+		// Successful write — flip the item to `applied`. The middleware will
+		// fire a Vite full-reload after this returns; CMS's own watcher also
+		// notices the source-file change and triggers HMR.
+		const updated = await store.updateItem(body.page, body.id, { status: 'applied' })
+		sendJson(res, { item: updated, file: result.file, before: result.before, after: result.after }, 200, req)
 		return
 	}
 

@@ -73,3 +73,41 @@ export async function setNoteStatus(page: string, id: string, status: NoteStatus
 export async function deleteNote(page: string, id: string): Promise<void> {
 	await postJson<{ ok: true }>('/delete', { page, id })
 }
+
+export interface ApplyResponse {
+	item: NoteItem
+	file?: string
+	before?: string
+	after?: string
+	error?: string
+	reason?: string
+}
+
+/**
+ * Apply a suggestion. Returns the updated item plus before/after snippets
+ * on success, or throws with the server error message. The 409 response
+ * (drift) is returned as a normal value because the server already updated
+ * the item to `stale` and the overlay should refresh accordingly.
+ */
+export async function applyNote(page: string, id: string): Promise<ApplyResponse> {
+	const res = await fetch(`${BASE}/apply`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ page, id }),
+	})
+	const text = await res.text()
+	let parsed: any
+	try {
+		parsed = text ? JSON.parse(text) : {}
+	} catch {
+		throw new Error(`notes: invalid JSON response from /apply`)
+	}
+	if (res.status === 409) {
+		// Drift — server already marked as stale
+		return parsed as ApplyResponse
+	}
+	if (!res.ok) {
+		throw new Error(parsed?.error ?? `notes: /apply failed (${res.status})`)
+	}
+	return parsed as ApplyResponse
+}

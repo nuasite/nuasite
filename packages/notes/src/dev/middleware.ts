@@ -11,6 +11,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { NotesJsonStore } from '../storage/json-store'
+import type { NotesApiContext } from './api-handlers'
 import { handleNotesApiRoute } from './api-handlers'
 import { handleCors, sendError } from './request-utils'
 
@@ -26,7 +27,13 @@ export interface ViteDevServerLike {
 
 const ROUTE_PREFIX = '/_nua/notes/'
 
-export function createNotesDevMiddleware(server: ViteDevServerLike, store: NotesJsonStore): void {
+export function createNotesDevMiddleware(
+	server: ViteDevServerLike,
+	store: NotesJsonStore,
+	projectRoot: string,
+): void {
+	const ctx: NotesApiContext = { store, projectRoot }
+
 	server.middlewares.use((req, res, next) => {
 		const url = req.url ?? ''
 		if (!url.startsWith(ROUTE_PREFIX)) {
@@ -38,7 +45,7 @@ export function createNotesDevMiddleware(server: ViteDevServerLike, store: Notes
 
 		const route = url.replace(ROUTE_PREFIX, '').split('?')[0] ?? ''
 
-		handleNotesApiRoute(route, req, res, store)
+		handleNotesApiRoute(route, req, res, ctx)
 			.then(() => {
 				// Mirror CMS: explicitly trigger full-reload after content-modifying
 				// routes. In sandboxed dev environments (E2B etc.) chokidar events

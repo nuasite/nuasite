@@ -33,6 +33,7 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 
 	// Lazily constructed in `astro:config:setup` once we know the project root.
 	let store: NotesJsonStore | null = null
+	let projectRoot: string | null = null
 
 	return {
 		name: '@nuasite/notes',
@@ -46,7 +47,7 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 				}
 
 				// Astro provides the project root as a file:// URL on `config.root`.
-				const projectRoot = fileURLToPath(config.root)
+				projectRoot = fileURLToPath(config.root)
 				store = new NotesJsonStore({ projectRoot, notesDir })
 
 				// Resolve the overlay source file inside this package so the virtual
@@ -118,11 +119,11 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 
 			'astro:server:setup': ({ server, logger }) => {
 				if (!enabled) return
-				if (!store) {
+				if (!store || !projectRoot) {
 					logger.warn('@nuasite/notes server:setup ran before config:setup; skipping')
 					return
 				}
-				createNotesDevMiddleware(server, store)
+				createNotesDevMiddleware(server, store, projectRoot)
 				logger.info('@nuasite/notes API enabled at /_nua/notes/')
 			},
 		},
