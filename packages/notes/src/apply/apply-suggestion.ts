@@ -143,7 +143,9 @@ export async function applySuggestion(item: NoteItem, options: ApplyOptions): Pr
 		// Clean up tmp on failure
 		try {
 			await fs.unlink(tmp)
-		} catch {}
+		} catch (cleanupErr) {
+			console.warn(`[nuasite-notes] Failed to clean up temp file ${tmp}:`, cleanupErr instanceof Error ? cleanupErr.message : cleanupErr)
+		}
 		return {
 			ok: false,
 			reason: 'file-error',

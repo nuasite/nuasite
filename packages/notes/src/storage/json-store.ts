@@ -183,8 +183,8 @@ export class NotesJsonStore {
 					const raw = await fs.readFile(path.join(this.pagesDir, f), 'utf-8')
 					const stripped = raw.startsWith('//') ? raw.slice(raw.indexOf('\n') + 1) : raw
 					pages.push(JSON.parse(stripped) as NotesPageFile)
-				} catch {
-					// skip malformed files
+				} catch (err) {
+					console.warn(`[nuasite-notes] Skipping malformed notes file ${f}:`, err instanceof Error ? err.message : err)
 				}
 			}
 			return pages

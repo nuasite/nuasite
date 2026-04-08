@@ -24,11 +24,12 @@ export function manifestUrlForPage(page: string): string {
 export async function fetchPageManifest(page: string): Promise<CmsPageManifest | null> {
 	const url = manifestUrlForPage(page)
 	try {
-		const res = await fetch(url, { headers: { Accept: 'application/json' } })
+		const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) })
 		if (!res.ok) return null
 		const data = (await res.json()) as CmsPageManifest
 		return data
-	} catch {
+	} catch (err) {
+		console.warn(`[nuasite-notes] Failed to fetch CMS manifest for "${page}":`, err instanceof Error ? err.message : err)
 		return null
 	}
 }
