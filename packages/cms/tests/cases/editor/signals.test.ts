@@ -1,10 +1,7 @@
 import { beforeEach, expect, test } from 'bun:test'
 import {
-	addChatMessage,
-	aiState,
 	batch,
 	blockEditorState,
-	clearChatMessages,
 	clearPendingImageChanges,
 	currentEditingId,
 	deletePendingImageChange,
@@ -21,11 +18,8 @@ import {
 	manifest,
 	pendingChanges,
 	pendingImageChanges,
-	resetAIState,
 	resetAllState,
 	resetBlockEditorState,
-	setAIChatOpen,
-	setAIProcessing,
 	setBlockEditorMode,
 	setBlockEditorOpen,
 	setCurrentEditingId,
@@ -38,7 +32,6 @@ import {
 	showToast,
 	toasts,
 	totalDirtyCount,
-	updateChatMessage,
 	updatePendingImageChange,
 } from '../../../src/editor/signals'
 
@@ -54,8 +47,6 @@ test('signals have correct initial values', () => {
 	expect(currentEditingId.value).toBeNull()
 	expect(pendingChanges.value.size).toBe(0)
 	expect(Object.keys(manifest.value.entries).length).toBe(0)
-	expect(aiState.value.isProcessing).toBe(false)
-	expect(aiState.value.isChatOpen).toBe(false)
 	expect(blockEditorState.value.isOpen).toBe(false)
 })
 
@@ -117,55 +108,6 @@ test('setManifest updates manifest signal', () => {
 	expect(manifest.value.entries['test-id']?.text).toBe('Test content')
 })
 
-test('AI state mutations work correctly', () => {
-	expect(aiState.value.isProcessing).toBe(false)
-	expect(aiState.value.isChatOpen).toBe(false)
-	expect(aiState.value.chatMessages.length).toBe(0)
-
-	setAIProcessing(true)
-	expect(aiState.value.isProcessing).toBe(true)
-
-	setAIChatOpen(true)
-	expect(aiState.value.isChatOpen).toBe(true)
-
-	addChatMessage({
-		id: 'msg-1',
-		role: 'user',
-		content: 'Hello',
-		timestamp: Date.now(),
-	})
-	expect(aiState.value.chatMessages.length).toBe(1)
-	expect(aiState.value.chatMessages[0]?.content).toBe('Hello')
-
-	addChatMessage({
-		id: 'msg-2',
-		role: 'assistant',
-		content: 'Hi there!',
-		timestamp: Date.now(),
-	})
-	expect(aiState.value.chatMessages.length).toBe(2)
-
-	clearChatMessages()
-	expect(aiState.value.chatMessages.length).toBe(0)
-})
-
-test('resetAIState resets to initial values', () => {
-	setAIProcessing(true)
-	setAIChatOpen(true)
-	addChatMessage({
-		id: 'msg-1',
-		role: 'user',
-		content: 'Hello',
-		timestamp: Date.now(),
-	})
-
-	resetAIState()
-
-	expect(aiState.value.isProcessing).toBe(false)
-	expect(aiState.value.isChatOpen).toBe(false)
-	expect(aiState.value.chatMessages.length).toBe(0)
-})
-
 test('Block editor state mutations work correctly', () => {
 	expect(blockEditorState.value.isOpen).toBe(false)
 	expect(blockEditorState.value.mode).toBe('edit')
@@ -213,7 +155,6 @@ test('getStateSnapshot returns complete state object', () => {
 	expect(snapshot.isEditing).toBe(true)
 	expect(snapshot.currentEditingId).toBe('snapshot-test')
 	expect(snapshot.pendingChanges).toBeInstanceOf(Map)
-	expect(snapshot.ai).toBeDefined()
 	expect(snapshot.blockEditor).toBeDefined()
 })
 
@@ -222,7 +163,6 @@ test('resetAllState resets everything to initial values', () => {
 	setEnabled(true)
 	setEditing(true)
 	setCurrentEditingId('reset-test')
-	setAIProcessing(true)
 	setBlockEditorOpen(true)
 
 	resetAllState()
@@ -230,7 +170,6 @@ test('resetAllState resets everything to initial values', () => {
 	expect(isEnabled.value).toBe(false)
 	expect(isEditing.value).toBe(false)
 	expect(currentEditingId.value).toBeNull()
-	expect(aiState.value.isProcessing).toBe(false)
 	expect(blockEditorState.value.isOpen).toBe(false)
 })
 
@@ -241,31 +180,6 @@ test('computed signals update automatically', () => {
 
 	// Note: We can't easily test with real PendingChange objects here
 	// since they require HTMLElement which isn't available in this test environment
-})
-
-test('updateChatMessage updates specific message', () => {
-	const message1 = {
-		id: 'msg-1',
-		role: 'user' as const,
-		content: 'Hello',
-		timestamp: Date.now(),
-	}
-	const message2 = {
-		id: 'msg-2',
-		role: 'assistant' as const,
-		content: 'Hi there',
-		timestamp: Date.now(),
-	}
-
-	addChatMessage(message1)
-	addChatMessage(message2)
-
-	expect(aiState.value.chatMessages.length).toBe(2)
-
-	updateChatMessage('msg-2', 'Updated content')
-
-	expect(aiState.value.chatMessages[0]?.content).toBe('Hello')
-	expect(aiState.value.chatMessages[1]?.content).toBe('Updated content')
 })
 
 test('showToast returns unique IDs', () => {

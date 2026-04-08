@@ -240,35 +240,6 @@ export interface SaveBatchResponse {
 	errors?: Array<{ cmsId: string; error: string }>
 }
 
-export interface ChatMessage {
-	id: string
-	role: 'user' | 'assistant'
-	content: string
-	elementId?: string
-	timestamp: number
-}
-
-export type AIStatusType =
-	| 'thinking'
-	| 'coding'
-	| 'building'
-	| 'deploying'
-	| 'complete'
-	| null
-
-export interface AIState {
-	isPromptVisible: boolean
-	isProcessing: boolean
-	targetElementId: string | null
-	streamingContent: string | null
-	error: string | null
-	isChatOpen: boolean
-	chatMessages: ChatMessage[]
-	chatContextElementId: string | null
-	currentStatus: AIStatusType
-	statusMessage: string | null
-}
-
 export interface BlockEditorState {
 	isOpen: boolean
 	currentComponentId: string | null
@@ -322,7 +293,6 @@ export interface EditorState {
 	pendingComponentChanges: Map<string, ComponentInstance>
 	pendingInserts: Map<string, PendingComponentInsert>
 	manifest: CmsManifest
-	ai: AIState
 	blockEditor: BlockEditorState
 }
 
@@ -479,42 +449,6 @@ export interface MediaUploadResponse {
 	annotation?: string
 	id?: string
 	error?: string
-}
-
-// ============================================================================
-// Deployment Status Types
-// ============================================================================
-
-export type DeploymentStatusType =
-	| 'pending'
-	| 'queued'
-	| 'running'
-	| 'completed'
-	| 'failed'
-	| 'cancelled'
-
-export interface DeploymentStatusResponse {
-	currentDeployment: {
-		id: string
-		status: DeploymentStatusType
-		createdAt: string
-		startedAt: string | null
-		commitMessage: string | null
-	} | null
-	lastSuccessfulDeployment: {
-		completedAt: string
-		publishedUrl: string
-	} | null
-	pendingCount: number
-	/** When false, deployment is not available (e.g. local dev) and polling should be skipped */
-	deploymentEnabled?: boolean
-}
-
-export interface DeploymentState {
-	status: DeploymentStatusType | null
-	lastDeployedAt: string | null
-	isPolling: boolean
-	error: string | null
 }
 
 // ============================================================================

@@ -29,9 +29,8 @@ export function useTooltipState(_options?: UseTooltipStateOptions) {
 	 */
 	const showTooltipForElement = useCallback(() => {
 		const currentEditingId = signals.currentEditingId.value
-		const isProcessing = signals.isAIProcessing.value
 
-		if (!currentEditingId || isProcessing) {
+		if (!currentEditingId) {
 			setTooltipState({ elementId: null, rect: null, element: null })
 			return
 		}

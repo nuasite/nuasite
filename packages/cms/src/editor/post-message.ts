@@ -109,8 +109,6 @@ export function buildPageNavigatedMessage(manifest: CmsManifest, pathname: strin
 export function buildEditorState(opts: {
 	isEditing: boolean
 	dirtyCount: CmsEditorState['dirtyCount']
-	deploymentStatus: CmsEditorState['deployment']['status']
-	lastDeployedAt: string | null
 	canUndo: boolean
 	canRedo: boolean
 }): CmsEditorState {
@@ -118,10 +116,6 @@ export function buildEditorState(opts: {
 		isEditing: opts.isEditing,
 		hasChanges: opts.dirtyCount.total > 0,
 		dirtyCount: opts.dirtyCount,
-		deployment: {
-			status: opts.deploymentStatus,
-			lastDeployedAt: opts.lastDeployedAt,
-		},
 		canUndo: opts.canUndo,
 		canRedo: opts.canRedo,
 	}

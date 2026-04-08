@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import {
 	currentMarkdownPage,
-	deploymentState,
 	isMarkdownPreview,
 	markdownEditorState,
 	resetAllState,
 	resetMarkdownEditorState,
 	setMarkdownEditorOpen,
 	setMarkdownPage,
-	updateDeploymentState,
 	updateMarkdownContent,
 	updateMarkdownFrontmatter,
 } from '../../../src/editor/signals'
@@ -107,33 +105,16 @@ describe('markdown editor save state transitions', () => {
 		expect(currentMarkdownPage.value).toBeNull()
 	})
 
-	test('save flow: editor closes while deployment state activates', () => {
+	test('save flow: editor closes after save', () => {
 		setMarkdownPage(makePage())
 		setMarkdownEditorOpen(true)
 
-		// Simulate save success: close editor + set deployment pending
+		// Simulate save success: close editor
 		resetMarkdownEditorState()
-		updateDeploymentState({ status: 'pending', isPolling: true, error: null })
 
 		// Editor should be closed
 		expect(markdownEditorState.value.isOpen).toBe(false)
 		expect(currentMarkdownPage.value).toBeNull()
-
-		// Deployment should be active (toolbar shows this)
-		expect(deploymentState.value.status).toBe('pending')
-		expect(deploymentState.value.isPolling).toBe(true)
-	})
-
-	test('deployment status progresses from pending to completed', () => {
-		updateDeploymentState({ status: 'pending', isPolling: true, error: null })
-		expect(deploymentState.value.status).toBe('pending')
-
-		updateDeploymentState({ status: 'running' })
-		expect(deploymentState.value.status).toBe('running')
-
-		updateDeploymentState({ status: 'completed', isPolling: false, lastDeployedAt: '2025-01-01T00:00:00Z' })
-		expect(deploymentState.value.status).toBe('completed')
-		expect(deploymentState.value.lastDeployedAt).toBe('2025-01-01T00:00:00Z')
 	})
 
 	test('isMarkdownPreview is cleared on editor reset', () => {

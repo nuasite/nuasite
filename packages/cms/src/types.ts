@@ -567,10 +567,6 @@ export interface CmsEditorState {
 		seo: number
 		total: number
 	}
-	deployment: {
-		status: 'pending' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | null
-		lastDeployedAt: string | null
-	}
 	canUndo: boolean
 	canRedo: boolean
 }

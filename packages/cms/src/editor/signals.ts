@@ -4,11 +4,8 @@ import { fetchManifest, getMarkdownContent } from './api'
 import type { ToastMessage, ToastType } from './components/toast/types'
 import { getConfig } from './config'
 import type {
-	AIState,
-	AIStatusType,
 	AttributeEditorState,
 	BlockEditorState,
-	ChatMessage,
 	CmsConfig,
 	CmsManifest,
 	CmsSettings,
@@ -20,8 +17,6 @@ import type {
 	ConfirmDialogState,
 	CreatePageState,
 	DeletePageState,
-	DeploymentState,
-	DeploymentStatusType,
 	EditorState,
 	FieldDefinition,
 	MarkdownEditorState,
@@ -103,21 +98,6 @@ function createDirtyTracking<T extends { isDirty: boolean }>(
 }
 
 // Initial state factories
-function createInitialAIState(): AIState {
-	return {
-		isPromptVisible: false,
-		isProcessing: false,
-		targetElementId: null,
-		streamingContent: null,
-		error: null,
-		isChatOpen: false,
-		chatMessages: [],
-		chatContextElementId: null,
-		currentStatus: null,
-		statusMessage: null,
-	}
-}
-
 function createInitialBlockEditorState(): BlockEditorState {
 	return {
 		isOpen: false,
@@ -177,15 +157,6 @@ function createInitialCollectionsBrowserState(): CollectionsBrowserState {
 	return {
 		isOpen: false,
 		selectedCollection: null,
-	}
-}
-
-function createInitialDeploymentState(): DeploymentState {
-	return {
-		status: null,
-		lastDeployedAt: null,
-		isPolling: false,
-		error: null,
 	}
 }
 
@@ -295,22 +266,6 @@ const _pendingInsertsHelpers = createMapHelpers(pendingInserts)
 const _pendingImageChangesHelpers = createMapHelpers(pendingImageChanges)
 const _pendingColorChangesHelpers = createMapHelpers(pendingColorChanges)
 const _pendingBgImageChangesHelpers = createMapHelpers(pendingBgImageChanges)
-
-// ============================================================================
-// AI State Signals
-// ============================================================================
-
-export const aiState = signal<AIState>(createInitialAIState())
-
-// Convenience computed signals for AI state
-export const isAIProcessing = computed(() => aiState.value.isProcessing)
-export const isChatOpen = computed(() => aiState.value.isChatOpen)
-export const chatMessages = computed(() => aiState.value.chatMessages)
-export const chatContextElementId = computed(
-	() => aiState.value.chatContextElementId,
-)
-export const currentStatus = computed(() => aiState.value.currentStatus)
-export const statusMessage = computed(() => aiState.value.statusMessage)
 
 // ============================================================================
 // Block Editor State Signals
@@ -449,19 +404,6 @@ export const collectionsBrowserState = signal<CollectionsBrowserState>(
 // Convenience computed signals for collections browser
 export const isCollectionsBrowserOpen = computed(() => collectionsBrowserState.value.isOpen)
 export const selectedBrowserCollection = computed(() => collectionsBrowserState.value.selectedCollection)
-
-// ============================================================================
-// Deployment State Signals
-// ============================================================================
-
-export const deploymentState = signal<DeploymentState>(
-	createInitialDeploymentState(),
-)
-
-// Convenience computed signals for deployment
-export const deploymentStatus = computed(() => deploymentState.value.status)
-export const isDeploymentPolling = computed(() => deploymentState.value.isPolling)
-export const lastDeployedAt = computed(() => deploymentState.value.lastDeployedAt)
 
 // ============================================================================
 // Redirect Countdown State
@@ -770,83 +712,6 @@ export const updatePendingAttributeChange = _pendingAttributeChangesHelpers.upda
 export const deletePendingAttributeChange = _pendingAttributeChangesHelpers.delete
 export const clearPendingAttributeChanges = _pendingAttributeChangesHelpers.clear
 export const getPendingAttributeChange = _pendingAttributeChangesHelpers.get
-
-// ============================================================================
-// AI State Mutations
-// ============================================================================
-
-export function setAIPromptVisible(visible: boolean): void {
-	aiState.value = { ...aiState.value, isPromptVisible: visible }
-}
-
-export function setAIProcessing(processing: boolean): void {
-	aiState.value = { ...aiState.value, isProcessing: processing }
-}
-
-export function setAIStatus(status: AIStatusType, message?: string): void {
-	aiState.value = {
-		...aiState.value,
-		currentStatus: status,
-		statusMessage: message ?? null,
-	}
-}
-
-export function clearAIStatus(): void {
-	aiState.value = {
-		...aiState.value,
-		currentStatus: null,
-		statusMessage: null,
-	}
-}
-
-export function setAITargetElement(elementId: string | null): void {
-	aiState.value = { ...aiState.value, targetElementId: elementId }
-}
-
-export function setAIStreamingContent(content: string | null): void {
-	aiState.value = { ...aiState.value, streamingContent: content }
-}
-
-export function setAIError(error: string | null): void {
-	aiState.value = { ...aiState.value, error }
-}
-
-export function resetAIState(): void {
-	aiState.value = createInitialAIState()
-}
-
-export function setAIChatOpen(open: boolean): void {
-	aiState.value = { ...aiState.value, isChatOpen: open }
-}
-
-export function addChatMessage(message: ChatMessage): void {
-	aiState.value = {
-		...aiState.value,
-		chatMessages: [...aiState.value.chatMessages, message],
-	}
-}
-
-export function setChatMessages(messages: ChatMessage[]): void {
-	aiState.value = {
-		...aiState.value,
-		chatMessages: messages,
-	}
-}
-
-export function updateChatMessage(messageId: string, content: string): void {
-	aiState.value = {
-		...aiState.value,
-		chatMessages: aiState.value.chatMessages.map((msg) => msg.id === messageId ? { ...msg, content } : msg),
-	}
-}
-
-export function setChatContextElement(elementId: string | null): void {
-	aiState.value = { ...aiState.value, chatContextElementId: elementId }
-}
-
-export function clearChatMessages(): void {
-	aiState.value = { ...aiState.value, chatMessages: [] }
-}
 
 // ============================================================================
 // Block Editor State Mutations
@@ -1250,34 +1115,6 @@ export async function openMarkdownEditorForEntry(
 }
 
 // ============================================================================
-// Deployment State Mutations
-// ============================================================================
-
-export function setDeploymentStatus(status: DeploymentStatusType | null): void {
-	deploymentState.value = { ...deploymentState.value, status }
-}
-
-export function setDeploymentPolling(isPolling: boolean): void {
-	deploymentState.value = { ...deploymentState.value, isPolling }
-}
-
-export function setLastDeployedAt(timestamp: string | null): void {
-	deploymentState.value = { ...deploymentState.value, lastDeployedAt: timestamp }
-}
-
-export function setDeploymentError(error: string | null): void {
-	deploymentState.value = { ...deploymentState.value, error }
-}
-
-export function updateDeploymentState(update: Partial<DeploymentState>): void {
-	deploymentState.value = { ...deploymentState.value, ...update }
-}
-
-export function resetDeploymentState(): void {
-	deploymentState.value = createInitialDeploymentState()
-}
-
-// ============================================================================
 // Color Editor State Mutations
 // ============================================================================
 
@@ -1530,7 +1367,6 @@ export function getStateSnapshot(): EditorState {
 		pendingComponentChanges: pendingComponentChanges.value,
 		pendingInserts: pendingInserts.value,
 		manifest: manifest.value,
-		ai: aiState.value,
 		blockEditor: blockEditorState.value,
 	}
 }
@@ -1558,7 +1394,6 @@ export function resetAllState(): void {
 		pendingComponentChanges.value = new Map()
 		pendingInserts.value = new Map()
 		manifest.value = { entries: {}, components: {}, componentDefinitions: {} }
-		aiState.value = createInitialAIState()
 		blockEditorState.value = createInitialBlockEditorState()
 		markdownEditorState.value = createInitialMarkdownEditorState()
 		mediaLibraryState.value = createInitialMediaLibraryState()
@@ -1566,7 +1401,6 @@ export function resetAllState(): void {
 		deletePageState.value = createInitialDeletePageState()
 		redirectsManagerState.value = createInitialRedirectsManagerState()
 		collectionsBrowserState.value = createInitialCollectionsBrowserState()
-		deploymentState.value = createInitialDeploymentState()
 		colorEditorState.value = createInitialColorEditorState()
 		confirmDialogState.value = createInitialConfirmDialogState()
 		seoEditorState.value = createInitialSeoEditorState()

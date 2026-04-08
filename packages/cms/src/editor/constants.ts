@@ -67,8 +67,6 @@ export const LAYOUT = {
 	BLOCK_EDITOR_WIDTH: 400,
 	/** Block editor approximate height for positioning */
 	BLOCK_EDITOR_HEIGHT: 500,
-	/** AI chat panel width */
-	AI_CHAT_WIDTH: 400,
 } as const
 
 /**
@@ -77,8 +75,6 @@ export const LAYOUT = {
 export const API = {
 	/** Default request timeout in milliseconds */
 	REQUEST_TIMEOUT_MS: 30000,
-	/** AI streaming request timeout in milliseconds */
-	AI_STREAM_TIMEOUT_MS: 120000,
 	/** Maximum retry attempts for failed requests */
 	MAX_RETRIES: 3,
 	/** Base delay for exponential backoff (ms) */

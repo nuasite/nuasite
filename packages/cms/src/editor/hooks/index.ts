@@ -6,9 +6,6 @@ export { isElementInCmsUI, usePositionTracking } from './utils'
 export { useTooltipState } from './useTooltipState'
 export type { TooltipState, UseTooltipStateOptions } from './useTooltipState'
 
-export { useAIHandlers } from './useAIHandlers'
-export type { AIHandlersOptions } from './useAIHandlers'
-
 export { useBlockEditorHandlers } from './useBlockEditorHandlers'
 export type { BlockEditorHandlersOptions } from './useBlockEditorHandlers'
 

@@ -1,4 +1,4 @@
-import { fetchManifest, getDeploymentStatus, getMarkdownContent, saveBatchChanges } from './api'
+import { fetchManifest, getMarkdownContent, saveBatchChanges } from './api'
 import { CSS, TIMING } from './constants'
 import {
 	cleanupHighlightSystem,
@@ -33,7 +33,7 @@ import {
 	saveImageEditsToStorage,
 } from './storage'
 import type { Attribute } from './types'
-import type { AttributeChangePayload, ChangePayload, CmsConfig, DeploymentStatusResponse, ManifestEntry, SavedAttributeEdit } from './types'
+import type { AttributeChangePayload, ChangePayload, CmsConfig, ManifestEntry, SavedAttributeEdit } from './types'
 
 // CSS attribute for markdown content elements
 const MARKDOWN_ATTRIBUTE = 'data-cms-markdown'
@@ -261,10 +261,6 @@ export async function startEditMode(
 					const targetId = innermostCms.getAttribute('data-cms-id')
 					innermostCms.focus()
 					signals.setCurrentEditingId(targetId)
-					// Update chat context if chat is open
-					if (signals.isChatOpen.value && targetId) {
-						signals.setChatContextElement(targetId)
-					}
 					logDebug(config.debug, 'Click - focusing innermost CMS element:', targetId)
 					onStateChange?.()
 				}
@@ -277,10 +273,6 @@ export async function startEditMode(
 			(e) => {
 				if (e.target === el) {
 					signals.setCurrentEditingId(cmsId)
-					// Update chat context if chat is open
-					if (signals.isChatOpen.value && cmsId) {
-						signals.setChatContextElement(cmsId)
-					}
 					logDebug(config.debug, 'Focus on', cmsId)
 					onStateChange?.()
 				}
@@ -884,9 +876,6 @@ export async function saveAllChanges(
 			return { success: false, updated: result.updated, errors: result.errors }
 		}
 
-		// Start polling for deployment status after successful save
-		startDeploymentPolling(config)
-
 		onStateChange?.()
 		return { success: true, updated: result.updated }
 	} catch (err) {
@@ -1381,185 +1370,6 @@ export function handleColorChange(
 
 	saveColorEditsToStorage(signals.pendingColorChanges.value)
 	onStateChange?.()
-}
-
-// ============================================================================
-// Deployment Status Polling
-// ============================================================================
-
-const DEPLOYMENT_POLL_INTERVAL_MS = 3000
-const DEPLOYMENT_SUCCESS_HIDE_DELAY_MS = 5000
-const DEPLOYMENT_INITIAL_DELAY_MS = 2000
-const DEPLOYMENT_MAX_WAIT_ATTEMPTS = 10 // Keep polling for up to 30 seconds waiting for deployment to start
-
-let deploymentPollTimer: ReturnType<typeof setInterval> | null = null
-let deploymentHideTimer: ReturnType<typeof setTimeout> | null = null
-let deploymentWaitAttempts = 0
-let deploymentStartTimestamp: string | null = null
-let deploymentCallback: ((status: 'completed' | 'failed' | 'timeout') => void) | null = null
-
-export interface DeploymentPollingOptions {
-	/** Called when deployment completes, fails, or times out */
-	onComplete?: (status: 'completed' | 'failed' | 'timeout') => void
-}
-
-/**
- * Start polling for deployment status after a save operation.
- * Polls the API every 3 seconds until deployment completes or fails.
- * Waits for deployment to appear for up to 30 seconds before giving up.
- * Skips polling entirely when deployment is not available (e.g. local dev).
- */
-export async function startDeploymentPolling(config: CmsConfig, options?: DeploymentPollingOptions): Promise<void> {
-	// Clear any existing timers
-	stopDeploymentPolling()
-
-	// Do a preflight check to see if deployment is available
-	try {
-		const preflight = await getDeploymentStatus(config.apiBase)
-		if (preflight.deploymentEnabled === false) {
-			// Deployment not available (e.g. local dev) — skip polling entirely
-			return
-		}
-	} catch {
-		// If we can't even reach the endpoint, skip polling
-		return
-	}
-
-	// Reset wait attempts counter and store the timestamp when we started
-	deploymentWaitAttempts = 0
-	deploymentStartTimestamp = new Date().toISOString()
-	deploymentCallback = options?.onComplete ?? null
-
-	// Set initial status to indicate deployment started
-	signals.updateDeploymentState({
-		status: 'pending',
-		isPolling: true,
-		error: null,
-	})
-
-	const poll = async () => {
-		try {
-			const status: DeploymentStatusResponse = await getDeploymentStatus(config.apiBase)
-
-			if (status.currentDeployment) {
-				// Found an active deployment - reset wait counter
-				deploymentWaitAttempts = 0
-
-				signals.updateDeploymentState({
-					status: status.currentDeployment.status,
-				})
-
-				// Check if deployment is still active
-				const isActive = ['pending', 'queued', 'running'].includes(status.currentDeployment.status)
-
-				if (!isActive) {
-					// Deployment finished
-					const cb = deploymentCallback
-					stopDeploymentPolling()
-
-					if (status.currentDeployment.status === 'completed') {
-						// Update last deployed timestamp
-						if (status.lastSuccessfulDeployment) {
-							signals.setLastDeployedAt(status.lastSuccessfulDeployment.completedAt)
-						}
-
-						// Auto-hide after 5 seconds for successful deployments
-						deploymentHideTimer = setTimeout(() => {
-							signals.resetDeploymentState()
-						}, DEPLOYMENT_SUCCESS_HIDE_DELAY_MS)
-
-						cb?.('completed')
-					} else {
-						// For failed deployments, keep showing until user dismisses
-						cb?.('failed')
-					}
-				}
-			} else {
-				// No active deployment found
-				deploymentWaitAttempts++
-
-				// Check if we have a recent successful deployment (completed after we started polling)
-				if (status.lastSuccessfulDeployment && deploymentStartTimestamp) {
-					const lastDeployTime = new Date(status.lastSuccessfulDeployment.completedAt).getTime()
-					const startTime = new Date(deploymentStartTimestamp).getTime()
-
-					if (lastDeployTime > startTime) {
-						// Deployment completed after we started - show success
-						signals.updateDeploymentState({
-							status: 'completed',
-							lastDeployedAt: status.lastSuccessfulDeployment.completedAt,
-							isPolling: false,
-						})
-
-						// Auto-hide after 5 seconds
-						deploymentHideTimer = setTimeout(() => {
-							signals.resetDeploymentState()
-						}, DEPLOYMENT_SUCCESS_HIDE_DELAY_MS)
-
-						const cb = deploymentCallback
-						stopDeploymentPolling()
-						cb?.('completed')
-						return
-					}
-				}
-
-				// Keep waiting if we haven't exceeded max attempts
-				if (deploymentWaitAttempts >= DEPLOYMENT_MAX_WAIT_ATTEMPTS) {
-					// Give up waiting - deployment may have failed to start
-					console.warn('[CMS] No deployment found after waiting, giving up')
-					const cb = deploymentCallback
-					signals.resetDeploymentState()
-					stopDeploymentPolling()
-					cb?.('timeout')
-				}
-				// Otherwise keep polling with "pending" status
-			}
-		} catch (error) {
-			console.error('[CMS] Failed to fetch deployment status:', error)
-			signals.updateDeploymentState({
-				status: 'failed',
-				error: error instanceof Error ? error.message : 'Unknown error',
-				isPolling: false,
-			})
-			const cb = deploymentCallback
-			stopDeploymentPolling()
-			cb?.('failed')
-		}
-	}
-
-	// Delay initial poll to allow deployment to be registered
-	setTimeout(() => {
-		poll()
-		// Then poll every 3 seconds
-		deploymentPollTimer = setInterval(poll, DEPLOYMENT_POLL_INTERVAL_MS)
-	}, DEPLOYMENT_INITIAL_DELAY_MS)
-}
-
-/**
- * Stop polling for deployment status.
- */
-export function stopDeploymentPolling(): void {
-	if (deploymentPollTimer) {
-		clearInterval(deploymentPollTimer)
-		deploymentPollTimer = null
-	}
-	deploymentWaitAttempts = 0
-	deploymentStartTimestamp = null
-	deploymentCallback = null
-	signals.setDeploymentPolling(false)
-}
-
-/**
- * Dismiss the deployment status indicator.
- * Used when user clicks on a failed deployment status.
- */
-export function dismissDeploymentStatus(): void {
-	if (deploymentHideTimer) {
-		clearTimeout(deploymentHideTimer)
-		deploymentHideTimer = null
-	}
-	stopDeploymentPolling()
-	signals.resetDeploymentState()
 }
 
 // ============================================================================

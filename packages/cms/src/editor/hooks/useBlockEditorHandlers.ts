@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'preact/hooks'
 import { logDebug } from '../dom'
-import { startDeploymentPolling } from '../editor'
 import { getComponentInstances } from '../manifest'
 import * as signals from '../signals'
 import type { CmsConfig, CmsManifest, ComponentInstance, InsertPosition } from '../types'
@@ -179,8 +178,6 @@ export function useBlockEditorHandlers({
 					showToast(`${componentName} inserted ${position} component`, 'success')
 				}
 
-				// Trigger deployment polling after successful insert
-				startDeploymentPolling(config)
 			} catch (error) {
 				console.error('[CMS] Failed to insert component:', error)
 
@@ -238,10 +235,7 @@ export function useBlockEditorHandlers({
 
 				showToast(arrayMode ? 'Item removed' : 'Component removed', 'success')
 
-				// Trigger deployment polling after successful remove
-				startDeploymentPolling(config)
-
-				// Visually collapse and hide the component until page refreshes after deploy
+				// Visually collapse and hide the component until HMR refreshes the page
 				if (componentEl) {
 					collapseElement(componentEl)
 				}

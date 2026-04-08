@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { slugify } from '../../shared'
 import { updateMarkdownPage } from '../api'
 import { STORAGE_KEYS, Z_INDEX } from '../constants'
-import { startDeploymentPolling } from '../editor'
 import { createMarkdownPage } from '../markdown-api'
 import {
 	config,
@@ -72,15 +71,6 @@ export function MarkdownEditorOverlay() {
 		}
 	}, [isCreateMode, slugManuallyEdited, page?.frontmatter.title, page?.frontmatter.name])
 
-	const handleDeploymentComplete = useCallback(
-		(status: 'completed' | 'failed' | 'timeout') => {
-			if (status === 'failed') {
-				showToast('Deployment failed', 'error')
-			}
-		},
-		[],
-	)
-
 	/** Find the [data-cms-markdown] wrapper element on the actual page (not CMS UI). */
 	const findMarkdownWrapper = useCallback((): HTMLElement | null => {
 		const SKIP_TAGS = new Set(['BODY', 'HTML', 'BUTTON', 'SPAN', 'A'])
@@ -133,14 +123,10 @@ export function MarkdownEditorOverlay() {
 					isMarkdownPreview.value = false
 					setIsSaving(false)
 
-					showToast('Content saved, deploying...', 'success')
+					showToast('Content saved', 'success')
 					// Clear pending entry navigation so editor doesn't auto-open after save
 					sessionStorage.removeItem(STORAGE_KEYS.PENDING_ENTRY_NAVIGATION)
-					// Close the editor immediately — the toolbar will show deploying state
 					resetMarkdownEditorState()
-					startDeploymentPolling(config.value, {
-						onComplete: handleDeploymentComplete,
-					})
 				} else {
 					showToast(result.error || 'Failed to save markdown', 'error')
 					setIsSaving(false)
@@ -151,7 +137,7 @@ export function MarkdownEditorOverlay() {
 				setIsSaving(false)
 			}
 		},
-		[isSaving, isPreview, handleDeploymentComplete, findMarkdownWrapper],
+		[isSaving, isPreview, findMarkdownWrapper],
 	)
 
 	const handleCreate = useCallback(async () => {
@@ -207,16 +193,11 @@ export function MarkdownEditorOverlay() {
 					}
 				}
 
-				showToast('Page created, deploying...', 'success')
+				showToast('Page created', 'success')
 				resetMarkdownEditorState()
-				startDeploymentPolling(config.value, {
-					onComplete: (status) => {
-						handleDeploymentComplete(status)
-						if (status === 'completed' && redirectUrl) {
-							startRedirectCountdown(redirectUrl, title.trim())
-						}
-					},
-				})
+				if (redirectUrl) {
+					startRedirectCountdown(redirectUrl, title.trim())
+				}
 			} else {
 				showToast(result.error || 'Failed to create page', 'error')
 			}
@@ -226,7 +207,7 @@ export function MarkdownEditorOverlay() {
 		} finally {
 			setIsSaving(false)
 		}
-	}, [isSaving, handleDeploymentComplete])
+	}, [isSaving])
 
 	const handlePreview = useCallback(() => {
 		const activeId = markdownEditorState.value.activeElementId

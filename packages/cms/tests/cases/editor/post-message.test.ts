@@ -265,8 +265,6 @@ test('buildEditorState with zero dirty counts', () => {
 	const state = buildEditorState({
 		isEditing: false,
 		dirtyCount: { text: 0, image: 0, color: 0, bgImage: 0, attribute: 0, seo: 0, total: 0 },
-		deploymentStatus: null,
-		lastDeployedAt: null,
 		canUndo: false,
 		canRedo: false,
 	})
@@ -274,8 +272,6 @@ test('buildEditorState with zero dirty counts', () => {
 	expect(state.isEditing).toBe(false)
 	expect(state.hasChanges).toBe(false)
 	expect(state.dirtyCount.total).toBe(0)
-	expect(state.deployment.status).toBeNull()
-	expect(state.deployment.lastDeployedAt).toBeNull()
 	expect(state.canUndo).toBe(false)
 	expect(state.canRedo).toBe(false)
 })
@@ -284,8 +280,6 @@ test('buildEditorState with active editing and dirty changes', () => {
 	const state = buildEditorState({
 		isEditing: true,
 		dirtyCount: { text: 3, image: 1, color: 2, bgImage: 0, attribute: 1, seo: 0, total: 7 },
-		deploymentStatus: 'running',
-		lastDeployedAt: '2024-01-01T12:00:00Z',
 		canUndo: true,
 		canRedo: false,
 	})
@@ -299,8 +293,6 @@ test('buildEditorState with active editing and dirty changes', () => {
 	expect(state.dirtyCount.attribute).toBe(1)
 	expect(state.dirtyCount.seo).toBe(0)
 	expect(state.dirtyCount.total).toBe(7)
-	expect(state.deployment.status).toBe('running')
-	expect(state.deployment.lastDeployedAt).toBe('2024-01-01T12:00:00Z')
 	expect(state.canUndo).toBe(true)
 	expect(state.canRedo).toBe(false)
 })
@@ -309,8 +301,6 @@ test('buildEditorState hasChanges is derived from total', () => {
 	const withChanges = buildEditorState({
 		isEditing: true,
 		dirtyCount: { text: 0, image: 0, color: 0, bgImage: 0, attribute: 0, seo: 1, total: 1 },
-		deploymentStatus: null,
-		lastDeployedAt: null,
 		canUndo: false,
 		canRedo: false,
 	})
@@ -319,8 +309,6 @@ test('buildEditorState hasChanges is derived from total', () => {
 	const noChanges = buildEditorState({
 		isEditing: true,
 		dirtyCount: { text: 0, image: 0, color: 0, bgImage: 0, attribute: 0, seo: 0, total: 0 },
-		deploymentStatus: null,
-		lastDeployedAt: null,
 		canUndo: false,
 		canRedo: false,
 	})
@@ -333,8 +321,6 @@ test('buildStateChangedMessage wraps state with correct type', () => {
 	const state = buildEditorState({
 		isEditing: true,
 		dirtyCount: { text: 1, image: 0, color: 0, bgImage: 0, attribute: 0, seo: 0, total: 1 },
-		deploymentStatus: 'completed',
-		lastDeployedAt: '2024-06-15T10:00:00Z',
 		canUndo: true,
 		canRedo: true,
 	})
@@ -344,22 +330,4 @@ test('buildStateChangedMessage wraps state with correct type', () => {
 	expect(msg.type).toBe('cms-state-changed')
 	expect(msg.state).toBe(state) // same reference
 	expect(msg.state.isEditing).toBe(true)
-	expect(msg.state.deployment.status).toBe('completed')
-})
-
-// --- Deployment status variants ---
-
-test('buildEditorState handles all deployment status values', () => {
-	const statuses = ['pending', 'queued', 'running', 'completed', 'failed', 'cancelled', null] as const
-	for (const status of statuses) {
-		const state = buildEditorState({
-			isEditing: false,
-			dirtyCount: { text: 0, image: 0, color: 0, bgImage: 0, attribute: 0, seo: 0, total: 0 },
-			deploymentStatus: status,
-			lastDeployedAt: null,
-			canUndo: false,
-			canRedo: false,
-		})
-		expect(state.deployment.status).toBe(status)
-	}
 })

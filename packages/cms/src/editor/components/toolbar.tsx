@@ -13,7 +13,6 @@ export interface ToolbarCallbacks {
 	onDiscard: () => void
 	onSelectElement?: () => void
 	onMediaLibrary?: () => void
-	onDismissDeployment?: () => void
 	onNavigateChange?: () => void
 	onEditContent?: () => void
 	onToggleHighlights?: () => void
@@ -39,80 +38,11 @@ const GridIcon = () => (
 	</svg>
 )
 
-const DeploymentStatusIndicator = ({ onDismiss }: { onDismiss?: () => void }) => {
-	const deploymentStatus = signals.deploymentStatus.value
-	const lastDeployedAt = signals.lastDeployedAt.value
-
-	if (!deploymentStatus) {
-		return null
-	}
-
-	const isActive = deploymentStatus === 'pending' || deploymentStatus === 'queued' || deploymentStatus === 'running'
-	const isCompleted = deploymentStatus === 'completed'
-	const isFailed = deploymentStatus === 'failed'
-
-	if (!isActive && !isCompleted && !isFailed) {
-		return null
-	}
-
-	const formatTimeAgo = (dateStr: string) => {
-		const date = new Date(dateStr)
-		const now = new Date()
-		const diffMs = now.getTime() - date.getTime()
-		const diffSec = Math.floor(diffMs / 1000)
-		const diffMin = Math.floor(diffSec / 60)
-
-		if (diffMin < 1) return 'just now'
-		if (diffMin === 1) return '1m ago'
-		if (diffMin < 60) return `${diffMin}m ago`
-		const diffHour = Math.floor(diffMin / 60)
-		if (diffHour === 1) return '1h ago'
-		return `${diffHour}h ago`
-	}
-
-	return (
-		<div
-			class={cn(
-				'flex items-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-5 sm:py-2.5 text-sm font-medium rounded-cms-pill transition-all',
-				isActive && 'text-white/80',
-				isCompleted && 'bg-cms-primary text-cms-primary-text',
-				isFailed && 'bg-cms-error/20 text-cms-error cursor-pointer hover:bg-cms-error/30',
-			)}
-			onClick={isFailed ? onDismiss : undefined}
-			title={isFailed ? 'Click to dismiss' : undefined}
-		>
-			{isActive && (
-				<>
-					<span class="inline-block w-3.5 h-3.5 border-2 border-white/80 border-t-transparent rounded-full animate-spin" />
-					<span class="hidden sm:inline">Deploying</span>
-				</>
-			)}
-			{isCompleted && (
-				<>
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
-					</svg>
-					<span class="hidden sm:inline">Live{lastDeployedAt ? ` ${formatTimeAgo(lastDeployedAt)}` : ''}</span>
-				</>
-			)}
-			{isFailed && (
-				<>
-					<svg class="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-					<span class="hidden sm:inline">Failed</span>
-				</>
-			)}
-		</div>
-	)
-}
-
 export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const isEditing = signals.isEditing.value
 	const showingOriginal = signals.showingOriginal.value
 	const dirtyCount = signals.totalDirtyCount.value
 	const isSaving = signals.isSaving.value
-	const deploymentStatus = signals.deploymentStatus.value
 	const showEditableHighlights = signals.showEditableHighlights.value
 	const isPreviewingMarkdown = signals.isMarkdownPreview.value
 	const currentPageCollection = signals.currentPageCollection.value
@@ -122,8 +52,6 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const versionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	if (isPreviewingMarkdown) return null
-
-	const showDeploymentStatus = deploymentStatus !== null
 
 	const stopPropagation = (e: Event) => e.stopPropagation()
 
@@ -298,9 +226,6 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 
 				{/* Primary actions group */}
 				<div class="flex items-center gap-2 sm:gap-1.5">
-					{/* Deployment Status */}
-					{showDeploymentStatus && <DeploymentStatusIndicator onDismiss={callbacks.onDismissDeployment} />}
-
 					{/* Saving indicator */}
 					{isSaving && !showingOriginal && (
 						<div class="flex items-center gap-1.5 px-3 py-2 sm:px-5 sm:py-2.5 text-sm font-medium text-white/80">

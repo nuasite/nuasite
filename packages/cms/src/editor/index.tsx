@@ -29,7 +29,6 @@ import { Z_INDEX } from './constants'
 import { disableAllInteractiveElements, enableAllInteractiveElements, logDebug } from './dom'
 import {
 	discardAllChanges,
-	dismissDeploymentStatus,
 	handleColorChange,
 	saveAllChanges,
 	startEditMode,
@@ -244,8 +243,6 @@ const CmsUI = () => {
 				seo: signals.dirtySeoChangesCount.value,
 				total: signals.totalDirtyCount.value,
 			},
-			deploymentStatus: signals.deploymentStatus.value,
-			lastDeployedAt: signals.lastDeployedAt.value,
 			canUndo: canUndo.value,
 			canRedo: canRedo.value,
 		})
@@ -335,10 +332,6 @@ const CmsUI = () => {
 
 	const handleMediaLibrary = useCallback(() => {
 		setMediaLibraryOpen(true)
-	}, [])
-
-	const handleDismissDeployment = useCallback(() => {
-		dismissDeploymentStatus()
 	}, [])
 
 	const handleEditContent = useCallback(async () => {
@@ -474,7 +467,6 @@ const CmsUI = () => {
 
 	// Get reactive values from signals
 	const isEditing = signals.isEditing.value
-	const isAIProcessing = signals.isAIProcessing.value
 	const blockEditorState = signals.blockEditorState.value
 	const colorEditorState = signals.colorEditorState.value
 	const manifest = signals.manifest.value
@@ -556,7 +548,6 @@ const CmsUI = () => {
 						onDiscard: handleDiscard,
 						onSelectElement: handleSelectElementToggle,
 						onMediaLibrary: handleMediaLibrary,
-						onDismissDeployment: handleDismissDeployment,
 						onNavigateChange: () => {
 							signals.navigateToNextChange()
 						},
@@ -572,7 +563,7 @@ const CmsUI = () => {
 
 			<ErrorBoundary componentName="Text Style Toolbar">
 				<TextStyleToolbar
-					visible={textSelectionState.hasSelection && isEditing && !isAIProcessing && isTextStylingAllowed}
+					visible={textSelectionState.hasSelection && isEditing && isTextStylingAllowed}
 					rect={textSelectionState.rect}
 					element={textSelectionState.element}
 					onStyleChange={updateUI}
