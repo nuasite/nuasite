@@ -308,8 +308,20 @@ function parseFrontmatter(raw: string): { frontmatter: Record<string, unknown>; 
 	return { frontmatter, content }
 }
 
+/** Pattern for strings that YAML auto-parses as Date objects */
+const YAML_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}/
+
 function serializeFrontmatter(frontmatter: Record<string, unknown>, content: string): string {
-	const yamlStr = yaml.stringify(frontmatter).trim()
+	const doc = new yaml.Document(frontmatter)
+	// Force-quote strings that YAML would auto-parse as dates
+	yaml.visit(doc, {
+		Scalar(_key, node) {
+			if (typeof node.value === 'string' && YAML_DATE_PATTERN.test(node.value)) {
+				node.type = yaml.Scalar.QUOTE_SINGLE
+			}
+		},
+	})
+	const yamlStr = doc.toString().trim()
 	return `---\n${yamlStr}\n---\n${content}`
 }
 
