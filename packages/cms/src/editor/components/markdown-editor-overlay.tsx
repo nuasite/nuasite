@@ -9,6 +9,7 @@ import {
 	currentMarkdownPage,
 	isMarkdownPreview,
 	markdownEditorState,
+	pendingCollectionEntries,
 	resetMarkdownEditorState,
 	showToast,
 	startRedirectCountdown,
@@ -89,6 +90,22 @@ export function MarkdownEditorOverlay() {
 		}
 	}, [])
 
+	/** Create any collection entries that were queued during component insertion */
+	const flushPendingEntries = useCallback(async () => {
+		const entries = pendingCollectionEntries.value
+		if (entries.length === 0) return
+		pendingCollectionEntries.value = []
+		await Promise.all(entries.map(entry =>
+			createMarkdownPage(config.value, {
+				collection: entry.collection,
+				slug: entry.slug,
+				title: entry.title,
+				frontmatter: entry.frontmatter as any,
+				fileExtension: entry.fileExtension,
+			})
+		))
+	}, [])
+
 	const handleSave = useCallback(
 		async (content: string) => {
 			if (isSaving) return
@@ -97,6 +114,7 @@ export function MarkdownEditorOverlay() {
 
 			setIsSaving(true)
 			try {
+				await flushPendingEntries()
 				const result = await updateMarkdownPage(config.value.apiBase, {
 					filePath: currentPage.filePath,
 					content,
@@ -160,6 +178,7 @@ export function MarkdownEditorOverlay() {
 
 		setIsSaving(true)
 		try {
+			await flushPendingEntries()
 			const isData = opts.collectionDefinition.type === 'data'
 
 			// Build frontmatter — for data collections include all fields; for markdown exclude title

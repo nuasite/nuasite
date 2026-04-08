@@ -244,6 +244,16 @@ export const pendingColorChanges = signal<Map<string, PendingColorChange>>(
 export const pendingBgImageChanges = signal<Map<string, PendingBackgroundImageChange>>(
 	new Map(),
 )
+/** Pending collection entries to create when the markdown page is saved */
+export interface PendingCollectionEntry {
+	collection: string
+	slug: string
+	title: string
+	frontmatter: Record<string, unknown>
+	fileExtension?: string
+}
+export const pendingCollectionEntries = signal<PendingCollectionEntry[]>([])
+
 export const manifest = signal<CmsManifest>({
 	entries: {},
 	components: {},
@@ -810,6 +820,7 @@ export function updateMarkdownPageMeta(patch: Partial<Pick<MarkdownPageEntry, 's
 
 export function resetMarkdownEditorState(): void {
 	markdownEditorState.value = createInitialMarkdownEditorState()
+	pendingCollectionEntries.value = []
 }
 
 /**
