@@ -435,7 +435,9 @@ async function parseContentConfigSchemaBlocks(): Promise<Array<{ collectionName:
  * Parse the Astro content config file to extract explicit reference() declarations.
  * Returns a map: collectionName → { fieldName → { target, isArray } }
  */
-function parseContentConfigReferences(schemaBlocks: Array<{ collectionName: string; schemaBody: string }>): Map<string, Map<string, { target: string; isArray: boolean }>> {
+function parseContentConfigReferences(
+	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
+): Map<string, Map<string, { target: string; isArray: boolean }>> {
 	const result = new Map<string, Map<string, { target: string; isArray: boolean }>>()
 
 	for (const { collectionName, schemaBody } of schemaBlocks) {
@@ -462,7 +464,9 @@ const FIELD_HELPER_TYPES = new Set(['image', 'url', 'email', 'color', 'date', 'd
  *
  * Returns a map: collectionName → fieldName → { type, options? }
  */
-function parseContentConfigFieldTypes(schemaBlocks: Array<{ collectionName: string; schemaBody: string }>): Map<string, Map<string, { type: FieldType; options?: string[] }>> {
+function parseContentConfigFieldTypes(
+	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
+): Map<string, Map<string, { type: FieldType; options?: string[] }>> {
 	const result = new Map<string, Map<string, { type: FieldType; options?: string[] }>>()
 
 	for (const { collectionName, schemaBody } of schemaBlocks) {
@@ -499,7 +503,10 @@ function parseContentConfigFieldTypes(schemaBlocks: Array<{ collectionName: stri
 /**
  * Apply field type overrides from config parsing to scanned collections.
  */
-function applyConfigFieldTypes(collections: Record<string, CollectionDefinition>, schemaBlocks: Array<{ collectionName: string; schemaBody: string }>): void {
+function applyConfigFieldTypes(
+	collections: Record<string, CollectionDefinition>,
+	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
+): void {
 	const configTypes = parseContentConfigFieldTypes(schemaBlocks)
 	for (const [collectionName, fieldTypes] of configTypes) {
 		const def = collections[collectionName]
@@ -520,7 +527,10 @@ function applyConfigFieldTypes(collections: Record<string, CollectionDefinition>
  * Prefers explicit reference() declarations from the content config file.
  * Falls back to heuristic slug matching when no config is available.
  */
-async function detectReferenceFields(collections: Record<string, CollectionDefinition>, schemaBlocks: Array<{ collectionName: string; schemaBody: string }>): Promise<void> {
+async function detectReferenceFields(
+	collections: Record<string, CollectionDefinition>,
+	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
+): Promise<void> {
 	// Try parsing the content config first — this is the source of truth
 	const configRefs = parseContentConfigReferences(schemaBlocks)
 	if (configRefs.size > 0) {

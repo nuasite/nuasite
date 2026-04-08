@@ -189,9 +189,10 @@ function ReferenceSelect({ collection, value, required, onChange }: {
 	const [formData, setFormData] = useState<Record<string, unknown>>({})
 
 	const filtered = useMemo(
-		() => search
-			? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()) || o.value.toLowerCase().includes(search.toLowerCase()))
-			: options,
+		() =>
+			search
+				? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()) || o.value.toLowerCase().includes(search.toLowerCase()))
+				: options,
 		[options, search],
 	)
 
