@@ -44,6 +44,9 @@ interface ViteDevServerLike {
 		on: (event: string, listener: (...args: any[]) => void) => any
 		removeListener: (event: string, listener: (...args: any[]) => void) => any
 	}
+	environments?: Record<string, {
+		moduleGraph: { invalidateAll: () => void }
+	}>
 }
 
 /**
@@ -112,6 +115,17 @@ export function createDevMiddleware(
 			const route = url.replace('/_nua/cms/', '').split('?')[0]!
 
 			handleCmsApiRoute(route, req, res, manifestWriter, config.contentDir, options.mediaAdapter)
+				.then(() => {
+					// Invalidate all Vite environment module caches after content-modifying
+					// routes so that a subsequent page reload serves fresh content.
+					// In sandboxed environments (e.g. E2B) chokidar doesn't detect file
+					// changes, leaving stale modules in Astro's SSR/prerender environments.
+					if (req.method === 'POST' && server.environments) {
+						for (const env of Object.values(server.environments)) {
+							env.moduleGraph.invalidateAll()
+						}
+					}
+				})
 				.catch((error) => {
 					console.error('[astro-cms] API error:', error)
 					sendError(res, 'Internal server error', 500)
