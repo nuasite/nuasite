@@ -54,7 +54,7 @@ export const TIMING = {
  * In normal dev, Vite HMR (via chokidar) usually reloads the page before this fires.
  * In sandboxed environments (e.g. E2B) where HMR is unavailable, this ensures the page still refreshes.
  */
-export function schedulePageReload(delayMs = TIMING.RELOAD_DELAY_MS) {
+export function schedulePageReload(delayMs: number = TIMING.RELOAD_DELAY_MS) {
 	setTimeout(() => location.reload(), delayMs)
 }
 
