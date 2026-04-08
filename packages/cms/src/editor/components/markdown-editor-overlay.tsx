@@ -2,7 +2,7 @@ import { type Editor, editorViewCtx } from '@milkdown/core'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { slugify } from '../../shared'
 import { updateMarkdownPage } from '../api'
-import { schedulePageReload, STORAGE_KEYS, Z_INDEX } from '../constants'
+import { STORAGE_KEYS, Z_INDEX } from '../constants'
 import { createMarkdownPage } from '../markdown-api'
 import {
 	config,
@@ -127,8 +127,6 @@ export function MarkdownEditorOverlay() {
 					// Clear pending entry navigation so editor doesn't auto-open after save
 					sessionStorage.removeItem(STORAGE_KEYS.PENDING_ENTRY_NAVIGATION)
 					resetMarkdownEditorState()
-
-					schedulePageReload()
 				} else {
 					showToast(result.error || 'Failed to save markdown', 'error')
 					setIsSaving(false)

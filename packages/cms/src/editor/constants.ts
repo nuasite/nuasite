@@ -43,20 +43,7 @@ export const TIMING = {
 	PREVIEW_ERROR_DURATION_MS: 5000,
 	/** Delay before focusing input after expansion (ms) */
 	FOCUS_DELAY_MS: 50,
-	/** Delay before reloading the page after a content-modifying save (ms) */
-	RELOAD_DELAY_MS: 100,
-	/** Longer reload delay to allow collapse animation to play (ms) */
-	RELOAD_COLLAPSE_DELAY_MS: 300,
 } as const
-
-/**
- * Schedule a page reload after a content-modifying save.
- * In normal dev, Vite HMR (via chokidar) usually reloads the page before this fires.
- * In sandboxed environments (e.g. E2B) where HMR is unavailable, this ensures the page still refreshes.
- */
-export function schedulePageReload(delayMs: number = TIMING.RELOAD_DELAY_MS) {
-	setTimeout(() => location.reload(), delayMs)
-}
 
 /**
  * Layout constants for UI positioning

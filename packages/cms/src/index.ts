@@ -56,6 +56,13 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	collections?: Record<string, {
 		fields?: Record<string, { position?: 'sidebar' | 'header'; group?: string }>
 	}>
+	/**
+	 * Enable polling for file watching.
+	 * Ensures reliable change detection after CMS edits.
+	 * Set to `false` to use native fs events instead.
+	 * @default true
+	 */
+	usePolling?: boolean
 }
 
 const VIRTUAL_CMS_PATH = '/@nuasite/cms-editor.js'
@@ -78,6 +85,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		componentDirs = ['src/components'],
 		contentDir = 'src/content',
 		mdxComponentDirs,
+		usePolling = true,
 		seo = { trackSeo: true, markTitle: true, parseJsonLd: true },
 	} = options
 
@@ -277,6 +285,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 							: undefined,
 						server: {
 							proxy: proxyConfig,
+							...(usePolling ? { watch: { usePolling: true } } : {}),
 						},
 					},
 				})
