@@ -36,7 +36,8 @@
 		"typescript": "catalog:build"
 	},
 	"scripts": {
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
+		"build": "vite build --config vite.config.overlay.ts",
+		"prepack": "bun run build && bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"keywords": [
 		"astro",

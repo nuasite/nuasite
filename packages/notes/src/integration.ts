@@ -1,4 +1,5 @@
 import type { AstroIntegration } from 'astro'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createNotesDevMiddleware } from './dev/middleware'
@@ -50,10 +51,21 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 				projectRoot = fileURLToPath(config.root)
 				store = new NotesJsonStore({ projectRoot, notesDir })
 
-				// Resolve the overlay source file inside this package so the virtual
-				// module can map to it without a hard-coded path. Mirrors how
-				// @nuasite/cms resolves its editor entry.
+				// Two delivery modes for the overlay (mirrors @nuasite/cms):
+				//
+				//  1. NPM install case: a pre-built `dist/overlay.js` ships with
+				//     the package and is served as the virtual module. The bundle
+				//     has preact, the overlay sources, and the inlined CSS — the
+				//     consumer needs zero peer dependencies.
+				//
+				//  2. Monorepo dev case (this repo's playground): no pre-built
+				//     bundle exists, so we resolve the virtual module to the
+				//     source `overlay/index.tsx` and let Vite compile it on the
+				//     fly using the JSX-pragma transform plugin below. preact is
+				//     resolved through the workspace devDependency.
 				const notesDirAbs = dirname(fileURLToPath(import.meta.url))
+				const overlayBundlePath = join(notesDirAbs, '../dist/overlay.js')
+				const hasPrebuiltBundle = existsSync(overlayBundlePath)
 				const overlayEntry = join(notesDirAbs, 'overlay/index.tsx')
 
 				// Inject a small loader on every page. It writes the runtime config
@@ -80,31 +92,52 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 				)
 
 				// Vite plugins:
-				//   1. Resolve the virtual overlay path to the real .tsx file.
-				//   2. Prepend the @jsxImportSource pragma to overlay sources so
-				//      Vite's esbuild compiles JSX with Preact's `h` instead of
-				//      React (which the host project may use).
-				const vitePlugins: any[] = [
-					{
-						name: 'nuasite-notes-overlay-resolver',
-						resolveId(id: string) {
-							if (id === VIRTUAL_OVERLAY_PATH) return overlayEntry
-						},
-					},
-					{
-						name: 'nuasite-notes-preact-jsx',
-						transform(code: string, id: string) {
-							if (id.includes('/notes/src/overlay/') && id.endsWith('.tsx') && !code.includes('@jsxImportSource')) {
-								return `/** @jsxImportSource preact */\n${code}`
-							}
-						},
-					},
-				]
+				//   - In bundle mode: serve the pre-built overlay.js as the
+				//     virtual module via a load() hook. No source compilation
+				//     needed and the consumer doesn't need preact installed.
+				//   - In source mode (monorepo dev): resolve the virtual path to
+				//     the real .tsx file AND prepend the @jsxImportSource pragma
+				//     so Vite's esbuild compiles JSX with Preact's `h` instead
+				//     of React (which the host project may use).
+				const vitePlugins: any[] = []
 
+				if (hasPrebuiltBundle) {
+					const bundleContent = readFileSync(overlayBundlePath, 'utf-8')
+					vitePlugins.push({
+						name: 'nuasite-notes-overlay-bundle',
+						resolveId(id: string) {
+							if (id === VIRTUAL_OVERLAY_PATH) return VIRTUAL_OVERLAY_PATH
+						},
+						load(id: string) {
+							if (id === VIRTUAL_OVERLAY_PATH) return bundleContent
+						},
+					})
+				} else {
+					vitePlugins.push(
+						{
+							name: 'nuasite-notes-overlay-resolver',
+							resolveId(id: string) {
+								if (id === VIRTUAL_OVERLAY_PATH) return overlayEntry
+							},
+						},
+						{
+							name: 'nuasite-notes-preact-jsx',
+							transform(code: string, id: string) {
+								if (id.includes('/notes/src/overlay/') && id.endsWith('.tsx') && !code.includes('@jsxImportSource')) {
+									return `/** @jsxImportSource preact */\n${code}`
+								}
+							},
+						},
+					)
+				}
+
+				// Only force the react→preact alias in source mode. In bundle
+				// mode, preact is already inlined in the bundle and the alias
+				// could conflict with consumer apps that legitimately use React.
 				updateConfig({
 					vite: {
 						plugins: vitePlugins,
-						resolve: {
+						resolve: hasPrebuiltBundle ? undefined : {
 							alias: {
 								'react': 'preact/compat',
 								'react-dom': 'preact/compat',
@@ -114,7 +147,9 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 					},
 				})
 
-				logger.info(`@nuasite/notes injected (notesDir: ${notesDir})`)
+				logger.info(
+					`@nuasite/notes injected (notesDir: ${notesDir}, ${hasPrebuiltBundle ? 'pre-built overlay' : 'source overlay'})`,
+				)
 			},
 
 			'astro:server:setup': ({ server, logger }) => {
