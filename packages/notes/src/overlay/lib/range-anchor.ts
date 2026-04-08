@@ -32,7 +32,7 @@ export function findAnchorRange(el: Element, anchorText: string): AnchorMatch | 
 	if (!joined) return null
 
 	// 1. Exact substring match
-	let idx = joined.indexOf(anchorText)
+	const idx = joined.indexOf(anchorText)
 	if (idx >= 0) {
 		const range = rangeFromOffsets(el, idx, idx + anchorText.length)
 		if (range) return { range, rect: range.getBoundingClientRect(), start: idx, end: idx + anchorText.length }

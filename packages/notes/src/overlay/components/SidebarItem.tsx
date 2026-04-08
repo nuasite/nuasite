@@ -48,17 +48,17 @@ export function SidebarItem({ item, active, stale, applying, onFocus, onResolve,
 			class={`notes-item ${active ? 'notes-item--active' : ''} ${isResolved ? 'notes-item--resolved' : ''}`}
 			onMouseEnter={onFocus}
 		>
-			<div class='notes-item__head'>
+			<div class="notes-item__head">
 				<div>
 					<span class={`notes-item__badge notes-item__badge--${item.type}`}>
 						{item.type}
 					</span>
 					{isResolved
-						? <span class='notes-item__badge notes-item__badge--resolved'>{item.status}</span>
+						? <span class="notes-item__badge notes-item__badge--resolved">{item.status}</span>
 						: null}
-					<span class='notes-item__author'>{item.author}</span>
+					<span class="notes-item__author">{item.author}</span>
 				</div>
-				<span class='notes-item__time'>{formatTime(item.createdAt)}</span>
+				<span class="notes-item__time">{formatTime(item.createdAt)}</span>
 			</div>
 
 			{stale && isSuggestion ? <StaleWarning /> : null}
@@ -69,35 +69,35 @@ export function SidebarItem({ item, active, stale, applying, onFocus, onResolve,
 						<DiffPreview original={item.range.originalText} suggested={item.range.suggestedText} />
 						{item.range.rationale
 							? (
-								<div class='notes-item__rationale'>
-									<span class='notes-item__rationale-label'>Why:</span> {item.range.rationale}
+								<div class="notes-item__rationale">
+									<span class="notes-item__rationale-label">Why:</span> {item.range.rationale}
 								</div>
 							)
 							: null}
-						{item.body ? <div class='notes-item__body'>{item.body}</div> : null}
+						{item.body ? <div class="notes-item__body">{item.body}</div> : null}
 					</>
 				)
 				: (
 					<>
 						{item.targetSnippet
-							? <div class='notes-item__snippet'>{item.targetSnippet}</div>
+							? <div class="notes-item__snippet">{item.targetSnippet}</div>
 							: null}
-						<div class='notes-item__body'>{item.body}</div>
+						<div class="notes-item__body">{item.body}</div>
 					</>
 				)}
 
-			<div class='notes-item__actions'>
+			<div class="notes-item__actions">
 				{canApply
 					? (
-						<button class='notes-btn notes-btn--primary' onClick={onApply} disabled={applying}>
+						<button class="notes-btn notes-btn--primary" onClick={onApply} disabled={applying}>
 							{applying ? 'Applying...' : 'Apply'}
 						</button>
 					)
 					: null}
 				{isResolved
-					? <button class='notes-btn notes-btn--ghost' onClick={onReopen}>Reopen</button>
-					: <button class='notes-btn' onClick={onResolve}>Resolve</button>}
-				<button class='notes-btn notes-btn--ghost notes-btn--danger' onClick={onDelete}>Delete</button>
+					? <button class="notes-btn notes-btn--ghost" onClick={onReopen}>Reopen</button>
+					: <button class="notes-btn" onClick={onResolve}>Resolve</button>}
+				<button class="notes-btn notes-btn--ghost notes-btn--danger" onClick={onDelete}>Delete</button>
 			</div>
 		</div>
 	)

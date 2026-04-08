@@ -11,8 +11,8 @@ interface StaleWarningProps {
  */
 export function StaleWarning({ reason }: StaleWarningProps) {
 	return (
-		<div class='notes-stale' title={reason}>
-			<span class='notes-stale__icon'>⚠</span>
+		<div class="notes-stale" title={reason}>
+			<span class="notes-stale__icon">⚠</span>
 			<span>Anchor text not found on this page</span>
 		</div>
 	)

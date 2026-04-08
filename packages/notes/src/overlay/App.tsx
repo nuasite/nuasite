@@ -365,7 +365,7 @@ export function App({ urlFlag }: AppProps) {
 	}, [pendingSelection])
 
 	return (
-		<div class='notes-root'>
+		<div class="notes-root">
 			<Toolbar
 				page={page}
 				count={items.length}

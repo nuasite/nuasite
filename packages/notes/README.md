@@ -12,8 +12,8 @@ A reviewer opens any page with `?nua-notes` appended to the URL, sees a sidebar 
 
 ```ts
 // astro.config.mjs
-import { defineConfig } from '@nuasite/nua/config'
 import nuaNotes from '@nuasite/notes'
+import { defineConfig } from '@nuasite/nua/config'
 
 export default defineConfig({
 	integrations: [nuaNotes()],
@@ -34,26 +34,26 @@ The `?nua-notes` flag sets a session cookie so subsequent navigation stays in re
 
 ## What ships in v0.1
 
-| Feature | Status |
-|---|---|
-| Dev API at `/_nua/notes/*` (list, create, update, resolve, reopen, delete, apply) | ✓ |
-| Local JSON storage at `data/notes/pages/<slug>.json` (atomic writes, per-slug mutex) | ✓ |
-| Preact overlay mounted in a shadow DOM (zero CSS leakage either direction) | ✓ |
-| `?nua-notes` URL flag + cookie persistence + Exit toggle | ✓ |
-| Hide `@nuasite/cms` editor chrome in review mode (mode exclusivity) | ✓ |
-| **Pick mode** — hover any `data-cms-id` element, click to comment | ✓ |
-| **Selection mode** — select text inside any element, leave a comment OR a range suggestion | ✓ |
-| Diff preview (− original / + suggested) on suggestion items in the sidebar | ✓ |
-| Anchor re-attachment after page reload — falls back to whitespace-collapsed match | ✓ |
-| Stale badge when an anchor can't be found (source drifted) | ✓ |
-| **Apply flow** — write the suggestion's replacement back to the source file | ✓ |
-| Resolve / reopen / delete actions on every item | ✓ |
-| Item author persisted in `localStorage` | ✓ |
-| Pre-built bundle (~16 kB gzipped) for npm consumers; source mode for monorepo dev | ✓ |
-| Sandbox / proxy mode (Cloudflare Worker forwarding) | Phase 5 |
-| Replies / threaded comments | Phase 5 |
-| Agency inbox view (cross-page list) | Phase 5 |
-| Theming via CSS variables, i18n, screenshot attachments | Phase 5 |
+| Feature                                                                                    | Status  |
+| ------------------------------------------------------------------------------------------ | ------- |
+| Dev API at `/_nua/notes/*` (list, create, update, resolve, reopen, delete, apply)          | ✓       |
+| Local JSON storage at `data/notes/pages/<slug>.json` (atomic writes, per-slug mutex)       | ✓       |
+| Preact overlay mounted in a shadow DOM (zero CSS leakage either direction)                 | ✓       |
+| `?nua-notes` URL flag + cookie persistence + Exit toggle                                   | ✓       |
+| Hide `@nuasite/cms` editor chrome in review mode (mode exclusivity)                        | ✓       |
+| **Pick mode** — hover any `data-cms-id` element, click to comment                          | ✓       |
+| **Selection mode** — select text inside any element, leave a comment OR a range suggestion | ✓       |
+| Diff preview (− original / + suggested) on suggestion items in the sidebar                 | ✓       |
+| Anchor re-attachment after page reload — falls back to whitespace-collapsed match          | ✓       |
+| Stale badge when an anchor can't be found (source drifted)                                 | ✓       |
+| **Apply flow** — write the suggestion's replacement back to the source file                | ✓       |
+| Resolve / reopen / delete actions on every item                                            | ✓       |
+| Item author persisted in `localStorage`                                                    | ✓       |
+| Pre-built bundle (~16 kB gzipped) for npm consumers; source mode for monorepo dev          | ✓       |
+| Sandbox / proxy mode (Cloudflare Worker forwarding)                                        | Phase 5 |
+| Replies / threaded comments                                                                | Phase 5 |
+| Agency inbox view (cross-page list)                                                        | Phase 5 |
+| Theming via CSS variables, i18n, screenshot attachments                                    | Phase 5 |
 
 ## How it works
 
@@ -161,13 +161,13 @@ A future version may negotiate via PostMessage so the two can coexist on screen 
 
 ## Options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | `boolean` | `true` | Master switch. Set `false` to skip injection entirely. Ignored in production builds. |
-| `notesDir` | `string` | `'data/notes'` | Project-relative directory where note JSON files live. |
-| `urlFlag` | `string` | `'nua-notes'` | URL query parameter that activates review mode. |
-| `hideCmsInReviewMode` | `boolean` | `true` | Hide CMS editor chrome when notes mode is active. (Reserved for v0.2; v0.1 always hides.) |
-| `proxy` | `string?` | none | Forward `/_nua/notes/*` to this target. Mirrors the `proxy` option on `@nuasite/cms`. (Reserved for Phase 5.) |
+| Option                | Type      | Default        | Description                                                                                                   |
+| --------------------- | --------- | -------------- | ------------------------------------------------------------------------------------------------------------- |
+| `enabled`             | `boolean` | `true`         | Master switch. Set `false` to skip injection entirely. Ignored in production builds.                          |
+| `notesDir`            | `string`  | `'data/notes'` | Project-relative directory where note JSON files live.                                                        |
+| `urlFlag`             | `string`  | `'nua-notes'`  | URL query parameter that activates review mode.                                                               |
+| `hideCmsInReviewMode` | `boolean` | `true`         | Hide CMS editor chrome when notes mode is active. (Reserved for v0.2; v0.1 always hides.)                     |
+| `proxy`               | `string?` | none           | Forward `/_nua/notes/*` to this target. Mirrors the `proxy` option on `@nuasite/cms`. (Reserved for Phase 5.) |
 
 ## Hosting
 
@@ -179,16 +179,16 @@ When the project's CMS is configured to forward writes through the existing nuas
 
 All endpoints are mounted under `/_nua/notes/`. Requests and responses are JSON.
 
-| Method | Path | Body | Response |
-|---|---|---|---|
-| `GET` | `/list?page=<page>` | — | `{ page, lastUpdated, items }` |
-| `GET` | `/inbox` | — | `{ pages: [...] }` (all pages) |
-| `POST` | `/create` | `{ page, type, targetCmsId, body, author, range?, ... }` | `{ item }` |
-| `POST` | `/update` | `{ page, id, patch }` | `{ item }` |
-| `POST` | `/resolve` | `{ page, id }` | `{ item }` (status → resolved) |
-| `POST` | `/reopen` | `{ page, id }` | `{ item }` (status → open) |
-| `POST` | `/delete` | `{ page, id }` | `{ ok: true }` |
-| `POST` | `/apply` | `{ page, id }` | `{ item, file, before, after }` (200) or `{ item, error, reason }` (409 stale) |
+| Method | Path                | Body                                                     | Response                                                                       |
+| ------ | ------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `GET`  | `/list?page=<page>` | —                                                        | `{ page, lastUpdated, items }`                                                 |
+| `GET`  | `/inbox`            | —                                                        | `{ pages: [...] }` (all pages)                                                 |
+| `POST` | `/create`           | `{ page, type, targetCmsId, body, author, range?, ... }` | `{ item }`                                                                     |
+| `POST` | `/update`           | `{ page, id, patch }`                                    | `{ item }`                                                                     |
+| `POST` | `/resolve`          | `{ page, id }`                                           | `{ item }` (status → resolved)                                                 |
+| `POST` | `/reopen`           | `{ page, id }`                                           | `{ item }` (status → open)                                                     |
+| `POST` | `/delete`           | `{ page, id }`                                           | `{ ok: true }`                                                                 |
+| `POST` | `/apply`            | `{ page, id }`                                           | `{ item, file, before, after }` (200) or `{ item, error, reason }` (409 stale) |
 
 ## Architecture
 

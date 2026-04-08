@@ -59,34 +59,34 @@ export function CommentPopover({ rect, snippet, defaultAuthor, onCancel, onSubmi
 
 	return (
 		<div
-			class='notes-popover'
+			class="notes-popover"
 			style={{ left: `${left}px`, top: `${top}px` }}
 			onClick={(e) => e.stopPropagation()}
 			onKeyDown={handleKey}
 		>
-			<h4 class='notes-popover__title'>Add comment</h4>
+			<h4 class="notes-popover__title">Add comment</h4>
 			{snippet
-				? <div class='notes-popover__snippet'>{snippet}</div>
+				? <div class="notes-popover__snippet">{snippet}</div>
 				: null}
 			<textarea
 				ref={textareaRef}
-				placeholder='Leave a note for the agency...'
+				placeholder="Leave a note for the agency..."
 				value={body}
 				onInput={(e) => setBody((e.target as HTMLTextAreaElement).value)}
 			/>
 			<input
-				type='text'
-				placeholder='Your name'
+				type="text"
+				placeholder="Your name"
 				value={author}
 				onInput={(e) => setAuthor((e.target as HTMLInputElement).value)}
 			/>
-			<div class='notes-popover__row'>
-				<span class='notes-sidebar__hint'>⌘+Enter to save</span>
+			<div class="notes-popover__row">
+				<span class="notes-sidebar__hint">⌘+Enter to save</span>
 				<div style={{ display: 'flex', gap: '6px' }}>
-					<button class='notes-btn notes-btn--ghost' onClick={onCancel} disabled={submitting}>
+					<button class="notes-btn notes-btn--ghost" onClick={onCancel} disabled={submitting}>
 						Cancel
 					</button>
-					<button class='notes-btn notes-btn--primary' onClick={handleSubmit} disabled={!body.trim() || submitting}>
+					<button class="notes-btn notes-btn--primary" onClick={handleSubmit} disabled={!body.trim() || submitting}>
 						{submitting ? 'Saving...' : 'Save'}
 					</button>
 				</div>

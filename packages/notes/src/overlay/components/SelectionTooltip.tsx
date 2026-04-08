@@ -30,17 +30,17 @@ export function SelectionTooltip({ rect, onComment, onSuggest }: SelectionToolti
 
 	return (
 		<div
-			class='notes-selection-tooltip'
+			class="notes-selection-tooltip"
 			style={{ left: `${left}px`, top: `${top}px`, width: `${tooltipWidth}px` }}
 			onMouseDown={(e) => {
 				// Prevent the click from clearing the user's text selection
 				e.preventDefault()
 			}}
 		>
-			<button class='notes-btn notes-btn--ghost' onClick={onComment}>
+			<button class="notes-btn notes-btn--ghost" onClick={onComment}>
 				💬 Comment
 			</button>
-			<button class='notes-btn notes-btn--primary' onClick={onSuggest}>
+			<button class="notes-btn notes-btn--primary" onClick={onSuggest}>
 				✏️ Suggest edit
 			</button>
 		</div>

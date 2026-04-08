@@ -15,13 +15,13 @@ interface DiffPreviewProps {
  */
 export function DiffPreview({ original, suggested }: DiffPreviewProps) {
 	return (
-		<div class='notes-diff'>
-			<div class='notes-diff__row notes-diff__row--del'>
-				<span class='notes-diff__marker'>−</span>
-				<span class='notes-strikethrough'>{original}</span>
+		<div class="notes-diff">
+			<div class="notes-diff__row notes-diff__row--del">
+				<span class="notes-diff__marker">−</span>
+				<span class="notes-strikethrough">{original}</span>
 			</div>
-			<div class='notes-diff__row notes-diff__row--ins'>
-				<span class='notes-diff__marker'>+</span>
+			<div class="notes-diff__row notes-diff__row--ins">
+				<span class="notes-diff__marker">+</span>
 				<span>{suggested}</span>
 			</div>
 		</div>

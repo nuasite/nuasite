@@ -17,7 +17,9 @@ interface SidebarProps {
 	onApply: (id: string) => void
 }
 
-export function Sidebar({ page, items, activeId, picking, error, staleIds, applyingId, onFocus, onResolve, onReopen, onDelete, onApply }: SidebarProps) {
+export function Sidebar(
+	{ page, items, activeId, picking, error, staleIds, applyingId, onFocus, onResolve, onReopen, onDelete, onApply }: SidebarProps,
+) {
 	const open = items.filter((i) => i.status !== 'resolved' && i.status !== 'applied')
 	const closed = items.filter((i) => i.status === 'resolved' || i.status === 'applied')
 	const renderItem = (item: NoteItem) => (
@@ -35,18 +37,18 @@ export function Sidebar({ page, items, activeId, picking, error, staleIds, apply
 		/>
 	)
 	return (
-		<aside class='notes-sidebar'>
-			<header class='notes-sidebar__header'>
-				<h3 class='notes-sidebar__title'>Review notes</h3>
-				<div class='notes-sidebar__meta'>
+		<aside class="notes-sidebar">
+			<header class="notes-sidebar__header">
+				<h3 class="notes-sidebar__title">Review notes</h3>
+				<div class="notes-sidebar__meta">
 					{open.length} open · {closed.length} resolved · <code>{page}</code>
 				</div>
 			</header>
-			<div class='notes-sidebar__list'>
-				{error ? <div class='notes-banner'>{error}</div> : null}
+			<div class="notes-sidebar__list">
+				{error ? <div class="notes-banner">{error}</div> : null}
 				{items.length === 0
 					? (
-						<div class='notes-sidebar__empty'>
+						<div class="notes-sidebar__empty">
 							{picking
 								? 'Click any text or element on the page to add a comment.'
 								: 'Select text on the page to suggest an edit, or click "Pick element" to comment.'}
@@ -57,7 +59,7 @@ export function Sidebar({ page, items, activeId, picking, error, staleIds, apply
 				{closed.length > 0
 					? (
 						<>
-							<div class='notes-sidebar__meta' style={{ marginTop: '4px' }}>Resolved</div>
+							<div class="notes-sidebar__meta" style={{ marginTop: '4px' }}>Resolved</div>
 							{closed.map(renderItem)}
 						</>
 					)

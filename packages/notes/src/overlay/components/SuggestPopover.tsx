@@ -73,60 +73,60 @@ export function SuggestPopover({ rect, originalText, defaultAuthor, onCancel, on
 
 	return (
 		<div
-			class='notes-popover notes-popover--suggest'
+			class="notes-popover notes-popover--suggest"
 			style={{ left: `${left}px`, top: `${top}px`, width: `${popoverWidth}px` }}
 			onClick={(e) => e.stopPropagation()}
 			onMouseDown={(e) => e.stopPropagation()}
 			onKeyDown={handleKey}
 		>
-			<h4 class='notes-popover__title'>Suggest edit</h4>
-			<div class='notes-popover__original'>
-				<span class='notes-popover__label'>Original</span>
-				<span class='notes-strikethrough'>{originalText}</span>
+			<h4 class="notes-popover__title">Suggest edit</h4>
+			<div class="notes-popover__original">
+				<span class="notes-popover__label">Original</span>
+				<span class="notes-strikethrough">{originalText}</span>
 			</div>
 			<div>
-				<label class='notes-popover__label' for='nua-suggest-text'>Replacement</label>
+				<label class="notes-popover__label" for="nua-suggest-text">Replacement</label>
 				<textarea
 					ref={textareaRef}
-					id='nua-suggest-text'
+					id="nua-suggest-text"
 					value={suggested}
 					onInput={(e) => setSuggested((e.target as HTMLTextAreaElement).value)}
 				/>
 			</div>
 			<div>
-				<label class='notes-popover__label' for='nua-suggest-rationale'>Why? (optional)</label>
+				<label class="notes-popover__label" for="nua-suggest-rationale">Why? (optional)</label>
 				<input
-					type='text'
-					id='nua-suggest-rationale'
-					placeholder='Stronger framing, fixes typo, ...'
+					type="text"
+					id="nua-suggest-rationale"
+					placeholder="Stronger framing, fixes typo, ..."
 					value={rationale}
 					onInput={(e) => setRationale((e.target as HTMLInputElement).value)}
 				/>
 			</div>
 			<div>
-				<label class='notes-popover__label' for='nua-suggest-body'>Note (optional)</label>
+				<label class="notes-popover__label" for="nua-suggest-body">Note (optional)</label>
 				<input
-					type='text'
-					id='nua-suggest-body'
-					placeholder='Anything else for the agency'
+					type="text"
+					id="nua-suggest-body"
+					placeholder="Anything else for the agency"
 					value={body}
 					onInput={(e) => setBody((e.target as HTMLInputElement).value)}
 				/>
 			</div>
 			<input
-				type='text'
-				placeholder='Your name'
+				type="text"
+				placeholder="Your name"
 				value={author}
 				onInput={(e) => setAuthor((e.target as HTMLInputElement).value)}
 			/>
-			<div class='notes-popover__row'>
-				<span class='notes-sidebar__hint'>{dirty ? '⌘+Enter to save' : 'Edit the replacement to enable save'}</span>
+			<div class="notes-popover__row">
+				<span class="notes-sidebar__hint">{dirty ? '⌘+Enter to save' : 'Edit the replacement to enable save'}</span>
 				<div style={{ display: 'flex', gap: '6px' }}>
-					<button class='notes-btn notes-btn--ghost' onClick={onCancel} disabled={submitting}>
+					<button class="notes-btn notes-btn--ghost" onClick={onCancel} disabled={submitting}>
 						Cancel
 					</button>
 					<button
-						class='notes-btn notes-btn--primary'
+						class="notes-btn notes-btn--primary"
 						onClick={handleSubmit}
 						disabled={!dirty || submitting}
 					>
