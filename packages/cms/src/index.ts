@@ -180,7 +180,6 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					config: markerConfig,
 					idCounter,
 					command,
-					contentDir,
 				}
 
 				const vitePlugins: any[] = [...(createVitePlugin(pluginContext) as any)]

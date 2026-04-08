@@ -1,3 +1,5 @@
+import { watch } from 'node:fs'
+import { join } from 'node:path'
 import type { Plugin } from 'vite'
 import { expectedDeletions } from './dev-middleware'
 import type { ManifestWriter } from './manifest-writer'
@@ -11,11 +13,10 @@ export interface VitePluginContext {
 	config: Required<CmsMarkerOptions>
 	idCounter: { value: number }
 	command: 'dev' | 'build' | 'preview' | 'sync'
-	contentDir: string
 }
 
 export function createVitePlugin(context: VitePluginContext): Plugin[] {
-	const { manifestWriter, componentDefinitions, command, contentDir } = context
+	const { manifestWriter, componentDefinitions, command } = context
 
 	const virtualManifestPlugin: Plugin = {
 		name: 'cms-marker-virtual-manifest',
@@ -79,21 +80,42 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 		},
 	}
 
-	// Suppress immediate HMR page reload for content collection files.
-	// Without this, Astro's vite-plugin-content-imports invalidates the module and
-	// triggers a browser reload BEFORE the content layer has flushed the updated
-	// data store to disk — causing a brief render of stale frontmatter data.
-	// By returning [] the module graph still marks the module stale (so the MDX body
-	// gets re-compiled on next request), but the browser reload is deferred until
-	// the content layer writes data-store.json and fires `astro:content-changed`.
-	const contentHmrPlugin: Plugin = {
-		name: 'cms-defer-content-hmr',
-		enforce: 'pre',
-		handleHotUpdate({ file }) {
+	// Vite's bundled chokidar 3.6.0 fails to detect changes to .astro/data-store.json
+	// (added via watcher.add() in Astro's vite-plugin-content-virtual-mod).
+	// Without this, content collection edits update the data store on disk but the
+	// browser never receives a full-reload because Vite's watcher never fires "change"
+	// for that file. We use native fs.watch as a reliable fallback.
+	const dataStoreWatchPlugin: Plugin = {
+		name: 'cms-data-store-watch',
+		configureServer(server) {
 			if (command !== 'dev') return
-			const contentSuffix = `/${contentDir}/`
-			if (file.includes(contentSuffix)) {
-				return []
+			const root = server.config.root
+			const dataStorePath = join(root, '.astro', 'data-store.json')
+			let fsWatcher: ReturnType<typeof watch> | undefined
+			let debounce: ReturnType<typeof setTimeout> | undefined
+
+			const startWatching = () => {
+				try {
+					fsWatcher = watch(dataStorePath, () => {
+						clearTimeout(debounce)
+						debounce = setTimeout(() => {
+							server.environments.client.hot.send({ type: 'full-reload', path: '*' })
+						}, 80)
+					})
+				} catch {
+					// File doesn't exist yet — retry when it appears
+					setTimeout(startWatching, 2000)
+				}
+			}
+
+			// Data store is created during content sync, which runs after server start
+			setTimeout(startWatching, 3000)
+
+			const origClose = server.close.bind(server)
+			server.close = async () => {
+				fsWatcher?.close()
+				clearTimeout(debounce)
+				return origClose()
 			}
 		},
 	}
@@ -103,5 +125,5 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 	// HTML processing is done in build-processor.ts after pages are generated.
 	// Source location attributes are provided natively by Astro's compiler
 	// (data-astro-source-file, data-astro-source-loc) in dev mode.
-	return [virtualManifestPlugin, watcherPlugin, contentHmrPlugin, createArrayTransformPlugin()]
+	return [virtualManifestPlugin, watcherPlugin, dataStoreWatchPlugin, createArrayTransformPlugin()]
 }
