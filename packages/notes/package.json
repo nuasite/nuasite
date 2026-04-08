@@ -25,15 +25,16 @@
 			"default": "./src/index.ts"
 		}
 	},
-	"dependencies": {},
-	"devDependencies": {
-		"@types/bun": "catalog:build",
-		"astro": "catalog:astro",
+	"dependencies": {
 		"preact": "catalog:editor"
 	},
+	"devDependencies": {
+		"@types/bun": "1.3.11",
+		"astro": "6.1.4"
+	},
 	"peerDependencies": {
-		"astro": "catalog:astro",
-		"typescript": "catalog:build"
+		"astro": "6.1.4",
+		"typescript": "^6.0.2"
 	},
 	"scripts": {
 		"build": "vite build --config vite.config.overlay.ts",

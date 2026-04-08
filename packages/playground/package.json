@@ -10,8 +10,10 @@
 		"preview": "astro preview"
 	},
 	"dependencies": {
-		"@nuasite/notes": "workspace:*",
 		"@nuasite/nua": "workspace:*",
 		"astro": "catalog:astro"
+	},
+	"devDependencies": {
+		"@nuasite/notes": "workspace:*"
 	}
 }
