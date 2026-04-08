@@ -6,7 +6,9 @@ interface ToolbarProps {
 	count: number
 	picking: boolean
 	role: NoteRole
+	collapsed: boolean
 	onTogglePick: () => void
+	onToggleCollapse: () => void
 	onExit: () => void
 }
 
@@ -15,7 +17,7 @@ interface ToolbarProps {
  * note count, the active role (client / agency), the Pick element button,
  * and an Exit button that drops the cookies + reloads back into CMS view.
  */
-export function Toolbar({ page, count, picking, role, onTogglePick, onExit }: ToolbarProps) {
+export function Toolbar({ page, count, picking, role, collapsed, onTogglePick, onToggleCollapse, onExit }: ToolbarProps) {
 	return (
 		<div class="notes-toolbar">
 			<div class="notes-toolbar__brand">
@@ -31,6 +33,13 @@ export function Toolbar({ page, count, picking, role, onTogglePick, onExit }: To
 					title="Click any text or element on the page to leave a comment"
 				>
 					{picking ? 'Cancel pick' : 'Pick element'}
+				</button>
+				<button
+					class="notes-btn notes-btn--ghost"
+					onClick={onToggleCollapse}
+					title={collapsed ? 'Show notes sidebar' : 'Hide notes sidebar to see the full page'}
+				>
+					{collapsed ? 'Show sidebar' : 'Hide sidebar'}
 				</button>
 				<button class="notes-btn notes-btn--ghost" onClick={onExit} title="Leave review mode">
 					Exit
