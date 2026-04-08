@@ -6,7 +6,15 @@ A reviewer opens any page with `?nua-notes` appended to the URL, sees a sidebar 
 
 ## Status
 
-**v0.1 — first usable release.** All five build phases of the original plan are shipped except Phase 5 polish (proxy/sandbox forwarding through the CMS Cloudflare Worker, replies, the agency inbox view, theming, and i18n). The local-first dev flow is feature-complete and verified end-to-end with puppeteer.
+**v0.2 — agency mode + soft delete + history.** Adds a permission split that keeps reviewers from accidentally rewriting source files or losing the audit trail:
+
+- A **client** (the default) can only create comments and suggestions. The Apply, Resolve, and Delete buttons are not rendered, and the dev API rejects those routes with 403.
+- An **agency** (URL flag `?nua-agency`) gets the full controls: Apply suggestions to source, Resolve / Reopen, Delete (soft), Purge (hard).
+- **Soft delete**: clicking Delete in agency mode flips the item to `status: 'deleted'`. The item stays on disk so the agency always sees what happened. A separate `Purge` action hard-removes it.
+- **History trail**: every mutation appends a `{ at, action, role }` entry to `item.history`. The agency item card shows it in a collapsed details element. Clients can't see the history.
+- The base v0.1 surface (overlay, comments, suggestions, diff, anchor re-attach, apply flow, etc.) still ships and is unchanged.
+
+Phase 5 polish (proxy/sandbox forwarding through the CMS Cloudflare Worker, replies, the agency inbox view, theming, i18n) is still deferred.
 
 ## Quick start
 
@@ -28,32 +36,40 @@ bun run dev
 Then:
 
 - `http://localhost:4321/` — normal CMS editor view, notes is invisible
-- `http://localhost:4321/?nua-notes` — review mode: sidebar visible, CMS chrome hidden, click "Pick element" to comment or select text to suggest
+- `http://localhost:4321/?nua-notes` — review mode (client). Sidebar visible, CMS chrome hidden. Reviewers can comment or suggest. They cannot apply, resolve, or delete.
+- `http://localhost:4321/?nua-notes&nua-agency` — review mode (agency). Same UI plus the destructive controls. The agency role is sticky: visit once, the cookie keeps you in agency mode for subsequent navigation.
 
-The `?nua-notes` flag sets a session cookie so subsequent navigation stays in review mode. Click "Exit" in the toolbar to drop back into CMS editing.
+The `?nua-notes` flag sets a session cookie so subsequent navigation stays in review mode. Click "Exit" in the toolbar to drop back into CMS editing (this also clears the agency cookie).
 
-## What ships in v0.1
+## What ships in v0.2
 
-| Feature                                                                                    | Status  |
-| ------------------------------------------------------------------------------------------ | ------- |
-| Dev API at `/_nua/notes/*` (list, create, update, resolve, reopen, delete, apply)          | ✓       |
-| Local JSON storage at `data/notes/pages/<slug>.json` (atomic writes, per-slug mutex)       | ✓       |
-| Preact overlay mounted in a shadow DOM (zero CSS leakage either direction)                 | ✓       |
-| `?nua-notes` URL flag + cookie persistence + Exit toggle                                   | ✓       |
-| Hide `@nuasite/cms` editor chrome in review mode (mode exclusivity)                        | ✓       |
-| **Pick mode** — hover any `data-cms-id` element, click to comment                          | ✓       |
-| **Selection mode** — select text inside any element, leave a comment OR a range suggestion | ✓       |
-| Diff preview (− original / + suggested) on suggestion items in the sidebar                 | ✓       |
-| Anchor re-attachment after page reload — falls back to whitespace-collapsed match          | ✓       |
-| Stale badge when an anchor can't be found (source drifted)                                 | ✓       |
-| **Apply flow** — write the suggestion's replacement back to the source file                | ✓       |
-| Resolve / reopen / delete actions on every item                                            | ✓       |
-| Item author persisted in `localStorage`                                                    | ✓       |
-| Pre-built bundle (~16 kB gzipped) for npm consumers; source mode for monorepo dev          | ✓       |
-| Sandbox / proxy mode (Cloudflare Worker forwarding)                                        | Phase 5 |
-| Replies / threaded comments                                                                | Phase 5 |
-| Agency inbox view (cross-page list)                                                        | Phase 5 |
-| Theming via CSS variables, i18n, screenshot attachments                                    | Phase 5 |
+| Feature                                                                                                 | Status  |
+| ------------------------------------------------------------------------------------------------------- | ------- |
+| Dev API at `/_nua/notes/*` (list, create, update, resolve, reopen, delete, **purge**, apply)            | ✓       |
+| Local JSON storage at `data/notes/pages/<slug>.json` (atomic writes, per-slug mutex)                    | ✓       |
+| Preact overlay mounted in a shadow DOM (zero CSS leakage either direction)                              | ✓       |
+| `?nua-notes` URL flag + cookie persistence + Exit toggle                                                | ✓       |
+| **`?nua-agency` URL flag** + sticky cookie + role indicator in the toolbar                              | ✓       |
+| **Server-side role gating** — apply / delete / resolve / purge / update reject 403 without `x-nua-role` | ✓       |
+| **Soft delete** — agency Delete flips status to `deleted`, item stays on disk for the audit trail       | ✓       |
+| **Purge** — hard delete from disk, agency only, used on already-deleted items                           | ✓       |
+| **History trail** — every mutation appends `{ at, action, role }` to `item.history`, visible to agency  | ✓       |
+| **Collapsed Deleted section** in the agency sidebar; clients never see it                               | ✓       |
+| Hide `@nuasite/cms` editor chrome in review mode (mode exclusivity)                                     | ✓       |
+| **Pick mode** — hover any `data-cms-id` element, click to comment                                       | ✓       |
+| **Selection mode** — select text inside any element, leave a comment OR a range suggestion              | ✓       |
+| Diff preview (− original / + suggested) on suggestion items in the sidebar                              | ✓       |
+| Anchor re-attachment after page reload — falls back to whitespace-collapsed match                       | ✓       |
+| Stale badge when an anchor can't be found (source drifted)                                              | ✓       |
+| **Apply flow** — write the suggestion's replacement back to the source file (agency only)               | ✓       |
+| Resolve / reopen actions on every item (agency only)                                                    | ✓       |
+| Item author persisted in `localStorage`                                                                 | ✓       |
+| Pre-built bundle (~18 kB gzipped) for npm consumers; source mode for monorepo dev                       | ✓       |
+| Refreshed visual design — slate/zinc neutrals + muted blue accent, system-ui type, tighter spacing      | ✓       |
+| Sandbox / proxy mode (Cloudflare Worker forwarding)                                                     | Phase 5 |
+| Replies / threaded comments                                                                             | Phase 5 |
+| Agency inbox view (cross-page list)                                                                     | Phase 5 |
+| Theming via CSS variables, i18n, screenshot attachments                                                 | Phase 5 |
 
 ## How it works
 
@@ -157,7 +173,27 @@ Both packages inject scripts into the same `astro:scripts/page.js` bundle. Mode 
 - Without the URL flag: notes' loader returns early, mounts nothing, doesn't touch the DOM. CMS behaves byte-for-byte the same as before notes was installed.
 - With the URL flag: notes injects a stylesheet hiding CMS chrome and mounts its own UI inside a shadow DOM. Click handlers, focus, and z-index never collide because only one of the two UIs is visible at a time.
 
-A future version may negotiate via PostMessage so the two can coexist on screen (e.g. notes visible while CMS edit is active). For v0.1 the toggle is good enough.
+A future version may negotiate via PostMessage so the two can coexist on screen (e.g. notes visible while CMS edit is active). For v0.2 the toggle is good enough.
+
+## Roles and permissions
+
+Notes ships a two-role permission model designed to keep clients from accidentally rewriting source files or losing the audit trail.
+
+| Action                       | Client | Agency |
+| ---------------------------- | :----: | :----: |
+| Create comment               |   ✓    |   ✓    |
+| Create suggestion            |   ✓    |   ✓    |
+| See own + others' open items |   ✓    |   ✓    |
+| See resolved items           |   ✓    |   ✓    |
+| See deleted items / history  |        |   ✓    |
+| Resolve / Reopen             |        |   ✓    |
+| Apply suggestion to source   |        |   ✓    |
+| Delete (soft)                |        |   ✓    |
+| Purge (hard)                 |        |   ✓    |
+
+The role is granted by visiting any page with `?nua-agency` once. The overlay sets a session cookie, and every API call sends `x-nua-role: agency` so the dev middleware can enforce the same gating server-side. Clicking **Exit** in the toolbar clears both the review-mode and the agency cookies.
+
+**Trust model:** the role flag is unauthenticated. Anyone who knows the URL can claim agency. The point is to stop a non-technical client from accidentally clicking Apply, not to harden against an adversary. The dev server is local; real auth is out of scope for v0.2.
 
 ## Options
 
@@ -166,7 +202,8 @@ A future version may negotiate via PostMessage so the two can coexist on screen 
 | `enabled`             | `boolean` | `true`         | Master switch. Set `false` to skip injection entirely. Ignored in production builds.                          |
 | `notesDir`            | `string`  | `'data/notes'` | Project-relative directory where note JSON files live.                                                        |
 | `urlFlag`             | `string`  | `'nua-notes'`  | URL query parameter that activates review mode.                                                               |
-| `hideCmsInReviewMode` | `boolean` | `true`         | Hide CMS editor chrome when notes mode is active. (Reserved for v0.2; v0.1 always hides.)                     |
+| `agencyFlag`          | `string`  | `'nua-agency'` | URL query parameter that grants agency role + persists the sticky cookie.                                     |
+| `hideCmsInReviewMode` | `boolean` | `true`         | Hide CMS editor chrome when notes mode is active. (Reserved for v0.3; v0.2 always hides.)                     |
 | `proxy`               | `string?` | none           | Forward `/_nua/notes/*` to this target. Mirrors the `proxy` option on `@nuasite/cms`. (Reserved for Phase 5.) |
 
 ## Hosting
@@ -177,18 +214,19 @@ When the project's CMS is configured to forward writes through the existing nuas
 
 ## API reference (dev)
 
-All endpoints are mounted under `/_nua/notes/`. Requests and responses are JSON.
+All endpoints are mounted under `/_nua/notes/`. Requests and responses are JSON. Routes marked **agency** require the `x-nua-role: agency` request header (the overlay sets it automatically when in agency mode); they return 403 otherwise.
 
-| Method | Path                | Body                                                     | Response                                                                       |
-| ------ | ------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `GET`  | `/list?page=<page>` | —                                                        | `{ page, lastUpdated, items }`                                                 |
-| `GET`  | `/inbox`            | —                                                        | `{ pages: [...] }` (all pages)                                                 |
-| `POST` | `/create`           | `{ page, type, targetCmsId, body, author, range?, ... }` | `{ item }`                                                                     |
-| `POST` | `/update`           | `{ page, id, patch }`                                    | `{ item }`                                                                     |
-| `POST` | `/resolve`          | `{ page, id }`                                           | `{ item }` (status → resolved)                                                 |
-| `POST` | `/reopen`           | `{ page, id }`                                           | `{ item }` (status → open)                                                     |
-| `POST` | `/delete`           | `{ page, id }`                                           | `{ ok: true }`                                                                 |
-| `POST` | `/apply`            | `{ page, id }`                                           | `{ item, file, before, after }` (200) or `{ item, error, reason }` (409 stale) |
+| Method | Path                | Role   | Body                                                     | Response                                                                       |
+| ------ | ------------------- | ------ | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `GET`  | `/list?page=<page>` | any    | —                                                        | `{ page, lastUpdated, items }`                                                 |
+| `GET`  | `/inbox`            | any    | —                                                        | `{ pages: [...] }` (all pages)                                                 |
+| `POST` | `/create`           | any    | `{ page, type, targetCmsId, body, author, range?, ... }` | `{ item }`                                                                     |
+| `POST` | `/update`           | agency | `{ page, id, patch }`                                    | `{ item }`                                                                     |
+| `POST` | `/resolve`          | agency | `{ page, id }`                                           | `{ item }` (status → resolved)                                                 |
+| `POST` | `/reopen`           | agency | `{ page, id }`                                           | `{ item }` (status → open)                                                     |
+| `POST` | `/delete`           | agency | `{ page, id }`                                           | `{ item }` (status → deleted, **soft**, item stays on disk)                    |
+| `POST` | `/purge`            | agency | `{ page, id }`                                           | `{ ok: true }` (hard, removes the item from disk)                              |
+| `POST` | `/apply`            | agency | `{ page, id }`                                           | `{ item, file, before, after }` (200) or `{ item, error, reason }` (409 stale) |
 
 ## Architecture
 
