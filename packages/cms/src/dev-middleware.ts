@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { getProjectRoot } from './config'
+import { awaitNextContentStoreUpdate } from './content-invalidator'
 import { handleCmsApiRoute } from './handlers/api-routes'
 import { buildMapPattern, detectArrayPattern, extractArrayElementProps, parseInlineArrayName } from './handlers/array-ops'
 import {
@@ -43,6 +44,7 @@ interface ViteDevServerLike {
 	watcher?: {
 		on: (event: string, listener: (...args: any[]) => void) => any
 		removeListener: (event: string, listener: (...args: any[]) => void) => any
+		emit: (event: string, ...args: any[]) => boolean
 	}
 }
 
@@ -100,6 +102,45 @@ export function createDevMiddleware(
 
 	// CMS API endpoints (local dev server backend)
 	if (options.enableCmsApi) {
+		const projectRoot = getProjectRoot()
+
+		/**
+		 * Hold the HTTP response for a `markdown/update` (or equivalent) call
+		 * until Astro's content layer has actually re-synced the edited file.
+		 *
+		 * The race we're fixing: handleUpdateMarkdown writes the file and
+		 * returns immediately, the editor then triggers a full-reload, and
+		 * the next page render reads a still-cached `astro:data-layer-content`
+		 * virtual module — so the user sees their edit disappear until Astro's
+		 * async chain (glob loader → syncData → 500 ms save debounce → atomic
+		 * write → fs.watch → invalidateModule) finally catches up.
+		 *
+		 * The fix, end to end:
+		 *
+		 *   1. `server.watcher.emit('change', fullPath)` kicks Astro's glob
+		 *      loader directly. It is registered on this exact watcher (see
+		 *      astro/dist/core/dev/dev.js — `viteServer.watcher` is handed to
+		 *      `globalContentLayer.init`), so synthetic change events fire its
+		 *      `onChange` handler and trigger `syncData`. This also works
+		 *      around Vite's bundled chokidar missing some edits.
+		 *   2. `awaitNextContentStoreUpdate` parks until the shared data-store
+		 *      watcher (in `vite-plugin.ts`) observes the resulting atomic
+		 *      write and finishes invalidating the SSR module graph.
+		 *   3. Only then do we return — so the subsequent full-reload lands
+		 *      on a page that will re-execute with fresh content.
+		 *
+		 * The timeout fallback covers edits that legitimately do not rewrite
+		 * the data store (Astro's MutableDataStore skips identical writes).
+		 * In that case no fs.watch event will ever fire, and 3 s is plenty of
+		 * budget before we give up and let the response through anyway.
+		 */
+		const notifyContentChanged = async (filePath: string): Promise<void> => {
+			const fullPath = path.resolve(projectRoot, filePath)
+			const waiter = awaitNextContentStoreUpdate(3000)
+			server.watcher?.emit('change', fullPath)
+			await waiter
+		}
+
 		server.middlewares.use((req, res, next) => {
 			const url = req.url || ''
 			if (!url.startsWith('/_nua/cms/')) {
@@ -111,7 +152,7 @@ export function createDevMiddleware(
 
 			const route = url.replace('/_nua/cms/', '').split('?')[0]!
 
-			handleCmsApiRoute(route, req, res, manifestWriter, config.contentDir, options.mediaAdapter)
+			handleCmsApiRoute(route, req, res, manifestWriter, config.contentDir, options.mediaAdapter, notifyContentChanged)
 				.catch((error) => {
 					console.error('[astro-cms] API error:', error)
 					sendError(res, 'Internal server error', 500)

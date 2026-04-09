@@ -1,6 +1,7 @@
 import { watch } from 'node:fs'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
+import { invalidateContentCache, notifyContentStoreUpdated, type ViteServerLike } from './content-invalidator'
 import { expectedDeletions } from './dev-middleware'
 import type { ManifestWriter } from './manifest-writer'
 import { markFileDirty } from './source-finder'
@@ -85,6 +86,11 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 	// Without this, content collection edits update the data store on disk but the
 	// browser never receives a full-reload because Vite's watcher never fires "change"
 	// for that file. We use native fs.watch as a reliable fallback.
+	//
+	// Caveat: native fs.watch on Linux tracks the inode, not the path. Astro writes
+	// data-store.json via atomic rename (writeFile-tmp + rename), which replaces the
+	// inode and silently kills the existing watcher. We re-attach on every event to
+	// keep tracking the live file across atomic writes.
 	const dataStoreWatchPlugin: Plugin = {
 		name: 'cms-data-store-watch',
 		configureServer(server) {
@@ -93,25 +99,32 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 			const dataStorePath = join(root, '.astro', 'data-store.json')
 			let fsWatcher: ReturnType<typeof watch> | undefined
 			let debounce: ReturnType<typeof setTimeout> | undefined
+			let closed = false
 
 			const invalidate = () => {
-				// Replicate Astro's invalidateDataStore which never fires because
-				// Vite's bundled chokidar 3.6.0 misses atomic-write changes.
-				const ssr = server.environments.ssr
-				const mod = ssr.moduleGraph.getModuleById('\0astro:data-store')
-				if (mod) {
-					ssr.moduleGraph.invalidateModule(mod, undefined, Date.now(), true)
-				}
-				ssr.hot.send('astro:content-changed', {})
-				server.environments.client.hot.send({ type: 'full-reload', path: '*' })
+				invalidateContentCache(server as unknown as ViteServerLike)
+				// Wake any CMS API middleware call that is currently blocked
+				// waiting for the data store to reflect a just-written file.
+				// This keeps the invalidation on a single path (here) and lets
+				// the middleware respond only after the SSR module graph is fresh.
+				notifyContentStoreUpdated()
+			}
+
+			const onEvent = () => {
+				clearTimeout(debounce)
+				debounce = setTimeout(invalidate, 80)
+				// Re-attach: native fs.watch dies after the inode is replaced by an
+				// atomic rename. Close current and restart so subsequent writes are
+				// observed.
+				fsWatcher?.close()
+				fsWatcher = undefined
+				if (!closed) startWatching()
 			}
 
 			const startWatching = () => {
+				if (closed) return
 				try {
-					fsWatcher = watch(dataStorePath, () => {
-						clearTimeout(debounce)
-						debounce = setTimeout(invalidate, 80)
-					})
+					fsWatcher = watch(dataStorePath, onEvent)
 				} catch {
 					// File doesn't exist yet — retry when it appears
 					setTimeout(startWatching, 2000)
@@ -123,6 +136,7 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 
 			const origClose = server.close.bind(server)
 			server.close = async () => {
+				closed = true
 				fsWatcher?.close()
 				clearTimeout(debounce)
 				return origClose()
