@@ -162,7 +162,6 @@ export async function handleCreateMarkdown(
 		const fullFrontmatter: BlogFrontmatter = {
 			title,
 			date: new Date().toISOString().split('T')[0]!,
-			draft: true,
 			...frontmatter,
 		}
 		fileContent = serializeFrontmatter(fullFrontmatter, content)
