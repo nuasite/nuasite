@@ -4,10 +4,16 @@ import { parse as parseYaml } from 'yaml'
 
 import { getProjectRoot } from '../config'
 import type { Attribute, CollectionDefinition, ManifestEntry } from '../types'
-import { escapeRegex, generateSourceHash } from '../utils'
+import { escapeRegex, generateSourceHash, resolveSourcePath } from '../utils'
 import { buildDefinitionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
-import { buildCollectionTextIndex, findFieldInCollectionEntry, findTextInAnyCollectionFrontmatter, lookupCollectionText } from './collection-finder'
+import {
+	buildCollectionTextIndex,
+	findFieldInCollectionEntry,
+	findFieldsInCollectionEntry,
+	findTextInAnyCollectionFrontmatter,
+	lookupCollectionText,
+} from './collection-finder'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
 import { initializeSearchIndex } from './search-index'
@@ -444,9 +450,7 @@ export async function extractSourceSnippet(
 	tag: string,
 ): Promise<string | undefined> {
 	try {
-		const filePath = path.isAbsolute(sourceFile)
-			? sourceFile
-			: path.join(getProjectRoot(), sourceFile)
+		const filePath = resolveSourcePath(sourceFile)
 
 		const content = await fs.readFile(filePath, 'utf-8')
 		const lines = content.split('\n')
@@ -583,9 +587,7 @@ export async function enhanceManifestWithSourceSnippets(
 
 				// Also update attribute and colorClasses source info from the opening tag
 				try {
-					const filePath = path.isAbsolute(imageLocation.file)
-						? imageLocation.file
-						: path.join(getProjectRoot(), imageLocation.file)
+					const filePath = resolveSourcePath(imageLocation.file)
 					const { lines } = await readFileWithCache(filePath)
 					const openingTagInfo = extractOpeningTagWithLine(lines, imageLocation.line - 1, entry.tag)
 
@@ -620,9 +622,7 @@ export async function enhanceManifestWithSourceSnippets(
 			// Fallback for expression-based src attributes (src={variable})
 			if (entry.sourcePath && entry.sourceLine) {
 				try {
-					const filePath = path.isAbsolute(entry.sourcePath)
-						? entry.sourcePath
-						: path.join(getProjectRoot(), entry.sourcePath)
+					const filePath = resolveSourcePath(entry.sourcePath)
 					const cached = await getCachedParsedFile(filePath)
 					if (cached) {
 						const nearbyImg = findImageElementNearLine(cached.ast, entry.sourceLine, cached.lines)
@@ -662,6 +662,18 @@ export async function enhanceManifestWithSourceSnippets(
 			return [id, entry] as const
 		}
 
+		// Collection text: resolve directly from the data file
+		if (entry.text?.trim() && entry.collectionName && entry.collectionSlug && collectionDefinitions) {
+			const textLocation = await resolveCollectionTextField(
+				entry,
+				collectionDefinitions,
+				referenceIndex,
+			)
+			if (textLocation) {
+				return [id, textLocation] as const
+			}
+		}
+
 		// Skip if already has sourceSnippet or missing source info
 		if (entry.sourceSnippet || !entry.sourcePath || !entry.sourceLine || !entry.tag) {
 			return [id, entry] as const
@@ -669,9 +681,7 @@ export async function enhanceManifestWithSourceSnippets(
 
 		// Read file once and extract both snippets
 		try {
-			const filePath = path.isAbsolute(entry.sourcePath)
-				? entry.sourcePath
-				: path.join(getProjectRoot(), entry.sourcePath)
+			const filePath = resolveSourcePath(entry.sourcePath)
 
 			const { content, lines } = await readFileWithCache(filePath)
 
@@ -973,36 +983,33 @@ async function resolveCollectionImageField(
 		return undefined
 	}
 
-	// Multiple image fields — try to match the rendered URL to a field value.
+	// Multiple image fields — fetch all in one YAML parse, then match by value
 	const imgSrc = entry.imageMetadata!.src
+	const allResults = await findFieldsInCollectionEntry(
+		new Set(imageFields.map(f => f.name)),
+		entry.collectionName!,
+		entry.collectionSlug!,
+		collectionDefinitions,
+	)
+
 	let firstFieldResult: SourceLocation | undefined
 	for (const field of imageFields) {
-		const fieldResult = await findFieldInCollectionEntry(
-			field.name,
-			entry.collectionName!,
-			entry.collectionSlug!,
-			collectionDefinitions,
-		)
+		const fieldResult = allResults.get(field.name)
 		if (!fieldResult?.snippet) continue
 
-		// Remember the first resolved field as fallback
 		firstFieldResult ??= fieldResult
 
-		// Check if the field's value matches the rendered URL (exact or after Astro processing)
-		const yamlKeyMatch = fieldResult.snippet.match(/^\s*[\w][\w-]*:\s*/)
-		if (yamlKeyMatch) {
-			try {
-				const parsed = parseYaml(fieldResult.snippet)
-				if (parsed && typeof parsed === 'object') {
-					const key = fieldResult.snippet.match(/^\s*([\w][\w-]*):/)?.[1]
-					const value = key ? (parsed as Record<string, unknown>)[key] : undefined
-					if (typeof value === 'string' && (value === imgSrc || imgSrc.includes(value) || value.includes(imgSrc))) {
-						return applyCollectionSource(entry, fieldResult, referenceIndex)
-					}
+		try {
+			const cleaned = fieldResult.snippet.replace(/,\s*$/, '')
+			const parsed = parseYaml(cleaned)
+			if (parsed && typeof parsed === 'object') {
+				const value = (parsed as Record<string, unknown>)[field.name]
+				if (typeof value === 'string' && (value === imgSrc || imgSrc.includes(value) || value.includes(imgSrc))) {
+					return applyCollectionSource(entry, fieldResult, referenceIndex)
 				}
-			} catch {
-				// Not valid YAML
 			}
+		} catch {
+			// Not valid YAML/JSON
 		}
 	}
 
@@ -1011,6 +1018,110 @@ async function resolveCollectionImageField(
 		return applyCollectionSource(entry, firstFieldResult, referenceIndex)
 	}
 
+	return undefined
+}
+
+// ============================================================================
+// Collection Text Resolution
+// ============================================================================
+
+/**
+ * Resolve a collection text entry directly from the data file.
+ * Two strategies, tried in order:
+ *
+ * 1. **Source-map** — read the template expression (e.g., {post.data.title}),
+ *    extract the field name, look it up by name in the data file.
+ * 2. **Value match** — iterate over collection fields and compare rendered
+ *    text against field values. Handles static/hardcoded text that exists
+ *    in both the template and a collection data file.
+ */
+async function resolveCollectionTextField(
+	entry: ManifestEntry,
+	collectionDefinitions: Record<string, CollectionDefinition>,
+	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
+): Promise<ManifestEntry | undefined> {
+	const colDef = collectionDefinitions[entry.collectionName!]
+	if (!colDef) return undefined
+
+	// Try template expression as source map (e.g., {post.data.title} → "title")
+	const fieldNames = await extractDataFieldNames(entry)
+	if (fieldNames.size === 1) {
+		const fieldResult = await findFieldInCollectionEntry(
+			fieldNames.values().next().value!,
+			entry.collectionName!,
+			entry.collectionSlug!,
+			collectionDefinitions,
+		)
+		if (fieldResult) {
+			return applyCollectionSource(entry, fieldResult, referenceIndex, { allowStyling: false })
+		}
+	} else if (fieldNames.size > 1) {
+		const result = await matchFieldByValue(entry, fieldNames, collectionDefinitions, referenceIndex)
+		if (result) return result
+	}
+
+	// Fallback: match rendered text against all non-image field values
+	const allFieldNames = new Set(colDef.fields.filter(f => f.type !== 'image').map(f => f.name))
+	if (allFieldNames.size > 0) {
+		return matchFieldByValue(entry, allFieldNames, collectionDefinitions, referenceIndex)
+	}
+
+	return undefined
+}
+
+/**
+ * Extract .data.fieldName references from the template expression at the entry's source location.
+ * Returns an empty set if the entry lacks source info or the template has no data field expressions.
+ */
+async function extractDataFieldNames(entry: ManifestEntry): Promise<Set<string>> {
+	const fieldNames = new Set<string>()
+	if (!entry.sourcePath || !entry.sourceLine || !entry.tag) return fieldNames
+
+	const cached = await getCachedParsedFile(resolveSourcePath(entry.sourcePath))
+	if (!cached) return fieldNames
+
+	const snippet = extractCompleteTagSnippet(cached.lines, entry.sourceLine - 1, entry.tag)
+	if (!snippet) return fieldNames
+
+	let match: RegExpExecArray | null
+	const pattern = /\.data\.(\w+)/g
+	while ((match = pattern.exec(snippet)) !== null) {
+		fieldNames.add(match[1]!)
+	}
+	return fieldNames
+}
+
+/** Match entry text against collection field values to find the source field. */
+async function matchFieldByValue(
+	entry: ManifestEntry,
+	fieldNames: Set<string>,
+	collectionDefinitions: Record<string, CollectionDefinition>,
+	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
+): Promise<ManifestEntry | undefined> {
+	const normalizedText = normalizeText(entry.text!)
+	const fieldResults = await findFieldsInCollectionEntry(
+		fieldNames,
+		entry.collectionName!,
+		entry.collectionSlug!,
+		collectionDefinitions,
+	)
+
+	for (const [fieldName, fieldResult] of fieldResults) {
+		if (!fieldResult.snippet) continue
+
+		try {
+			const cleaned = fieldResult.snippet.replace(/,\s*$/, '')
+			const parsed = parseYaml(cleaned)
+			if (parsed && typeof parsed === 'object') {
+				const value = (parsed as Record<string, unknown>)[fieldName]
+				if (typeof value === 'string' && normalizeText(value) === normalizedText) {
+					return applyCollectionSource(entry, fieldResult, referenceIndex, { allowStyling: false })
+				}
+			}
+		} catch {
+			// Not valid YAML/JSON
+		}
+	}
 	return undefined
 }
 
