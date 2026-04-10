@@ -119,9 +119,16 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 	return {
 		name: '@nuasite/cms',
 		hooks: {
-			'astro:config:setup': async ({ updateConfig, command, injectScript, logger }) => {
+			'astro:config:setup': async ({ updateConfig, command, injectScript, injectRoute, logger }) => {
 				// CMS is only needed during dev — skip all setup during build
 				if (command !== 'dev') return
+
+				// Inject dev-only component preview route (prerender:false → SSR with query param access)
+				injectRoute({
+					pattern: '/_nua/preview',
+					entrypoint: new URL('./pages/component-preview.astro', import.meta.url).pathname,
+					prerender: false,
+				})
 
 				// --- CMS Marker setup ---
 				idCounter.value = 0
@@ -200,13 +207,17 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					injectScript(
 						'page',
 						`
-						${configScript}
-						if (!document.querySelector('script[data-nuasite-cms]')) {
-							const s = document.createElement('script');
-							s.type = 'module';
-							s.src = ${JSON.stringify(editorSrc)};
-							s.dataset.nuasiteCms = '';
-							document.head.appendChild(s);
+						if (window.location.pathname.startsWith('/_nua/')) {
+							// Skip CMS editor on internal preview pages
+						} else {
+							${configScript}
+							if (!document.querySelector('script[data-nuasite-cms]')) {
+								const s = document.createElement('script');
+								s.type = 'module';
+								s.src = ${JSON.stringify(editorSrc)};
+								s.dataset.nuasiteCms = '';
+								document.head.appendChild(s);
+							}
 						}
 					`,
 					)

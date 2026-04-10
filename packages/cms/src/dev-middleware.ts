@@ -302,6 +302,13 @@ export function createDevMiddleware(
 				return res.end(chunk, ...args)
 			}
 
+			// Skip CMS processing for internal preview pages
+			if (requestUrl.startsWith('/_nua/preview')) {
+				res.write = originalWrite
+				res.end = originalEnd
+				return (res.end as any)(chunk, ...args)
+			}
+
 			if (chunk) {
 				chunks!.push(Buffer.from(chunk))
 			}

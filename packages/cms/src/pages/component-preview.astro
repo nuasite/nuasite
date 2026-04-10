@@ -1,0 +1,56 @@
+---
+// @ts-nocheck
+import { components } from 'virtual:cms-component-preview'
+
+const componentFile = Astro.url.searchParams.get('file')
+const childrenMarkdown = Astro.url.searchParams.get('children')
+
+let props: Record<string, unknown> = {}
+const propsParam = Astro.url.searchParams.get('props')
+if (propsParam) {
+	try {
+		props = JSON.parse(propsParam)
+	} catch {}
+}
+
+const loader = componentFile ? components[componentFile] : undefined
+const Component = loader ? (await loader()).default : null
+
+// Render markdown children to HTML
+let childrenHtml = ''
+if (childrenMarkdown) {
+	try {
+		const { unified } = await import('unified')
+		const { default: remarkParse } = await import('remark-parse')
+		const { default: remarkRehype } = await import('remark-rehype')
+		const { default: rehypeStringify } = await import('rehype-stringify')
+		const result = await unified().use(remarkParse).use(remarkRehype).use(rehypeStringify).process(childrenMarkdown)
+		childrenHtml = String(result)
+	} catch {
+		childrenHtml = childrenMarkdown
+	}
+}
+
+// Import the project's global CSS so components render with correct styles.
+// Glob matches common CSS entry points — Vite resolves relative to project root.
+const globalStyles = import.meta.glob(['/src/styles/**/*.css', '/src/styles/**/*.scss'], { eager: true })
+---
+
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<style>
+			html, body { margin: 0; padding: 0; background: white; }
+			body { padding: 8px; }
+		</style>
+	</head>
+	<body>
+		{Component
+			? childrenHtml
+				? <Component {...props}><Fragment set:html={childrenHtml} /></Component>
+				: <Component {...props} />
+			: <p style="color:#888;font-size:13px;margin:0">No preview available</p>
+		}
+	</body>
+</html>

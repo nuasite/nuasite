@@ -13,9 +13,12 @@ import {
 import { gfm, toggleStrikethroughCommand } from '@milkdown/preset-gfm'
 import { callCommand, insert, replaceAll } from '@milkdown/utils'
 import type { ComponentChildren } from 'preact'
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { getComponentDefinition } from '../manifest'
 import { MDX_EXPR_PREFIX } from '../milkdown-mdx-plugin'
 import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
+import { manifest, openMediaLibraryWithCallback } from '../signals'
+import type { ComponentProp } from '../types'
 
 const MDX_COMPONENT_ICON_PATH =
 	'M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5'
@@ -301,6 +304,101 @@ function InlineInput({ value, onChange, placeholder }: { value: string; onChange
 	)
 }
 
+const INLINE_INPUT_TYPES: Record<string, string> = {
+	number: 'number',
+	url: 'url',
+	date: 'date',
+	datetime: 'datetime-local',
+	time: 'time',
+	email: 'email',
+}
+const inputClass =
+	'w-full bg-white/5 border border-white/10 rounded-cms-sm px-2.5 py-1.5 text-[13px] text-white/80 placeholder:text-white/30 outline-none focus:border-white/25 transition-colors'
+
+function InlinePropField(
+	{ name, value, propDef, onChange }: { name: string; value: string; propDef?: ComponentProp; onChange: (v: string) => void },
+) {
+	const typeLower = propDef?.type.toLowerCase() ?? ''
+
+	if (typeLower === 'boolean') {
+		return (
+			<div class="flex items-center gap-2">
+				<label class="text-[11px] text-white/40 font-medium w-20 shrink-0 text-right">{name}</label>
+				<label class="flex items-center gap-2 cursor-pointer py-1">
+					<input
+						type="checkbox"
+						checked={value === 'true'}
+						onChange={(e) => onChange((e.target as HTMLInputElement).checked ? 'true' : 'false')}
+						class="accent-cms-primary w-4 h-4 rounded"
+					/>
+					<span class="text-[12px] text-white/60">{value === 'true' ? 'Yes' : 'No'}</span>
+				</label>
+			</div>
+		)
+	}
+
+	if (typeLower === 'image') {
+		return (
+			<div class="flex items-center gap-2">
+				<label class="text-[11px] text-white/40 font-medium w-20 shrink-0 text-right">{name}</label>
+				<div class="flex gap-1.5 flex-1">
+					<InlineInput value={value} onChange={onChange} placeholder="Select an image..." />
+					<button
+						type="button"
+						onClick={() => openMediaLibraryWithCallback((url: string) => onChange(url))}
+						class="px-2 py-1.5 bg-white/5 border border-white/10 text-white/50 hover:text-white hover:bg-white/10 rounded-cms-sm transition-colors shrink-0"
+						title="Browse media"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+							/>
+						</svg>
+					</button>
+				</div>
+			</div>
+		)
+	}
+
+	if (typeLower === 'color') {
+		return (
+			<div class="flex items-center gap-2">
+				<label class="text-[11px] text-white/40 font-medium w-20 shrink-0 text-right">{name}</label>
+				<div class="flex gap-1.5 flex-1 items-center">
+					<input
+						type="color"
+						value={value || '#000000'}
+						onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+						class="w-7 h-7 rounded-cms-sm border border-white/10 bg-transparent cursor-pointer shrink-0"
+					/>
+					<InlineInput value={value} onChange={onChange} placeholder="#000000" />
+				</div>
+			</div>
+		)
+	}
+
+	const htmlType = INLINE_INPUT_TYPES[typeLower]
+
+	return (
+		<div class="flex items-center gap-2">
+			<label class="text-[11px] text-white/40 font-medium w-20 shrink-0 text-right">{name}</label>
+			{htmlType
+				? (
+					<input
+						type={htmlType}
+						value={value}
+						onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+						placeholder={`Enter ${name}...`}
+						class={inputClass}
+					/>
+				)
+				: <InlineInput value={value} onChange={onChange} placeholder={`Enter ${name}...`} />}
+		</div>
+	)
+}
+
 // ============================================================================
 // Block Card
 // ============================================================================
@@ -311,6 +409,14 @@ export function MdxBlockCard({ componentName, props, hasExpressions, slotContent
 	const expressionProps = propEntries.filter(([_, v]) => v.startsWith(MDX_EXPR_PREFIX))
 
 	const hasSlotContent = onSlotContentChange != null
+	const definition = getComponentDefinition(manifest.value, componentName)
+	const propTypes = useMemo(() => {
+		const map = new Map<string, ComponentProp>()
+		if (definition?.props) {
+			for (const p of definition.props) map.set(p.name, p)
+		}
+		return map
+	}, [definition])
 
 	const handlePropChange = (name: string, newValue: string) => {
 		if (onPropsChange) {
@@ -330,21 +436,23 @@ export function MdxBlockCard({ componentName, props, hasExpressions, slotContent
 					<span class="text-[13px] font-semibold text-white">{componentName}</span>
 					{hasExpressions && <span class="text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded font-mono">expr</span>}
 				</div>
-				<button
-					type="button"
-					data-mdx-action="remove"
-					onClick={onRemove}
-					class="p-1.5 rounded-cms-sm text-white/50 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-					title="Remove block"
-				>
-					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-						/>
-					</svg>
-				</button>
+				<div class="flex items-center gap-1">
+					<button
+						type="button"
+						data-mdx-action="remove"
+						onClick={onRemove}
+						class="p-1.5 rounded-cms-sm text-white/50 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+						title="Remove block"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+							/>
+						</svg>
+					</button>
+				</div>
 			</div>
 
 			{/* Slot content editor */}
@@ -361,14 +469,13 @@ export function MdxBlockCard({ componentName, props, hasExpressions, slotContent
 			{onPropsChange && editableProps.length > 0 && (
 				<div class="px-4 py-3 space-y-2" data-mdx-action="props">
 					{editableProps.map(([name, value]) => (
-						<div key={name} class="flex items-center gap-2">
-							<label class="text-[11px] text-white/40 font-medium w-20 shrink-0 text-right">{name}</label>
-							<InlineInput
-								value={value}
-								onChange={(v) => handlePropChange(name, v)}
-								placeholder={`Enter ${name}...`}
-							/>
-						</div>
+						<InlinePropField
+							key={name}
+							name={name}
+							value={value}
+							propDef={propTypes.get(name)}
+							onChange={(v) => handlePropChange(name, v)}
+						/>
 					))}
 				</div>
 			)}

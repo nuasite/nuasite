@@ -28,6 +28,9 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 			if (id === '/@cms/components' || id === 'virtual:cms-components') {
 				return '\0virtual:cms-components'
 			}
+			if (id === 'virtual:cms-component-preview') {
+				return '\0virtual:cms-component-preview'
+			}
 		},
 		load(id) {
 			if (id === '\0virtual:cms-manifest') {
@@ -35,6 +38,12 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 			}
 			if (id === '\0virtual:cms-components') {
 				return `export default ${JSON.stringify(componentDefinitions)};`
+			}
+			if (id === '\0virtual:cms-component-preview') {
+				const entries = Object.values(componentDefinitions).map(
+					(def) => `  ${JSON.stringify(def.file)}: () => import(${JSON.stringify('/' + def.file)})`,
+				)
+				return `export const components = {\n${entries.join(',\n')}\n};`
 			}
 		},
 	}

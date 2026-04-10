@@ -8,6 +8,7 @@ import {
 	config,
 	currentMarkdownPage,
 	isMarkdownPreview,
+	manifest,
 	markdownEditorState,
 	pendingCollectionEntries,
 	resetMarkdownEditorState,
@@ -244,6 +245,41 @@ export function MarkdownEditorOverlay() {
 			try {
 				const view = editorInstanceRef.current.ctx.get(editorViewCtx)
 				el.innerHTML = view.dom.innerHTML
+
+				// Replace MDX block cards with rendered component previews
+				el.querySelectorAll('.mdx-block-card-wrapper[data-mdx-component]').forEach((wrapper) => {
+					const name = wrapper.getAttribute('data-mdx-component')
+					if (!name) return
+					const def = manifest.value?.componentDefinitions?.[name]
+					if (!def?.file) return
+
+					const propsJson = wrapper.getAttribute('data-mdx-props') || '{}'
+					const childrenText = wrapper.getAttribute('data-mdx-children') || ''
+					let props: Record<string, string> = {}
+					try {
+						props = JSON.parse(propsJson)
+					} catch {}
+
+					// Filter out expression props
+					const staticProps: Record<string, string> = {}
+					for (const [k, v] of Object.entries(props)) {
+						if (!v.startsWith('__mdx_expr__:')) staticProps[k] = v
+					}
+
+					const params = new URLSearchParams({ file: def.file, props: JSON.stringify(staticProps) })
+					if (childrenText) params.set('children', childrenText)
+
+					const iframe = document.createElement('iframe')
+					iframe.src = `/_nua/preview?${params}`
+					iframe.style.cssText = 'width:100%;border:0;display:block;min-height:60px'
+					iframe.onload = () => {
+						try {
+							const h = iframe.contentDocument?.body?.scrollHeight
+							if (h) iframe.style.height = `${h + 16}px`
+						} catch {}
+					}
+					wrapper.replaceWith(iframe)
+				})
 			} catch (error) {
 				console.error('Failed to get editor HTML for preview:', error)
 				originalHTMLRef.current = null

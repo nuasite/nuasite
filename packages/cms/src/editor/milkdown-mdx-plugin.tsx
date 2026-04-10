@@ -240,6 +240,11 @@ export const mdxComponentView = $view(mdxComponentNode, () => {
 		const renderCard = (node: PmNode) => {
 			const componentName = node.attrs.componentName as string
 			const propsJson = node.attrs.props as string
+
+			// Store attrs on the wrapper so preview mode can read them from copied DOM
+			container.setAttribute('data-mdx-component', componentName)
+			container.setAttribute('data-mdx-props', propsJson)
+			container.setAttribute('data-mdx-children', (node.attrs.children as string) || '')
 			const props: Record<string, string> = JSON.parse(propsJson)
 			const hasExpressions = node.attrs.hasExpressions as boolean
 			const children = (node.attrs.children as string) || ''
