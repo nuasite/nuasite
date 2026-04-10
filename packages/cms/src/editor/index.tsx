@@ -109,9 +109,8 @@ const CmsUI = () => {
 	// Re-fetch manifest on View Transitions navigation (astro:after-swap)
 	useEffect(() => {
 		const onNavigation = () => {
-			fetchManifest().then((manifest) => {
-				signals.setManifest(manifest)
-			}).catch(() => {})
+			postToParent({ type: 'cms-page-navigated', page: { pathname: window.location.pathname } })
+			fetchManifest().then((manifest) => signals.setManifest(manifest)).catch(() => {})
 		}
 		document.addEventListener('astro:after-swap', onNavigation)
 		return () => document.removeEventListener('astro:after-swap', onNavigation)
