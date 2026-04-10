@@ -151,11 +151,12 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 })
 
 // Helper to write a content config with a z.object schema for a collection
-async function writeContentConfig(ctx: TempDirContext, collectionName: string, schemaBody: string) {
+async function writeContentConfig(ctx: TempDirContext, collectionName: string, schemaBody: string, extraImports = '') {
 	await ctx.writeFile(
 		'src/content.config.ts',
 		`import { defineCollection } from 'astro:content'
 import { z } from 'astro/zod'
+${extraImports}
 const ${collectionName}Collection = defineCollection({
   schema: z.object({
 ${schemaBody}
@@ -209,5 +210,40 @@ withTempDir('collection-scanner: schema field filtering', (getCtx) => {
 		const fieldNames = notesDef!.fields.map((f: FieldDefinition) => f.name)
 		expect(fieldNames).toContain('title')
 		expect(fieldNames).toContain('priority')
+	})
+})
+
+withTempDir('collection-scanner: n.xxx type detection', (getCtx) => {
+	test('detects n.image() call syntax', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['posts'])
+
+		await writeContentConfig(
+			ctx,
+			'posts',
+			`    title: z.string(),\n    photo: n.image(),\n    website: n.url().optional(),\n    bio: n.textarea(),`,
+			`import { n } from '@nuasite/cms'`,
+		)
+
+		await ctx.writeFile(
+			'src/content/posts/post-1.md',
+			`---\ntitle: Hello\nphoto: /img/hero.jpg\nwebsite: https://example.com\nbio: Some long bio text\n---\nContent`,
+		)
+
+		const result = await scanCollections()
+		const postsDef = result['posts']
+		expect(postsDef).toBeDefined()
+
+		const photo = postsDef!.fields.find((f: FieldDefinition) => f.name === 'photo')
+		expect(photo).toBeDefined()
+		expect(photo!.type).toBe('image')
+
+		const website = postsDef!.fields.find((f: FieldDefinition) => f.name === 'website')
+		expect(website).toBeDefined()
+		expect(website!.type).toBe('url')
+
+		const bio = postsDef!.fields.find((f: FieldDefinition) => f.name === 'bio')
+		expect(bio).toBeDefined()
+		expect(bio!.type).toBe('textarea')
 	})
 })

@@ -1,42 +1,47 @@
+import { z } from 'astro/zod'
+
 /**
- * Semantic field type wrappers for Zod schemas in content collections.
+ * Semantic field type schemas for content collections.
  *
- * These are identity functions — they return exactly what's passed in.
- * The CMS collection scanner detects them by name in the source and
- * renders the appropriate editor input.
+ * Each method returns a `z.string()` schema that Astro resolves
+ * statically (concrete return type, no generics). The CMS collection
+ * scanner detects them by name in the source and renders the
+ * appropriate editor input.
+ *
+ * Chain Zod methods as usual (`.optional()`, `.default()`, etc.).
  *
  * @example
  * ```ts
- * import { field } from '@nuasite/cms'
+ * import { n } from '@nuasite/cms'
  * import { z } from 'astro/zod'
  *
  * const schema = z.object({
- *   photo: field.image(z.string()),
- *   website: field.url(z.string()),
- *   contact: field.email(z.string()),
- *   accent: field.color(z.string()),
- *   publishedAt: field.date(z.string()),
- *   startsAt: field.datetime(z.string()),
- *   opensAt: field.time(z.string()),
- *   bio: field.textarea(z.string()),
+ *   photo: n.image(),
+ *   website: n.url().optional(),
+ *   contact: n.email(),
+ *   accent: n.color(),
+ *   publishedAt: n.date(),
+ *   startsAt: n.datetime(),
+ *   opensAt: n.time(),
+ *   bio: n.textarea(),
  * })
  * ```
  */
-export const field = {
+export const n = {
 	/** Image picker (opens media library) */
-	image: <T>(schema: T): T => schema,
+	image: () => z.string().describe('cms:image'),
 	/** URL input */
-	url: <T>(schema: T): T => schema,
+	url: () => z.string().describe('cms:url'),
 	/** Email input */
-	email: <T>(schema: T): T => schema,
+	email: () => z.string().describe('cms:email'),
 	/** Color picker */
-	color: <T>(schema: T): T => schema,
+	color: () => z.string().describe('cms:color'),
 	/** Date picker */
-	date: <T>(schema: T): T => schema,
+	date: () => z.string().describe('cms:date'),
 	/** Date + time picker */
-	datetime: <T>(schema: T): T => schema,
+	datetime: () => z.string().describe('cms:datetime'),
 	/** Time picker */
-	time: <T>(schema: T): T => schema,
+	time: () => z.string().describe('cms:time'),
 	/** Multiline textarea */
-	textarea: <T>(schema: T): T => schema,
+	textarea: () => z.string().describe('cms:textarea'),
 }

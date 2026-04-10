@@ -346,7 +346,7 @@ async function mergeRedirects(dir: URL, logger: { info: (msg: string) => void })
 	logger.info(`Merged ${lineCount} CMS redirect(s) into _redirects`)
 }
 
-export { field } from './field-types'
+export { n } from './field-types'
 export { createContemberStorageAdapter as contemberMedia } from './media/contember'
 export { createLocalStorageAdapter as localMedia } from './media/local'
 export { createS3StorageAdapter as s3Media } from './media/s3'

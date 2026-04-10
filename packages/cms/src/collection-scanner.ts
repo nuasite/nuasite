@@ -454,12 +454,12 @@ function parseContentConfigReferences(
 	return result
 }
 
-/** Valid field type names exported by `field` helper from @nuasite/cms */
+/** Valid field type names exported by `n` helper from @nuasite/cms */
 const FIELD_HELPER_TYPES = new Set(['image', 'url', 'email', 'color', 'date', 'datetime', 'time', 'textarea'])
 
 /**
  * Parse the content config file to extract explicit field type hints:
- * - `field.image(...)`, `field.url(...)`, etc. from @nuasite/cms
+ * - `n.image()`, `n.url()`, etc. from @nuasite/cms
  * - `z.enum([...])` for select options
  *
  * Returns a map: collectionName → fieldName → { type, options? }
@@ -472,8 +472,8 @@ function parseContentConfigFieldTypes(
 	for (const { collectionName, schemaBody } of schemaBlocks) {
 		const fields = new Map<string, { type: FieldType; options?: string[] }>()
 
-		// Detect field.image(...), field.url(...), etc.
-		const fieldHelpers = schemaBody.matchAll(/(\w+)\s*:\s*field\.(\w+)\s*\(/g)
+		// Detect n.image(), n.url(), etc.
+		const fieldHelpers = schemaBody.matchAll(/(\w+)\s*:\s*n\.(\w+)/g)
 		for (const m of fieldHelpers) {
 			const fieldName = m[1]!
 			const helperName = m[2]!
