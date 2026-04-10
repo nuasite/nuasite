@@ -501,6 +501,36 @@ function parseContentConfigFieldTypes(
 }
 
 /**
+ * Extract all top-level field names from a schema body string.
+ * Matches `fieldName:` patterns at the start of lines within z.object({...}).
+ */
+function extractSchemaFieldNames(schemaBody: string): Set<string> {
+	const names = new Set<string>()
+	for (const m of schemaBody.matchAll(/^\s*(\w+)\s*:/gm)) {
+		names.add(m[1]!)
+	}
+	return names
+}
+
+/**
+ * When a content config schema exists, filter scanned fields to only include
+ * those defined in the schema. This prevents stale or extra frontmatter fields
+ * from appearing in the CMS editor.
+ */
+function filterFieldsBySchema(
+	collections: Record<string, CollectionDefinition>,
+	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
+): void {
+	for (const { collectionName, schemaBody } of schemaBlocks) {
+		const def = collections[collectionName]
+		if (!def) continue
+		const schemaNames = extractSchemaFieldNames(schemaBody)
+		if (schemaNames.size === 0) continue
+		def.fields = def.fields.filter(f => schemaNames.has(f.name))
+	}
+}
+
+/**
  * Apply field type overrides from config parsing to scanned collections.
  */
 function applyConfigFieldTypes(
@@ -759,6 +789,7 @@ export async function scanCollections(contentDir: string = 'src/content'): Promi
 
 	// Post-scan: apply explicit type hints, detect references, and derived fields
 	const schemaBlocks = await parseContentConfigSchemaBlocks()
+	filterFieldsBySchema(collections, schemaBlocks)
 	applyConfigFieldTypes(collections, schemaBlocks)
 	await detectReferenceFields(collections, schemaBlocks)
 	detectDerivedHrefFields(collections)

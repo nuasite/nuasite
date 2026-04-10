@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { scanCollections } from '../../src/collection-scanner'
 import type { FieldDefinition } from '../../src/types'
-import { setupContentCollections, withTempDir } from '../utils'
+import { setupContentCollections, type TempDirContext, withTempDir } from '../utils'
 
 withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx) => {
 	test('array of objects infers sub-fields', async () => {
@@ -147,5 +147,67 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 
 		expect(inStockSub).toBeDefined()
 		expect(inStockSub!.type).toBe('boolean')
+	})
+})
+
+// Helper to write a content config with a z.object schema for a collection
+async function writeContentConfig(ctx: TempDirContext, collectionName: string, schemaBody: string) {
+	await ctx.writeFile(
+		'src/content.config.ts',
+		`import { defineCollection } from 'astro:content'
+import { z } from 'astro/zod'
+const ${collectionName}Collection = defineCollection({
+  schema: z.object({
+${schemaBody}
+  }),
+})
+export const collections = { ${collectionName}: ${collectionName}Collection }
+`,
+	)
+}
+
+withTempDir('collection-scanner: schema field filtering', (getCtx) => {
+	test('filters out frontmatter fields not in content config schema', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['posts'])
+
+		await writeContentConfig(ctx, 'posts', `    title: z.string(),\n    date: z.string(),`)
+
+		await ctx.writeFile(
+			'src/content/posts/post-1.md',
+			`---\ntitle: Hello\ndate: '2025-01-01'\norder: 5\ndraft: true\n---\nContent`,
+		)
+		await ctx.writeFile(
+			'src/content/posts/post-2.md',
+			`---\ntitle: World\ndate: '2025-01-02'\norder: 10\n---\nContent`,
+		)
+
+		const result = await scanCollections()
+		const postsDef = result['posts']
+		expect(postsDef).toBeDefined()
+
+		const fieldNames = postsDef!.fields.map((f: FieldDefinition) => f.name)
+		expect(fieldNames).toContain('title')
+		expect(fieldNames).toContain('date')
+		expect(fieldNames).not.toContain('order')
+		expect(fieldNames).not.toContain('draft')
+	})
+
+	test('keeps all fields when no content config schema exists', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['notes'])
+
+		await ctx.writeFile(
+			'src/content/notes/note-1.md',
+			`---\ntitle: Note\npriority: 1\n---\nContent`,
+		)
+
+		const result = await scanCollections()
+		const notesDef = result['notes']
+		expect(notesDef).toBeDefined()
+
+		const fieldNames = notesDef!.fields.map((f: FieldDefinition) => f.name)
+		expect(fieldNames).toContain('title')
+		expect(fieldNames).toContain('priority')
 	})
 })
