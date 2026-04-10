@@ -17,9 +17,9 @@ import {
 	getTextSearchIndex,
 	isSearchIndexInitialized,
 	removeFileFromIndexes,
+	setCollectionTextIndex,
 	setSearchIndexInitialized,
 } from './cache'
-import { clearCollectionTextIndex } from './collection-finder'
 import { extractImageSnippet, extractInnerHtmlFromSnippet, normalizeText } from './snippet-utils'
 import type { CachedParsedFile, SearchIndexEntry, SourceLocation } from './types'
 
@@ -167,7 +167,7 @@ async function doReindexDirtyFiles(): Promise<void> {
 	// Also clear the markdown file cache and collection text index
 	// so collection content is re-read and re-indexed from disk
 	getMarkdownFileCache().clear()
-	clearCollectionTextIndex()
+	setCollectionTextIndex(null)
 
 	for (const absPath of filesToReindex) {
 		const relFile = path.relative(projectRoot, absPath)

@@ -4,7 +4,7 @@ import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument } from 'yaml
 
 import { getProjectRoot } from '../config'
 import type { CollectionDefinition } from '../types'
-import { getMarkdownFileCache } from './cache'
+import { getCollectionTextIndex, getMarkdownFileCache, setCollectionTextIndex } from './cache'
 import { normalizeText } from './snippet-utils'
 import type { CollectionInfo, MarkdownContent, SourceLocation } from './types'
 
@@ -12,8 +12,6 @@ import type { CollectionInfo, MarkdownContent, SourceLocation } from './types'
 // Collection Text Index — pre-built reverse index for fast text→source lookups
 // ============================================================================
 
-/** Pre-built index: normalizedText → SourceLocation (with collection metadata) */
-let collectionTextIndex: Map<string, SourceLocation[]> | null = null
 let collectionTextIndexPromise: Promise<void> | null = null
 
 /**
@@ -23,7 +21,7 @@ let collectionTextIndexPromise: Promise<void> | null = null
 export async function buildCollectionTextIndex(
 	collections: Record<string, CollectionDefinition>,
 ): Promise<void> {
-	if (collectionTextIndex) return
+	if (getCollectionTextIndex()) return
 	if (collectionTextIndexPromise) return collectionTextIndexPromise
 	collectionTextIndexPromise = doBuildCollectionTextIndex(collections)
 	try {
@@ -76,7 +74,7 @@ async function doBuildCollectionTextIndex(
 		}))
 	}
 
-	collectionTextIndex = index
+	setCollectionTextIndex(index)
 }
 
 /**
@@ -168,9 +166,10 @@ export function lookupCollectionText(
 	textContent: string,
 	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
 ): SourceLocation | undefined {
-	if (!collectionTextIndex) return undefined
+	const index = getCollectionTextIndex()
+	if (!index) return undefined
 	const normalized = normalizeText(textContent)
-	const locations = collectionTextIndex.get(normalized)
+	const locations = index.get(normalized)
 	if (!locations || locations.length === 0) return undefined
 
 	// Prefer locations from referenced collections
@@ -182,11 +181,6 @@ export function lookupCollectionText(
 		}
 	}
 	return locations[0]
-}
-
-/** Clear the collection text index (called when collection files change) */
-export function clearCollectionTextIndex(): void {
-	collectionTextIndex = null
 }
 
 // ============================================================================

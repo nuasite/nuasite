@@ -1,4 +1,4 @@
-import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry } from './types'
+import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types'
 
 // ============================================================================
 // File Parsing Cache - Avoid re-parsing the same files
@@ -17,6 +17,9 @@ const markdownFileCache = new Map<string, { content: string; lines: string[] }>(
 const textSearchIndex: SearchIndexEntry[] = []
 const imageSearchIndex: ImageIndexEntry[] = []
 let searchIndexInitialized = false
+
+/** Pre-built reverse index: normalizedText → SourceLocation[] (collection data files) */
+let collectionTextIndex: Map<string, SourceLocation[]> | null = null
 
 /** Files that changed since last indexing — tracked by Vite watcher */
 const dirtyFiles = new Set<string>()
@@ -59,6 +62,14 @@ export function addToTextSearchIndex(entry: SearchIndexEntry): void {
 
 export function addToImageSearchIndex(entry: ImageIndexEntry): void {
 	imageSearchIndex.push(entry)
+}
+
+export function getCollectionTextIndex(): Map<string, SourceLocation[]> | null {
+	return collectionTextIndex
+}
+
+export function setCollectionTextIndex(index: Map<string, SourceLocation[]> | null): void {
+	collectionTextIndex = index
 }
 
 // ============================================================================
@@ -120,4 +131,5 @@ export function clearSourceFinderCache(): void {
 	textSearchIndex.length = 0
 	imageSearchIndex.length = 0
 	searchIndexInitialized = false
+	collectionTextIndex = null
 }

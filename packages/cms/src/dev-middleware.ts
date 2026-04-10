@@ -17,10 +17,10 @@ import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
 import {
+	enhanceManifestWithSourceSnippets,
 	findCollectionSource,
 	findImageSourceLocation,
 	findSourceLocation,
-	initializeSearchIndex,
 	parseMarkdownContent,
 	reindexDirtyFiles,
 } from './source-finder'
@@ -424,7 +424,7 @@ async function markHtmlForDev(
  * Phase 2 (background): Resolve source locations, enhance snippets, populate
  * component props, and update the manifest. Runs after the HTML response is sent.
  */
-async function enhanceManifestInBackground(
+export async function enhanceManifestInBackground(
 	pagePath: string,
 	entries: Record<string, ManifestEntry>,
 	components: Record<string, ComponentInstance>,
@@ -541,31 +541,31 @@ async function enhanceManifestInBackground(
 			}
 		}
 
-		// Ensure the search index is initialized
-		await initializeSearchIndex()
+		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions)
 
-		// Re-resolve sources with the search index
-		for (const entry of Object.values(entries)) {
+		// Fallback for entries without sourcePath — search index can still find them
+		for (const entry of Object.values(enhanced)) {
+			if (entry.sourceSnippet || entry.sourcePath) continue
 			if (entry.imageMetadata?.src) {
-				const imageSource = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
-				if (imageSource) {
-					entry.sourcePath = imageSource.file
-					entry.sourceLine = imageSource.line
-					entry.sourceSnippet = imageSource.snippet
+				const loc = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
+				if (loc) {
+					entry.sourcePath = loc.file
+					entry.sourceLine = loc.line
+					entry.sourceSnippet = loc.snippet
 				}
 			} else if (entry.text && entry.tag) {
-				const textSource = await findSourceLocation(entry.text, entry.tag)
-				if (textSource) {
-					entry.sourcePath = textSource.file
-					entry.sourceLine = textSource.line
-					entry.sourceSnippet = textSource.snippet
-					if (textSource.variableName) entry.variableName = textSource.variableName
+				const loc = await findSourceLocation(entry.text, entry.tag)
+				if (loc) {
+					entry.sourcePath = loc.file
+					entry.sourceLine = loc.line
+					entry.sourceSnippet = loc.snippet
+					if (loc.variableName) entry.variableName = loc.variableName
 				}
 			}
 		}
 
 		// Update the manifest with fully-resolved entries and component props
-		manifestWriter.addPage(pagePath, entries, components, collection, seo)
+		manifestWriter.addPage(pagePath, enhanced, components, collection, seo)
 	} catch (error) {
 		console.error('[cms] Background enhancement failed:', error)
 	}

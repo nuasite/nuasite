@@ -25,7 +25,6 @@ export { findImageSourceLocation } from './image-finder'
 // Collection/markdown finding
 export {
 	buildCollectionTextIndex,
-	clearCollectionTextIndex,
 	findCollectionSource,
 	findFieldInCollectionEntry,
 	findMarkdownSourceLocation,

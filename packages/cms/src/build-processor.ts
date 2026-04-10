@@ -10,7 +10,6 @@ import { extractComponentName, processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import { generateComponentPreviews } from './preview-generator'
 import {
-	clearCollectionTextIndex,
 	clearSourceFinderCache,
 	extractOpeningTagWithLine,
 	findCollectionSource,
@@ -777,7 +776,6 @@ export async function processBuildOutput(
 
 	// Clear caches from previous builds and initialize search index
 	clearSourceFinderCache()
-	clearCollectionTextIndex()
 
 	const htmlFiles = await findHtmlFiles(outDir)
 
