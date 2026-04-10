@@ -24,7 +24,7 @@ import {
 } from './source-finder'
 import type { ComponentInstance } from './types'
 import type { CmsMarkerOptions, CollectionEntry } from './types'
-import { firstNonEmptyLine } from './utils'
+import { firstNonEmptyLine, resolveSourcePath } from './utils'
 
 // Concurrency limit for parallel processing
 const MAX_CONCURRENT = 10
@@ -425,9 +425,7 @@ async function processFile(
 
 			// Update attribute and colorClasses source information if we have an opening tag
 			if (sourceLocation.openingTagSnippet) {
-				const filePath = path.isAbsolute(sourceLocation.file)
-					? sourceLocation.file
-					: path.join(getProjectRoot(), sourceLocation.file)
+				const filePath = resolveSourcePath(sourceLocation.file)
 				try {
 					const content = await fs.readFile(filePath, 'utf-8')
 					const lines = content.split('\n')

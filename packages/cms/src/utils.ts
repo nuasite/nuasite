@@ -134,6 +134,19 @@ export function escapeReplacement(str: string): string {
 }
 
 // ============================================================================
+// Path Resolution
+// ============================================================================
+
+/**
+ * Resolve a source path to an absolute filesystem path.
+ * If the path is already absolute it is returned as-is; otherwise it is
+ * joined with the project root directory.
+ */
+export function resolveSourcePath(sourcePath: string): string {
+	return path.isAbsolute(sourcePath) ? sourcePath : path.join(getProjectRoot(), sourcePath)
+}
+
+// ============================================================================
 // Path Validation
 // ============================================================================
 

@@ -576,6 +576,54 @@ export async function findFieldInCollectionEntry(
 }
 
 /**
+ * Find multiple fields by name in a specific collection entry's data file.
+ * Parses the YAML only once, unlike calling findFieldInCollectionEntry per field.
+ */
+export async function findFieldsInCollectionEntry(
+	fieldNames: Set<string>,
+	collectionName: string,
+	collectionSlug: string,
+	collectionDefinitions: Record<string, CollectionDefinition>,
+): Promise<Map<string, SourceLocation>> {
+	const def = collectionDefinitions[collectionName]
+	if (!def?.entries) return new Map()
+
+	const entry = def.entries.find((e) => e.slug === collectionSlug)
+	if (!entry) return new Map()
+
+	const info: CollectionInfo = { name: collectionName, slug: collectionSlug, file: entry.sourcePath }
+
+	try {
+		const filePath = path.join(getProjectRoot(), entry.sourcePath)
+		const cached = await getCachedMarkdownFile(filePath)
+		if (!cached) return new Map()
+
+		if (def.type === 'data') {
+			return findFieldsByNameInYaml(cached.content, 0, fieldNames, cached.lines, info)
+		}
+
+		// For markdown, search inside frontmatter only
+		const { lines } = cached
+		let fmStart = -1
+		let fmEnd = -1
+		for (let i = 0; i < lines.length; i++) {
+			if (lines[i]?.trim() === '---') {
+				if (fmStart === -1) fmStart = i
+				else {
+					fmEnd = i
+					break
+				}
+			}
+		}
+		if (fmEnd <= 0) return new Map()
+		const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
+		return findFieldsByNameInYaml(yamlStr, fmStart + 1, fieldNames, lines, info)
+	} catch {
+		return new Map()
+	}
+}
+
+/**
  * Walk a YAML AST to find a field by key name (regardless of its value).
  */
 function findFieldByNameInYaml(
@@ -585,13 +633,30 @@ function findFieldByNameInYaml(
 	fileLines: string[],
 	collectionInfo: CollectionInfo,
 ): SourceLocation | undefined {
+	const results = findFieldsByNameInYaml(yamlStr, lineOffset, new Set([fieldName]), fileLines, collectionInfo)
+	return results.get(fieldName)
+}
+
+/**
+ * Walk a YAML AST to find multiple fields by key name in a single parse.
+ * Returns a map of fieldName → SourceLocation for all matched fields.
+ */
+function findFieldsByNameInYaml(
+	yamlStr: string,
+	lineOffset: number,
+	fieldNames: Set<string>,
+	fileLines: string[],
+	collectionInfo: CollectionInfo,
+): Map<string, SourceLocation> {
 	const lineCounter = new LineCounter()
 	const doc = parseDocument(yamlStr, { lineCounter })
-	if (!isMap(doc.contents)) return undefined
+	const results = new Map<string, SourceLocation>()
+	if (!isMap(doc.contents)) return results
 
 	for (const pair of doc.contents.items) {
 		if (!isPair(pair) || !isScalar(pair.key)) continue
-		if (String(pair.key.value) !== fieldName) continue
+		const key = String(pair.key.value)
+		if (!fieldNames.has(key)) continue
 		if (!isScalar(pair.value)) continue
 
 		const keyRange = (pair.key as any).range as [number, number, number] | undefined
@@ -600,17 +665,20 @@ function findFieldByNameInYaml(
 		const endLine = (valRange ? lineCounter.linePos(valRange[1]).line : startLine - lineOffset) + lineOffset
 
 		const snippet = fileLines.slice(startLine - 1, endLine).join('\n')
-		return {
+		results.set(key, {
 			file: collectionInfo.file,
 			line: startLine,
 			snippet,
 			type: 'collection',
-			variableName: fieldName,
+			variableName: key,
 			collectionName: collectionInfo.name,
 			collectionSlug: collectionInfo.slug,
-		}
+		})
+
+		// Early exit if all fields found
+		if (results.size === fieldNames.size) break
 	}
-	return undefined
+	return results
 }
 
 // ============================================================================

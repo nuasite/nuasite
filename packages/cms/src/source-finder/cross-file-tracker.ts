@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
-import { escapeRegex } from '../utils'
+import { escapeRegex, resolveSourcePath } from '../utils'
 import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
 import { findComponentProp, findExpressionProp, findSpreadProp } from './element-finder'
@@ -384,9 +384,7 @@ export async function findAttributeSourceLocation(
 	// Get the property name (last part of the expression)
 	const propName = exprPath.includes('.') ? exprPath.split('.').pop()! : exprPath
 
-	const filePath = path.isAbsolute(sourceFilePath)
-		? sourceFilePath
-		: path.join(getProjectRoot(), sourceFilePath)
+	const filePath = resolveSourcePath(sourceFilePath)
 
 	const cached = await getCachedParsedFile(filePath)
 	if (!cached) return undefined
