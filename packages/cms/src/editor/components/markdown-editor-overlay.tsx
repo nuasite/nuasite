@@ -4,6 +4,7 @@ import { slugify } from '../../shared'
 import { updateMarkdownPage } from '../api'
 import { STORAGE_KEYS, Z_INDEX } from '../constants'
 import { createMarkdownPage } from '../markdown-api'
+import { MDX_EXPR_PREFIX } from '../milkdown-mdx-plugin'
 import {
 	config,
 	currentMarkdownPage,
@@ -263,7 +264,7 @@ export function MarkdownEditorOverlay() {
 					// Filter out expression props
 					const staticProps: Record<string, string> = {}
 					for (const [k, v] of Object.entries(props)) {
-						if (!v.startsWith('__mdx_expr__:')) staticProps[k] = v
+						if (!v.startsWith(MDX_EXPR_PREFIX)) staticProps[k] = v
 					}
 
 					const params = new URLSearchParams({ file: def.file, props: JSON.stringify(staticProps) })
