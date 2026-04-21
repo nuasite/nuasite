@@ -8,5 +8,7 @@ export function describeSource(entry: ManifestEntry | undefined): string {
 	if (entry.variableName) {
 		return `${entry.variableName} prop`
 	}
-	return 'no formatting'
+	// Entry marked non-styleable but missing both collection and variable context —
+	// visible fallback so the edge case surfaces instead of masquerading as a missing entry.
+	return 'unknown source'
 }

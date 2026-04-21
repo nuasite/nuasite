@@ -23,7 +23,8 @@ describe('describeSource', () => {
 		expect(describeSource(entry({ collectionName: 'blog', variableName: 'title' }))).toBe('blog collection field')
 	})
 
-	test('falls back to generic label when no context fields are set', () => {
-		expect(describeSource(entry({}))).toBe('no formatting')
+	test('distinguishes "entry with no context" from "missing entry"', () => {
+		expect(describeSource(entry({}))).toBe('unknown source')
+		expect(describeSource(undefined)).toBe('no formatting')
 	})
 })
