@@ -16,7 +16,7 @@ import {
 } from './collection-finder'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
-import { initializeSearchIndex } from './search-index'
+import { extractTranslationKeyFromSnippet, findInTextIndex, findTemplateElementUsingStringLiteral, initializeSearchIndex } from './search-index'
 import type { CachedParsedFile, ImageMatch, SourceLocation } from './types'
 
 // ============================================================================
@@ -467,6 +467,81 @@ export async function extractSourceSnippet(
 // ============================================================================
 
 /**
+ * Build the manifest entry produced when rendered text resolved to a
+ * translation-dictionary file (e.g. `src/i18n/cs.json`).
+ *
+ * Text edits target the JSON entry (`sourcePath`/`sourceLine`/`sourceSnippet`),
+ * while `attributes.*` and `colorClasses.*` keep pointing at the template's
+ * `<tag>` — those edits belong on the element, not the dictionary.
+ */
+async function applyTranslationSource(
+	entry: ManifestEntry,
+	indexHit: SourceLocation,
+	attributes: ManifestEntry['attributes'],
+	colorClasses: ManifestEntry['colorClasses'],
+): Promise<ManifestEntry> {
+	const hitSnippet = indexHit.snippet ?? ''
+	let resolvedAttributes = attributes
+	let resolvedColorClasses = colorClasses
+
+	// When the hit comes from a JSON dictionary, look up the template element
+	// that references the translation key so attr/class edits can target it.
+	const needsTemplateLookup = indexHit.file.endsWith('.json')
+		&& ((attributes && !hasAnySourcePath(attributes)) || (colorClasses && !hasAnySourcePath(colorClasses)))
+
+	if (needsTemplateLookup && entry.tag) {
+		const translationKey = extractTranslationKeyFromSnippet(hitSnippet)
+		if (translationKey) {
+			const templateLoc = await findTemplateElementUsingStringLiteral(translationKey, entry.tag)
+			if (templateLoc) {
+				const openingTagInfo = extractOpeningTagWithLine(templateLoc.lines, templateLoc.line - 1, entry.tag)
+				if (openingTagInfo) {
+					const openingStartLine = openingTagInfo.startLine + 1
+					if (attributes) {
+						resolvedAttributes = await updateAttributeSources(
+							openingTagInfo.snippet,
+							attributes,
+							templateLoc.file,
+							openingStartLine,
+							templateLoc.lines,
+						)
+					}
+					if (colorClasses) {
+						resolvedColorClasses = updateColorClassSources(
+							openingTagInfo.snippet,
+							colorClasses,
+							templateLoc.file,
+							openingStartLine,
+							templateLoc.lines,
+						)
+					}
+				}
+			}
+		}
+	}
+
+	return {
+		...entry,
+		sourcePath: indexHit.file,
+		sourceLine: indexHit.line,
+		sourceSnippet: hitSnippet,
+		variableName: indexHit.variableName,
+		allowStyling: false,
+		attributes: resolvedAttributes,
+		colorClasses: resolvedColorClasses,
+		sourceHash: generateSourceHash(hitSnippet || entry.text || ''),
+	}
+}
+
+/** True when any of the attribute/colorClass values already carries a sourcePath. */
+function hasAnySourcePath(bag: Record<string, { sourcePath?: string }>): boolean {
+	for (const key in bag) {
+		if (bag[key]?.sourcePath) return true
+	}
+	return false
+}
+
+/**
  * Enhance manifest entries with actual source snippets from source files.
  * This reads the source files and extracts the innerHTML at the specified locations.
  * For images, it finds the correct line containing the src attribute.
@@ -674,6 +749,18 @@ export async function enhanceManifestWithSourceSnippets(
 			}
 		}
 
+		// Missing source info — try the text search index as a last resort.
+		// Templates that render text through helpers (e.g. `{t(locale, 'key')}`)
+		// don't get resolved to the originating i18n JSON in the marking phase,
+		// so the entry arrives here without a sourcePath/sourceLine.
+		if (!entry.sourceSnippet && entry.text?.trim() && entry.tag && (!entry.sourcePath || !entry.sourceLine)) {
+			const indexHit = findInTextIndex(entry.text.trim(), entry.tag)
+			if (indexHit) {
+				const resolved = await applyTranslationSource(entry, indexHit, entry.attributes, entry.colorClasses)
+				return [id, resolved] as const
+			}
+		}
+
 		// Skip if already has sourceSnippet or missing source info
 		if (entry.sourceSnippet || !entry.sourcePath || !entry.sourceLine || !entry.tag) {
 			return [id, entry] as const
@@ -843,6 +930,14 @@ export async function enhanceManifestWithSourceSnippets(
 								}),
 							] as const
 						}
+					}
+
+					// Last resort — consult the text index (covers i18n JSON dictionaries
+					// and any other indexed text that shares no tag with the rendered element).
+					const indexHit = findInTextIndex(trimmedText, entry.tag)
+					if (indexHit && indexHit.file !== entry.sourcePath) {
+						const resolved = await applyTranslationSource(entry, indexHit, attributes, colorClasses)
+						return [id, resolved] as const
 					}
 				}
 

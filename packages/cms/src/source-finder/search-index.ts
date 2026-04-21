@@ -127,6 +127,10 @@ async function doInitializeSearchIndex(): Promise<void> {
 	// Index image-like values from content collection data files (JSON/YAML)
 	await indexContentCollectionImages()
 
+	// Index text values from translation dictionary files (JSON) under i18n/locales folders.
+	// Enables lookups for `{t(locale, 'key')}`-rendered content whose text lives in JSON.
+	await indexTranslationFiles()
+
 	setSearchIndexInitialized(true)
 }
 
@@ -192,6 +196,9 @@ async function doReindexDirtyFiles(): Promise<void> {
 				const content = await fs.readFile(absPath, 'utf-8')
 				if (absPath.endsWith('.json')) {
 					indexJsonImages(content, relFile)
+					if (isTranslationFilePath(absPath)) {
+						indexJsonTextValues(content, relFile)
+					}
 				} else if (absPath.endsWith('.yaml') || absPath.endsWith('.yml')) {
 					indexYamlImages(content, relFile)
 				} else if (absPath.endsWith('.md') || absPath.endsWith('.mdx')) {
@@ -737,6 +744,259 @@ function indexYamlLikeLines(lines: string[], relFile: string, lineOffset: number
 				line: i + 1 + lineOffset,
 				snippet: lines[i]!.trim(),
 				src: value,
+			})
+		}
+	}
+}
+
+// ============================================================================
+// Translation Dictionary Indexing (i18n JSON files)
+// ============================================================================
+
+/** Directory names conventionally used for translation dictionaries */
+const I18N_DIR_NAMES = new Set(['i18n', 'locales', 'locale', 'translations', 'dictionaries'])
+
+/** Tag marker for entries that have no single originating template tag */
+const TRANSLATION_TAG_MARKER = '*'
+
+/**
+ * Return true if `absPath` lives under a directory commonly used for
+ * translation dictionaries (i18n, locales, translations, dictionaries).
+ */
+export function isTranslationFilePath(absPath: string): boolean {
+	if (!absPath.endsWith('.json')) return false
+	const segments = absPath.split(path.sep)
+	return segments.some((segment) => I18N_DIR_NAMES.has(segment.toLowerCase()))
+}
+
+/**
+ * Index text string values from JSON dictionaries under `src/i18n`, `src/locales`, etc.
+ * These cover templates that render strings through helpers like `{t(locale, 'key')}` —
+ * the rendered text lives in a JSON file rather than the template itself, so without
+ * this index the source finder has no way to associate the two.
+ */
+async function indexTranslationFiles(): Promise<void> {
+	const srcDir = path.join(getProjectRoot(), 'src')
+	const translationFiles: string[] = []
+	await collectTranslationFiles(srcDir, translationFiles)
+
+	await Promise.all(translationFiles.map(async (filePath) => {
+		try {
+			const content = await fs.readFile(filePath, 'utf-8')
+			const relFile = path.relative(getProjectRoot(), filePath)
+			indexJsonTextValues(content, relFile)
+		} catch {
+			// Skip unreadable files
+		}
+	}))
+}
+
+/**
+ * Walk `dir` and push any .json files that live inside a conventional i18n folder
+ * (at any depth) into `results`.
+ */
+async function collectTranslationFiles(dir: string, results: string[]): Promise<void> {
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+		await Promise.all(entries.map(async (entry) => {
+			const fullPath = path.join(dir, entry.name)
+			if (entry.isDirectory()) {
+				if (I18N_DIR_NAMES.has(entry.name.toLowerCase())) {
+					await collectJsonFilesRecursive(fullPath, results)
+				} else if (entry.name !== 'node_modules' && !entry.name.startsWith('.')) {
+					await collectTranslationFiles(fullPath, results)
+				}
+			}
+		}))
+	} catch {
+		// Directory doesn't exist
+	}
+}
+
+async function collectJsonFilesRecursive(dir: string, results: string[]): Promise<void> {
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+		await Promise.all(entries.map(async (entry) => {
+			const fullPath = path.join(dir, entry.name)
+			if (entry.isDirectory()) {
+				await collectJsonFilesRecursive(fullPath, results)
+			} else if (entry.isFile() && entry.name.endsWith('.json')) {
+				results.push(fullPath)
+			}
+		}))
+	} catch {
+		// Directory doesn't exist
+	}
+}
+
+/** JSON escape sequences that decode to a single character */
+const JSON_ESCAPE_MAP: Record<string, string> = {
+	'\\"': '"',
+	'\\\\': '\\',
+	'\\/': '/',
+	'\\n': '\n',
+	'\\r': '\r',
+	'\\t': '\t',
+	'\\b': '\b',
+	'\\f': '\f',
+}
+
+function unescapeJsonString(raw: string): string {
+	return raw.replace(/\\["\\/nrtbf]|\\u[0-9a-fA-F]{4}/g, (match) => {
+		if (match.startsWith('\\u')) {
+			return String.fromCharCode(parseInt(match.slice(2), 16))
+		}
+		return JSON_ESCAPE_MAP[match] ?? match
+	})
+}
+
+/**
+ * Find a template element with the given tag whose descendant expression
+ * references the given string literal (e.g. a translation key passed to
+ * `t(locale, 'nav.key')` or an object lookup like `cs['nav.key']`).
+ *
+ * Used to recover the template source location for an element whose rendered
+ * text came from a translation dictionary — class/attribute edits need to
+ * point at the template even when text edits point at the JSON.
+ */
+export async function findTemplateElementUsingStringLiteral(
+	stringLiteral: string,
+	tag: string,
+): Promise<{ file: string; line: number; lines: string[] } | undefined> {
+	const srcDir = path.join(getProjectRoot(), 'src')
+	const searchDirs = [
+		path.join(srcDir, 'components'),
+		path.join(srcDir, 'layouts'),
+		path.join(srcDir, 'pages'),
+	]
+
+	for (const dir of searchDirs) {
+		const result = await searchDirForStringLiteral(dir, stringLiteral, tag)
+		if (result) return result
+	}
+	return undefined
+}
+
+async function searchDirForStringLiteral(
+	dir: string,
+	stringLiteral: string,
+	tag: string,
+): Promise<{ file: string; line: number; lines: string[] } | undefined> {
+	try {
+		const entries = await fs.readdir(dir, { withFileTypes: true })
+		for (const entry of entries) {
+			const fullPath = path.join(dir, entry.name)
+			if (entry.isDirectory()) {
+				const result = await searchDirForStringLiteral(fullPath, stringLiteral, tag)
+				if (result) return result
+			} else if (entry.isFile() && entry.name.endsWith('.astro')) {
+				const cached = await getCachedParsedFile(fullPath)
+				if (!cached) continue
+				const line = findElementLineUsingStringLiteral(cached.ast, stringLiteral, tag)
+				if (line !== undefined) {
+					return {
+						file: path.relative(getProjectRoot(), fullPath),
+						line,
+						lines: cached.lines,
+					}
+				}
+			}
+		}
+	} catch {
+		// Directory doesn't exist
+	}
+	return undefined
+}
+
+function findElementLineUsingStringLiteral(
+	ast: AstroNode,
+	stringLiteral: string,
+	tag: string,
+): number | undefined {
+	const tagLower = tag.toLowerCase()
+	const quotedPatterns = [`'${stringLiteral}'`, `"${stringLiteral}"`, `\`${stringLiteral}\``]
+
+	let result: number | undefined
+
+	function visit(node: AstroNode) {
+		if (result !== undefined) return
+		if ((node.type === 'element' || node.type === 'component') && node.name.toLowerCase() === tagLower) {
+			const elemNode = node as ElementNode | ComponentNode
+			const exprText = getExpressionText(elemNode)
+			if (exprText && quotedPatterns.some((p) => exprText.includes(p))) {
+				result = elemNode.position?.start.line
+				return
+			}
+		}
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				if (result !== undefined) break
+				visit(child)
+			}
+		}
+	}
+
+	visit(ast)
+	return result
+}
+
+/** Collect the combined text of every expression descendant of `node`. */
+function getExpressionText(node: AstroNode): string {
+	let text = ''
+	function visit(n: AstroNode) {
+		if (n.type === 'expression') {
+			text += getTextContent(n)
+			return
+		}
+		if ('children' in n && Array.isArray(n.children)) {
+			for (const child of n.children) visit(child)
+		}
+	}
+	visit(node)
+	return text
+}
+
+/**
+ * Extract the JSON dictionary key from a translation-file snippet.
+ * Expects a line shaped like `  "nav.whatsHappening": "Co se děje v EduArt?",`
+ * and returns `"nav.whatsHappening"`.
+ */
+export function extractTranslationKeyFromSnippet(snippet: string): string | undefined {
+	const match = snippet.match(/^\s*"((?:[^"\\]|\\.)*)"\s*:/)
+	return match?.[1]
+}
+
+/**
+ * Extract all string values from a JSON file and add each one to the text
+ * search index with a wildcard tag. Non-user-facing values (paths, URLs,
+ * image assets, single characters) are skipped.
+ */
+export function indexJsonTextValues(content: string, relFile: string): void {
+	const lines = content.split('\n')
+	// Capture the value side of JSON string key/value pairs, handling backslash escapes
+	const pattern = /:\s*"((?:[^"\\]|\\.)*)"/g
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i]!
+		pattern.lastIndex = 0
+		let match: RegExpExecArray | null
+		while ((match = pattern.exec(line)) !== null) {
+			const raw = match[1]!
+			const value = unescapeJsonString(raw)
+			if (!value) continue
+			if (IMAGE_EXTENSIONS.test(value)) continue
+			if (value.startsWith('/') || value.startsWith('./') || value.startsWith('../')) continue
+			if (/^https?:\/\//.test(value)) continue
+
+			const normalized = normalizeText(value)
+			if (normalized.length < 2) continue
+
+			addToTextSearchIndex({
+				file: relFile,
+				line: i + 1,
+				snippet: line,
+				type: 'static',
+				normalizedText: normalized,
+				tag: TRANSLATION_TAG_MARKER,
 			})
 		}
 	}
