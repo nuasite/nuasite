@@ -223,3 +223,20 @@ test('drop with HTML-only payload (no text/plain) still dispatches input so edit
 	expect(inputFired).toBe(true)
 	expect(el.textContent).toBe('hello')
 })
+
+test('stopEditMode detaches the plain-text listeners via AbortController', async () => {
+	document.body.innerHTML = `<span data-cms-id="non-styleable">hello</span>`
+	await startEditMode(mockConfig, () => {})
+	const el = document.querySelector('[data-cms-id="non-styleable"]') as HTMLElement
+
+	stopEditMode(() => {})
+
+	// After stopEditMode, the paste handler should no longer preventDefault
+	const pasteEvent = makeClipboardEvent('<b>world</b>', ' world')
+	el.dispatchEvent(pasteEvent)
+	expect(pasteEvent.defaultPrevented).toBe(false)
+
+	// And format beforeinput should no longer be blocked
+	const allowed = dispatchBeforeInput(el, 'formatBold')
+	expect(allowed).toBe(true)
+})

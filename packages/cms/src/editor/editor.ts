@@ -77,6 +77,10 @@ const INLINE_STYLE_ELEMENTS = [
 const FORMATTING_BLOCKED_TOAST_COOLDOWN_MS = 3000
 let lastFormattingBlockedToastAt = 0
 
+// Signals listener cleanup on stopEditMode. Aborting removes every listener
+// attached with { signal } in the current edit session in one shot.
+let editModeAbortController: AbortController | null = null
+
 function notifyFormattingBlocked(): void {
 	const now = Date.now()
 	if (now - lastFormattingBlockedToastAt < FORMATTING_BLOCKED_TOAST_COOLDOWN_MS) {
@@ -142,6 +146,10 @@ export async function startEditMode(
 	disableAllInteractiveElements()
 	initHighlightSystem()
 	onStateChange?.()
+
+	editModeAbortController?.abort()
+	editModeAbortController = new AbortController()
+	const editModeSignal = editModeAbortController.signal
 
 	try {
 		const manifest = await fetchManifest()
@@ -227,11 +235,11 @@ export async function startEditMode(
 			if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak') {
 				e.preventDefault()
 			}
-			if (!stylingAllowed && e.inputType.startsWith('format')) {
+			if (!stylingAllowed && e.inputType?.startsWith('format')) {
 				e.preventDefault()
 				notifyFormattingBlocked()
 			}
-		})
+		}, { signal: editModeSignal })
 
 		if (!stylingAllowed) {
 			el.addEventListener('paste', (e) => {
@@ -243,7 +251,7 @@ export async function startEditMode(
 				const selection = window.getSelection()
 				const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
 				applyPlainTextInsert(el, text, html, range)
-			})
+			}, { signal: editModeSignal })
 
 			el.addEventListener('drop', (e) => {
 				const transfer = (e as DragEvent).dataTransfer
@@ -258,7 +266,7 @@ export async function startEditMode(
 					range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
 				}
 				applyPlainTextInsert(el, text, html, range)
-			})
+			}, { signal: editModeSignal })
 		}
 
 		// Setup color tracking for elements with colorClasses in manifest
@@ -411,6 +419,8 @@ export function stopEditMode(onStateChange?: () => void): void {
 	if (!signals.isSelectMode.value) {
 		enableAllInteractiveElements()
 	}
+	editModeAbortController?.abort()
+	editModeAbortController = null
 	cleanupHighlightSystem()
 	onStateChange?.()
 
