@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'preact/hooks'
 import { CSS, Z_INDEX } from '../constants'
+import { positionFloatingChip } from '../dom'
 import { cn } from '../lib/cn'
 import * as signals from '../signals'
 import {
@@ -177,21 +178,7 @@ export function TextStyleToolbar({ visible, rect, element, onStyleChange }: Text
 		return null
 	}
 
-	// Position toolbar above the selection
-	const toolbarHeight = 44
-	const toolbarWidth = 320
-	let left = rect.left + rect.width / 2 - toolbarWidth / 2
-	let top = rect.top - toolbarHeight - 8
-
-	const padding = 10
-	const maxLeft = window.innerWidth - toolbarWidth - padding
-	const minLeft = padding
-
-	left = Math.max(minLeft, Math.min(left, maxLeft))
-
-	if (top < padding) {
-		top = rect.bottom + 8
-	}
+	const { left, top } = positionFloatingChip(rect, { width: 320, height: 44 })
 
 	return (
 		<div
