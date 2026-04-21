@@ -74,6 +74,37 @@ describe('applyTextChange', () => {
 		}
 	})
 
+	test('ignores htmlValue when manifest entry disallows styling', () => {
+		const content = '<BaseLayout description="Hello world" />'
+		const manifest: CmsManifest = {
+			entries: {
+				'cms-0': {
+					id: 'cms-0',
+					tag: 'meta',
+					text: 'Hello world',
+					allowStyling: false,
+				},
+			},
+			components: {},
+			componentDefinitions: {},
+		}
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: '<BaseLayout description="Hello world" />',
+				originalValue: 'Hello world',
+				newValue: 'Hello universe',
+				htmlValue: 'Hello <span class="text-orange-600">universe</span>',
+				hasStyledContent: true,
+			}),
+			manifest,
+		)
+		expect(result.success).toBe(true)
+		if (result.success) {
+			expect(result.content).toBe('<BaseLayout description="Hello universe" />')
+		}
+	})
+
 	test('text spanning inline span without htmlValue falls back to newValue', () => {
 		const content = '<h2>Hello <span class="accent">world</span></h2>'
 		const result = applyTextChange(

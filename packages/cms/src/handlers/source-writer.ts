@@ -590,7 +590,10 @@ export function applyTextChange(
 		return { success: false, error: 'Source snippet not found in file' }
 	}
 
-	const newText = htmlValue ?? newValue
+	// Never write HTML back into entries that don't allow styling — these are string props,
+	// collection fields, etc. where inline HTML would produce invalid source code.
+	const stylingAllowed = manifest.entries[change.cmsId]?.allowStyling !== false
+	const newText = stylingAllowed ? (htmlValue ?? newValue) : newValue
 
 	// When originalValue contains CMS placeholders (child elements like {{cms:cms-5}}),
 	// replace only the text segments between placeholders directly in the sourceSnippet.
