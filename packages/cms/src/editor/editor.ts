@@ -103,8 +103,10 @@ export function insertPlainTextAtRange(range: Range, text: string): boolean {
 }
 
 function applyPlainTextInsert(el: HTMLElement, text: string, html: string, range: Range | null): void {
-	if (range && text) {
-		insertPlainTextAtRange(range, text)
+	const inserted = range && text ? insertPlainTextAtRange(range, text) : false
+	// Dispatch even when only HTML was stripped (no plain text to insert) so downstream
+	// state resynchronizes with the intercepted event.
+	if (inserted || html) {
 		el.dispatchEvent(new Event('input', { bubbles: true }))
 	}
 	if (html) notifyFormattingBlocked()

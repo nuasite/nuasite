@@ -205,3 +205,21 @@ test('drop on styleable element is NOT intercepted', async () => {
 
 	expect(event.defaultPrevented).toBe(false)
 })
+
+test('drop with HTML-only payload (no text/plain) still dispatches input so editor state resyncs', async () => {
+	document.body.innerHTML = `<span data-cms-id="non-styleable">hello</span>`
+	await startEditMode(mockConfig, () => {})
+	const el = document.querySelector('[data-cms-id="non-styleable"]') as HTMLElement
+
+	let inputFired = false
+	el.addEventListener('input', () => {
+		inputFired = true
+	})
+
+	const event = makeDragEvent('drop', '<b>stripped</b>', '')
+	el.dispatchEvent(event)
+
+	expect(event.defaultPrevented).toBe(true)
+	expect(inputFired).toBe(true)
+	expect(el.textContent).toBe('hello')
+})
