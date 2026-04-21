@@ -7,7 +7,7 @@ import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '..
 import type { ManifestWriter } from '../manifest-writer'
 import { extractAstroImageOriginalUrl } from '../source-finder/snippet-utils'
 import type { CmsManifest, ManifestEntry } from '../types'
-import { acquireFileLock, escapeReplacement, normalizePagePath, resolveAndValidatePath } from '../utils'
+import { acquireFileLock, escapeRegex, escapeReplacement, normalizePagePath, resolveAndValidatePath } from '../utils'
 
 export interface SaveBatchResponse {
 	updated: number
@@ -216,8 +216,8 @@ export function applyImageChange(
 	let replacedIndex = -1
 	for (const srcToFind of srcCandidates) {
 		// Use non-global patterns to replace only the first occurrence
-		const srcPatternDouble = new RegExp(`src="${escapeRegExp(srcToFind)}"`)
-		const srcPatternSingle = new RegExp(`src='${escapeRegExp(srcToFind)}'`)
+		const srcPatternDouble = new RegExp(`src="${escapeRegex(srcToFind)}"`)
+		const srcPatternSingle = new RegExp(`src='${escapeRegex(srcToFind)}'`)
 
 		const escapedNewSrc = escapeReplacement(newSrc)
 		const doubleMatch = newContent.match(srcPatternDouble)
@@ -487,7 +487,39 @@ function appendClassToAttribute(
 	return { success: false, error: 'No class attribute found in source file' }
 }
 
-function applyAttributeChanges(
+/**
+ * Locate `sourceSnippet` in `content` and replace the first quoted occurrence
+ * of `oldValue` inside that snippet with `newValue`, then splice back. Returns
+ * the updated file content, or undefined if the snippet isn't in the file or
+ * contains no quoted match.
+ *
+ * Used as the save-path for attribute values backed by a JS literal (variable
+ * definition, conditional branch) where there's no `attrName=` prefix on the
+ * source line. Scoping the match to the recorded snippet prevents accidental
+ * hits elsewhere in the file.
+ */
+const QUOTED_LITERAL_DELIMITERS = [`'`, `"`, '`'] as const
+
+function replaceLiteralInSnippet(
+	content: string,
+	snippet: string,
+	oldValue: string,
+	newValue: string,
+): string | undefined {
+	if (!content.includes(snippet)) return undefined
+
+	const safeNewValue = escapeReplacement(newValue)
+	const escapedOld = escapeRegex(oldValue)
+	for (const quote of QUOTED_LITERAL_DELIMITERS) {
+		const pattern = new RegExp(`${quote}(${escapedOld})${quote}`)
+		if (!pattern.test(snippet)) continue
+		const updated = snippet.replace(pattern, `${quote}${safeNewValue}${quote}`)
+		if (updated !== snippet) return content.replace(snippet, updated)
+	}
+	return undefined
+}
+
+export function applyAttributeChanges(
 	content: string,
 	change: ChangePayload,
 ): {
@@ -517,10 +549,10 @@ function applyAttributeChanges(
 			if (lineIndex >= 0 && lineIndex < lines.length) {
 				const line = lines[lineIndex]!
 				const doubleQuotePattern = new RegExp(
-					`(${escapeRegExp(attributeName)}\\s*=\\s*)"(${escapeRegExp(attrOldValue)})"`,
+					`(${escapeRegex(attributeName)}\\s*=\\s*)"(${escapeRegex(attrOldValue)})"`,
 				)
 				const singleQuotePattern = new RegExp(
-					`(${escapeRegExp(attributeName)}\\s*=\\s*)'(${escapeRegExp(attrOldValue)})'`,
+					`(${escapeRegex(attributeName)}\\s*=\\s*)'(${escapeRegex(attrOldValue)})'`,
 				)
 
 				const safeNewValue = escapeReplacement(attrNewValue)
@@ -533,10 +565,33 @@ function applyAttributeChanges(
 					newContent = lines.join('\n')
 					attrApplied++
 				} else {
-					failedChanges.push({
-						cmsId: change.cmsId,
-						error: `Attribute '${attributeName}="${attrOldValue}"' not found on line ${targetLine}`,
-					})
+					// JS-backed value (variable def or conditional branch) — no
+					// `attrName=` on the line, so scope the replacement to the
+					// recorded snippet.
+					const snippet = attrChange.sourceSnippet
+					if (!snippet) {
+						failedChanges.push({
+							cmsId: change.cmsId,
+							error: `Attribute '${attributeName}="${attrOldValue}"' not found on line ${targetLine}`,
+						})
+					} else {
+						const snippetResult = replaceLiteralInSnippet(
+							newContent,
+							snippet,
+							attrOldValue,
+							attrNewValue,
+						)
+						if (snippetResult) {
+							newContent = snippetResult
+							attrApplied++
+						} else {
+							failedChanges.push({
+								cmsId: change.cmsId,
+								error: `Attribute '${attributeName}="${attrOldValue}"' not found on line ${targetLine} `
+									+ `and source snippet did not yield a quoted literal match`,
+							})
+						}
+					}
 				}
 			} else {
 				failedChanges.push({
@@ -547,10 +602,10 @@ function applyAttributeChanges(
 		} else {
 			// Fallback: replace first occurrence in the whole file
 			const doubleQuotePattern = new RegExp(
-				`(${escapeRegExp(attributeName)}\\s*=\\s*)"(${escapeRegExp(attrOldValue)})"`,
+				`(${escapeRegex(attributeName)}\\s*=\\s*)"(${escapeRegex(attrOldValue)})"`,
 			)
 			const singleQuotePattern = new RegExp(
-				`(${escapeRegExp(attributeName)}\\s*=\\s*)'(${escapeRegExp(attrOldValue)})'`,
+				`(${escapeRegex(attributeName)}\\s*=\\s*)'(${escapeRegex(attrOldValue)})'`,
 			)
 
 			const safeNewValue = escapeReplacement(attrNewValue)
@@ -727,10 +782,10 @@ function findTextInSnippet(snippet: string, decodedText: string): string | null 
 		["'", '&apos;'],
 	]
 
-	let pattern = escapeRegExp(decodedText)
+	let pattern = escapeRegex(decodedText)
 	for (const [char, entity] of entityMap) {
-		const escapedChar = escapeRegExp(char)
-		const escapedEntity = escapeRegExp(entity)
+		const escapedChar = escapeRegex(char)
+		const escapedEntity = escapeRegex(entity)
 		pattern = pattern.replace(new RegExp(escapedChar, 'g'), `(?:${escapedChar}|${escapedEntity})`)
 	}
 
@@ -739,7 +794,7 @@ function findTextInSnippet(snippet: string, decodedText: string): string | null 
 	if (match) return match[0]
 
 	// Try matching with <br> tags stripped from snippet
-	const chars = [...decodedText].map((ch) => escapeRegExp(ch))
+	const chars = [...decodedText].map((ch) => escapeRegex(ch))
 	const brAwarePattern = chars.join('(?:<br\\b[^>]*\\/?>)*')
 	const brRegex = new RegExp(brAwarePattern)
 	const brMatch = snippet.match(brRegex)
@@ -1010,8 +1065,4 @@ function tryBrNormalizedChange(
 	}
 
 	return result !== sourceSnippet ? result : null
-}
-
-function escapeRegExp(string: string): string {
-	return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

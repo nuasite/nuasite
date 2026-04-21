@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { ChangePayload } from '../../src/editor/types'
-import { applyTextChange } from '../../src/handlers/source-writer'
+import { applyAttributeChanges, applyTextChange } from '../../src/handlers/source-writer'
 import type { CmsManifest } from '../../src/types'
 
 const emptyManifest: CmsManifest = { entries: {}, components: {}, componentDefinitions: {} }
@@ -518,5 +518,173 @@ date: 2026-03-10
 		if (result.success) {
 			expect(result.content).toBe('<div>\n  <h3>Hi <span class="sm">earth</span></h3>\n  <p>Other</p>\n</div>')
 		}
+	})
+})
+
+describe('applyAttributeChanges', () => {
+	test('rewrites href via standard attribute syntax', () => {
+		const content = [
+			'<section>',
+			'  <a href="/old-url/" class="btn">Link</a>',
+			'</section>',
+		].join('\n')
+		const result = applyAttributeChanges(content, {
+			cmsId: 'cms-0',
+			newValue: '',
+			originalValue: '',
+			sourcePath: 'test.astro',
+			sourceLine: 2,
+			sourceSnippet: '',
+			attributeChanges: [{
+				attributeName: 'href',
+				oldValue: '/old-url/',
+				newValue: '/new-url/',
+				sourceLine: 2,
+			}],
+		})
+		expect(result.appliedCount).toBe(1)
+		expect(result.failedChanges).toHaveLength(0)
+		expect(result.content).toContain('href="/new-url/"')
+	})
+
+	test('rewrites attribute value backed by a JS string literal (simple variable)', () => {
+		const snippet = "const url = '/n/skolka-praha-4/'"
+		const content = [
+			'---',
+			snippet,
+			'---',
+			'<a href={url}>Link</a>',
+		].join('\n')
+		const result = applyAttributeChanges(content, {
+			cmsId: 'cms-0',
+			newValue: '',
+			originalValue: '',
+			sourcePath: 'Header.astro',
+			sourceLine: 2,
+			sourceSnippet: '',
+			attributeChanges: [{
+				attributeName: 'href',
+				oldValue: '/n/skolka-praha-4/',
+				newValue: '/n/skolka-praha-5/',
+				sourceLine: 2,
+				sourceSnippet: snippet,
+			}],
+		})
+		expect(result.appliedCount).toBe(1)
+		expect(result.failedChanges).toHaveLength(0)
+		expect(result.content).toContain(`const url = '/n/skolka-praha-5/'`)
+	})
+
+	test('rewrites the matching branch of a conditional without touching the other', () => {
+		const snippet = "const kg4Url = locale === 'cs' ? '/n/skolka-praha-4/' : '/n/en/kindergarten-prague-4/'"
+		const content = [
+			'---',
+			snippet,
+			'---',
+			'<a href={kg4Url}>Praha 4</a>',
+		].join('\n')
+		const result = applyAttributeChanges(content, {
+			cmsId: 'cms-0',
+			newValue: '',
+			originalValue: '',
+			sourcePath: 'Header.astro',
+			sourceLine: 2,
+			sourceSnippet: '',
+			attributeChanges: [{
+				attributeName: 'href',
+				oldValue: '/n/skolka-praha-4/',
+				newValue: '/n/skolka-praha-4-new/',
+				sourceLine: 2,
+				sourceSnippet: snippet,
+			}],
+		})
+		expect(result.appliedCount).toBe(1)
+		expect(result.failedChanges).toHaveLength(0)
+		expect(result.content).toContain(`'/n/skolka-praha-4-new/'`)
+		// Untouched branch remains intact
+		expect(result.content).toContain(`'/n/en/kindergarten-prague-4/'`)
+	})
+
+	test('rewrites a multi-line conditional branch without touching the other branch', () => {
+		const snippet = "  ? '/n/skolka-praha-4/'"
+		const content = [
+			'---',
+			"const kg4Url = locale === 'cs'",
+			snippet,
+			"  : '/n/en/kindergarten-prague-4/'",
+			'---',
+			'<a href={kg4Url}>Praha 4</a>',
+		].join('\n')
+		const result = applyAttributeChanges(content, {
+			cmsId: 'cms-0',
+			newValue: '',
+			originalValue: '',
+			sourcePath: 'Header.astro',
+			sourceLine: 3,
+			sourceSnippet: '',
+			attributeChanges: [{
+				attributeName: 'href',
+				oldValue: '/n/skolka-praha-4/',
+				newValue: '/n/skolka-praha-4-new/',
+				sourceLine: 3,
+				sourceSnippet: snippet,
+			}],
+		})
+		expect(result.appliedCount).toBe(1)
+		expect(result.failedChanges).toHaveLength(0)
+		expect(result.content).toContain(`? '/n/skolka-praha-4-new/'`)
+		// Alternate branch literal is on a different line and stays untouched
+		expect(result.content).toContain(`: '/n/en/kindergarten-prague-4/'`)
+	})
+
+	test('fails cleanly when no sourceSnippet is provided and the line has no attrName="value"', () => {
+		const content = [
+			'---',
+			"const url = '/n/skolka-praha-4/'",
+			'---',
+		].join('\n')
+		const result = applyAttributeChanges(content, {
+			cmsId: 'cms-0',
+			newValue: '',
+			originalValue: '',
+			sourcePath: 'Header.astro',
+			sourceLine: 2,
+			sourceSnippet: '',
+			attributeChanges: [{
+				attributeName: 'href',
+				oldValue: '/n/skolka-praha-4/',
+				newValue: '/n/skolka-praha-5/',
+				sourceLine: 2,
+				// no sourceSnippet
+			}],
+		})
+		expect(result.appliedCount).toBe(0)
+		expect(result.failedChanges).toHaveLength(1)
+		expect(result.failedChanges[0]?.error).toContain('not found on line 2')
+	})
+
+	test('fails cleanly when sourceSnippet is stale and no longer matches file content', () => {
+		const content = [
+			'---',
+			"const url = '/new-value/'",
+			'---',
+		].join('\n')
+		const result = applyAttributeChanges(content, {
+			cmsId: 'cms-0',
+			newValue: '',
+			originalValue: '',
+			sourcePath: 'Header.astro',
+			sourceLine: 2,
+			sourceSnippet: '',
+			attributeChanges: [{
+				attributeName: 'href',
+				oldValue: '/old-value/',
+				newValue: '/newer-value/',
+				sourceLine: 2,
+				sourceSnippet: "const url = '/old-value/'", // no longer in file
+			}],
+		})
+		expect(result.appliedCount).toBe(0)
+		expect(result.failedChanges).toHaveLength(1)
 	})
 })
