@@ -21,6 +21,9 @@ let searchIndexInitialized = false
 /** Pre-built reverse index: normalizedText → SourceLocation[] (collection data files) */
 let collectionTextIndex: Map<string, SourceLocation[]> | null = null
 
+/** Lazy reverse index on i18n entries: translationKey → SearchIndexEntry[]. Rebuilt on demand after any mutation. */
+let translationKeyIndex: Map<string, SearchIndexEntry[]> | null = null
+
 /** Files that changed since last indexing — tracked by Vite watcher */
 const dirtyFiles = new Set<string>()
 
@@ -58,6 +61,24 @@ export function setSearchIndexInitialized(value: boolean): void {
 
 export function addToTextSearchIndex(entry: SearchIndexEntry): void {
 	textSearchIndex.push(entry)
+	translationKeyIndex = null
+}
+
+/**
+ * Reverse-index i18n entries by their dictionary key, rebuilt lazily after
+ * mutations. Callers should treat the returned Map as read-only.
+ */
+export function getTranslationKeyIndex(): Map<string, SearchIndexEntry[]> {
+	if (translationKeyIndex) return translationKeyIndex
+	const map = new Map<string, SearchIndexEntry[]>()
+	for (const entry of textSearchIndex) {
+		if (!entry.translationKey) continue
+		const existing = map.get(entry.translationKey)
+		if (existing) existing.push(entry)
+		else map.set(entry.translationKey, [entry])
+	}
+	translationKeyIndex = map
+	return map
 }
 
 export function addToImageSearchIndex(entry: ImageIndexEntry): void {
@@ -102,6 +123,7 @@ export function clearDirtyFiles(): void {
 export function removeFileFromIndexes(relFile: string): void {
 	filterInPlace(textSearchIndex, (e) => e.file !== relFile)
 	filterInPlace(imageSearchIndex, (e) => e.file !== relFile)
+	translationKeyIndex = null
 }
 
 /** Remove non-matching elements in-place (single pass, no per-element splice). */
@@ -132,4 +154,5 @@ export function clearSourceFinderCache(): void {
 	imageSearchIndex.length = 0
 	searchIndexInitialized = false
 	collectionTextIndex = null
+	translationKeyIndex = null
 }

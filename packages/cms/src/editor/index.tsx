@@ -16,6 +16,7 @@ import { ImageOverlay } from './components/image-overlay'
 import { MarkdownEditorOverlay } from './components/markdown-editor-overlay'
 import { MediaLibrary } from './components/media-library'
 import { Outline } from './components/outline'
+import { PlainTextChip } from './components/plain-text-chip'
 import { RedirectCountdown } from './components/redirect-countdown'
 import { RedirectsManager } from './components/redirects-manager'
 import { ReferencePicker } from './components/reference-picker'
@@ -559,6 +560,14 @@ const CmsUI = () => {
 					rect={textSelectionState.rect}
 					element={textSelectionState.element}
 					onStyleChange={updateUI}
+				/>
+			</ErrorBoundary>
+
+			<ErrorBoundary componentName="Plain Text Chip">
+				<PlainTextChip
+					visible={textSelectionState.hasSelection && isEditing && !isTextStylingAllowed}
+					rect={textSelectionState.rect}
+					entry={selectedEntry}
 				/>
 			</ErrorBoundary>
 

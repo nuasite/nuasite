@@ -6,6 +6,7 @@ import {
 	enableAllInteractiveElements,
 	findInnermostCmsElement,
 	getAllCmsElements,
+	getCaretRangeFromPoint,
 	getChildCmsElements,
 	getEditableHtmlFromElement,
 	getEditableTextFromElement,
@@ -71,6 +72,50 @@ const INLINE_STYLE_ELEMENTS = [
 	'q',
 ]
 
+// Collapse burst spam (repeated shortcut / paste) into a single toast; long enough to
+// merge a burst, short enough that the next deliberate action still explains itself.
+const FORMATTING_BLOCKED_TOAST_COOLDOWN_MS = 3000
+let lastFormattingBlockedToastAt = 0
+
+// Signals listener cleanup on stopEditMode. Aborting removes every listener
+// attached with { signal } in the current edit session in one shot.
+let editModeAbortController: AbortController | null = null
+
+function notifyFormattingBlocked(): void {
+	const now = Date.now()
+	if (now - lastFormattingBlockedToastAt < FORMATTING_BLOCKED_TOAST_COOLDOWN_MS) {
+		return
+	}
+	lastFormattingBlockedToastAt = now
+	signals.showToast("Formatting isn't available — this text is used as a plain value", 'info')
+}
+
+// Uses the Selection/Range API rather than the deprecated document.execCommand('insertText').
+export function insertPlainTextAtRange(range: Range, text: string): boolean {
+	if (!text) return false
+	range.deleteContents()
+	const textNode = document.createTextNode(text)
+	range.insertNode(textNode)
+	range.setStartAfter(textNode)
+	range.setEndAfter(textNode)
+	const selection = window.getSelection()
+	if (selection) {
+		selection.removeAllRanges()
+		selection.addRange(range)
+	}
+	return true
+}
+
+function applyPlainTextInsert(el: HTMLElement, text: string, html: string, range: Range | null): void {
+	const inserted = range && text ? insertPlainTextAtRange(range, text) : false
+	// Dispatch even when only HTML was stripped (no plain text to insert) so downstream
+	// state resynchronizes with the intercepted event.
+	if (inserted || html) {
+		el.dispatchEvent(new Event('input', { bubbles: true }))
+	}
+	if (html) notifyFormattingBlocked()
+}
+
 /**
  * Check if an element contains styled/formatted content (inline text styling).
  * This includes:
@@ -101,6 +146,10 @@ export async function startEditMode(
 	disableAllInteractiveElements()
 	initHighlightSystem()
 	onStateChange?.()
+
+	editModeAbortController?.abort()
+	editModeAbortController = new AbortController()
+	const editModeSignal = editModeAbortController.signal
 
 	try {
 		const manifest = await fetchManifest()
@@ -177,8 +226,8 @@ export async function startEditMode(
 
 		makeElementEditable(el)
 
-		// Suppress browser native contentEditable undo/redo (we handle it ourselves)
-		// Also prevent Enter/Shift+Enter from inserting line breaks
+		const stylingAllowed = manifestEntry?.allowStyling !== false
+
 		el.addEventListener('beforeinput', (e) => {
 			if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
 				e.preventDefault()
@@ -186,7 +235,39 @@ export async function startEditMode(
 			if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak') {
 				e.preventDefault()
 			}
-		})
+			if (!stylingAllowed && e.inputType?.startsWith('format')) {
+				e.preventDefault()
+				notifyFormattingBlocked()
+			}
+		}, { signal: editModeSignal })
+
+		if (!stylingAllowed) {
+			el.addEventListener('paste', (e) => {
+				const clipboard = (e as ClipboardEvent).clipboardData
+				if (!clipboard) return
+				const html = clipboard.getData('text/html')
+				const text = clipboard.getData('text/plain')
+				e.preventDefault()
+				const selection = window.getSelection()
+				const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+				applyPlainTextInsert(el, text, html, range)
+			}, { signal: editModeSignal })
+
+			el.addEventListener('drop', (e) => {
+				const transfer = (e as DragEvent).dataTransfer
+				if (!transfer) return
+				const html = transfer.getData('text/html')
+				const text = transfer.getData('text/plain')
+				if (!text && !html) return
+				e.preventDefault()
+				let range = getCaretRangeFromPoint((e as DragEvent).clientX, (e as DragEvent).clientY)
+				if (!range) {
+					const selection = window.getSelection()
+					range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+				}
+				applyPlainTextInsert(el, text, html, range)
+			}, { signal: editModeSignal })
+		}
 
 		// Setup color tracking for elements with colorClasses in manifest
 		setupColorTracking(config, el, cmsId, savedColorEdits[cmsId])
@@ -338,6 +419,8 @@ export function stopEditMode(onStateChange?: () => void): void {
 	if (!signals.isSelectMode.value) {
 		enableAllInteractiveElements()
 	}
+	editModeAbortController?.abort()
+	editModeAbortController = null
 	cleanupHighlightSystem()
 	onStateChange?.()
 
@@ -639,8 +722,10 @@ export async function saveAllChanges(
 				payload.childCmsIds = change.childCmsElements.map(c => c.id)
 			}
 
-			// Include HTML content when there are styled spans
-			if (change.hasStyledContent) {
+			// Include HTML content when there are styled spans — but never for entries
+			// that disallow styling (string props, collection fields), since inline HTML
+			// would be written back into a string attribute and break the source.
+			if (change.hasStyledContent && entry?.allowStyling !== false) {
 				payload.hasStyledContent = true
 				payload.htmlValue = getEditableHtmlFromElement(change.element)
 			}

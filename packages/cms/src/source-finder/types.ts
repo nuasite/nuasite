@@ -56,6 +56,9 @@ export interface SearchIndexEntry {
 	definitionLine?: number
 	normalizedText: string
 	tag: string
+	/** For i18n JSON entries: the dictionary key (e.g., `nav.prague4`). Enables
+	 *  direct lookups when a template expression references the key by literal. */
+	translationKey?: string
 }
 
 export interface ImageIndexEntry {

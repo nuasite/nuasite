@@ -21,6 +21,43 @@ export function getStringValue(node: BabelNode): string | null {
 	return null
 }
 
+/**
+ * Collect every string-literal value reachable from a node, each paired with
+ * the line the literal itself sits on. Handles:
+ *   - StringLiteral / TemplateLiteral (no substitutions) — a single value
+ *   - ConditionalExpression (`a ? b : c`) — recurses into both branches
+ *   - LogicalExpression (`a || b`, `a && b`, `a ?? b`) — recurses into both sides
+ *
+ * The per-literal line is what lets `findAttributeSourceLocation` route edits
+ * to the *specific* branch whose value matches the rendered attribute.
+ */
+export function extractPossibleStringValues(
+	node: BabelNode,
+	lineTransformer: LineTransformer,
+): Array<{ value: string; line: number }> {
+	const results: Array<{ value: string; line: number }> = []
+	collect(node)
+	return results
+
+	function collect(n: BabelNode): void {
+		const simple = getStringValue(n)
+		if (simple !== null) {
+			const loc = n.loc as { start: { line: number } } | undefined
+			results.push({ value: simple, line: lineTransformer(loc?.start.line ?? 1) })
+			return
+		}
+		if (n.type === 'ConditionalExpression') {
+			collect(n.consequent as BabelNode)
+			collect(n.alternate as BabelNode)
+			return
+		}
+		if (n.type === 'LogicalExpression') {
+			collect(n.left as BabelNode)
+			collect(n.right as BabelNode)
+		}
+	}
+}
+
 // ============================================================================
 // Object and Array Extraction
 // ============================================================================

@@ -420,3 +420,40 @@ function preventInteraction(event: Event): void {
 		event.stopImmediatePropagation()
 	}
 }
+
+// Chromium exposes `caretRangeFromPoint`; Firefox exposes `caretPositionFromPoint`.
+// Neither is universally supported, hence the fallback cascade.
+export function getCaretRangeFromPoint(x: number, y: number): Range | null {
+	const doc = document as Document & {
+		caretRangeFromPoint?: (x: number, y: number) => Range | null
+		caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+	}
+	if (typeof doc.caretRangeFromPoint === 'function') {
+		return doc.caretRangeFromPoint(x, y)
+	}
+	if (typeof doc.caretPositionFromPoint === 'function') {
+		const pos = doc.caretPositionFromPoint(x, y)
+		if (pos) {
+			const range = document.createRange()
+			range.setStart(pos.offsetNode, pos.offset)
+			range.collapse(true)
+			return range
+		}
+	}
+	return null
+}
+
+export function positionFloatingChip(
+	rect: DOMRect,
+	opts: { width: number; height: number; padding?: number; gap?: number },
+): { left: number; top: number } {
+	const { width, height } = opts
+	const padding = opts.padding ?? 10
+	const gap = opts.gap ?? 8
+	let left = rect.left + rect.width / 2 - width / 2
+	let top = rect.top - height - gap
+	const maxLeft = window.innerWidth - width - padding
+	left = Math.max(padding, Math.min(left, maxLeft))
+	if (top < padding) top = rect.bottom + gap
+	return { left, top }
+}

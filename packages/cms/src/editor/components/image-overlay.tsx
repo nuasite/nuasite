@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
+import { getCaretRangeFromPoint } from '../dom'
 import * as signals from '../signals'
 
 export interface ImageOverlayProps {
@@ -122,24 +123,12 @@ export function ImageOverlay({ visible, rect, element, cmsId }: ImageOverlayProp
 				if (el instanceof HTMLElement && el.contentEditable === 'true') {
 					e.preventDefault()
 					e.stopPropagation()
-					// Focus the element and place cursor at click position
 					el.focus()
-					// Try to place cursor at the click position using caretPositionFromPoint
-					const caretPos = document.caretPositionFromPoint?.(e.clientX, e.clientY)
-						?? (document as { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint?.(e.clientX, e.clientY)
-					if (caretPos) {
+					const range = getCaretRangeFromPoint(e.clientX, e.clientY)
+					if (range) {
 						const selection = window.getSelection()
 						if (selection) {
 							selection.removeAllRanges()
-							const range = document.createRange()
-							if ('offsetNode' in caretPos) {
-								// caretPositionFromPoint result
-								range.setStart(caretPos.offsetNode, caretPos.offset)
-							} else {
-								// caretRangeFromPoint result (Range)
-								range.setStart(caretPos.startContainer, caretPos.startOffset)
-							}
-							range.collapse(true)
 							selection.addRange(range)
 						}
 					}
