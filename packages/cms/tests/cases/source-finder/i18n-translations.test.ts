@@ -382,4 +382,172 @@ withTempDir('findSourceLocation - i18n JSON dictionaries', (getCtx) => {
 		const enResult = await findSourceLocation('Unique english title', 'h1')
 		expect(enResult?.file).toBe('src/i18n/en.json')
 	})
+
+	test('routes `{t(...)}` text to the dictionary even when a sibling template has the same literal text', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/i18n')
+
+		await ctx.writeFile(
+			'src/i18n/cs.json',
+			[
+				'{',
+				'  "nav.prague4": "Praha 4"',
+				'}',
+				'',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/i18n/index.ts',
+			[
+				"import cs from './cs.json'",
+				'export const t = (_locale: string, key: string): string =>',
+				'  (cs as Record<string, string>)[key] ?? key',
+				'',
+			].join('\n'),
+		)
+
+		await ctx.writeFile(
+			'src/components/Header.astro',
+			[
+				'---',
+				"import { t } from '../i18n'",
+				"const locale = 'cs' as const",
+				"const kg4Url = '/n/skolka-praha-4/'",
+				'---',
+				'<nav>',
+				'  <a',
+				'    href={kg4Url}',
+				'    class="no-underline text-[#2A2937] hover:text-[#FC9C9E]"',
+				"  >{t(locale, 'nav.prague4')}</a>",
+				'</nav>',
+				'',
+			].join('\n'),
+		)
+
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				"import Header from '../components/Header.astro'",
+				'---',
+				'<Header />',
+				'<section>',
+				'  <a',
+				'    class="bg-[#5bc0de] text-white"',
+				'    href="/n/registracni-formular-praha-4/"',
+				'  >Praha 4</a>',
+				'</section>',
+				'',
+			].join('\n'),
+		)
+
+		// Nav link (no reliable sourcePath) must route to the dictionary
+		const navEntry: Record<string, ManifestEntry> = {
+			'cms-nav': {
+				id: 'cms-nav',
+				tag: 'a',
+				text: 'Praha 4',
+				stableId: 'nav-stable',
+				colorClasses: {
+					text: { value: 'text-[#2A2937]' },
+					hoverText: { value: 'hover:text-[#FC9C9E]' },
+				},
+				attributes: { href: { value: '/n/skolka-praha-4/' } },
+			},
+		}
+
+		// Registration button knows its real sourcePath — must stay put
+		const buttonEntry: Record<string, ManifestEntry> = {
+			'cms-btn': {
+				id: 'cms-btn',
+				tag: 'a',
+				text: 'Praha 4',
+				stableId: 'btn-stable',
+				sourcePath: 'src/pages/index.astro',
+				sourceLine: 6,
+				colorClasses: {
+					bg: { value: 'bg-[#5bc0de]' },
+					text: { value: 'text-white' },
+				},
+				attributes: { href: { value: '/n/registracni-formular-praha-4/' } },
+			},
+		}
+
+		const enhancedNav = await enhanceManifestWithSourceSnippets(navEntry)
+		const enhancedBtn = await enhanceManifestWithSourceSnippets(buttonEntry)
+
+		expect(enhancedNav['cms-nav']?.sourcePath).toBe('src/i18n/cs.json')
+		expect(enhancedNav['cms-nav']?.sourceSnippet).toContain('Praha 4')
+		// Attribute and class edits must point back at the template — otherwise
+		// the save handler would try to rewrite the href on a JSON line.
+		expect(enhancedNav['cms-nav']?.attributes?.href?.sourcePath).toBe('src/components/Header.astro')
+		expect(enhancedNav['cms-nav']?.attributes?.href?.sourceLine).toBeGreaterThan(0)
+		expect(enhancedNav['cms-nav']?.colorClasses?.text?.sourcePath).toBe('src/components/Header.astro')
+		expect(enhancedNav['cms-nav']?.colorClasses?.text?.sourceLine).toBeGreaterThan(0)
+
+		expect(enhancedBtn['cms-btn']?.sourcePath).toBe('src/pages/index.astro')
+		expect(enhancedBtn['cms-btn']?.sourceLine).toBe(6)
+	})
+
+	test('`{t(...)}` with a literal key wins over a same-text collection YAML match', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/i18n')
+		await ctx.mkdir('content/events')
+
+		await ctx.writeFile(
+			'src/i18n/cs.json',
+			[
+				'{',
+				'  "nav.prague4": "Praha 4"',
+				'}',
+				'',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/i18n/index.ts',
+			[
+				"import cs from './cs.json'",
+				'export const t = (_locale: string, key: string): string =>',
+				'  (cs as Record<string, string>)[key] ?? key',
+				'',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'content/events/praha-4.yaml',
+			[
+				'slug: praha-4',
+				'translations:',
+				'  cs:',
+				'    branchLabel: Praha 4',
+				'',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/components/Header.astro',
+			[
+				'---',
+				"import { t } from '../i18n'",
+				"const locale = 'cs' as const",
+				'---',
+				"<a>{t(locale, 'nav.prague4')}</a>",
+				'',
+			].join('\n'),
+		)
+
+		const entries: Record<string, ManifestEntry> = {
+			'cms-nav': {
+				id: 'cms-nav',
+				tag: 'a',
+				text: 'Praha 4',
+				stableId: 'nav-stable',
+				sourcePath: 'src/components/Header.astro',
+				sourceLine: 5,
+			},
+		}
+
+		const enhanced = await enhanceManifestWithSourceSnippets(entries)
+		expect(enhanced['cms-nav']?.sourcePath).toBe('src/i18n/cs.json')
+	})
 }, { setupAstro: false })

@@ -16,7 +16,13 @@ import {
 } from './collection-finder'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
-import { extractTranslationKeyFromSnippet, findInTextIndex, findTemplateElementUsingStringLiteral, initializeSearchIndex } from './search-index'
+import {
+	extractTranslationKeyFromSnippet,
+	findInTextIndex,
+	findTemplateElementUsingStringLiteral,
+	findTranslationByKeyAndText,
+	initializeSearchIndex,
+} from './search-index'
 import type { CachedParsedFile, ImageMatch, SourceLocation } from './types'
 
 // ============================================================================
@@ -287,7 +293,18 @@ export async function updateAttributeSources(
 				}
 			}
 
-			// Couldn't resolve - return without source info
+			// Prefer a template-level miss over falling back to the entry
+			// sourcePath, which may be an unrelated file (e.g. an i18n JSON).
+			if (sourceFilePath) {
+				const attrLine = findAttributeLineInSnippet(attrName, snippetLines, openingTagStartLine)
+				return [attrName, {
+					value,
+					sourcePath: sourceFilePath,
+					sourceLine: attrLine,
+					sourceSnippet: (attrLine && sourceLines) ? sourceLines[attrLine - 1] || '' : undefined,
+				}] as const
+			}
+
 			return [attrName, { value }] as const
 		}
 
@@ -539,6 +556,63 @@ function hasAnySourcePath(bag: Record<string, { sourcePath?: string }>): boolean
 		if (bag[key]?.sourcePath) return true
 	}
 	return false
+}
+
+/**
+ * Extract string literals from every `{…}` expression in an Astro snippet.
+ * Intended to recover translation keys from patterns like:
+ *   {t(locale, 'nav.prague4')}
+ *   {cs['nav.prague4']}
+ *   {dict.nav['prague4']}
+ *
+ * Nested braces inside template strings can fool the naive brace tracker but
+ * not in ways that matter here — we only care about literal string arguments.
+ */
+export function extractStringLiteralsFromExpressions(snippet: string): string[] {
+	const literals: string[] = []
+	let depth = 0
+	let exprStart = -1
+	for (let i = 0; i < snippet.length; i++) {
+		const ch = snippet[i]
+		if (ch === '{') {
+			if (depth === 0) exprStart = i + 1
+			depth++
+		} else if (ch === '}') {
+			depth--
+			if (depth === 0 && exprStart >= 0) {
+				const expr = snippet.slice(exprStart, i)
+				const pattern = /'((?:[^'\\]|\\.)+)'|"((?:[^"\\]|\\.)+)"|`((?:[^`\\$]|\\.)+)`/g
+				let m: RegExpExecArray | null
+				while ((m = pattern.exec(expr)) !== null) {
+					const s = m[1] ?? m[2] ?? m[3]
+					if (s) literals.push(s)
+				}
+				exprStart = -1
+			}
+		}
+	}
+	return literals
+}
+
+/**
+ * When the template expression references a literal translation key (e.g.
+ * `{t(locale, 'nav.prague4')}`), look the key up directly in the i18n index
+ * and return the JSON location. Falls back to value-based heuristics only via
+ * the caller's other branches — this path is only taken when the key match
+ * is unambiguous, which is the authoritative signal from the template.
+ */
+function resolveTranslationKeyFromSnippet(
+	snippet: string,
+	entryText: string,
+): SourceLocation | undefined {
+	const literals = extractStringLiteralsFromExpressions(snippet)
+	if (literals.length === 0) return undefined
+	const normalizedText = normalizeText(entryText)
+	for (const literal of literals) {
+		const hit = findTranslationByKeyAndText(literal, normalizedText)
+		if (hit) return hit
+	}
+	return undefined
 }
 
 /**
@@ -913,6 +987,14 @@ export async function enhanceManifestWithSourceSnippets(
 								// Directory doesn't exist
 							}
 						}
+					}
+
+					// An explicit `{t(locale, 'key')}`-style reference is a stronger
+					// signal than value-based collection/text-index matches below.
+					const i18nKeySource = resolveTranslationKeyFromSnippet(sourceSnippet, trimmedText)
+					if (i18nKeySource) {
+						const resolved = await applyTranslationSource(entry, i18nKeySource, attributes, colorClasses)
+						return [id, resolved] as const
 					}
 
 					// Search collection frontmatter — text rendered on listing pages

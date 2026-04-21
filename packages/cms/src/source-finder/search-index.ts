@@ -15,6 +15,7 @@ import {
 	getImageSearchIndex,
 	getMarkdownFileCache,
 	getTextSearchIndex,
+	getTranslationKeyIndex,
 	isSearchIndexInitialized,
 	removeFileFromIndexes,
 	setCollectionTextIndex,
@@ -967,21 +968,24 @@ export function extractTranslationKeyFromSnippet(snippet: string): string | unde
 }
 
 /**
- * Extract all string values from a JSON file and add each one to the text
- * search index with a wildcard tag. Non-user-facing values (paths, URLs,
- * image assets, single characters) are skipped.
+ * Extract all string key/value pairs from a JSON file and add each one to the
+ * text search index with a wildcard tag. The dictionary key is retained on
+ * each entry so a template expression like `{t(locale, 'nav.prague4')}` can
+ * resolve directly to the JSON line via the literal key. Non-user-facing
+ * values (paths, URLs, image assets, single characters) are skipped.
  */
 export function indexJsonTextValues(content: string, relFile: string): void {
 	const lines = content.split('\n')
-	// Capture the value side of JSON string key/value pairs, handling backslash escapes
-	const pattern = /:\s*"((?:[^"\\]|\\.)*)"/g
+	// Match `"key": "value"` pairs on a single line, handling backslash escapes.
+	// Nested objects aren't matched (their `"key":` is followed by `{`, not `"`).
+	const pattern = /"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"/g
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i]!
 		pattern.lastIndex = 0
 		let match: RegExpExecArray | null
 		while ((match = pattern.exec(line)) !== null) {
-			const raw = match[1]!
-			const value = unescapeJsonString(raw)
+			const key = unescapeJsonString(match[1]!)
+			const value = unescapeJsonString(match[2]!)
 			if (!value) continue
 			if (IMAGE_EXTENSIONS.test(value)) continue
 			if (value.startsWith('/') || value.startsWith('./') || value.startsWith('../')) continue
@@ -997,6 +1001,7 @@ export function indexJsonTextValues(content: string, relFile: string): void {
 				type: 'static',
 				normalizedText: normalized,
 				tag: TRANSLATION_TAG_MARKER,
+				translationKey: key,
 			})
 		}
 	}
@@ -1006,6 +1011,35 @@ export function indexJsonTextValues(content: string, relFile: string): void {
 // Index Lookup
 // ============================================================================
 
+/** Helper to build SourceLocation from a text index entry */
+function textEntryToLocation(entry: SearchIndexEntry): SourceLocation {
+	return {
+		file: entry.file,
+		line: entry.line,
+		snippet: entry.snippet,
+		openingTagSnippet: entry.openingTagSnippet,
+		type: entry.type,
+		variableName: entry.variableName,
+		definitionLine: entry.definitionLine,
+	}
+}
+
+/**
+ * Look up an i18n dictionary entry by its literal key (e.g. `nav.prague4`),
+ * preferring the match whose value equals `normalizedText` so the right locale
+ * wins when multiple dictionaries share the same key.
+ */
+export function findTranslationByKeyAndText(key: string, normalizedText: string): SourceLocation | undefined {
+	const entries = getTranslationKeyIndex().get(key)
+	if (!entries) return undefined
+	let fallback: SourceLocation | undefined
+	for (const entry of entries) {
+		if (entry.normalizedText === normalizedText) return textEntryToLocation(entry)
+		fallback ??= textEntryToLocation(entry)
+	}
+	return fallback
+}
+
 /**
  * Fast text lookup using pre-built index
  */
@@ -1014,26 +1048,23 @@ export function findInTextIndex(textContent: string, tag: string): SourceLocatio
 	const tagLower = tag.toLowerCase()
 	const index = getTextSearchIndex()
 
-	// Helper to build SourceLocation from a text index entry
-	const toLocation = (entry: SearchIndexEntry): SourceLocation => ({
-		file: entry.file,
-		line: entry.line,
-		snippet: entry.snippet,
-		openingTagSnippet: entry.openingTagSnippet,
-		type: entry.type,
-		variableName: entry.variableName,
-		definitionLine: entry.definitionLine,
-	})
-
-	// First try exact match with same tag — prefer collection data files
+	// Single pass for exact matches: collect the best same-tag template hit
+	// *and* any i18n dictionary hit at once. A JSON dictionary entry is an
+	// authoritative translatable signal, so it beats a non-collection
+	// template match (which is often a coincidental same-text element).
 	let bestMatch: SourceLocation | undefined
+	let translationHit: SourceLocation | undefined
 	for (const entry of index) {
-		if (entry.tag === tagLower && entry.normalizedText === normalizedSearch) {
-			const result = toLocation(entry)
+		if (entry.normalizedText !== normalizedSearch) continue
+		if (entry.tag === tagLower) {
+			const result = textEntryToLocation(entry)
 			if (isCollectionFile(entry.file)) return result
 			bestMatch ??= result
+		} else if (entry.tag === TRANSLATION_TAG_MARKER) {
+			translationHit ??= textEntryToLocation(entry)
 		}
 	}
+	if (translationHit) return translationHit
 	if (bestMatch) return bestMatch
 
 	// Then try partial match for longer text — prefer collection data files
@@ -1041,7 +1072,7 @@ export function findInTextIndex(textContent: string, tag: string): SourceLocatio
 		const textPreview = normalizedSearch.slice(0, Math.min(30, normalizedSearch.length))
 		for (const entry of index) {
 			if (entry.tag === tagLower && entry.normalizedText.includes(textPreview)) {
-				const result = toLocation(entry)
+				const result = textEntryToLocation(entry)
 				if (isCollectionFile(entry.file)) return result
 				bestMatch ??= result
 			}
@@ -1052,7 +1083,7 @@ export function findInTextIndex(textContent: string, tag: string): SourceLocatio
 	// Try any tag match — prefer collection data files
 	for (const entry of index) {
 		if (entry.normalizedText === normalizedSearch) {
-			const result = toLocation(entry)
+			const result = textEntryToLocation(entry)
 			if (isCollectionFile(entry.file)) return result
 			bestMatch ??= result
 		}
