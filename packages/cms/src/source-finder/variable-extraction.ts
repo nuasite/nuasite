@@ -2,7 +2,7 @@ import { parse as parseBabel } from '@babel/parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-import { extractArrayElements, extractObjectProperties, getStringValue } from './ast-extractors'
+import { extractArrayElements, extractObjectProperties, extractPossibleStringValues, getStringValue } from './ast-extractors'
 import type { BabelFile, BabelNode, ImportInfo, VariableDefinition } from './types'
 import { createFrontmatterLineTransformer, identityLine } from './types'
 
@@ -37,6 +37,13 @@ export function extractVariableDefinitions(ast: BabelFile, frontmatterStartLine:
 					const stringValue = getStringValue(init)
 					if (stringValue !== null) {
 						definitions.push({ name: varName, value: stringValue, line })
+					} else if (init.type === 'ConditionalExpression' || init.type === 'LogicalExpression') {
+						// One definition per reachable branch — each carries its own
+						// literal's line so edits route to the matching branch.
+						const branches = extractPossibleStringValues(init, lineTransformer)
+						for (const branch of branches) {
+							definitions.push({ name: varName, value: branch.value, line: branch.line })
+						}
 					}
 
 					// Object expression - extract properties recursively

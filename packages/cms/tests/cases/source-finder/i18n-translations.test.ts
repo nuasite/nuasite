@@ -490,6 +490,128 @@ withTempDir('findSourceLocation - i18n JSON dictionaries', (getCtx) => {
 		expect(enhancedBtn['cms-btn']?.sourceLine).toBe(6)
 	})
 
+	test('resolves href through a conditional expression to the matching branch literal', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/i18n')
+
+		await ctx.writeFile(
+			'src/i18n/cs.json',
+			[
+				'{',
+				'  "nav.prague4": "Praha 4"',
+				'}',
+				'',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/i18n/index.ts',
+			[
+				"import cs from './cs.json'",
+				'export const t = (_locale: string, key: string): string =>',
+				'  (cs as Record<string, string>)[key] ?? key',
+				'',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/components/Header.astro',
+			[
+				'---',
+				"import { t } from '../i18n'",
+				"const locale = 'cs' as const",
+				"const kg4Url = locale === 'cs' ? '/n/skolka-praha-4/' : '/n/en/kindergarten-prague-4/'",
+				'---',
+				'<nav>',
+				"  <a href={kg4Url} class=\"text-[#2A2937]\">{t(locale, 'nav.prague4')}</a>",
+				'</nav>',
+				'',
+			].join('\n'),
+		)
+
+		const entries: Record<string, ManifestEntry> = {
+			'cms-nav': {
+				id: 'cms-nav',
+				tag: 'a',
+				text: 'Praha 4',
+				stableId: 'nav-stable',
+				colorClasses: {
+					text: { value: 'text-[#2A2937]' },
+				},
+				attributes: { href: { value: '/n/skolka-praha-4/' } },
+			},
+		}
+
+		const enhanced = await enhanceManifestWithSourceSnippets(entries)
+		const result = enhanced['cms-nav']!
+
+		expect(result.sourcePath).toBe('src/i18n/cs.json')
+		expect(result.attributes?.href?.sourcePath).toBe('src/components/Header.astro')
+		expect(result.attributes?.href?.sourceLine).toBe(4)
+		expect(result.attributes?.href?.sourceSnippet).toContain(`'/n/skolka-praha-4/'`)
+	})
+
+	test('resolves href through a multi-line conditional to the correct branch line', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.mkdir('src/i18n')
+
+		await ctx.writeFile(
+			'src/i18n/cs.json',
+			[
+				'{',
+				'  "nav.prague4": "Praha 4"',
+				'}',
+				'',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/i18n/index.ts',
+			[
+				"import cs from './cs.json'",
+				'export const t = (_locale: string, key: string): string =>',
+				'  (cs as Record<string, string>)[key] ?? key',
+				'',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/components/Header.astro',
+			[
+				'---',
+				"import { t } from '../i18n'",
+				"const locale = 'cs' as const",
+				'const kg4Url = locale === \'cs\'',
+				"  ? '/n/skolka-praha-4/'",
+				"  : '/n/en/kindergarten-prague-4/'",
+				'---',
+				'<nav>',
+				"  <a href={kg4Url} class=\"text-[#2A2937]\">{t(locale, 'nav.prague4')}</a>",
+				'</nav>',
+				'',
+			].join('\n'),
+		)
+
+		const entries: Record<string, ManifestEntry> = {
+			'cms-nav': {
+				id: 'cms-nav',
+				tag: 'a',
+				text: 'Praha 4',
+				stableId: 'nav-stable',
+				colorClasses: { text: { value: 'text-[#2A2937]' } },
+				attributes: { href: { value: '/n/skolka-praha-4/' } },
+			},
+		}
+
+		const enhanced = await enhanceManifestWithSourceSnippets(entries)
+		const result = enhanced['cms-nav']!
+
+		expect(result.sourcePath).toBe('src/i18n/cs.json')
+		expect(result.attributes?.href?.sourcePath).toBe('src/components/Header.astro')
+		// Line 5 is the cs branch literal's own line — not the `const` line (4)
+		// or the alternate's line (6).
+		expect(result.attributes?.href?.sourceLine).toBe(5)
+		expect(result.attributes?.href?.sourceSnippet).toContain(`'/n/skolka-praha-4/'`)
+		expect(result.attributes?.href?.sourceSnippet).not.toContain('/n/en/')
+	})
 	test('`{t(...)}` with a literal key wins over a same-text collection YAML match', async () => {
 		const ctx = getCtx()
 		await setupAstroProjectStructure(ctx)
