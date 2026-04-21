@@ -325,12 +325,41 @@ function buildCollectionDefinition(
  */
 async function scanCollection(collectionPath: string, collectionName: string, contentDir: string): Promise<CollectionDefinition | null> {
 	try {
-		const entries = await fs.readdir(collectionPath, { withFileTypes: true })
-		const markdownFiles = entries.filter(e => e.isFile() && (e.name.endsWith('.md') || e.name.endsWith('.mdx')))
+		const dirEntries = await fs.readdir(collectionPath, { withFileTypes: true })
 
-		if (markdownFiles.length === 0) return null
+		const sources: Array<{ slug: string; relPath: string }> = []
+		const takenSlugs = new Set<string>()
 
-		const hasMd = markdownFiles.some(f => f.name.endsWith('.md'))
+		for (const entry of dirEntries) {
+			if (!entry.isFile()) continue
+			if (!entry.name.endsWith('.md') && !entry.name.endsWith('.mdx')) continue
+			const slug = entry.name.replace(/\.(md|mdx)$/, '')
+			sources.push({ slug, relPath: entry.name })
+			takenSlugs.add(slug)
+		}
+
+		// Hugo-style layout: <slug>/index.md(x). Flat files win on slug conflict.
+		const subdirs = dirEntries.filter(e => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))
+		const indexLookups = await Promise.all(subdirs.map(async dir => {
+			if (takenSlugs.has(dir.name)) return null
+			for (const ext of ['md', 'mdx'] as const) {
+				const relPath = path.join(dir.name, `index.${ext}`)
+				try {
+					await fs.access(path.join(collectionPath, relPath))
+					return { slug: dir.name, relPath }
+				} catch {
+					// try next extension
+				}
+			}
+			return null
+		}))
+		for (const entry of indexLookups) {
+			if (entry) sources.push(entry)
+		}
+
+		if (sources.length === 0) return null
+
+		const hasMd = sources.some(s => s.relPath.endsWith('.md'))
 		const fileExtension: 'md' | 'mdx' = hasMd ? 'md' : 'mdx'
 
 		const fieldMap = new Map<string, FieldObservation>()
@@ -339,11 +368,11 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 		let hasDraft = false
 
 		const fileContents = await Promise.all(
-			markdownFiles.map(file => fs.readFile(path.join(collectionPath, file.name), 'utf-8')),
+			sources.map(s => fs.readFile(path.join(collectionPath, s.relPath), 'utf-8')),
 		)
 
-		for (let i = 0; i < markdownFiles.length; i++) {
-			const file = markdownFiles[i]!
+		for (let i = 0; i < sources.length; i++) {
+			const source = sources[i]!
 			const content = fileContents[i]!
 			const frontmatter = parseFrontmatter(content)
 
@@ -354,10 +383,9 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 				}
 			}
 
-			const slug = file.name.replace(/\.(md|mdx)$/, '')
 			const entryInfo: CollectionEntryInfo = {
-				slug,
-				sourcePath: path.join(contentDir, collectionName, file.name),
+				slug: source.slug,
+				sourcePath: path.join(contentDir, collectionName, source.relPath),
 			}
 			if (frontmatter) {
 				if (typeof frontmatter.title === 'string') {
@@ -373,10 +401,10 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 			if (!frontmatter) continue
 
 			if (frontmatter.draft === true) hasDraft = true
-			collectFieldObservations(fieldMap, frontmatter, markdownFiles.length)
+			collectFieldObservations(fieldMap, frontmatter, sources.length)
 		}
 
-		const def = buildCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, markdownFiles.length, {
+		const def = buildCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, sources.length, {
 			supportsDraft: hasDraft,
 			fileExtension,
 		})
@@ -886,42 +914,76 @@ function detectDerivedHrefFields(collections: Record<string, CollectionDefinitio
  */
 async function scanDataCollection(collectionPath: string, collectionName: string, contentDir: string): Promise<CollectionDefinition | null> {
 	try {
-		const entries = await fs.readdir(collectionPath, { withFileTypes: true })
-		const dataFiles = entries.filter(e => e.isFile() && (e.name.endsWith('.json') || e.name.endsWith('.yaml') || e.name.endsWith('.yml')))
-		if (dataFiles.length === 0) return null
+		const dirEntries = await fs.readdir(collectionPath, { withFileTypes: true })
+
+		const sources: Array<{ slug: string; relPath: string }> = []
+		const takenSlugs = new Set<string>()
+
+		for (const entry of dirEntries) {
+			if (!entry.isFile()) continue
+			if (!entry.name.endsWith('.json') && !entry.name.endsWith('.yaml') && !entry.name.endsWith('.yml')) continue
+			const slug = entry.name.replace(/\.(json|ya?ml)$/, '')
+			sources.push({ slug, relPath: entry.name })
+			takenSlugs.add(slug)
+		}
+
+		// Hugo-style layout: <slug>/index.{json,yaml,yml}. Flat files win on slug conflict.
+		const subdirs = dirEntries.filter(e => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))
+		const indexLookups = await Promise.all(subdirs.map(async dir => {
+			if (takenSlugs.has(dir.name)) return null
+			for (const indexExt of ['json', 'yaml', 'yml'] as const) {
+				const relPath = path.join(dir.name, `index.${indexExt}`)
+				try {
+					await fs.access(path.join(collectionPath, relPath))
+					return { slug: dir.name, relPath }
+				} catch {
+					// try next extension
+				}
+			}
+			return null
+		}))
+		for (const entry of indexLookups) {
+			if (entry) sources.push(entry)
+		}
+
+		if (sources.length === 0) return null
 
 		const fieldMap = new Map<string, FieldObservation>()
 		const entryInfos: CollectionEntryInfo[] = []
-		const ext = dataFiles.some(file => file.name.endsWith('.json'))
+		const ext = sources.some(s => s.relPath.endsWith('.json'))
 			? 'json' as const
-			: dataFiles.some(file => file.name.endsWith('.yaml'))
+			: sources.some(s => s.relPath.endsWith('.yaml'))
 			? 'yaml' as const
 			: 'yml' as const
 
 		const fileContents = await Promise.all(
-			dataFiles.map(file => fs.readFile(path.join(collectionPath, file.name), 'utf-8').catch(() => null)),
+			sources.map(s => fs.readFile(path.join(collectionPath, s.relPath), 'utf-8').catch(() => null)),
 		)
 
-		for (let i = 0; i < dataFiles.length; i++) {
-			const file = dataFiles[i]!
+		for (let i = 0; i < sources.length; i++) {
+			const source = sources[i]!
 			const raw = fileContents[i]!
 			if (raw === null) continue
 			let data: Record<string, unknown> | null = null
 			try {
-				data = file.name.endsWith('.json') ? JSON.parse(raw) : parseYaml(raw) as Record<string, unknown>
+				data = source.relPath.endsWith('.json') ? JSON.parse(raw) : parseYaml(raw) as Record<string, unknown>
 			} catch {
 				continue
 			}
 			if (!data || typeof data !== 'object') continue
 
-			const slug = file.name.replace(/\.(json|ya?ml)$/, '')
 			const title = typeof data.name === 'string' ? data.name : typeof data.title === 'string' ? data.title : undefined
-			entryInfos.push({ slug, title, sourcePath: path.join(contentDir, collectionName, file.name), data })
+			entryInfos.push({
+				slug: source.slug,
+				title,
+				sourcePath: path.join(contentDir, collectionName, source.relPath),
+				data,
+			})
 
-			collectFieldObservations(fieldMap, data, dataFiles.length)
+			collectFieldObservations(fieldMap, data, sources.length)
 		}
 
-		return buildCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, dataFiles.length, {
+		return buildCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, sources.length, {
 			type: 'data',
 			fileExtension: ext,
 		})
