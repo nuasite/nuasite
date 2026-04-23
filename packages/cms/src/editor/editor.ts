@@ -76,6 +76,7 @@ const INLINE_STYLE_ELEMENTS = [
 // merge a burst, short enough that the next deliberate action still explains itself.
 const FORMATTING_BLOCKED_TOAST_COOLDOWN_MS = 3000
 let lastFormattingBlockedToastAt = 0
+let lastLockedToastAt = 0
 
 // Signals listener cleanup on stopEditMode. Aborting removes every listener
 // attached with { signal } in the current edit session in one shot.
@@ -88,6 +89,21 @@ function notifyFormattingBlocked(): void {
 	}
 	lastFormattingBlockedToastAt = now
 	signals.showToast("Formatting isn't available — this text is used as a plain value", 'info')
+}
+
+export function notifyLockedElement(): void {
+	const now = Date.now()
+	if (now - lastLockedToastAt < FORMATTING_BLOCKED_TOAST_COOLDOWN_MS) {
+		return
+	}
+	lastLockedToastAt = now
+	signals.showToast("This text can't be edited here — no source file is linked to it", 'info')
+}
+
+/** Test-only: reset toast throttle state between test cases. */
+export function _resetToastThrottles(): void {
+	lastFormattingBlockedToastAt = 0
+	lastLockedToastAt = 0
 }
 
 // Uses the Selection/Range API rather than the deprecated document.execCommand('insertText').
@@ -221,6 +237,16 @@ export async function startEditMode(
 			logDebug(config.debug, 'Background image element detected:', cmsId)
 			makeElementNonEditable(el)
 			setupBgImageTracking(config, el, cmsId, savedBgImageEdits[cmsId])
+			return
+		}
+
+		// Without a source path, the writer has nowhere to persist text edits — lock
+		// the element so it can't be typed into and the user gets told why on click.
+		if (!manifestEntry?.sourcePath) {
+			logDebug(config.debug, 'Skipping element without source path:', cmsId)
+			makeElementNonEditable(el)
+			el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
+			el.addEventListener('click', notifyLockedElement, { signal: editModeSignal })
 			return
 		}
 
@@ -434,6 +460,7 @@ export function stopEditMode(onStateChange?: () => void): void {
 
 	getAllCmsElements().forEach(el => {
 		makeElementNonEditable(el)
+		el.removeAttribute(CSS.LOCKED_ATTRIBUTE)
 	})
 }
 

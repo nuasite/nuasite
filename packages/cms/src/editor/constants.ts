@@ -109,6 +109,9 @@ export const CSS = {
 	HIGHLIGHT_ELEMENT: 'cms-highlight-overlay',
 	/** Data attribute for background image elements */
 	BG_IMAGE_ATTRIBUTE: 'data-cms-bg-img',
+	/** Data attribute set during edit mode on elements whose manifest entry has no source path;
+	 *  suppresses hover outlines and blocks interaction so the user doesn't type into a dead-end. */
+	LOCKED_ATTRIBUTE: 'data-cms-locked',
 } as const
 
 /**

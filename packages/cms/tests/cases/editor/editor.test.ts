@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { startEditMode, stopEditMode } from '../../../src/editor/editor'
+import { _resetToastThrottles, startEditMode, stopEditMode } from '../../../src/editor/editor'
+import * as signals from '../../../src/editor/signals'
 import type { CmsConfig, CmsManifest } from '../../../src/editor/types'
 
 const mockConfig: CmsConfig = {
@@ -34,10 +35,19 @@ beforeEach(() => {
 				sourcePath: '/test/path2.md',
 				sourceLine: 1,
 			},
+			'no-source-id': {
+				id: 'no-source-id',
+				tag: 'p',
+				text: 'Text with no source path',
+			},
 		},
 		components: {},
 		componentDefinitions: {},
 	} satisfies CmsManifest
+
+	// Reset toast state between tests so assertions on toasts aren't leaky
+	signals.toasts.value = []
+	_resetToastThrottles()
 	;(global as any).fetch = async (url: string | Request) => {
 		const urlStr = url.toString()
 		// Handle both page-specific manifest (/index.json) and global manifest (/cms-manifest.json)
@@ -266,4 +276,67 @@ test('startEditMode handles page with many links', async () => {
 	links.forEach(link => {
 		expect(link.hasAttribute('data-cms-disabled')).toBe(true)
 	})
+})
+
+test('startEditMode locks elements whose manifest entry has no source path', async () => {
+	document.body.innerHTML = `
+    <div data-cms-id="test-id-1">Editable content</div>
+    <div data-cms-id="no-source-id">No source path</div>
+  `
+
+	await startEditMode(mockConfig, () => {})
+
+	const editable = document.querySelector('[data-cms-id="test-id-1"]') as HTMLElement
+	const locked = document.querySelector('[data-cms-id="no-source-id"]') as HTMLElement
+
+	expect(editable.contentEditable).toBe('true')
+	expect(editable.hasAttribute('data-cms-locked')).toBe(false)
+
+	expect(locked.contentEditable).toBe('false')
+	expect(locked.getAttribute('data-cms-locked')).toBe('true')
+})
+
+test('clicking a locked element shows a toast explaining why it is not editable', async () => {
+	document.body.innerHTML = `
+    <div data-cms-id="no-source-id">No source path</div>
+  `
+
+	await startEditMode(mockConfig, () => {})
+
+	const locked = document.querySelector('[data-cms-id="no-source-id"]') as HTMLElement
+	expect(signals.toasts.value).toHaveLength(0)
+
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+	expect(signals.toasts.value).toHaveLength(1)
+	expect(signals.toasts.value[0]!.message).toContain("can't be edited")
+})
+
+test('locked-element toast is throttled across rapid clicks', async () => {
+	document.body.innerHTML = `
+    <div data-cms-id="no-source-id">No source path</div>
+  `
+
+	await startEditMode(mockConfig, () => {})
+
+	const locked = document.querySelector('[data-cms-id="no-source-id"]') as HTMLElement
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+	// Throttling coalesces the burst into a single toast so the user isn't spammed.
+	expect(signals.toasts.value).toHaveLength(1)
+})
+
+test('stopEditMode clears the locked attribute', async () => {
+	document.body.innerHTML = `
+    <div data-cms-id="no-source-id">No source path</div>
+  `
+
+	await startEditMode(mockConfig, () => {})
+	const locked = document.querySelector('[data-cms-id="no-source-id"]') as HTMLElement
+	expect(locked.getAttribute('data-cms-locked')).toBe('true')
+
+	stopEditMode(() => {})
+	expect(locked.hasAttribute('data-cms-locked')).toBe(false)
 })

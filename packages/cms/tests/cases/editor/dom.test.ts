@@ -7,6 +7,7 @@ import {
 	findInnermostCmsElement,
 	getAllCmsElements,
 	getChildCmsElements,
+	getCmsElementAtPosition,
 	getCmsElementFromEvent,
 	getEditableHtmlFromElement,
 	getEditableTextFromElement,
@@ -506,4 +507,54 @@ test('setElementOutline creates separate overlays for different elements', () =>
 	const overlays = container?.querySelectorAll('cms-highlight-overlay')
 
 	expect(overlays?.length).toBe(2)
+})
+
+// happy-dom doesn't implement layout, so `elementsFromPoint` returns an empty list. Stub
+// it for the scope of these tests to return whatever we set as the "hit stack".
+function withMockedElementsFromPoint<T>(stack: Element[], fn: () => T): T {
+	const original = document.elementsFromPoint
+	document.elementsFromPoint = (() => stack) as typeof document.elementsFromPoint
+	try {
+		return fn()
+	} finally {
+		document.elementsFromPoint = original
+	}
+}
+
+test('getCmsElementAtPosition skips elements with data-cms-locked', () => {
+	const locked = document.createElement('p')
+	locked.setAttribute('data-cms-id', 'locked-id')
+	locked.setAttribute('data-cms-locked', 'true')
+	document.body.appendChild(locked)
+
+	const editable = document.createElement('p')
+	editable.setAttribute('data-cms-id', 'editable-id')
+	editable.contentEditable = 'true'
+	document.body.appendChild(editable)
+
+	const entries = { 'locked-id': {}, 'editable-id': {} }
+
+	// Locked element is the deepest hit; function should fall through to the editable one
+	const hit = withMockedElementsFromPoint(
+		[locked, editable, document.body],
+		() => getCmsElementAtPosition(0, 0, entries),
+	)
+
+	expect(hit).toBe(editable)
+})
+
+test('getCmsElementAtPosition returns null when the only candidate is locked', () => {
+	const locked = document.createElement('p')
+	locked.setAttribute('data-cms-id', 'locked-id')
+	locked.setAttribute('data-cms-locked', 'true')
+	document.body.appendChild(locked)
+
+	const entries = { 'locked-id': {} }
+
+	const hit = withMockedElementsFromPoint(
+		[locked, document.body],
+		() => getCmsElementAtPosition(0, 0, entries),
+	)
+
+	expect(hit).toBeNull()
 })
