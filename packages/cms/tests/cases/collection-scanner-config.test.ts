@@ -369,6 +369,24 @@ withTempDir('n helpers: Zod validation with hints', (getCtx) => {
 		expect(schema.safeParse(0).success).toBe(false)
 	})
 
+	test('.orderBy() survives .default() / .optional() / .nullable() / .nullish() wrappers at runtime', async () => {
+		const { n } = await import('../../src/field-types')
+		// Cast to any: the type signature still requires `.orderBy()` first (the canonical form),
+		// but the runtime patch ensures the marker survives wrappers — so a wrong-order chain
+		// won't crash, it just sorts identically.
+		const hasOrderBy = (s: unknown) => typeof (s as { orderBy?: unknown }).orderBy === 'function'
+		expect(hasOrderBy(n.number().default(0))).toBe(true)
+		expect(hasOrderBy(n.number().optional())).toBe(true)
+		expect(hasOrderBy(n.number().nullable())).toBe(true)
+		expect(hasOrderBy(n.number().nullish())).toBe(true)
+		expect(hasOrderBy(n.number().default(0).optional())).toBe(true)
+
+		const schema = n.number({ min: 1 }).orderBy('asc').default(5)
+		expect(schema.safeParse(undefined).success).toBe(true)
+		expect(schema.parse(undefined)).toBe(5)
+		expect(schema.safeParse(0).success).toBe(false)
+	})
+
 	test('n.date() coerces YAML Date objects to strings', async () => {
 		const { n } = await import('../../src/field-types')
 		const schema = n.date()

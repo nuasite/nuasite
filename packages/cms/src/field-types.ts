@@ -65,10 +65,24 @@ const toISODate = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 
 /** Normalize YAML Date objects to ISO datetime strings */
 const toISODatetime = (v: unknown) => (v instanceof Date ? v.toISOString() : v)
 
-/** Add a chainable `.orderBy()` method to a Zod schema. The scanner detects it from source code. */
+const WRAPPING_METHODS = ['default', 'optional', 'nullable', 'nullish'] as const
+
+/**
+ * Add a chainable `.orderBy()` method to a Zod schema. The scanner detects it from source code.
+ *
+ * Also wraps the Zod methods that produce a new schema instance (`.default()`, `.optional()`,
+ * `.nullable()`, `.nullish()`) so the marker survives those wrappers — chain order doesn't matter.
+ */
 function withOrderBy<T extends z.ZodTypeAny>(schema: T): WithOrderBy<T> {
 	const s = schema as WithOrderBy<T>
 	s.orderBy = (_direction?: OrderByDirection) => schema
+	for (const method of WRAPPING_METHODS) {
+		const original = (schema as unknown as Record<string, unknown>)[method]
+		if (typeof original !== 'function') continue
+		;(s as unknown as Record<string, unknown>)[method] = function(this: unknown, ...args: unknown[]) {
+			return withOrderBy((original as (...a: unknown[]) => z.ZodTypeAny).apply(this, args))
+		}
+	}
 	return s
 }
 
