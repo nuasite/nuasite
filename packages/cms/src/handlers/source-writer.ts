@@ -2,12 +2,13 @@ import { NodeType, parse as parseHtml } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
+import { pickSiblingTarget } from '../astro-image-paths'
 import { getProjectRoot } from '../config'
 import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
 import type { ManifestWriter } from '../manifest-writer'
 import { extractAstroImageOriginalUrl } from '../source-finder/snippet-utils'
 import type { CmsManifest, ManifestEntry } from '../types'
-import { acquireFileLock, escapeRegex, escapeReplacement, normalizePagePath, resolveAndValidatePath } from '../utils'
+import { acquireFileLock, escapeRegex, escapeReplacement, normalizePagePath, relativeImportPath, resolveAndValidatePath } from '../utils'
 
 export interface SaveBatchResponse {
 	updated: number
@@ -56,16 +57,23 @@ export async function handleUpdate(
 			try {
 				const currentContent = await fs.readFile(fullPath, 'utf-8')
 
-				const { newContent, appliedCount, failedChanges } = applyChanges(
+				const { newContent, appliedCount, failedChanges, fileOps } = await applyChanges(
 					currentContent,
 					fileChanges,
 					manifest,
+					fullPath,
+					meta.url,
 				)
 				if (failedChanges.length > 0) {
 					errors.push(...failedChanges)
 				}
 
 				if (appliedCount > 0 && newContent !== currentContent) {
+					// Write assets first so the source file never points at missing files.
+					for (const op of fileOps) {
+						await fs.mkdir(path.dirname(op.target), { recursive: true })
+						await fs.writeFile(op.target, op.bytes)
+					}
 					await fs.writeFile(fullPath, newContent, 'utf-8')
 					updated += appliedCount
 				}
@@ -86,18 +94,28 @@ export async function handleUpdate(
 	}
 }
 
-function applyChanges(
+/** Asset write that must land alongside the source rewrite (assets first, then source). */
+interface PendingFileOp {
+	target: string
+	bytes: Buffer
+}
+
+async function applyChanges(
 	content: string,
 	changes: ChangePayload[],
 	manifest: CmsManifest,
-): {
+	absFilePath: string,
+	originUrl: string,
+): Promise<{
 	newContent: string
 	appliedCount: number
 	failedChanges: Array<{ cmsId: string; error: string }>
-} {
+	fileOps: PendingFileOp[]
+}> {
 	let newContent = content
 	let appliedCount = 0
 	const failedChanges: Array<{ cmsId: string; error: string }> = []
+	const fileOps: PendingFileOp[] = []
 
 	// Sort changes by source line descending to prevent offset shifts
 	const sortedChanges = [...changes].sort(
@@ -107,9 +125,10 @@ function applyChanges(
 	for (const change of sortedChanges) {
 		// Handle image changes
 		if (change.imageChange) {
-			const result = applyImageChange(newContent, change)
+			const result = await applyImageChange(newContent, change, absFilePath, originUrl)
 			if (result.success) {
 				newContent = result.content
+				if (result.fileOp) fileOps.push(result.fileOp)
 				appliedCount++
 			} else {
 				failedChanges.push({ cmsId: change.cmsId, error: result.error })
@@ -150,13 +169,15 @@ function applyChanges(
 		}
 	}
 
-	return { newContent, appliedCount, failedChanges }
+	return { newContent, appliedCount, failedChanges, fileOps }
 }
 
-export function applyImageChange(
+export async function applyImageChange(
 	content: string,
 	change: ChangePayload,
-): { success: true; content: string } | { success: false; error: string } {
+	absFilePath?: string,
+	originUrl?: string,
+): Promise<{ success: true; content: string; fileOp?: PendingFileOp } | { success: false; error: string }> {
 	const { newSrc, newAlt } = change.imageChange!
 	const originalSrc = change.originalValue
 
@@ -278,6 +299,7 @@ export function applyImageChange(
 
 	// Fallback: if literal src not found, try to find an expression-based src attribute
 	// near the source line (handles src={variable}, src={obj.prop}, etc.)
+	let pendingFileOp: PendingFileOp | undefined
 	if (replacedIndex < 0 && change.sourceLine > 0) {
 		const lines = newContent.split('\n')
 		const targetLineIdx = change.sourceLine - 1
@@ -292,13 +314,31 @@ export function applyImageChange(
 		if (/<img\b/i.test(regionText) || /<Image\b/.test(regionText)) {
 			const exprMatch = findExpressionSrcAttribute(regionText)
 			if (exprMatch) {
-				// Any expression-based src (variable, function call, template literal, etc.)
-				// cannot be safely replaced with a static string — refuse the edit.
 				const exprContent = regionText.slice(
 					exprMatch.index + regionText.slice(exprMatch.index).indexOf('{') + 1,
 					exprMatch.index + exprMatch.length - 1,
 				).trim()
-				return { success: false, error: `Image src uses a dynamic expression (src={${exprContent}}) — edit the data source directly` }
+
+				// `<Image src={importedAsset}>` where `importedAsset` is a frontmatter asset
+				// import: prefer rewriting the import target so Astro's asset pipeline still
+				// processes the new image. Falls back to inline JSX replacement when the new
+				// src can't be resolved on disk (e.g. external URLs, non-local media adapters).
+				const importInfo = /^\w+$/.test(exprContent) ? findFrontmatterAssetImport(content, exprContent) : null
+				if (!importInfo) {
+					return { success: false, error: `Image src uses a dynamic expression (src={${exprContent}}) — edit the data source directly` }
+				}
+				const rewrite = absFilePath
+					? await tryRewriteAssetImport(content, importInfo, newSrc, absFilePath, originUrl)
+					: null
+				if (rewrite) {
+					newContent = rewrite.content
+					pendingFileOp = rewrite.fileOp
+					replacedIndex = rewrite.importSourceIndex
+				} else {
+					const literalResult = inlineJsxLiteralReplace(newContent, lines, regionStart, exprMatch, newSrc)
+					newContent = literalResult.content
+					replacedIndex = literalResult.replacedIndex
+				}
 			}
 		}
 	}
@@ -352,7 +392,159 @@ export function applyImageChange(
 		}
 	}
 
-	return { success: true, content: newContent }
+	return { success: true, content: newContent, fileOp: pendingFileOp }
+}
+
+interface FrontmatterAssetImport {
+	/** Local binding name (e.g., `hero`). */
+	localName: string
+	/** Import source as written in the frontmatter (e.g., `'../assets/hero.png'`). */
+	source: string
+	/** Character offset of `source` (without quotes) in `content`. */
+	sourceStart: number
+	/** Character offset just past the `source` string (without quotes) in `content`. */
+	sourceEnd: number
+}
+
+const ASSET_IMPORT_EXT_RE = /\.(jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?)$/i
+
+/**
+ * Locate the frontmatter `import varName from '<asset-path>'` statement that binds
+ * `varName` to a relative image asset. Returns the binding's source-string position
+ * so callers can rewrite just the path without re-tokenizing the import.
+ */
+function findFrontmatterAssetImport(content: string, varName: string): FrontmatterAssetImport | null {
+	const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+	if (!fmMatch) return null
+	const fmStart = fmMatch[0].indexOf(fmMatch[1]!)
+	const importRe = /^\s*import\s+(?!type\b)([\s\S]+?)\s+from\s+(['"])([^'"]+)\2/gm
+	let m: RegExpExecArray | null
+	while ((m = importRe.exec(fmMatch[1]!)) !== null) {
+		const source = m[3]!
+		if (!source.startsWith('.') || !ASSET_IMPORT_EXT_RE.test(source)) continue
+		// Skip per-binding `import { type X } from '...'` — those are erased at compile time.
+		const tokens = m[1]!.replace(/[{}]/g, ',').split(',').map(s => s.trim()).filter(t => t && !t.startsWith('type '))
+		const matches = tokens.some(tok => {
+			const aliasMatch = tok.match(/^\S+\s+as\s+(\S+)$/)
+			return (aliasMatch ? aliasMatch[1]! : tok) === varName
+		})
+		if (!matches) continue
+		// Compute absolute position of the path string (between the quote chars).
+		const matchStart = fmStart + m.index
+		const sourceStart = matchStart + m[0]!.indexOf(m[2]!) + 1
+		return { localName: varName, source, sourceStart, sourceEnd: sourceStart + source.length }
+	}
+	return null
+}
+
+/**
+ * Pure literal swap of `src={var}` → `src="<newSrc>"`. The fallback when import-rewrite
+ * isn't possible (e.g. the new src can't be read from disk).
+ */
+function inlineJsxLiteralReplace(
+	content: string,
+	lines: string[],
+	regionStart: number,
+	exprMatch: { index: number; length: number },
+	newSrc: string,
+): { content: string; replacedIndex: number } {
+	let regionStartOffset = 0
+	for (let i = 0; i < regionStart; i++) regionStartOffset += lines[i]!.length + 1
+	const absIndex = regionStartOffset + exprMatch.index
+	return {
+		content: content.slice(0, absIndex) + `src="${escapeReplacement(newSrc)}"` + content.slice(absIndex + exprMatch.length),
+		replacedIndex: absIndex,
+	}
+}
+
+/**
+ * Rewrite the frontmatter import target so Astro's asset pipeline picks up the new image,
+ * and emit a paired file write for the bytes. Returns null only when the new src can't
+ * be resolved at all — caller falls back to inline JSX.
+ */
+async function tryRewriteAssetImport(
+	content: string,
+	importInfo: FrontmatterAssetImport,
+	newSrc: string,
+	absFilePath: string,
+	originUrl?: string,
+): Promise<{ content: string; fileOp: PendingFileOp; importSourceIndex: number } | null> {
+	const resolved = await resolveNewSrcBytes(newSrc, originUrl)
+	if (!resolved) return null
+
+	const originalAssetAbs = path.resolve(path.dirname(absFilePath), importInfo.source)
+	const targetAbs = await pickSiblingTarget(path.dirname(originalAssetAbs), resolved.filename, resolved.bytes)
+
+	const newRelImport = relativeImportPath(absFilePath, targetAbs)
+	const newContent = content.slice(0, importInfo.sourceStart) + newRelImport + content.slice(importInfo.sourceEnd)
+
+	return {
+		content: newContent,
+		fileOp: { target: targetAbs, bytes: resolved.bytes },
+		importSourceIndex: importInfo.sourceStart,
+	}
+}
+
+/**
+ * Resolve a new image src to bytes. Tries (in order): the local on-disk location matching
+ * the path's prefix (`/src/...` → project, `/...` → public/), then an HTTP fetch as a
+ * universal fallback for external URLs and remote media adapters.
+ */
+async function resolveNewSrcBytes(
+	newSrc: string,
+	originUrl: string | undefined,
+): Promise<{ bytes: Buffer; filename: string } | null> {
+	const filenameFromPath = (p: string) => path.basename(p.split('?')[0] ?? p)
+
+	const diskPath = newSrc.startsWith('/src/')
+		? path.join(getProjectRoot(), newSrc.slice(1))
+		: newSrc.startsWith('/') && !newSrc.startsWith('//')
+		? path.join(getProjectRoot(), 'public', newSrc.replace(/^\/+/, ''))
+		: null
+	if (diskPath) {
+		try {
+			return { bytes: await fs.readFile(diskPath), filename: filenameFromPath(newSrc) }
+		} catch {
+			// Fall through to HTTP fetch
+		}
+	}
+
+	try {
+		const isAbsolute = /^https?:\/\//.test(newSrc)
+		if (!isAbsolute && !originUrl) return null
+		const fetchUrl = isAbsolute ? newSrc : new URL(newSrc, originUrl).toString()
+		const res = await fetch(fetchUrl, { signal: AbortSignal.timeout(REMOTE_FETCH_TIMEOUT_MS) })
+		if (!res.ok) return null
+		// Cap the response so a malicious or misbehaving remote can't OOM the dev server.
+		const bytes = await readBoundedBody(res, REMOTE_FETCH_MAX_BYTES)
+		if (!bytes) return null
+		return { bytes, filename: filenameFromPath(new URL(fetchUrl).pathname) }
+	} catch {
+		return null
+	}
+}
+
+const REMOTE_FETCH_TIMEOUT_MS = 15_000
+const REMOTE_FETCH_MAX_BYTES = 50 * 1024 * 1024
+
+async function readBoundedBody(res: Response, maxBytes: number): Promise<Buffer | null> {
+	const declared = Number(res.headers.get('content-length'))
+	if (declared > maxBytes) return null
+	if (!res.body) return null
+	const reader = res.body.getReader()
+	const chunks: Uint8Array[] = []
+	let total = 0
+	while (true) {
+		const { done, value } = await reader.read()
+		if (done) break
+		total += value.byteLength
+		if (total > maxBytes) {
+			await reader.cancel()
+			return null
+		}
+		chunks.push(value)
+	}
+	return Buffer.concat(chunks, total)
 }
 
 function applyColorChange(
@@ -879,6 +1071,11 @@ export function findExpressionSrcAttribute(text: string): { index: number; lengt
 
 export function findExpressionAltAttribute(text: string): { index: number; length: number } | null {
 	return findExpressionAttribute(text, 'alt')
+}
+
+/** True when `varName` is bound by a frontmatter `import ... from '<relative-asset-path>'`. */
+export function isFrontmatterAssetImport(content: string, varName: string): boolean {
+	return findFrontmatterAssetImport(content, varName) !== null
 }
 
 /**

@@ -47,22 +47,41 @@ export async function pickAstroImageTarget(args: {
 		return { absPath: baseAbs, relPath: `./${baseName}` }
 	}
 
-	const hash = shortContentHash(args.compareBuffer)
-	const ext = path.extname(safeFilename)
+	const candidateAbs = await pickHashedSibling(entryDir, baseName, args.compareBuffer)
+	return { absPath: candidateAbs, relPath: `./${path.basename(candidateAbs)}` }
+}
+
+/**
+ * Pick an absolute path in `dir` for `filename`; if a file with the same name already
+ * exists, content-hash-suffix it. Reuses an existing file with identical bytes.
+ *
+ * `filename` may come from a URL pathname or other untrusted source — directory
+ * components are stripped via `path.basename` so a `../` segment can't escape `dir`.
+ */
+export async function pickSiblingTarget(dir: string, filename: string, buf: Buffer): Promise<string> {
+	const safe = path.basename(filename)
+	if (!safe || safe === '.' || safe === '..') {
+		throw new Error(`Invalid filename: ${filename}`)
+	}
+	const baseAbs = path.join(dir, safe)
+	if (await isFreeOrMatching(baseAbs, buf)) return baseAbs
+	return pickHashedSibling(dir, safe, buf)
+}
+
+async function pickHashedSibling(dir: string, baseName: string, buf: Buffer): Promise<string> {
+	const hash = shortContentHash(buf)
+	const ext = path.extname(baseName)
 	const stem = path.basename(baseName, ext)
 	for (let attempt = 0; attempt < 5; attempt++) {
 		const suffix = attempt === 0 ? hash : `${hash}-${attempt}`
-		const candidateName = `${stem}-${suffix}${ext}`
-		const candidateAbs = path.join(entryDir, candidateName)
-		if (await isFreeOrMatching(candidateAbs, args.compareBuffer)) {
-			return { absPath: candidateAbs, relPath: `./${candidateName}` }
-		}
+		const candidateAbs = path.join(dir, `${stem}-${suffix}${ext}`)
+		if (await isFreeOrMatching(candidateAbs, buf)) return candidateAbs
 	}
-	throw new Error(`Could not pick a unique filename for ${safeFilename} in ${entryDir}`)
+	throw new Error(`Could not pick a unique filename for ${baseName} in ${dir}`)
 }
 
 /** True if the slot is empty, or holds a file with identical bytes to `compareBuffer`. */
-async function isFreeOrMatching(absPath: string, compareBuffer: Buffer): Promise<boolean> {
+export async function isFreeOrMatching(absPath: string, compareBuffer: Buffer): Promise<boolean> {
 	try {
 		const stat = await fs.stat(absPath)
 		if (stat.size !== compareBuffer.length) return false

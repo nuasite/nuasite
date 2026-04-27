@@ -353,4 +353,38 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 		expect(result?.snippet).toContain('alt="Multi-line"')
 		expect(result?.snippet).toContain('/>')
 	})
+
+	test('finds <Image src={importedAsset}> via absolute path or dev-mode optimized URL', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile('src/assets/images/hero.png', 'binary')
+		await ctx.writeFile(
+			'src/components/HeroSection.astro',
+			`---
+import { Image } from 'astro:assets'
+import hero from '../assets/images/hero.png'
+---
+<Image src={hero} alt="Hero" />
+`,
+		)
+
+		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		const absPath = `${ctx.tempDir}/src/assets/images/hero.png`
+
+		const directResult = findInImageIndex(absPath)
+		expect(directResult?.file).toBe('src/components/HeroSection.astro')
+		expect(directResult?.snippet).toContain('<Image')
+
+		// astro-imagetools-style URL — should decode `f=` and find the same entry
+		const devUrl = `/@image/abc123.png?f=${absPath}&w=800`
+		const devResult = findInImageIndex(devUrl)
+		expect(devResult?.file).toBe('src/components/HeroSection.astro')
+
+		// Astro `<Image>`-style URL — should decode `href=` (encoded) and find the same entry
+		const astroUrl = `/_image?href=${encodeURIComponent(absPath)}&w=800`
+		const astroResult = findInImageIndex(astroUrl)
+		expect(astroResult?.file).toBe('src/components/HeroSection.astro')
+	})
 }, { setupAstro: false })

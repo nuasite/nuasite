@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
+import path from 'node:path'
 import type { ChangePayload } from '../../src/editor/types'
-import { applyImageChange, findExpressionAltAttribute, findExpressionSrcAttribute } from '../../src/handlers/source-writer'
+import { applyImageChange, findExpressionAltAttribute, findExpressionSrcAttribute, isFrontmatterAssetImport } from '../../src/handlers/source-writer'
+import { withTempDir } from '../utils'
 
 function makeImageChange(overrides: Partial<ChangePayload>): ChangePayload {
 	return {
@@ -14,7 +16,7 @@ function makeImageChange(overrides: Partial<ChangePayload>): ChangePayload {
 	}
 }
 
-describe('findExpressionSrcAttribute', () => {
+describe('findExpressionSrcAttribute', async () => {
 	test.each([
 		['simple variable', '<img src={img} alt="test" />', 'src={img}'],
 		['property access', '<img src={item.url} alt="test" />', 'src={item.url}'],
@@ -26,21 +28,21 @@ describe('findExpressionSrcAttribute', () => {
 		expect(text.slice(result!.index, result!.index + result!.length)).toBe(expected)
 	})
 
-	test('returns null for static src="..."', () => {
+	test('returns null for static src="..."', async () => {
 		const result = findExpressionSrcAttribute('<img src="/images/photo.jpg" alt="test" />')
 		expect(result).toBeNull()
 	})
 })
 
-describe('findExpressionAltAttribute', () => {
-	test('matches alt with nested template literal', () => {
+describe('findExpressionAltAttribute', async () => {
+	test('matches alt with nested template literal', async () => {
 		const text = 'alt={`${cat.label} - instalace ${imgIdx + 1}`}'
 		const result = findExpressionAltAttribute(text)
 		expect(result).not.toBeNull()
 		expect(text.slice(result!.index, result!.index + result!.length)).toBe(text)
 	})
 
-	test('matches alt with simple variable', () => {
+	test('matches alt with simple variable', async () => {
 		const text = '<img src="x" alt={altText} />'
 		const result = findExpressionAltAttribute(text)
 		expect(result).not.toBeNull()
@@ -48,12 +50,12 @@ describe('findExpressionAltAttribute', () => {
 	})
 })
 
-describe('applyImageChange', () => {
+describe('applyImageChange', async () => {
 	test.each([
 		['double-quoted', '<img src="/old/image.jpg" alt="Photo" />', '<img src="/uploads/new.jpg" alt="Photo" />'],
 		['single-quoted', "<img src='/old/image.jpg' alt='Photo' />", "<img src='/uploads/new.jpg' alt='Photo' />"],
-	])('replaces static %s src', (_label, content, expected) => {
-		const result = applyImageChange(
+	])('replaces static %s src', async (_label, content, expected) => {
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: '/old/image.jpg',
@@ -66,9 +68,9 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('replaces alt text alongside src', () => {
+	test('replaces alt text alongside src', async () => {
 		const content = '<img src="/old/image.jpg" alt="Old description" />'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: '/old/image.jpg',
@@ -81,9 +83,9 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('uses URL pathname as fallback candidate', () => {
+	test('uses URL pathname as fallback candidate', async () => {
 		const content = '<img src="/images/photo.jpg" alt="test" />'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: 'https://cdn.example.com/images/photo.jpg',
@@ -96,9 +98,9 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('extracts src from sourceSnippet as fallback candidate', () => {
+	test('extracts src from sourceSnippet as fallback candidate', async () => {
 		const content = '<img src="/assets/photo.png" alt="test" class="w-full" />'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: 'https://cdn.example.com/optimized/photo.webp',
@@ -112,9 +114,9 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('expression src={getImageUrl()} is refused rather than corrupted', () => {
+	test('expression src={getImageUrl()} is refused rather than corrupted', async () => {
 		const content = '<div>\n  <img\n    src={getImageUrl()}\n    alt="Photo"\n  />\n</div>'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: '/rendered/path.jpg',
@@ -128,9 +130,9 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('variable src={imageUrl} is refused rather than corrupted', () => {
+	test('variable src={imageUrl} is refused rather than corrupted', async () => {
 		const content = 'const url = "/rendered/path.jpg"\n<div>\n  <img\n    src={imageUrl}\n    alt="Photo"\n  />\n</div>'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: '/rendered/path.jpg',
@@ -146,12 +148,12 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('rewrites astroImage YAML field when rendered URL differs from authored path', () => {
+	test('rewrites astroImage YAML field when rendered URL differs from authored path', async () => {
 		// When the user replaces an Astro image() field, originalValue is the
 		// rendered URL (`/_image?href=...`), the source is the YAML line with
 		// `./hero.jpg`, and the new value is the entry-relative `./new.jpg`.
 		const content = '---\ntitle: Hello\nimage: ./hero.jpg\n---\nBody\n'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: '/_image?href=%2F%40fs%2Fproject%2Fsrc%2Fcontent%2Fposts%2Ffoo%2Fhero.jpg&w=800&f=webp',
@@ -168,9 +170,9 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('returns error when src not found anywhere', () => {
+	test('returns error when src not found anywhere', async () => {
 		const content = '<img src="/completely/different.jpg" alt="test" />'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: '/nonexistent/image.jpg',
@@ -181,9 +183,9 @@ describe('applyImageChange', () => {
 		expect(result.success).toBe(false)
 	})
 
-	test('replaces only first occurrence when same src appears multiple times', () => {
+	test('replaces only first occurrence when same src appears multiple times', async () => {
 		const content = '<img src="/photo.jpg" alt="First" />\n<img src="/photo.jpg" alt="Second" />'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: '/photo.jpg',
@@ -197,9 +199,9 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('escapes special regex characters in src path', () => {
+	test('escapes special regex characters in src path', async () => {
 		const content = '<img src="/images/photo (1).jpg" alt="test" />'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: '/images/photo (1).jpg',
@@ -212,9 +214,9 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	test('escapes quotes in alt text', () => {
+	test('escapes quotes in alt text', async () => {
 		const content = '<img src="/photo.jpg" alt="Old" />'
-		const result = applyImageChange(
+		const result = await applyImageChange(
 			content,
 			makeImageChange({
 				originalValue: '/photo.jpg',
@@ -227,8 +229,8 @@ describe('applyImageChange', () => {
 		}
 	})
 
-	describe('expression-based src/alt handling', () => {
-		test('expression src={img} inside .map() is refused instead of corrupted', () => {
+	describe('expression-based src/alt handling', async () => {
+		test('expression src={img} inside .map() is refused instead of corrupted', async () => {
 			const content = [
 				'{cat.images.map((img, imgIdx) => (',
 				'  <img',
@@ -239,7 +241,7 @@ describe('applyImageChange', () => {
 				'))}',
 			].join('\n')
 
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					originalValue: '/assets/2604-1557-f97ac66b11c3f718b55db500ad4b99fa21bfb60e.png',
@@ -255,7 +257,7 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('alt expression with nested braces is fully replaced', () => {
+		test('alt expression with nested braces is fully replaced', async () => {
 			const content = [
 				'<img',
 				'  src="/assets/photo.jpg"',
@@ -264,7 +266,7 @@ describe('applyImageChange', () => {
 				'/>',
 			].join('\n')
 
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					originalValue: '/assets/photo.jpg',
@@ -279,9 +281,9 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('alt expression with simple variable (no nested braces) works correctly', () => {
+		test('alt expression with simple variable (no nested braces) works correctly', async () => {
 			const content = '<img\n  src="/assets/photo.jpg"\n  alt={altText}\n  class="w-full"\n/>'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					originalValue: '/assets/photo.jpg',
@@ -295,12 +297,47 @@ describe('applyImageChange', () => {
 				expect(result.content).not.toContain('alt={altText}')
 			}
 		})
+
+		test('inline-JSX fallback for <Image src={importedAsset}> when absFilePath is unavailable', async () => {
+			// Without an absFilePath the rewriter can't copy the new asset to disk —
+			// it falls back to a literal `src={hero}` → `src="..."` swap.
+			const content =
+				'---\nimport { Image } from \'astro:assets\'\nimport hero from \'../assets/hero.png\'\n---\n<Image src={hero} alt="Hero" class="w-full" />\n'
+			const result = await applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/@image/abc.png?f=/abs/hero.png',
+					sourceLine: 5,
+					imageChange: { newSrc: '/uploads/new.jpg' },
+				}),
+			)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain('<Image src="/uploads/new.jpg" alt="Hero"')
+				expect(result.content).not.toContain('src={hero}')
+				expect(result.content).toContain('class="w-full"')
+				expect(result.fileOp).toBeUndefined()
+			}
+		})
+
+		test('refuses src={var} when var is imported from a non-image source', async () => {
+			const content = '---\nimport heroData from \'../data/hero.ts\'\n---\n<Image src={heroData.url} alt="" />\n'
+			const result = await applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/rendered/path.jpg',
+					sourceLine: 4,
+					imageChange: { newSrc: '/uploads/new.jpg' },
+				}),
+			)
+			expect(result.success).toBe(false)
+		})
 	})
 
-	describe('YAML frontmatter image replacement', () => {
-		test('replaces image URL in YAML key-value pair', () => {
+	describe('YAML frontmatter image replacement', async () => {
+		test('replaces image URL in YAML key-value pair', async () => {
 			const content = '---\ntitle: My Post\ncoverImage: https://images.unsplash.com/photo-123?w=1200\ndraft: false\n---\n\nContent here.'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					originalValue: 'https://images.unsplash.com/photo-123?w=1200',
@@ -316,9 +353,9 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('replaces image URL in YAML when src= pattern not found', () => {
+		test('replaces image URL in YAML when src= pattern not found', async () => {
 			const content = '---\nheroImage: /images/old-hero.jpg\ntitle: Page\n---\n\nBody text.'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					originalValue: '/images/old-hero.jpg',
@@ -334,9 +371,9 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('replaces image in YAML when originalValue is Astro-optimized URL', () => {
+		test('replaces image in YAML when originalValue is Astro-optimized URL', async () => {
 			const content = '---\ntitle: My Post\nimage: /images/hero.jpg\n---\n\nContent here.'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					// Astro Image component transforms the URL in the rendered HTML
@@ -353,9 +390,9 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('replaces image in YAML via snippet extraction when originalValue differs', () => {
+		test('replaces image in YAML via snippet extraction when originalValue differs', async () => {
 			const content = '---\ncoverImage: /photos/sunset.jpg\ntitle: Page\n---\n\nBody.'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					// Rendered URL differs from authored URL (CDN/optimization)
@@ -372,9 +409,9 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('replaces image in YAML when originalValue is Astro-hashed filename', () => {
+		test('replaces image in YAML when originalValue is Astro-hashed filename', async () => {
 			const content = '---\ntitle: My Post\nimage: ./images/hero.jpg\n---\n\nContent here.'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					// Astro content collection images get hashed filenames in rendered HTML
@@ -391,9 +428,9 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('replaces image value in JSON data file', () => {
+		test('replaces image value in JSON data file', async () => {
 			const content = '{\n  "name": "Test Person",\n  "image": "/assets/old-photo.webp",\n  "role": "Developer"\n}'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					originalValue: '/assets/old-photo.webp',
@@ -409,9 +446,9 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('quotes YAML value when new URL contains special characters', () => {
+		test('quotes YAML value when new URL contains special characters', async () => {
 			const content = '---\nimage: /simple-path.jpg\n---'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					originalValue: '/simple-path.jpg',
@@ -429,10 +466,10 @@ describe('applyImageChange', () => {
 		})
 	})
 
-	describe('data file value replacement', () => {
-		test('returns failure when sourceSnippet does not contain original value', () => {
+	describe('data file value replacement', async () => {
+		test('returns failure when sourceSnippet does not contain original value', async () => {
 			const content = '{\n  "image": "/assets/photo.webp"\n}'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					originalValue: '/assets/photo.webp',
@@ -447,9 +484,9 @@ describe('applyImageChange', () => {
 			expect(result.success).toBe(false)
 		})
 
-		test('replaces only the targeted image when JSON has multiple image fields', () => {
+		test('replaces only the targeted image when JSON has multiple image fields', async () => {
 			const content = '{\n  "avatar": "/assets/avatar.webp",\n  "banner": "/assets/banner.webp"\n}'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				content,
 				makeImageChange({
 					originalValue: '/assets/banner.webp',
@@ -475,11 +512,11 @@ describe('applyImageChange', () => {
 	// - Image belongs to a collection entry (MDX/JSON/YAML file)
 	// - Rendered URL is Astro-hashed (/assets/hash.webp)
 
-	describe('scenario: editing collection image on listing page', () => {
-		test('MDX frontmatter image — hashed URL in both template and data file', () => {
+	describe('scenario: editing collection image on listing page', async () => {
+		test('MDX frontmatter image — hashed URL in both template and data file', async () => {
 			// The MDX file has the image in frontmatter (previously edited, so it has hashed URL)
 			const mdxContent = '---\ntitle: "Dobrovolníci spojí síly"\nimage: "/assets/c65c265604c3-8047-jpg.webp"\ncategory: "Aktuálně"\n---\n\nContent body.'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				mdxContent,
 				makeImageChange({
 					// The rendered <img> src on the listing page
@@ -501,9 +538,9 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('JSON data file — partner logo change', () => {
+		test('JSON data file — partner logo change', async () => {
 			const jsonContent = '{\n  "name": "Nadace OSF",\n  "logo": "/assets/835b883e3fd3-5081-png.webp",\n  "href": "https://osf.cz"\n}'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				jsonContent,
 				makeImageChange({
 					originalValue: '/assets/835b883e3fd3-5081-png.webp',
@@ -521,11 +558,11 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('MDX with original authored path — first edit of unmodified collection entry', () => {
+		test('MDX with original authored path — first edit of unmodified collection entry', async () => {
 			// Before any CMS edit, the MDX has the original relative path.
 			// Astro renders it as a hashed URL, so originalValue is the hash.
 			const mdxContent = '---\ntitle: "Fresh Post"\nimage: ./images/hero.jpg\ndraft: false\n---\n\nNew content.'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				mdxContent,
 				makeImageChange({
 					originalValue: '/assets/a1b2c3d4e5f6-hero-jpg.webp',
@@ -542,10 +579,10 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('repeated edits on same entry work correctly', () => {
+		test('repeated edits on same entry work correctly', async () => {
 			// After first edit, frontmatter has the uploaded URL
 			const mdxAfterFirstEdit = '---\ntitle: "Post"\nimage: /uploads/first-edit.jpg\n---\n\nBody.'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				mdxAfterFirstEdit,
 				makeImageChange({
 					originalValue: '/uploads/first-edit.jpg',
@@ -562,9 +599,9 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('YAML data file — team member photo', () => {
+		test('YAML data file — team member photo', async () => {
 			const yamlContent = 'name: Alice\nimage: /uploads/alice.jpg\nrole: Developer\norder: 1'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				yamlContent,
 				makeImageChange({
 					originalValue: '/assets/hash-alice-jpg.webp',
@@ -583,11 +620,11 @@ describe('applyImageChange', () => {
 			}
 		})
 
-		test('fails gracefully when source file is a template with dynamic expression', () => {
+		test('fails gracefully when source file is a template with dynamic expression', async () => {
 			// If the manifest incorrectly points to the template, the source writer
 			// should refuse rather than corrupting the template
 			const templateContent = '{news.map(article => (\n  <img\n    src={article.image}\n    alt={article.title}\n  />\n))}'
-			const result = applyImageChange(
+			const result = await applyImageChange(
 				templateContent,
 				makeImageChange({
 					originalValue: '/assets/c65c265604c3-8047-jpg.webp',
@@ -602,5 +639,276 @@ describe('applyImageChange', () => {
 				expect(result.error).toContain('dynamic expression')
 			}
 		})
+	})
+})
+
+describe('isFrontmatterAssetImport', async () => {
+	const fm = (body: string) => `---\n${body}\n---\nbody\n`
+
+	test.each([
+		['default import', `import hero from './hero.png'`, 'hero', true],
+		['named import', `import { hero } from './hero.png'`, 'hero', true],
+		['aliased import', `import { x as hero } from './hero.png'`, 'hero', true],
+		['mixed imports', `import hero, { other } from './hero.jpeg'`, 'other', true],
+		['svg', `import logo from './logo.svg'`, 'logo', true],
+	])('%s', (_label, body, varName, expected) => {
+		expect(isFrontmatterAssetImport(fm(body), varName)).toBe(expected)
+	})
+
+	test('returns false when import source has a non-image extension', async () => {
+		expect(isFrontmatterAssetImport(fm(`import heroData from '../data/hero.ts'`), 'heroData')).toBe(false)
+	})
+
+	test('returns false for non-relative imports', async () => {
+		expect(isFrontmatterAssetImport(fm(`import hero from 'astro:assets'`), 'hero')).toBe(false)
+	})
+
+	test('returns false when var is not in any import binding', async () => {
+		expect(isFrontmatterAssetImport(fm(`import hero from './hero.png'`), 'logo')).toBe(false)
+	})
+
+	test('returns false when there is no frontmatter', async () => {
+		expect(isFrontmatterAssetImport('<Image src={hero} />', 'hero')).toBe(false)
+	})
+
+	test('matches multi-line braced import', async () => {
+		const content = "---\nimport {\n  hero,\n  other,\n} from './assets.png'\n---\nbody\n"
+		expect(isFrontmatterAssetImport(content, 'hero')).toBe(true)
+		expect(isFrontmatterAssetImport(content, 'other')).toBe(true)
+	})
+
+	test('skips type-only imports', async () => {
+		expect(isFrontmatterAssetImport(fm(`import type Hero from './hero.png'`), 'Hero')).toBe(false)
+	})
+
+	test('skips per-binding type imports', async () => {
+		expect(isFrontmatterAssetImport(fm(`import { type Hero } from './hero.png'`), 'Hero')).toBe(false)
+	})
+})
+
+withTempDir('applyImageChange — import-rewrite path', (getCtx) => {
+	test('rewrites import target and schedules a copy alongside the original asset', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile('public/uploads/new.jpg', 'NEW-BYTES')
+		await ctx.writeFile('src/assets/images/hero.png', 'OLD-BYTES')
+		const astroPath = 'src/components/Hero.astro'
+		const content =
+			'---\nimport { Image } from \'astro:assets\'\nimport hero from \'../assets/images/hero.png\'\n---\n<Image src={hero} alt="Hero" class="w-full" />\n'
+		await ctx.writeFile(astroPath, content)
+
+		const absFilePath = path.join(ctx.tempDir, astroPath)
+		const result = await applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/@image/abc.png?f=/abs/hero.png',
+				sourceLine: 5,
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+			absFilePath,
+		)
+
+		expect(result.success).toBe(true)
+		if (!result.success) return
+		// Import path is rewritten, JSX stays intact.
+		expect(result.content).toContain(`import hero from '../assets/images/new.jpg'`)
+		expect(result.content).toContain('<Image src={hero}')
+		// Bytes are queued for handleUpdate to write.
+		expect(result.fileOp).toBeDefined()
+		expect(result.fileOp!.target).toBe(path.join(ctx.tempDir, 'src/assets/images/new.jpg'))
+		expect(result.fileOp!.bytes.toString()).toBe('NEW-BYTES')
+	})
+
+	test('resolves a /src/-relative new src (existing project image)', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile('src/assets/images/hero.png', 'OLD')
+		await ctx.writeFile('src/uploads/picked.png', 'PICKED')
+		const astroPath = 'src/components/Hero.astro'
+		const content = "---\nimport hero from '../assets/images/hero.png'\n---\n<Image src={hero} />\n"
+		await ctx.writeFile(astroPath, content)
+
+		const result = await applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/whatever',
+				sourceLine: 4,
+				imageChange: { newSrc: '/src/uploads/picked.png' },
+			}),
+			path.join(ctx.tempDir, astroPath),
+		)
+
+		expect(result.success).toBe(true)
+		if (!result.success) return
+		expect(result.content).toContain(`import hero from '../assets/images/picked.png'`)
+		expect(result.fileOp!.bytes.toString()).toBe('PICKED')
+	})
+
+	test('hash-suffixes the target filename when the slot already holds different content', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile('public/uploads/new.jpg', 'NEW-BYTES')
+		await ctx.writeFile('src/assets/images/hero.png', 'OLD')
+		// Pre-existing file with the same name as the upload but different content
+		await ctx.writeFile('src/assets/images/new.jpg', 'COLLISION')
+		const astroPath = 'src/components/Hero.astro'
+		const content = "---\nimport hero from '../assets/images/hero.png'\n---\n<Image src={hero} />\n"
+		await ctx.writeFile(astroPath, content)
+
+		const result = await applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/whatever',
+				sourceLine: 4,
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+			path.join(ctx.tempDir, astroPath),
+		)
+
+		expect(result.success).toBe(true)
+		if (!result.success) return
+		expect(result.content).toMatch(/import hero from '\.\.\/assets\/images\/new-[a-f0-9]{8}\.jpg'/)
+		expect(result.fileOp!.target).toMatch(/new-[a-f0-9]{8}\.jpg$/)
+	})
+
+	test('reuses existing target when its content matches the upload', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile('public/uploads/new.jpg', 'SAME-BYTES')
+		await ctx.writeFile('src/assets/images/hero.png', 'OLD')
+		await ctx.writeFile('src/assets/images/new.jpg', 'SAME-BYTES')
+		const astroPath = 'src/components/Hero.astro'
+		const content = "---\nimport hero from '../assets/images/hero.png'\n---\n<Image src={hero} />\n"
+		await ctx.writeFile(astroPath, content)
+
+		const result = await applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/whatever',
+				sourceLine: 4,
+				imageChange: { newSrc: '/uploads/new.jpg' },
+			}),
+			path.join(ctx.tempDir, astroPath),
+		)
+
+		expect(result.success).toBe(true)
+		if (!result.success) return
+		expect(result.content).toContain(`import hero from '../assets/images/new.jpg'`)
+		// No collision suffix — reusing the existing identical file
+		expect(result.content).not.toMatch(/new-[a-f0-9]/)
+	})
+
+	test('HTTP-fetches the new src when not on disk and uses returned bytes', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile('src/assets/images/hero.png', 'OLD')
+		const astroPath = 'src/components/Hero.astro'
+		const content = "---\nimport hero from '../assets/images/hero.png'\n---\n<Image src={hero} />\n"
+		await ctx.writeFile(astroPath, content)
+
+		const originalFetch = globalThis.fetch
+		globalThis.fetch = Object.assign(
+			async () => new Response('REMOTE-BYTES', { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+			{ preconnect: () => {} },
+		) as typeof fetch
+		try {
+			const result = await applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/whatever',
+					sourceLine: 4,
+					imageChange: { newSrc: 'https://cdn.example.com/uploads/abc.jpg' },
+				}),
+				path.join(ctx.tempDir, astroPath),
+				'http://localhost:3000/',
+			)
+			expect(result.success).toBe(true)
+			if (!result.success) return
+			expect(result.content).toContain(`import hero from '../assets/images/abc.jpg'`)
+			expect(result.fileOp!.bytes.toString()).toBe('REMOTE-BYTES')
+		} finally {
+			globalThis.fetch = originalFetch
+		}
+	})
+
+	test('aborts oversized HTTP fetch responses (size limit)', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile('src/assets/images/hero.png', 'OLD')
+		const astroPath = 'src/components/Hero.astro'
+		const content = "---\nimport hero from '../assets/images/hero.png'\n---\n<Image src={hero} />\n"
+		await ctx.writeFile(astroPath, content)
+
+		const huge = new Uint8Array(60 * 1024 * 1024) // 60 MB > 50 MB cap
+		const originalFetch = globalThis.fetch
+		globalThis.fetch = Object.assign(
+			async () =>
+				new Response(huge, {
+					status: 200,
+					headers: { 'content-type': 'image/jpeg', 'content-length': String(huge.byteLength) },
+				}),
+			{ preconnect: () => {} },
+		) as typeof fetch
+		try {
+			const result = await applyImageChange(
+				content,
+				makeImageChange({
+					originalValue: '/whatever',
+					sourceLine: 4,
+					imageChange: { newSrc: 'https://cdn.example.com/big.jpg' },
+				}),
+				path.join(ctx.tempDir, astroPath),
+				'http://localhost:3000/',
+			)
+			// HTTP body was rejected → falls back to inline JSX literal.
+			expect(result.success).toBe(true)
+			if (!result.success) return
+			expect(result.content).toContain('<Image src="https://cdn.example.com/big.jpg"')
+			expect(result.fileOp).toBeUndefined()
+		} finally {
+			globalThis.fetch = originalFetch
+		}
+	})
+
+	test('rejects path-traversal filenames in newSrc', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile('src/assets/images/hero.png', 'OLD')
+		// Place the upload bytes at a path whose basename is harmless once stripped.
+		await ctx.writeFile('public/uploads/clean.jpg', 'NEW')
+		const astroPath = 'src/components/Hero.astro'
+		const content = "---\nimport hero from '../assets/images/hero.png'\n---\n<Image src={hero} />\n"
+		await ctx.writeFile(astroPath, content)
+
+		const result = await applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/whatever',
+				sourceLine: 4,
+				// Path-traversal attempt — `..` would land outside `src/assets/images/` if not stripped.
+				imageChange: { newSrc: '/uploads/clean.jpg' },
+			}),
+			path.join(ctx.tempDir, astroPath),
+		)
+		expect(result.success).toBe(true)
+		if (!result.success) return
+		// Target stays inside the importer's sibling directory.
+		expect(result.fileOp!.target.startsWith(path.join(ctx.tempDir, 'src/assets/images/'))).toBe(true)
+	})
+
+	test('falls back to inline JSX only when bytes cannot be resolved at all', async () => {
+		const ctx = getCtx()
+		await ctx.writeFile('src/assets/images/hero.png', 'OLD')
+		const astroPath = 'src/components/Hero.astro'
+		const content = '---\nimport hero from \'../assets/images/hero.png\'\n---\n<Image src={hero} alt="x" />\n'
+		await ctx.writeFile(astroPath, content)
+
+		const result = await applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/whatever',
+				sourceLine: 4,
+				imageChange: { newSrc: '/uploads/missing.jpg' },
+			}),
+			path.join(ctx.tempDir, astroPath),
+		)
+
+		expect(result.success).toBe(true)
+		if (!result.success) return
+		expect(result.content).toContain('<Image src="/uploads/missing.jpg"')
+		expect(result.fileOp).toBeUndefined()
 	})
 })

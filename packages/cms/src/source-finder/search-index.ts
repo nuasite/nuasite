@@ -21,7 +21,7 @@ import {
 	setCollectionTextIndex,
 	setSearchIndexInitialized,
 } from './cache'
-import { extractImageSnippet, extractInnerHtmlFromSnippet, normalizeText } from './snippet-utils'
+import { extractAstroImageOriginalUrl, extractImageSnippet, extractInnerHtmlFromSnippet, normalizeText } from './snippet-utils'
 import type { CachedParsedFile, SearchIndexEntry, SourceLocation } from './types'
 
 /** Collection data files live under this path — used to prefer them over templates */
@@ -499,6 +499,21 @@ export function resolveMapChain(exprTexts: string[], paramName: string): string 
 }
 
 /**
+ * Build a map of locally-imported asset bindings (e.g. `import hero from './x.png'`)
+ * to their absolute on-disk paths. Only relative imports with an image extension are
+ * included — these are the bindings that can appear as `<Image src={hero} />`.
+ */
+function buildImportedAssetMap(imports: CachedParsedFile['imports'], relFile: string): Map<string, string> {
+	const map = new Map<string, string>()
+	const fromDir = path.dirname(path.join(getProjectRoot(), relFile))
+	for (const imp of imports) {
+		if (!imp.source.startsWith('.') || !IMAGE_EXTENSIONS.test(imp.source)) continue
+		map.set(imp.localName, path.resolve(fromDir, imp.source))
+	}
+	return map
+}
+
+/**
  * Index images from an expression-based src={variable} by tracing
  * the variable through .map() calls back to the data source array,
  * then adding each array element to the image search index.
@@ -572,6 +587,12 @@ export function isChildOfArray(defPath: string, arrayPath: string): boolean {
 export function indexFileImages(cached: CachedParsedFile, relFile: string): void {
 	// For Astro files, use AST
 	if (relFile.endsWith('.astro')) {
+		// Map locally-imported asset bindings (e.g. `import hero from './hero.png'`)
+		// to the absolute on-disk path so dev-mode optimized URLs that embed that
+		// path (e.g. `/@image/...?f=/abs/path/hero.png`) can resolve back to the
+		// `<Image src={hero} />` JSX site.
+		const importedAssetAbsPath = buildImportedAssetMap(cached.imports, relFile)
+
 		function visit(node: AstroNode, parentExpression: AstroNode | null) {
 			// Track the nearest ancestor expression node (contains .map() context)
 			const currentExpr = node.type === 'expression' ? node : parentExpression
@@ -585,24 +606,23 @@ export function indexFileImages(cached: CachedParsedFile, relFile: string): void
 					for (const attr of elemNode.attributes) {
 						if (attr.type !== 'attribute' || attr.name !== 'src' || !attr.value) continue
 
-						if ((attr as any).kind === 'expression' && currentExpr) {
-							// Expression src={variable} — trace through .map() to data source
-							indexExpressionImageSrc(
-								attr.value,
-								currentExpr,
-								cached,
-								relFile,
-							)
-						} else if ((attr as any).kind !== 'expression') {
+						const isExpression = (attr as any).kind === 'expression'
+						const srcLine = attr.position?.start.line ?? elemNode.position?.start.line ?? 0
+
+						if (isExpression) {
+							const importedAbs = importedAssetAbsPath.get(attr.value)
+							if (importedAbs) {
+								const snippet = extractImageSnippet(cached.lines, srcLine - 1)
+								addToImageSearchIndex({ file: relFile, line: srcLine, snippet, src: importedAbs })
+							}
+							if (currentExpr) {
+								// `.map()`-driven src={item.foo} — trace through to data source
+								indexExpressionImageSrc(attr.value, currentExpr, cached, relFile)
+							}
+						} else {
 							// Static src="..." — index directly
-							const srcLine = attr.position?.start.line ?? elemNode.position?.start.line ?? 0
 							const snippet = extractImageSnippet(cached.lines, srcLine - 1)
-							addToImageSearchIndex({
-								file: relFile,
-								line: srcLine,
-								snippet,
-								src: attr.value,
-							})
+							addToImageSearchIndex({ file: relFile, line: srcLine, snippet, src: attr.value })
 						}
 					}
 				}
@@ -1109,23 +1129,27 @@ function extractPathname(src: string): string {
 export function findInImageIndex(imageSrc: string): SourceLocation | undefined {
 	const index = getImageSearchIndex()
 
+	// Dev-mode optimized URLs (`/_image?href=...`, `/@image/...?f=...`) embed the source
+	// path; try both the raw URL and the decoded path so callers don't need to pre-decode.
+	const decoded = extractAstroImageOriginalUrl(imageSrc)
+	const candidates = decoded && decoded !== imageSrc ? [imageSrc, decoded] : [imageSrc]
+
 	// Exact match — prefer collection data files (src/content/) over templates.
 	// The same image URL can appear in both a collection data file and a template
 	// that statically renders the collection. The data file is the authoritative source.
 	let bestMatch: SourceLocation | undefined
 	for (const entry of index) {
-		if (entry.src === imageSrc) {
-			const result: SourceLocation = {
-				file: entry.file,
-				line: entry.line,
-				snippet: entry.snippet,
-				type: 'static',
-			}
-			if (isCollectionFile(entry.file)) {
-				return result // Collection data file — always preferred
-			}
-			bestMatch ??= result // Keep first non-collection match as fallback
+		if (!candidates.includes(entry.src)) continue
+		const result: SourceLocation = {
+			file: entry.file,
+			line: entry.line,
+			snippet: entry.snippet,
+			type: 'static',
 		}
+		if (isCollectionFile(entry.file)) {
+			return result // Collection data file — always preferred
+		}
+		bestMatch ??= result // Keep first non-collection match as fallback
 	}
 	if (bestMatch) return bestMatch
 
