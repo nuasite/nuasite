@@ -54,4 +54,13 @@ describe('extractAstroImageOriginalUrl', () => {
 	test('Astro sub-path', () => {
 		expect(extractAstroImageOriginalUrl('/_image/sub?href=%2Fphoto.jpg')).toBe('/photo.jpg')
 	})
+
+	test('astro-imagetools `/@image/<hash>.<ext>?f=<abs-path>` URL', () => {
+		const url = '/@image/2699-5791-3adf1bfc09738720fefe07888de02fbb7ff84014.jpeg?f=/Users/x/site/src/assets/images/hero.jpeg'
+		expect(extractAstroImageOriginalUrl(url)).toBe('/Users/x/site/src/assets/images/hero.jpeg')
+	})
+
+	test('astro-imagetools URL without `f` param', () => {
+		expect(extractAstroImageOriginalUrl('/@image/abc.jpeg?w=400')).toBeUndefined()
+	})
 })

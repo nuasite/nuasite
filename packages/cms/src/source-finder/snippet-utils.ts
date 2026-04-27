@@ -1499,16 +1499,21 @@ export function inferCollectionFromAstroImageUrl(
 }
 
 /**
- * Extract the original image path from an Astro Image optimization URL.
- * Astro's `<Image>` component rewrites src to `/_image?href=%2Fpath.jpg&w=...` in dev.
- * Returns the decoded `href` param, or undefined if the URL isn't an Astro image URL.
+ * Extract the original image path from a dev-mode optimized image URL.
+ * Recognizes:
+ * - Astro's `<Image>`: `/_image?href=%2Fpath.jpg&w=...` → `href` param
+ * - astro-imagetools / vite-imagetools: `/@image/<hash>.<ext>?f=<abs-path>&...` → `f` param
  */
 export function extractAstroImageOriginalUrl(src: string): string | undefined {
 	try {
 		const url = new URL(src, 'http://localhost')
 		if (url.pathname === '/_image' || url.pathname.startsWith('/_image/')) {
 			const href = url.searchParams.get('href')
-			if (href && href !== src) return href
+			if (href) return href
+		}
+		if (url.pathname.startsWith('/@image/')) {
+			const f = url.searchParams.get('f')
+			if (f) return f
 		}
 	} catch {
 		// Not a valid URL
