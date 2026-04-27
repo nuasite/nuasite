@@ -371,6 +371,7 @@ export type { Color, Date, DateTime, Email, Image, Reference, Textarea, Time, Ur
 
 export { scanCollections } from './collection-scanner'
 export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
+export { type FieldMigration, migrateAstroImages, type MigrationOptions, type MigrationResult } from './migrate-astro-image'
 export { rehypeCmsMarker } from './rehype-cms-marker'
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
