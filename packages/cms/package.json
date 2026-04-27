@@ -32,6 +32,7 @@
 		"yaml": "catalog:parsers"
 	},
 	"devDependencies": {
+		"@babel/types": "^7.29.0",
 		"@milkdown/core": "catalog:editor",
 		"@milkdown/ctx": "catalog:editor",
 		"@milkdown/plugin-listener": "catalog:editor",
