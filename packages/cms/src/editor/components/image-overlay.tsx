@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
 import { getCaretRangeFromPoint } from '../dom'
+import { getAstroUploadContextForCmsId } from '../manifest'
 import * as signals from '../signals'
 
 export interface ImageOverlayProps {
@@ -139,6 +140,10 @@ export function ImageOverlay({ visible, rect, element, cmsId }: ImageOverlayProp
 			e.preventDefault()
 			e.stopPropagation()
 
+			// If this image came from a collection's astroImage field, route the upload
+			// to the entry's directory so Astro's asset pipeline can resize it.
+			const astroContext = getAstroUploadContextForCmsId(signals.manifest.value, cmsId)
+
 			// Open media library with callback to replace the image
 			signals.openMediaLibraryWithCallback((url: string, alt: string) => {
 				// Track the change BEFORE modifying element.src
@@ -148,12 +153,16 @@ export function ImageOverlay({ visible, rect, element, cmsId }: ImageOverlayProp
 				const originalSrcSet = currentChange?.originalSrcSet ?? element.getAttribute('srcset') ?? ''
 				const isDirty = url !== originalSrc
 
-				// Update the image element
-				element.src = url
-				// Clear srcset so browser uses the new src
-				element.removeAttribute('srcset')
-				if (alt) {
-					element.alt = alt
+				// Update the image element. Skip for astroImage uploads — the returned
+				// path (`./file.jpg`) is entry-relative and won't resolve against the
+				// page URL. The new image becomes visible after save when Astro reloads.
+				if (!astroContext) {
+					element.src = url
+					// Clear srcset so browser uses the new src
+					element.removeAttribute('srcset')
+					if (alt) {
+						element.alt = alt
+					}
 				}
 
 				if (currentChange) {
@@ -175,7 +184,7 @@ export function ImageOverlay({ visible, rect, element, cmsId }: ImageOverlayProp
 						isDirty,
 					})
 				}
-			})
+			}, astroContext)
 		}
 
 		overlayRef.current.addEventListener('click', handleClick)

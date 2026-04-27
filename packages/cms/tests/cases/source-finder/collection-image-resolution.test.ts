@@ -333,6 +333,9 @@ describe('enhanceManifestWithSourceSnippets — collection images', () => {
 		expect(result['cms-2']!.sourceSnippet).toContain('./images/hero.jpg')
 		expect(result['cms-2']!.collectionName).toBe('news')
 		expect(result['cms-2']!.collectionSlug).toBe('my-post')
+		// The resolved field name is recorded so the editor can route image
+		// replacements to the correct upload path for astroImage fields.
+		expect(result['cms-2']!.collectionFieldName).toBe('image')
 	})
 
 	test('resolves collection image with "logo" field name in JSON data file', async () => {

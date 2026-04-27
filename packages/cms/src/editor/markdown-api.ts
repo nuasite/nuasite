@@ -1,3 +1,4 @@
+import type { MediaUploadContext } from '../types'
 import { API } from './constants'
 import { fetchWithTimeout, getJson, postJson } from './fetch'
 import type {
@@ -73,13 +74,16 @@ export function uploadMedia(
 	config: CmsConfig,
 	file: File,
 	onProgress?: (percent: number) => void,
-	options?: { folder?: string },
+	options?: { folder?: string; context?: MediaUploadContext },
 ): Promise<MediaUploadResponse> {
 	const formData = new FormData()
 	formData.append('file', file)
 
 	const params = new URLSearchParams()
 	if (options?.folder) params.set('folder', options.folder)
+	if (options?.context?.collection) params.set('collection', options.context.collection)
+	if (options?.context?.entry) params.set('entry', options.context.entry)
+	if (options?.context?.field) params.set('field', options.context.field)
 	const qs = params.toString()
 
 	return new Promise((resolve) => {

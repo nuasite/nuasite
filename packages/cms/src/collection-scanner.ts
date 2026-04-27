@@ -442,6 +442,7 @@ function applyParsedConfig(
 				if (pf.options) field.options = pf.options
 			}
 			if (pf.hints) field.hints = pf.hints
+			if (pf.astroImage) field.astroImage = true
 			field.required = pf.required
 		}
 	}

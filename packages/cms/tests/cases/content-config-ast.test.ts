@@ -34,6 +34,24 @@ describe('parseConfigSource — supported forms', () => {
 		const blog = result.get('blog')
 		expect(blog?.fields.find(f => f.name === 'cover')?.type).toBe('image')
 	})
+
+	test('tags `image()` callback-form fields with astroImage=true', () => {
+		const result = parseConfigSource(`
+			import { defineCollection } from 'astro:content'
+			import { z } from 'astro/zod'
+			import { n } from '@nuasite/cms'
+			const blog = defineCollection({
+				schema: ({ image }) => z.object({
+					cover: image(),
+					thumbnail: n.image(),
+				}),
+			})
+			export const collections = { blog }
+		`)
+		const fields = result.get('blog')?.fields ?? []
+		expect(fields.find(f => f.name === 'cover')?.astroImage).toBe(true)
+		expect(fields.find(f => f.name === 'thumbnail')?.astroImage).toBeUndefined()
+	})
 })
 
 // These tests pin down patterns the parser intentionally doesn't handle.

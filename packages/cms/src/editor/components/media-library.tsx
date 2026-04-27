@@ -117,11 +117,22 @@ export function MediaLibrary() {
 	const handleUploadFile = async (file: File) => {
 		setUploadProgress(0)
 		try {
+			const uploadContext = mediaLibraryState.value.uploadContext ?? undefined
 			const result = await uploadMedia(config.value, file, (percent) => {
 				setUploadProgress(percent)
-			}, { folder: currentFolder || undefined })
+			}, { folder: currentFolder || undefined, context: uploadContext })
 
 			if (result.success && result.url) {
+				// Astro image() uploads return entry-relative paths (`./foo.jpg`); skip adding
+				// to the library list (the file lives under src/content/, not in the media adapter)
+				// and call the callback directly so the field gets the relative value.
+				if (uploadContext && result.url.startsWith('./')) {
+					insertCallback?.(result.url, '')
+					handleClose()
+					showToast('Uploaded next to entry', 'success')
+					return
+				}
+
 				const newItem: MediaItem = {
 					id: result.id || crypto.randomUUID(),
 					url: result.url,

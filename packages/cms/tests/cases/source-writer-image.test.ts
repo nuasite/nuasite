@@ -146,6 +146,28 @@ describe('applyImageChange', () => {
 		}
 	})
 
+	test('rewrites astroImage YAML field when rendered URL differs from authored path', () => {
+		// When the user replaces an Astro image() field, originalValue is the
+		// rendered URL (`/_image?href=...`), the source is the YAML line with
+		// `./hero.jpg`, and the new value is the entry-relative `./new.jpg`.
+		const content = '---\ntitle: Hello\nimage: ./hero.jpg\n---\nBody\n'
+		const result = applyImageChange(
+			content,
+			makeImageChange({
+				originalValue: '/_image?href=%2F%40fs%2Fproject%2Fsrc%2Fcontent%2Fposts%2Ffoo%2Fhero.jpg&w=800&f=webp',
+				sourcePath: 'src/content/posts/foo.md',
+				sourceLine: 3,
+				sourceSnippet: 'image: ./hero.jpg',
+				imageChange: { newSrc: './new.jpg' },
+			}),
+		)
+		expect(result.success).toBe(true)
+		if (result.success) {
+			expect(result.content).toContain('image: ./new.jpg')
+			expect(result.content).not.toContain('image: ./hero.jpg')
+		}
+	})
+
 	test('returns error when src not found anywhere', () => {
 		const content = '<img src="/completely/different.jpg" alt="test" />'
 		const result = applyImageChange(

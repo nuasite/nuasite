@@ -72,6 +72,13 @@ export interface ImageMetadata {
 	sizes?: string
 }
 
+/** Identifies the (collection, entry, field) destination for an editor upload. */
+export interface MediaUploadContext {
+	collection: string
+	entry: string
+	field: string
+}
+
 /** Content constraints for validation */
 export interface ContentConstraints {
 	/** Maximum content length */
@@ -158,6 +165,8 @@ export interface ManifestEntry {
 	collectionName?: string
 	/** Entry slug for collection entries (e.g., '3d-tisk') */
 	collectionSlug?: string
+	/** Schema field name when this entry was resolved to a specific collection field (e.g., 'image', 'cover'). */
+	collectionFieldName?: string
 	/** Path to the markdown content file (e.g., 'src/content/blog/my-post.md') */
 	contentPath?: string
 
@@ -285,6 +294,8 @@ export interface FieldDefinition {
 	derivedFrom?: string
 	/** Editor hints for enhanced field rendering */
 	hints?: FieldHints
+	/** True when the field uses Astro's `image()` schema (entry-relative paths through astro:assets). */
+	astroImage?: boolean
 }
 
 /** Per-entry metadata for collection browsing */

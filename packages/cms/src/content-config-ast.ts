@@ -18,6 +18,8 @@ export interface ParsedField {
 	required: boolean
 	orderBy?: { direction: 'asc' | 'desc' }
 	reference?: ParsedReference
+	/** True when the field is `image()` from an Astro callback schema, which routes through `astro:assets`. */
+	astroImage?: boolean
 }
 
 export interface ParsedCollection {
@@ -267,6 +269,7 @@ function analyzeBaseCall(node: t.CallExpression, field: ParsedField): void {
 	if (callee.type === 'Identifier') {
 		if (callee.name === 'image') {
 			field.type = 'image'
+			field.astroImage = true
 			return
 		}
 		if (callee.name === 'reference') {

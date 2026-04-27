@@ -7,6 +7,7 @@ import type { ManifestWriter } from '../manifest-writer'
 import { listProjectImages } from '../media/project-images'
 import type { MediaStorageAdapter } from '../media/types'
 import { handleAddArrayItem, handleRemoveArrayItem } from './array-ops'
+import { tryAstroImageUpload } from './astro-image-upload'
 import { handleInsertComponent, handleRemoveComponent } from './component-ops'
 import { handleCreateMarkdown, handleDeleteMarkdown, handleGetMarkdownContent, handleRenameMarkdown, handleUpdateMarkdown } from './markdown-ops'
 import { handleCheckSlugExists, handleCreatePage, handleDeletePage, handleDuplicatePage, handleGetLayouts } from './page-ops'
@@ -146,13 +147,12 @@ const routeMap = new Map<string, RouteHandler>([
 		sendJson(ctx.res, { items })
 	}),
 	custom('POST', 'media/upload', async (ctx) => {
-		if (!requireMedia(ctx)) return
 		const contentType = ctx.req.headers['content-type'] ?? ''
 		if (!contentType.includes('multipart/form-data')) {
 			sendError(ctx.res, 'Expected multipart/form-data')
 			return
 		}
-		const folder = getQuery(ctx).get('folder') ?? undefined
+		const query = getQuery(ctx)
 		const body = await readBody(ctx.req, 50 * 1024 * 1024)
 		const file = parseMultipartFile(body, contentType)
 		if (!file) {
@@ -164,6 +164,26 @@ const routeMap = new Map<string, RouteHandler>([
 			sendError(ctx.res, `File type not allowed: ${file.contentType}`)
 			return
 		}
+
+		// Astro image() fields write entry-relative — bypasses the media adapter so
+		// the file lands in src/content where astro:assets can pick it up.
+		const astroResult = await tryAstroImageUpload({
+			context: {
+				collection: query.get('collection') ?? undefined,
+				entry: query.get('entry') ?? undefined,
+				field: query.get('field') ?? undefined,
+			},
+			manifestWriter: ctx.manifestWriter,
+			fileBuffer: file.buffer,
+			originalFilename: file.filename,
+		})
+		if (astroResult) {
+			sendJson(ctx.res, astroResult, astroResult.success ? 200 : 400)
+			return
+		}
+
+		if (!requireMedia(ctx)) return
+		const folder = query.get('folder') ?? undefined
 		sendJson(ctx.res, await ctx.mediaAdapter.upload(file.buffer, file.filename, file.contentType, { folder }))
 	}),
 	custom('POST', 'media/folder', async (ctx) => {

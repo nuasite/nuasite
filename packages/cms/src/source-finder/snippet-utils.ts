@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 
+import { isHugoStyleEntry } from '../astro-image-paths'
 import { getProjectRoot } from '../config'
 import type { Attribute, CollectionDefinition, ManifestEntry } from '../types'
 import { escapeRegex, generateSourceHash, resolveSourcePath } from '../utils'
@@ -702,10 +703,34 @@ export async function enhanceManifestWithSourceSnippets(
 		return result
 	}
 
+	// Built lazily on first need — most entry sets don't have any astroImage <Image> tags
+	// rendered outside `<Content />`, in which case we never iterate the collections.
+	let astroImageIndex: AstroImageCollectionIndex | undefined
+	const getAstroImageIndex = () => {
+		if (!astroImageIndex && collectionDefinitions) {
+			astroImageIndex = buildAstroImageCollectionIndex(collectionDefinitions)
+		}
+		return astroImageIndex
+	}
+
 	// Process entries in parallel for better performance
 	const entryPromises = Object.entries(entries).map(async ([id, entry]) => {
 		// Handle image entries specially - find the line with src attribute
 		if (entry.imageMetadata?.src) {
+			// Astro `image()` URLs (`/_image?href=/@fs/.../src/content/<collection>/<...>`)
+			// embed the source path. If we can match that path to a collection entry's
+			// directory, treat this image as belonging to that entry — even when no
+			// ancestor was tagged as the collection wrapper (e.g. a `<Image>` rendered
+			// outside `<Content />`).
+			if (!entry.collectionName) {
+				const index = getAstroImageIndex()
+				const inferred = index && inferCollectionFromAstroImageUrl(entry.imageMetadata.src, index)
+				if (inferred) {
+					entry.collectionName = inferred.collectionName
+					entry.collectionSlug = inferred.collectionSlug
+				}
+			}
+
 			// ── Collection images: resolve directly from the data file ──
 			// When an image belongs to a known collection entry, bypass the search index
 			// entirely. Astro hashes image filenames (e.g. ./photo.jpg → /assets/a1b2c3.webp),
@@ -1148,14 +1173,15 @@ async function resolveCollectionImageField(
 
 	// Single image field — unambiguous
 	if (imageFields.length === 1) {
+		const fieldName = imageFields[0]!.name
 		const fieldResult = await findFieldInCollectionEntry(
-			imageFields[0]!.name,
+			fieldName,
 			entry.collectionName!,
 			entry.collectionSlug!,
 			collectionDefinitions,
 		)
 		if (fieldResult) {
-			return applyCollectionSource(entry, fieldResult, referenceIndex)
+			return applyCollectionSource(entry, fieldResult, referenceIndex, { collectionFieldName: fieldName })
 		}
 		return undefined
 	}
@@ -1169,12 +1195,12 @@ async function resolveCollectionImageField(
 		collectionDefinitions,
 	)
 
-	let firstFieldResult: SourceLocation | undefined
+	let firstField: { name: string; result: SourceLocation } | undefined
 	for (const field of imageFields) {
 		const fieldResult = allResults.get(field.name)
 		if (!fieldResult?.snippet) continue
 
-		firstFieldResult ??= fieldResult
+		firstField ??= { name: field.name, result: fieldResult }
 
 		try {
 			const cleaned = fieldResult.snippet.replace(/,\s*$/, '')
@@ -1182,7 +1208,7 @@ async function resolveCollectionImageField(
 			if (parsed && typeof parsed === 'object') {
 				const value = (parsed as Record<string, unknown>)[field.name]
 				if (typeof value === 'string' && (value === imgSrc || imgSrc.includes(value) || value.includes(imgSrc))) {
-					return applyCollectionSource(entry, fieldResult, referenceIndex)
+					return applyCollectionSource(entry, fieldResult, referenceIndex, { collectionFieldName: field.name })
 				}
 			}
 		} catch {
@@ -1191,8 +1217,8 @@ async function resolveCollectionImageField(
 	}
 
 	// No value match — fall back to first resolved image field
-	if (firstFieldResult) {
-		return applyCollectionSource(entry, firstFieldResult, referenceIndex)
+	if (firstField) {
+		return applyCollectionSource(entry, firstField.result, referenceIndex, { collectionFieldName: firstField.name })
 	}
 
 	return undefined
@@ -1397,6 +1423,78 @@ async function resolveImageExpression(
 		}
 	}
 
+	return undefined
+}
+
+/**
+ * Per-call index over collection entries with at least one `astroImage` field.
+ * Built once per `enhanceEntries` invocation so each manifest entry's lookup is O(1)
+ * for flat entries and O(hugoEntries) for hugo-style.
+ */
+export interface AstroImageCollectionIndex {
+	/** Flat-md entries grouped by their parent directory (lookup by `path.dirname(href)`). */
+	flatByDir: Map<string, Array<{ slug: string; coll: string }>>
+	/** Hugo-style entries — image lives under entry directory, identified by prefix match. */
+	hugoEntries: Array<{ dir: string; slug: string; coll: string }>
+}
+
+export function buildAstroImageCollectionIndex(
+	collectionDefinitions: Record<string, CollectionDefinition>,
+): AstroImageCollectionIndex {
+	const flatByDir = new Map<string, Array<{ slug: string; coll: string }>>()
+	const hugoEntries: Array<{ dir: string; slug: string; coll: string }> = []
+	for (const def of Object.values(collectionDefinitions)) {
+		if (!def.entries || !def.fields.some(f => f.astroImage)) continue
+		for (const entry of def.entries) {
+			const entryAbs = resolveSourcePath(entry.sourcePath)
+			const entryDir = path.dirname(entryAbs)
+			if (isHugoStyleEntry(entryAbs)) {
+				hugoEntries.push({ dir: entryDir, slug: entry.slug, coll: def.name })
+			} else {
+				let list = flatByDir.get(entryDir)
+				if (!list) {
+					list = []
+					flatByDir.set(entryDir, list)
+				}
+				list.push({ slug: entry.slug, coll: def.name })
+			}
+		}
+	}
+	return { flatByDir, hugoEntries }
+}
+
+/**
+ * Match an Astro dev image URL (`/_image?href=/@fs/...`) to a collection entry by
+ * locating the `href` source path under that entry's directory. Used when an
+ * `<Image>` is rendered outside `<Content />` and so doesn't inherit collection
+ * info from the markdown wrapper.
+ */
+export function inferCollectionFromAstroImageUrl(
+	src: string,
+	index: AstroImageCollectionIndex,
+): { collectionName: string; collectionSlug: string } | undefined {
+	const href = extractAstroImageOriginalUrl(src)
+	if (!href) return undefined
+
+	// `/@fs/<absolute-path>` → strip the prefix to get the real filesystem path.
+	let absHref = href
+	if (absHref.startsWith('/@fs/')) absHref = absHref.slice('/@fs'.length)
+	try {
+		absHref = decodeURIComponent(absHref)
+	} catch {
+		// Already decoded
+	}
+
+	const flatList = index.flatByDir.get(path.dirname(absHref))
+	if (flatList) {
+		const hrefBase = path.basename(absHref)
+		for (const { slug, coll } of flatList) {
+			if (hrefBase.startsWith(`${slug}-`)) return { collectionName: coll, collectionSlug: slug }
+		}
+	}
+	for (const { dir, slug, coll } of index.hugoEntries) {
+		if (absHref.startsWith(dir + path.sep)) return { collectionName: coll, collectionSlug: slug }
+	}
 	return undefined
 }
 

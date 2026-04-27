@@ -201,6 +201,8 @@ export function FrontmatterSidebar({ fields, page, collectionDefinition }: Front
 														field={field}
 														value={page.frontmatter[field.name]}
 														onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
+														collection={collectionDefinition?.name}
+														entrySlug={page.slug}
 													/>
 												)
 												: (

@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
-import { getCollectionEntryOptions } from '../manifest'
+import { buildAstroUploadContext, getCollectionEntryOptions } from '../manifest'
 import { renameMarkdownPage } from '../markdown-api'
 import {
 	config,
@@ -234,6 +234,8 @@ export function CreateModeFrontmatter({
 								field={field}
 								value={page.frontmatter[field.name]}
 								onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
+								collection={collectionDefinition.name}
+								entrySlug={page.slug}
 							/>
 						))}
 					</FieldGroupHeader>
@@ -348,6 +350,8 @@ export function EditModeFrontmatter({
 											field={field}
 											value={page.frontmatter[field.name]}
 											onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
+											collection={collectionDefinition.name}
+											entrySlug={page.slug}
 										/>
 									))}
 								</FieldGroupHeader>
@@ -387,12 +391,17 @@ interface SchemaFrontmatterFieldProps {
 	field: FieldDefinition
 	value: unknown
 	onChange: (value: unknown) => void
+	/** Required when editing an `astroImage` field — routes uploads to the entry's directory. */
+	collection?: string
+	entrySlug?: string
 }
 
 export function SchemaFrontmatterField({
 	field,
 	value,
 	onChange,
+	collection,
+	entrySlug,
 }: SchemaFrontmatterFieldProps) {
 	const label = field.required ? `${formatFieldLabel(field.name)} *` : formatFieldLabel(field.name)
 	const hints = field.hints
@@ -414,7 +423,8 @@ export function SchemaFrontmatterField({
 				/>
 			)
 
-		case 'image':
+		case 'image': {
+			const astroContext = buildAstroUploadContext(field, collection, entrySlug)
 			return (
 				<ImageField
 					label={label}
@@ -424,11 +434,12 @@ export function SchemaFrontmatterField({
 					onBrowse={() => {
 						openMediaLibraryWithCallback((url: string) => {
 							onChange(url)
-						})
+						}, astroContext)
 					}}
 					required={field.required}
 				/>
 			)
+		}
 
 		case 'color':
 			return (

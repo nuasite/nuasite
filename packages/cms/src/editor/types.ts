@@ -1,4 +1,4 @@
-import type { Attribute, CmsFeatures, CmsManifest, CollectionDefinition, ComponentInstance, RedirectRule } from '../types'
+import type { Attribute, CmsFeatures, CmsManifest, CollectionDefinition, ComponentInstance, MediaUploadContext, RedirectRule } from '../types'
 
 // Re-export shared types from @nuasite/cms-marker (source of truth)
 export type {
@@ -17,6 +17,7 @@ export type {
 	FieldType,
 	JsonLdEntry,
 	ManifestEntry,
+	MediaUploadContext,
 	OpenGraphData,
 	PageSeoData,
 	SeoFavicon,
@@ -361,6 +362,8 @@ export interface MediaLibraryState {
 	isLoading: boolean
 	selectedItem: MediaItem | null
 	insertCallback: ((url: string, alt: string) => void) | null
+	/** When set, uploads inside the media library route to an Astro `image()` field's entry directory. */
+	uploadContext: MediaUploadContext | null
 }
 
 export interface CreatePageState {
