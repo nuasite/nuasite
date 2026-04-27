@@ -2,8 +2,9 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { isMap, isPair, isScalar, parse as parseYaml, parseDocument } from 'yaml'
 import { getProjectRoot } from './config'
+import { parseContentConfig, type ParsedConfig } from './content-config-ast'
 import { slugifyHref } from './shared'
-import type { CollectionDefinition, CollectionEntryInfo, FieldDefinition, FieldHints, FieldType } from './types'
+import type { CollectionDefinition, CollectionEntryInfo, FieldDefinition, FieldType } from './types'
 
 /** Regex patterns for type inference */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}/
@@ -416,162 +417,49 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 }
 
 /**
- * Read and parse the Astro content config file, extracting schema blocks for each collection.
- * Returns parsed blocks with collection names and their raw schema bodies.
+ * Filter scanned fields to schema-only and apply per-field overrides (type, hints, required)
+ * in a single pass. Filtering must happen first since it can shrink `def.fields`.
  */
-async function parseContentConfigSchemaBlocks(): Promise<Array<{ collectionName: string; schemaBody: string }>> {
-	const projectRoot = getProjectRoot()
-
-	for (const configPath of ['src/content/config.ts', 'src/content.config.ts']) {
-		try {
-			const fullPath = path.join(projectRoot, configPath)
-			const content = await fs.readFile(fullPath, 'utf-8')
-
-			// Map variable names to collection names from exports
-			const varToName = new Map<string, string>()
-			const exportMatch = content.match(/export\s+const\s+collections\s*=\s*\{([\s\S]*?)\}/)
-			if (exportMatch) {
-				const pairs = exportMatch[1]!.matchAll(/(\w+)\s*:\s*(\w+)/g)
-				for (const m of pairs) {
-					varToName.set(m[2]!, m[1]!)
-				}
-			}
-
-			// Find schema block starts via regex, then extract bodies with brace counting
-			// to correctly handle nested objects like n.number({ min: 1, max: 100 })
-			const schemaStart = /(?:const\s+(\w+)\s*=\s*)?defineCollection\s*\(\s*\{[\s\S]*?schema\s*:\s*(?:z|n)\.object\s*\(\s*\{/g
-			const blocks: Array<{ collectionName: string; schemaBody: string }> = []
-
-			let match
-			while ((match = schemaStart.exec(content)) !== null) {
-				const varName = match[1]
-				const collectionName = varName ? varToName.get(varName) : undefined
-				if (!collectionName) continue
-
-				// Brace-balanced extraction: the regex consumed the opening {,
-				// so start at depth 1 and scan forward for the matching }
-				const bodyStart = match.index + match[0].length
-				let depth = 1
-				let i = bodyStart
-				while (i < content.length && depth > 0) {
-					if (content[i] === '{') depth++
-					else if (content[i] === '}') depth--
-					i++
-				}
-
-				if (depth === 0) {
-					// i is one past the matching }, so body is [bodyStart, i-1)
-					blocks.push({ collectionName, schemaBody: content.slice(bodyStart, i - 1) })
-				}
-			}
-
-			if (blocks.length > 0) return blocks
-		} catch {
-			// File doesn't exist, try next
-		}
-	}
-	return []
-}
-
-/**
- * Parse the Astro content config file to extract explicit reference() declarations.
- * Returns a map: collectionName → { fieldName → { target, isArray } }
- */
-function parseContentConfigReferences(
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
-): Map<string, Map<string, { target: string; isArray: boolean }>> {
-	const result = new Map<string, Map<string, { target: string; isArray: boolean }>>()
-
-	for (const { collectionName, schemaBody } of schemaBlocks) {
-		const fields = new Map<string, { target: string; isArray: boolean }>()
-		const fieldRefs = schemaBody.matchAll(/(\w+)\s*:\s*(z\.array\s*\(\s*)?reference\s*\(\s*['"](\w+)['"]\s*\)/g)
-		for (const m of fieldRefs) {
-			fields.set(m[1]!, { target: m[3]!, isArray: !!m[2] })
-		}
-
-		if (fields.size > 0) {
-			result.set(collectionName, fields)
-		}
-	}
-	return result
-}
-
-/** Valid field type names exported by `n` helper from @nuasite/cms */
-const FIELD_HELPER_TYPES = new Set(['text', 'number', 'image', 'url', 'email', 'tel', 'color', 'date', 'datetime', 'time', 'textarea'])
-
-/**
- * Parse the content config file to extract explicit field type hints:
- * - `n.image()`, `n.url()`, etc. from @nuasite/cms
- * - `z.enum([...])` for select options
- *
- * Returns a map: collectionName → fieldName → { type, options? }
- */
-function parseContentConfigFieldTypes(
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
-): Map<string, Map<string, { type: FieldType; options?: string[] }>> {
-	const result = new Map<string, Map<string, { type: FieldType; options?: string[] }>>()
-
-	for (const { collectionName, schemaBody } of schemaBlocks) {
-		const fields = new Map<string, { type: FieldType; options?: string[] }>()
-
-		// Detect n.image(), n.url(), etc.
-		const fieldHelpers = schemaBody.matchAll(/(\w+)\s*:\s*n\.(\w+)/g)
-		for (const m of fieldHelpers) {
-			const fieldName = m[1]!
-			const helperName = m[2]!
-			if (FIELD_HELPER_TYPES.has(helperName)) {
-				fields.set(fieldName, { type: helperName as FieldType })
-			}
-		}
-
-		// Detect z.enum(['a', 'b', 'c'])
-		const enumFields = schemaBody.matchAll(/(\w+)\s*:\s*z\.enum\s*\(\s*\[([\s\S]*?)\]\s*\)/g)
-		for (const m of enumFields) {
-			const fieldName = m[1]!
-			const enumBody = m[2]!
-			const options = [...enumBody.matchAll(/['"]([^'"]+)['"]/g)].map(o => o[1]!)
-			if (options.length > 0) {
-				fields.set(fieldName, { type: 'select', options })
-			}
-		}
-
-		if (fields.size > 0) {
-			result.set(collectionName, fields)
-		}
-	}
-	return result
-}
-
-/**
- * Parse the content config to find `.orderBy('asc'|'desc')` markers on fields.
- * Matches patterns like `fieldName: n.number().orderBy('asc')`.
- * Returns a map: collectionName → { field, direction }.
- */
-function parseContentConfigOrderBy(
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
-): Map<string, { field: string; direction: 'asc' | 'desc' }> {
-	const result = new Map<string, { field: string; direction: 'asc' | 'desc' }>()
-	for (const { collectionName, schemaBody } of schemaBlocks) {
-		const match = schemaBody.match(/(\w+)\s*:.*\.orderBy\s*\(\s*(?:['"](\w+)['"])?\s*\)/)
-		if (match) {
-			const direction = match[2] === 'desc' ? 'desc' as const : 'asc' as const
-			result.set(collectionName, { field: match[1]!, direction })
-		}
-	}
-	return result
-}
-
-/**
- * Apply orderBy configuration: set the field name and direction on the definition, then re-sort entries.
- */
-function applyCollectionOrderBy(
+function applyParsedConfig(
 	collections: Record<string, CollectionDefinition>,
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
+	parsed: ParsedConfig,
 ): void {
-	const orderByFields = parseContentConfigOrderBy(schemaBlocks)
-	for (const [collectionName, { field: fieldName, direction }] of orderByFields) {
+	for (const [collectionName, parsedColl] of parsed) {
 		const def = collections[collectionName]
 		if (!def) continue
+
+		if (parsedColl.fields.length > 0) {
+			const schemaNames = new Set(parsedColl.fields.map(f => f.name))
+			def.fields = def.fields.filter(f => schemaNames.has(f.name))
+		}
+
+		const fieldsByName = new Map(def.fields.map(f => [f.name, f]))
+		for (const pf of parsedColl.fields) {
+			const field = fieldsByName.get(pf.name)
+			if (!field) continue
+			if (pf.type) {
+				field.type = pf.type
+				if (pf.options) field.options = pf.options
+			}
+			if (pf.hints) field.hints = pf.hints
+			field.required = pf.required
+		}
+	}
+}
+
+/** Apply orderBy configuration: set the field name and direction on the definition, then re-sort entries. */
+function applyCollectionOrderBy(
+	collections: Record<string, CollectionDefinition>,
+	parsed: ParsedConfig,
+): void {
+	for (const [collectionName, parsedColl] of parsed) {
+		const orderField = parsedColl.fields.find(f => f.orderBy)
+		if (!orderField?.orderBy) continue
+		const def = collections[collectionName]
+		if (!def) continue
+
+		const fieldName = orderField.name
+		const direction = orderField.orderBy.direction
 		def.orderBy = fieldName
 		def.orderDirection = direction
 		if (def.entries && def.entries.length > 1) {
@@ -590,200 +478,35 @@ function applyCollectionOrderBy(
 	}
 }
 
-/** Match `fieldName:` patterns at the start of lines within a schema body. */
-const SCHEMA_FIELD_PATTERN = /^\s*(\w+)\s*:/gm
-
 /**
- * When a content config schema exists, filter scanned fields to only include
- * those defined in the schema. This prevents stale or extra frontmatter fields
- * from appearing in the CMS editor.
+ * Detect reference fields. Prefers explicit `reference()` declarations from the content
+ * config; if none are found anywhere, falls back to heuristic slug matching.
  */
-function filterFieldsBySchema(
+function detectReferenceFields(
 	collections: Record<string, CollectionDefinition>,
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
+	parsed: ParsedConfig,
 ): void {
-	for (const { collectionName, schemaBody } of schemaBlocks) {
+	let appliedAny = false
+	for (const [collectionName, parsedColl] of parsed) {
 		const def = collections[collectionName]
 		if (!def) continue
-		const schemaNames = new Set<string>()
-		for (const m of schemaBody.matchAll(SCHEMA_FIELD_PATTERN)) {
-			schemaNames.add(m[1]!)
-		}
-		if (schemaNames.size === 0) continue
-		def.fields = def.fields.filter(f => schemaNames.has(f.name))
-	}
-}
-
-/**
- * Apply a parsed per-field config map to scanned collection definitions.
- */
-function applyPerFieldConfig<T>(
-	collections: Record<string, CollectionDefinition>,
-	configMap: Map<string, Map<string, T>>,
-	apply: (field: FieldDefinition, value: T) => void,
-): void {
-	for (const [collectionName, fieldMap] of configMap) {
-		const def = collections[collectionName]
-		if (!def) continue
-		for (const [fieldName, value] of fieldMap) {
-			const field = def.fields.find(f => f.name === fieldName)
+		for (const pf of parsedColl.fields) {
+			if (!pf.reference) continue
+			const field = def.fields.find(f => f.name === pf.name)
 			if (!field) continue
-			apply(field, value)
-		}
-	}
-}
-
-/** Apply field type overrides from config parsing to scanned collections. */
-function applyConfigFieldTypes(
-	collections: Record<string, CollectionDefinition>,
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
-): void {
-	applyPerFieldConfig(collections, parseContentConfigFieldTypes(schemaBlocks), (field, override) => {
-		field.type = override.type
-		if (override.options) field.options = override.options
-	})
-}
-
-/** All recognized hint keys */
-const VALID_HINT_KEYS = new Set(['min', 'max', 'step', 'placeholder', 'maxLength', 'minLength', 'rows', 'accept'])
-/** Subset of hint keys that take numeric values */
-const NUMERIC_HINT_KEYS = new Set(['min', 'max', 'step', 'maxLength', 'minLength', 'rows'])
-
-/**
- * Parse `n.type({ key: value, ... })` options objects from schema blocks.
- * Returns a map: collectionName → fieldName → FieldHints.
- */
-function parseContentConfigFieldHints(
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
-): Map<string, Map<string, FieldHints>> {
-	const result = new Map<string, Map<string, FieldHints>>()
-
-	for (const { collectionName, schemaBody } of schemaBlocks) {
-		const fields = new Map<string, FieldHints>()
-
-		// Match: fieldName: n.helperName({ ...options })
-		const fieldMatches = schemaBody.matchAll(/(\w+)\s*:\s*n\.\w+\s*\(\s*\{([\s\S]*?)}\s*\)/g)
-		for (const m of fieldMatches) {
-			const fieldName = m[1]!
-			const optionsBody = m[2]!
-			const raw: Record<string, string | number> = {}
-
-			// Extract key-value pairs from the options body
-			const kvMatches = optionsBody.matchAll(/(\w+)\s*:\s*(?:"([^"]*)"|'([^']*)'|(-?[\d.]+))/g)
-			for (const kv of kvMatches) {
-				const key = kv[1]!
-				if (!VALID_HINT_KEYS.has(key)) continue
-				const strValue = kv[2] ?? kv[3]
-				const numValue = kv[4]
-
-				if (numValue != null && NUMERIC_HINT_KEYS.has(key)) {
-					raw[key] = Number(numValue)
-				} else if (strValue != null) {
-					if (NUMERIC_HINT_KEYS.has(key)) {
-						const parsed = Number(strValue)
-						raw[key] = Number.isNaN(parsed) ? strValue : parsed
-					} else {
-						raw[key] = strValue
-					}
-				}
+			appliedAny = true
+			if (pf.reference.isArray) {
+				field.type = 'array'
+				field.itemType = 'reference'
+			} else {
+				field.type = 'reference'
 			}
-			const hints = raw as FieldHints
-
-			if (Object.keys(hints).length > 0) {
-				fields.set(fieldName, hints)
-			}
-		}
-
-		if (fields.size > 0) {
-			result.set(collectionName, fields)
+			field.collection = pf.reference.target
+			field.options = undefined
 		}
 	}
-	return result
-}
 
-/**
- * Parse required/optional status from schema blocks.
- * In Zod, fields are required by default. `.optional()`, `.nullable()`, and `.default(...)` make them not required.
- */
-function parseContentConfigRequiredFields(
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
-): Map<string, Map<string, boolean>> {
-	const result = new Map<string, Map<string, boolean>>()
-
-	for (const { collectionName, schemaBody } of schemaBlocks) {
-		const fields = new Map<string, boolean>()
-
-		const fieldMatches = [...schemaBody.matchAll(SCHEMA_FIELD_PATTERN)]
-		for (let i = 0; i < fieldMatches.length; i++) {
-			const fieldName = fieldMatches[i]![1]!
-			const start = fieldMatches[i]!.index!
-			const end = i + 1 < fieldMatches.length ? fieldMatches[i + 1]!.index! : schemaBody.length
-			const fieldSource = schemaBody.slice(start, end)
-
-			const isOptional = /\.(optional|nullable|default)\s*\(/.test(fieldSource)
-			fields.set(fieldName, !isOptional)
-		}
-
-		if (fields.size > 0) {
-			result.set(collectionName, fields)
-		}
-	}
-	return result
-}
-
-/** Apply field hints from content config parsing to scanned collections. */
-function applyConfigFieldHints(
-	collections: Record<string, CollectionDefinition>,
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
-): void {
-	applyPerFieldConfig(collections, parseContentConfigFieldHints(schemaBlocks), (field, hints) => {
-		field.hints = hints
-	})
-}
-
-/** Apply required/optional status from content config to scanned collections. */
-function applyConfigRequiredFields(
-	collections: Record<string, CollectionDefinition>,
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
-): void {
-	applyPerFieldConfig(collections, parseContentConfigRequiredFields(schemaBlocks), (field, required) => {
-		field.required = required
-	})
-}
-
-/**
- * After all collections are scanned, detect reference fields.
- * Prefers explicit reference() declarations from the content config file.
- * Falls back to heuristic slug matching when no config is available.
- */
-async function detectReferenceFields(
-	collections: Record<string, CollectionDefinition>,
-	schemaBlocks: Array<{ collectionName: string; schemaBody: string }>,
-): Promise<void> {
-	// Try parsing the content config first — this is the source of truth
-	const configRefs = parseContentConfigReferences(schemaBlocks)
-	if (configRefs.size > 0) {
-		for (const [collectionName, fieldRefs] of configRefs) {
-			const def = collections[collectionName]
-			if (!def) continue
-			for (const [fieldName, ref] of fieldRefs) {
-				const field = def.fields.find(f => f.name === fieldName)
-				if (!field) continue
-				if (ref.isArray) {
-					field.type = 'array'
-					field.itemType = 'reference'
-				} else {
-					field.type = 'reference'
-				}
-				field.collection = ref.target
-				field.options = undefined
-			}
-		}
-		return
-	}
-
-	// Fallback: heuristic detection by matching field values against collection slugs
-	detectReferenceFieldsBySlugMatch(collections)
+	if (!appliedAny) detectReferenceFieldsBySlugMatch(collections)
 }
 
 function detectReferenceFieldsBySlugMatch(collections: Record<string, CollectionDefinition>): void {
@@ -1020,15 +743,12 @@ export async function scanCollections(contentDir: string = 'src/content'): Promi
 		// Content directory doesn't exist or isn't readable
 	}
 
-	// Post-scan: apply explicit type hints, field hints, required status, detect references, derived fields, and ordering
-	const schemaBlocks = await parseContentConfigSchemaBlocks()
-	filterFieldsBySchema(collections, schemaBlocks)
-	applyConfigFieldTypes(collections, schemaBlocks)
-	applyConfigFieldHints(collections, schemaBlocks)
-	applyConfigRequiredFields(collections, schemaBlocks)
-	await detectReferenceFields(collections, schemaBlocks)
+	// Post-scan: apply schema-driven field config, detect references, derived fields, and ordering
+	const parsed = await parseContentConfig()
+	applyParsedConfig(collections, parsed)
+	detectReferenceFields(collections, parsed)
 	detectDerivedHrefFields(collections)
-	applyCollectionOrderBy(collections, schemaBlocks)
+	applyCollectionOrderBy(collections, parsed)
 
 	return collections
 }

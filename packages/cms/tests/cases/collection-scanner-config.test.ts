@@ -319,6 +319,57 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 	})
 })
 
+// ─── n.array(reference()) and n.enum() ──────────────────────────
+
+withTempDir('collection-scanner: n.array(reference()) and n.enum()', (getCtx) => {
+	test('detects n.array(reference("tags")) as a reference array', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['tags', 'blog'])
+
+		await ctx.writeFile(
+			'src/content.config.ts',
+			`import { defineCollection, reference } from 'astro:content'
+import { z } from 'astro/zod'
+import { n } from '@nuasite/cms'
+const tagsCollection = defineCollection({
+  schema: n.object({ name: n.text() }),
+})
+const blogCollection = defineCollection({
+  schema: n.object({
+    title: n.text(),
+    tags: n.array(reference('tags')),
+  }),
+})
+export const collections = { tags: tagsCollection, blog: blogCollection }
+`,
+		)
+
+		await ctx.writeFile('src/content/tags/foo.json', JSON.stringify({ name: 'foo' }))
+		await ctx.writeFile('src/content/blog/post-1.md', `---\ntitle: Post\ntags:\n  - foo\n---\nBody`)
+
+		const result = await scanCollections()
+		const tagsField = result['blog']!.fields.find((f: FieldDefinition) => f.name === 'tags')
+		expect(tagsField).toBeDefined()
+		expect(tagsField!.type).toBe('array')
+		expect(tagsField!.itemType).toBe('reference')
+		expect(tagsField!.collection).toBe('tags')
+	})
+
+	test('detects n.enum([...]) as a select field', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['posts'])
+		await writeNuaConfig(ctx, 'posts', `    title: n.text(),\n    status: n.enum(['draft', 'published', 'archived']),`)
+
+		await ctx.writeFile('src/content/posts/post-1.md', `---\ntitle: Hello\nstatus: draft\n---\nBody`)
+
+		const result = await scanCollections()
+		const statusField = result['posts']!.fields.find((f: FieldDefinition) => f.name === 'status')
+		expect(statusField).toBeDefined()
+		expect(statusField!.type).toBe('select')
+		expect(statusField!.options).toEqual(['draft', 'published', 'archived'])
+	})
+})
+
 // ─── n helper Zod validation ─────────────────────────────────────
 
 withTempDir('n helpers: Zod validation with hints', (getCtx) => {

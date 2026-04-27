@@ -247,3 +247,43 @@ withTempDir('collection-scanner: n.xxx type detection', (getCtx) => {
 		expect(bio!.type).toBe('textarea')
 	})
 })
+
+withTempDir('collection-scanner: Astro image() callback schema', (getCtx) => {
+	test('detects image() inside `({ image }) => z.object({...})` schema', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['posts'])
+
+		await ctx.writeFile(
+			'src/content.config.ts',
+			`import { defineCollection } from 'astro:content'
+import { z } from 'astro/zod'
+const postsCollection = defineCollection({
+  schema: ({ image }) => z.object({
+    title: z.string(),
+    cover: image(),
+    caption: z.string().optional(),
+  }),
+})
+export const collections = { posts: postsCollection }
+`,
+		)
+
+		await ctx.writeFile(
+			'src/content/posts/post-1.md',
+			`---\ntitle: Hello\ncover: ./hero.jpg\ncaption: Sample\n---\nContent`,
+		)
+
+		const result = await scanCollections()
+		const postsDef = result['posts']
+		expect(postsDef).toBeDefined()
+
+		// The callback-form schema is recognized, so fields are filtered to schema-only.
+		const cover = postsDef!.fields.find((f: FieldDefinition) => f.name === 'cover')
+		expect(cover).toBeDefined()
+		expect(cover!.type).toBe('image')
+
+		const caption = postsDef!.fields.find((f: FieldDefinition) => f.name === 'caption')
+		expect(caption).toBeDefined()
+		expect(caption!.required).toBe(false)
+	})
+})
