@@ -23,13 +23,10 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 		hooks: {
 			'astro:config:setup': ({ config, updateConfig, command, injectScript, logger }) => {
 				const integrations: AstroIntegration[] = []
-				const vitePlugins = []
 
-				// Add Tailwind CSS Vite plugin
-				if (resolved.tailwindcss) {
-					vitePlugins.push(...tailwindcss())
-					logger.info('Tailwind CSS enabled')
-				}
+				// Tailwind is required — the CMS color/text-style system
+				// expects the host site to compile Tailwind utility classes.
+				const vitePlugins = [...tailwindcss()]
 
 				// Add nuasite integrations
 				if (resolved.cms !== false) {

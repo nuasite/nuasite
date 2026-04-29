@@ -19,8 +19,6 @@ export interface NuaIntegrationOptions {
 	mdx?: boolean | MdxOptions
 	/** Enable/disable or configure @astrojs/sitemap (default: true) */
 	sitemap?: boolean | SitemapOptions
-	/** Enable/disable @tailwindcss/vite plugin (default: true) */
-	tailwindcss?: boolean
 	/** Enable/disable or configure @nuasite/checks (default: true) */
 	checks?: boolean | ChecksOptions
 }
@@ -30,7 +28,6 @@ export interface ResolvedIntegrationOptions {
 	pageMarkdown: PageMarkdownOptions | false
 	mdx: MdxOptions | false
 	sitemap: SitemapOptions | false
-	tailwindcss: boolean
 	checks: ChecksOptions | false
 }
 
@@ -49,7 +46,6 @@ export function resolveOptions(options: NuaIntegrationOptions = {}): ResolvedInt
 		pageMarkdown: resolveOption(options.pageMarkdown),
 		mdx: resolveOption(options.mdx),
 		sitemap: resolveOption(options.sitemap),
-		tailwindcss: options.tailwindcss !== false,
 		checks: resolveOption(options.checks),
 	}
 }

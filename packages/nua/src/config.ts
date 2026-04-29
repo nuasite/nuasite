@@ -36,7 +36,6 @@ export interface NuaConfig extends AstroUserConfig {
  *   site: 'https://example.com',
  *   nua: {
  *     sitemap: false,
- *     tailwindcss: true,
  *   },
  * })
  * ```

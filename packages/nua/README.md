@@ -56,7 +56,6 @@ import { defineConfig } from '@nuasite/nua/config'
 export default defineConfig({
 	site: 'https://example.com',
 	nua: {
-		tailwindcss: true, // Enable/disable Tailwind CSS (default: true)
 		mdx: true, // Enable/disable MDX support (default: true)
 		sitemap: true, // Enable/disable sitemap generation (default: true)
 		cmsMarker: true, // Enable/disable CMS markers (default: true)
