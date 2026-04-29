@@ -23,6 +23,7 @@ import {
 	findTemplateElementUsingStringLiteral,
 	findTranslationByKeyAndText,
 	initializeSearchIndex,
+	isTranslationFilePath,
 } from './search-index'
 import type { CachedParsedFile, ImageMatch, SourceLocation } from './types'
 
@@ -502,9 +503,9 @@ async function applyTranslationSource(
 	let resolvedAttributes = attributes
 	let resolvedColorClasses = colorClasses
 
-	// When the hit comes from a JSON dictionary, look up the template element
+	// When the hit comes from an i18n dictionary, look up the template element
 	// that references the translation key so attr/class edits can target it.
-	const needsTemplateLookup = indexHit.file.endsWith('.json')
+	const needsTemplateLookup = isTranslationFilePath(indexHit.file)
 		&& ((attributes && !hasAnySourcePath(attributes)) || (colorClasses && !hasAnySourcePath(colorClasses)))
 
 	if (needsTemplateLookup && entry.tag) {
@@ -849,14 +850,28 @@ export async function enhanceManifestWithSourceSnippets(
 		}
 
 		// Missing source info — try the text search index as a last resort.
-		// Templates that render text through helpers (e.g. `{t(locale, 'key')}`)
-		// don't get resolved to the originating i18n JSON in the marking phase,
-		// so the entry arrives here without a sourcePath/sourceLine.
-		if (!entry.sourceSnippet && entry.text?.trim() && entry.tag && (!entry.sourcePath || !entry.sourceLine)) {
-			const indexHit = findInTextIndex(entry.text.trim(), entry.tag)
+		// Two cases reach here without a sourcePath/sourceLine:
+		// (1) text rendered through a translation helper (e.g. `{t(locale, 'key')}`),
+		//     which the marking phase can't trace to the originating i18n JSON;
+		// (2) static template text under runtimes that don't inject
+		//     `data-astro-source-*` attributes. Only (1) needs the translation
+		//     treatment (text edits target the JSON, styling disabled); (2) just
+		//     needs source coordinates so standard snippet extraction below picks
+		//     up the full element.
+		const trimmedEntryText = entry.text?.trim()
+		if (!entry.sourceSnippet && trimmedEntryText && entry.tag && (!entry.sourcePath || !entry.sourceLine)) {
+			const indexHit = findInTextIndex(trimmedEntryText, entry.tag)
 			if (indexHit) {
-				const resolved = await applyTranslationSource(entry, indexHit, entry.attributes, entry.colorClasses)
-				return [id, resolved] as const
+				if (isTranslationFilePath(indexHit.file)) {
+					const resolved = await applyTranslationSource(entry, indexHit, entry.attributes, entry.colorClasses)
+					return [id, resolved] as const
+				}
+				entry = {
+					...entry,
+					sourcePath: indexHit.file,
+					sourceLine: indexHit.line,
+					...(indexHit.variableName ? { variableName: indexHit.variableName } : {}),
+				}
 			}
 		}
 

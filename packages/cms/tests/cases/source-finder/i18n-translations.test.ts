@@ -167,6 +167,47 @@ withTempDir('findSourceLocation - i18n JSON dictionaries', (getCtx) => {
 		expect(enhanced['cms-24']?.sourceSnippet).toContain('Co se děje v EduArt?')
 	})
 
+	test('static template hit (no sourcePath) keeps styling enabled and captures full element snippet', async () => {
+		// Regression: under runtimes that don't inject `data-astro-source-*`
+		// attributes (e.g. pletivo dev), entries arrive without sourcePath.
+		// The text-index fallback used to call applyTranslationSource for any
+		// hit, which set allowStyling=false even for plain static .astro
+		// matches — blocking the inline link/format toolbar.
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		await ctx.writeFile(
+			'src/pages/help.astro',
+			[
+				'---',
+				'---',
+				'<article>',
+				'  <blockquote>',
+				'    <p>Sometimes you need help finding the right path to take.</p>',
+				'  </blockquote>',
+				'</article>',
+				'',
+			].join('\n'),
+		)
+
+		const entries: Record<string, ManifestEntry> = {
+			'cms-29': {
+				id: 'cms-29',
+				tag: 'p',
+				text: 'Sometimes you need help finding the right path to take.',
+				stableId: 'static-p',
+			},
+		}
+
+		const enhanced = await enhanceManifestWithSourceSnippets(entries)
+
+		expect(enhanced['cms-29']?.sourcePath).toBe('src/pages/help.astro')
+		expect(enhanced['cms-29']?.sourceLine).toBe(5)
+		expect(enhanced['cms-29']?.sourceSnippet).toContain('<p>')
+		expect(enhanced['cms-29']?.sourceSnippet).toContain('</p>')
+		expect(enhanced['cms-29']?.allowStyling).toBeUndefined()
+	})
+
 	test('enhances a manifest entry whose sourcePath points at the template', async () => {
 		const ctx = getCtx()
 		await setupAstroProjectStructure(ctx)
