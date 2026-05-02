@@ -131,15 +131,9 @@ export function transformConfig(content: string, managedImports: Map<string, str
 }
 
 function resolveNuaVersion(): string {
-	try {
-		const cliPkgPath = new URL('../../package.json', import.meta.url)
-		const cliPkg = JSON.parse(readFileSync(cliPkgPath, 'utf-8'))
-		const version: string = cliPkg.version
-		const [major, minor] = version.split('.')
-		return `^${major}.${minor}.0`
-	} catch {
-		return '^0.17.0'
-	}
+	const cliPkgPath = new URL('../package.json', import.meta.url)
+	const cliPkg = JSON.parse(readFileSync(cliPkgPath, 'utf-8'))
+	return `^${cliPkg.version}`
 }
 
 export function transformPackageJson(pkg: Record<string, any>, nuaVersion: string): Record<string, any> {
