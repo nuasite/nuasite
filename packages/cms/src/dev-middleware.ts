@@ -57,6 +57,12 @@ export const expectedDeletions = new Set<string>()
 export interface DevMiddlewareOptions {
 	enableCmsApi?: boolean
 	mediaAdapter?: MediaStorageAdapter
+	/**
+	 * Predicate that returns true for request URLs which should bypass CMS rewriting
+	 * (typically vendor HTML under Astro's publicDir whose inline scripts can be
+	 * corrupted by injected markers).
+	 */
+	isPublicStaticFile?: (urlPath: string) => boolean
 }
 
 export function createDevMiddleware(
@@ -67,6 +73,8 @@ export function createDevMiddleware(
 	idCounter: { value: number },
 	options: DevMiddlewareOptions = {},
 ) {
+	const isPublicStaticFile = options.isPublicStaticFile ?? (() => false)
+
 	// Serve uploaded media files directly from disk.
 	// Vite's public dir middleware caches file listings, so newly uploaded files
 	// may not be available immediately. This middleware bypasses that cache.
@@ -244,9 +252,17 @@ export function createDevMiddleware(
 
 	// Transform HTML responses — only buffer when Content-Type is text/html
 	server.middlewares.use((req, res, next) => {
+		const requestUrl = req.url || 'unknown'
+
+		// Vendor HTML under publicDir is passed through untouched — the CMS rewriter
+		// can corrupt files with inline-script patterns it doesn't expect.
+		if (isPublicStaticFile(requestUrl)) {
+			next()
+			return
+		}
+
 		const originalWrite = res.write
 		const originalEnd = res.end
-		const requestUrl = req.url || 'unknown'
 		let chunks: Buffer[] | null = null
 		let isHtml: boolean | null = null
 

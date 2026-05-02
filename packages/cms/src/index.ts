@@ -15,6 +15,7 @@ import { createLocalStorageAdapter } from './media/local'
 import type { MediaStorageAdapter } from './media/types'
 import { rehypeCmsMarker } from './rehype-cms-marker'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
+import { createPublicStaticFileChecker } from './utils'
 import { createVitePlugin } from './vite-plugin'
 
 export interface NuaCmsOptions extends CmsMarkerOptions {
@@ -100,6 +101,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		: cmsConfig
 
 	let componentDefinitions: Record<string, ComponentDefinition> = {}
+	let isPublicStaticFile: ((urlPath: string) => boolean) | undefined
 
 	const idCounter = { value: 0 }
 	const manifestWriter = new ManifestWriter(manifestFile, componentDefinitions)
@@ -306,6 +308,10 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				})
 			},
 
+			'astro:config:done': ({ config }) => {
+				isPublicStaticFile = createPublicStaticFileChecker(fileURLToPath(config.publicDir))
+			},
+
 			'astro:server:setup': ({ server, logger }) => {
 				createDevMiddleware(
 					server,
@@ -313,7 +319,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					manifestWriter,
 					componentDefinitions,
 					idCounter,
-					{ enableCmsApi, mediaAdapter },
+					{ enableCmsApi, mediaAdapter, isPublicStaticFile },
 				)
 				logger.info('CMS dev middleware initialized')
 				if (enableCmsApi) {
@@ -418,3 +424,4 @@ export type {
 	TextStyleValue,
 	TwitterCardData,
 } from './types'
+export { createPublicStaticFileChecker } from './utils'

@@ -1,4 +1,6 @@
+import { createPublicStaticFileChecker } from '@nuasite/cms'
 import type { AstroConfig } from 'astro'
+import { fileURLToPath } from 'node:url'
 import type { ViteDevServer } from 'vite'
 import { getCollectionContent } from './cms-marker'
 import { htmlToMarkdown } from './html-to-markdown'
@@ -119,6 +121,9 @@ function getBaseUrl(config: AstroConfig): string {
  */
 export function createDevMiddleware(server: ViteDevServer, options: ResolvedOptions, config: AstroConfig) {
 	const baseUrl = getBaseUrl(config)
+	const isPublicStaticFile = createPublicStaticFileChecker(
+		config.publicDir ? fileURLToPath(config.publicDir) : undefined,
+	)
 
 	// Serve /llms.txt endpoint (only if site is configured)
 	const llmsTxtOptions = options.llmsTxt
@@ -206,6 +211,12 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 		const url = req.url || ''
 
 		if (url.endsWith('.md') || ASSET_PATTERN.test(url)) {
+			return next()
+		}
+
+		// Skip vendor HTML served from publicDir — it has no .md counterpart, and
+		// rewriting the body without updating content-length truncates the response.
+		if (isPublicStaticFile(url)) {
 			return next()
 		}
 
