@@ -230,7 +230,11 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 			if (isHtml && chunks.length > 0) {
 				const html = Buffer.concat(chunks).toString('utf8')
 				const pagePath = normalizePath(url)
-				return res.end(injectMarkdownLink(html, pagePath), ...(args as []))
+				const transformed = injectMarkdownLink(html, pagePath)
+				if (!res.headersSent) {
+					res.removeHeader('content-length')
+				}
+				return res.end(transformed, ...(args as []))
 			}
 
 			return chunks.length > 0
