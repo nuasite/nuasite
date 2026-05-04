@@ -51,6 +51,43 @@ export function getOutlineColor(): string {
 	return isPageDark() ? '#FFFFFF' : '#1A1A1A'
 }
 
+/**
+ * Check if an element is actually visible to the user. Catches `display:none`,
+ * `visibility:hidden|collapse`, `opacity:0`, and `content-visibility` on the
+ * element or any ancestor — `getBoundingClientRect` alone reports a non-zero
+ * box for `opacity:0`/`visibility:hidden`, so highlight overlays would otherwise
+ * draw over hidden mobile menus and modal panels.
+ */
+export function isElementVisible(el: Element): boolean {
+	const anyEl = el as Element & {
+		checkVisibility?: (opts?: {
+			checkOpacity?: boolean
+			checkVisibilityCSS?: boolean
+			contentVisibilityAuto?: boolean
+			opacityProperty?: boolean
+			visibilityProperty?: boolean
+		}) => boolean
+	}
+	if (typeof anyEl.checkVisibility === 'function') {
+		return anyEl.checkVisibility({
+			checkOpacity: true,
+			checkVisibilityCSS: true,
+			contentVisibilityAuto: true,
+			opacityProperty: true,
+			visibilityProperty: true,
+		})
+	}
+	let cur: Element | null = el
+	while (cur && cur !== document.documentElement) {
+		const cs = getComputedStyle(cur)
+		if (cs.display === 'none') return false
+		if (cs.visibility === 'hidden' || cs.visibility === 'collapse') return false
+		if (parseFloat(cs.opacity) === 0) return false
+		cur = cur.parentElement
+	}
+	return true
+}
+
 /** Style element for contenteditable focus styles injected into the host page */
 let focusStyleElement: HTMLStyleElement | null = null
 

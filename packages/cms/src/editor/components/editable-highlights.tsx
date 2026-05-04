@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
-import { getOutlineColor } from '../dom'
+import { getOutlineColor, isElementVisible } from '../dom'
 import * as signals from '../signals'
 
 export interface EditableHighlightsProps {
@@ -164,72 +164,34 @@ function collectEditableElements(): HighlightRect[] {
 	const highlights: HighlightRect[] = []
 	const manifest = signals.manifest.value
 
-	// Query all elements with CMS data attributes
-	const textElements = document.querySelectorAll('[data-cms-id]')
-	const componentElements = document.querySelectorAll('[data-cms-component-id]')
-	const imageElements = document.querySelectorAll('img[data-cms-img]')
-	const bgImageElements = document.querySelectorAll('[data-cms-bg-img]')
-
-	// Process text elements
-	textElements.forEach((el) => {
-		const cmsId = el.getAttribute('data-cms-id')
+	const tryPush = (el: Element, cmsId: string | null, type: HighlightRect['type']) => {
 		if (!cmsId) return
+		// Cheap rect gate first — skips most off-screen / collapsed elements without
+		// touching computed style. Only survivors pay the visibility check cost.
+		const rect = el.getBoundingClientRect()
+		if (rect.width < 10 || rect.height < 10) return
+		if (rect.bottom < 0 || rect.top > window.innerHeight) return
+		if (rect.right < 0 || rect.left > window.innerWidth) return
+		if (!isElementVisible(el)) return
+		highlights.push({ cmsId, type, rect })
+	}
 
-		// Skip if this is also a component or image
+	document.querySelectorAll('[data-cms-id]').forEach((el) => {
+		// Routed to the component/image branches below.
 		if (el.hasAttribute('data-cms-component-id') || el.tagName === 'IMG') return
-
-		// Skip if not in manifest (invalid element)
-		if (!manifest.entries[cmsId]) return
-
-		const rect = el.getBoundingClientRect()
-		// Skip elements not in viewport or too small
-		if (rect.width < 10 || rect.height < 10) return
-		if (rect.bottom < 0 || rect.top > window.innerHeight) return
-		if (rect.right < 0 || rect.left > window.innerWidth) return
-
-		highlights.push({ cmsId, type: 'text', rect })
-	})
-
-	// Process component elements
-	componentElements.forEach((el) => {
-		const componentId = el.getAttribute('data-cms-component-id')
-		if (!componentId) return
-
-		// Skip if not in manifest
-		if (!manifest.components[componentId]) return
-
-		const rect = el.getBoundingClientRect()
-		if (rect.width < 10 || rect.height < 10) return
-		if (rect.bottom < 0 || rect.top > window.innerHeight) return
-		if (rect.right < 0 || rect.left > window.innerWidth) return
-
-		highlights.push({ cmsId: componentId, type: 'component', rect })
-	})
-
-	// Process image elements
-	imageElements.forEach((el) => {
-		const cmsId = el.getAttribute('data-cms-img')
-		if (!cmsId) return
-
-		const rect = el.getBoundingClientRect()
-		if (rect.width < 10 || rect.height < 10) return
-		if (rect.bottom < 0 || rect.top > window.innerHeight) return
-		if (rect.right < 0 || rect.left > window.innerWidth) return
-
-		highlights.push({ cmsId, type: 'image', rect })
-	})
-
-	// Process background image elements
-	bgImageElements.forEach((el) => {
 		const cmsId = el.getAttribute('data-cms-id')
-		if (!cmsId) return
+		if (cmsId && !manifest.entries[cmsId]) return
+		tryPush(el, cmsId, el.hasAttribute('data-cms-bg-img') ? 'image' : 'text')
+	})
 
-		const rect = el.getBoundingClientRect()
-		if (rect.width < 10 || rect.height < 10) return
-		if (rect.bottom < 0 || rect.top > window.innerHeight) return
-		if (rect.right < 0 || rect.left > window.innerWidth) return
+	document.querySelectorAll('[data-cms-component-id]').forEach((el) => {
+		const componentId = el.getAttribute('data-cms-component-id')
+		if (componentId && !manifest.components[componentId]) return
+		tryPush(el, componentId, 'component')
+	})
 
-		highlights.push({ cmsId, type: 'image', rect })
+	document.querySelectorAll('img[data-cms-img]').forEach((el) => {
+		tryPush(el, el.getAttribute('data-cms-img'), 'image')
 	})
 
 	return highlights
