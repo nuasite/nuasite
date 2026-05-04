@@ -100,6 +100,45 @@ export function notifyLockedElement(): void {
 	signals.showToast("This text can't be edited here — no source file is linked to it", 'info')
 }
 
+/**
+ * Manifest is built in two phases (fast HTML marking, then background source
+ * resolution). Entering edit mode before phase 2 completes can pre-lock elements
+ * that later gain a valid sourcePath, leaving stale locks on the DOM.
+ *
+ * On click, re-check the local snapshot, then re-fetch from the server in case
+ * phase 2 finished since the editor took its snapshot. Toggle edit mode once
+ * afterwards to make the now-unlocked element editable.
+ */
+let inFlightLockedFetch: Promise<unknown> | null = null
+function handleLockedClick(event: Event): void {
+	const target = event.currentTarget as HTMLElement | null
+	const id = target?.getAttribute(CSS.ID_ATTRIBUTE)
+	if (!target || !id) {
+		notifyLockedElement()
+		return
+	}
+
+	if (signals.manifest.value.entries[id]?.sourcePath) {
+		target.removeAttribute(CSS.LOCKED_ATTRIBUTE)
+		return
+	}
+
+	// In-memory signal can lag phase-2 writes. Coalesce concurrent clicks into
+	// one fetch so the dev server doesn't get hammered.
+	if (!inFlightLockedFetch) {
+		inFlightLockedFetch = fetchManifest()
+			.then((fresh) => signals.setManifest(fresh))
+			.catch(() => {})
+			.finally(() => { inFlightLockedFetch = null })
+	}
+	inFlightLockedFetch.then(() => {
+		if (signals.manifest.value.entries[id]?.sourcePath) {
+			target.removeAttribute(CSS.LOCKED_ATTRIBUTE)
+		}
+	})
+	notifyLockedElement()
+}
+
 /** Test-only: reset toast throttle state between test cases. */
 export function _resetToastThrottles(): void {
 	lastFormattingBlockedToastAt = 0
@@ -246,7 +285,7 @@ export async function startEditMode(
 			logDebug(config.debug, 'Skipping element without source path:', cmsId)
 			makeElementNonEditable(el)
 			el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
-			el.addEventListener('click', notifyLockedElement, { signal: editModeSignal })
+			el.addEventListener('click', handleLockedClick, { signal: editModeSignal })
 			return
 		}
 
