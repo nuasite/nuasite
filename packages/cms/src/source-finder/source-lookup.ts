@@ -24,10 +24,13 @@ export async function findSourceLocation(
 ): Promise<SourceLocation | undefined> {
 	// Use index if available (much faster)
 	if (isSearchIndexInitialized()) {
-		return findInTextIndex(textContent, tag)
+		const indexHit = findInTextIndex(textContent, tag)
+		if (indexHit) return indexHit
+		// Fall through to slow search on miss — covers cases the per-file
+		// indexer can't pre-emit, like a child component's `.map()` over a
+		// prop array whose source values live in the parent file.
 	}
 
-	// Fallback to slow search if index not initialized
 	const srcDir = path.join(getProjectRoot(), 'src')
 
 	try {

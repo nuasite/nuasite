@@ -372,11 +372,48 @@ function extractOpeningTagWithLine(
 }
 
 /**
+ * Extract a plain string from a JS expression source when it is a single string
+ * literal — `'foo'`, `"foo"`, or a substitution-free template literal `` `foo` ``.
+ * Returns null for anything else (variables, calls, concatenation, templates with `${}`).
+ *
+ * Used to index component props authored as `prop={\`literal text\`}` — the
+ * Astro compiler exposes the raw expression source, not the resolved value.
+ */
+function extractSimpleStringLiteral(exprText: string): string | null {
+	const trimmed = exprText.trim()
+	if (trimmed.length < 2) return null
+	const quote = trimmed[0]
+	if (quote !== "'" && quote !== '"' && quote !== '`') return null
+	if (trimmed[trimmed.length - 1] !== quote) return null
+	const inner = trimmed.slice(1, -1)
+	// Reject template literals containing `${...}` substitutions — only literal templates qualify.
+	if (quote === '`') {
+		// `\\` → escaped backslash (still literal), `\$` → escaped dollar (still literal),
+		// any other `$` followed by `{` means an expression substitution.
+		const stripped = inner.replace(/\\[\\$`]/g, '')
+		if (/\$\{/.test(stripped)) return null
+	} else if (/[\r\n]/.test(inner)) {
+		// Multi-line plain string isn't valid JS; bail.
+		return null
+	}
+	// Decode common escapes: \\ \' \" \` \n \r \t plus generic `\X`.
+	return inner.replace(/\\(.)/g, (_, ch) => {
+		if (ch === 'n') return '\n'
+		if (ch === 'r') return '\r'
+		if (ch === 't') return '\t'
+		return ch
+	})
+}
+
+/**
  * Index all searchable text content from a parsed file
  */
 export function indexFileContent(cached: CachedParsedFile, relFile: string): void {
 	// Walk AST and collect all text elements
-	function visit(node: AstroNode) {
+	function visit(node: AstroNode, parentExpression: AstroNode | null) {
+		// Track the nearest ancestor expression node (contains .map() context)
+		const currentExpr = node.type === 'expression' ? node : parentExpression
+
 		if ((node.type === 'element' || node.type === 'component')) {
 			const elemNode = node as ElementNode | ComponentNode
 			const tag = elemNode.name.toLowerCase()
@@ -384,38 +421,41 @@ export function indexFileContent(cached: CachedParsedFile, relFile: string): voi
 			const normalizedText = normalizeText(textContent)
 			const line = elemNode.position?.start.line ?? 0
 
-			if (normalizedText && normalizedText.length >= 2) {
-				// Check for variable references
-				const exprInfo = hasExpressionChild(elemNode)
-				if (exprInfo.found && exprInfo.varNames.length > 0) {
-					for (const exprPath of exprInfo.varNames) {
-						for (const def of cached.variableDefinitions) {
-							// Build the full definition path for comparison
-							// For array indices (numeric names), use bracket notation
-							const defPath = buildDefinitionPath(def)
-							// Check if the expression path matches the definition path
-							// e.g., 'config.nav.title' matches def with parentName='config.nav', name='title'
-							// or 'items[0]' matches def with parentName='items', name='0'
-							if (defPath === exprPath) {
-								const normalizedDef = normalizeText(def.value)
-								const completeSnippet = extractCompleteTagSnippet(cached.lines, line - 1, tag)
-								const snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
+			// Variable references are indexed by their *resolved* value, so we don't
+			// gate on the rendered expression text length — `<li>{t}</li>` has
+			// textContent "t" (length 1) but resolves to real strings via .map().
+			const exprInfo = hasExpressionChild(elemNode)
+			if (exprInfo.found && exprInfo.varNames.length > 0) {
+				for (const exprPath of exprInfo.varNames) {
+					let directMatch = false
+					for (const def of cached.variableDefinitions) {
+						const defPath = buildDefinitionPath(def)
+						if (defPath === exprPath) {
+							directMatch = true
+							const normalizedDef = normalizeText(def.value)
 
-								addToTextSearchIndex({
-									file: relFile,
-									line: def.line,
-									snippet: cached.lines[def.line - 1] || '',
-									type: 'variable',
-									variableName: defPath,
-									definitionLine: def.line,
-									normalizedText: normalizedDef,
-									tag,
-								})
-							}
+							addToTextSearchIndex({
+								file: relFile,
+								line: def.line,
+								snippet: cached.lines[def.line - 1] || '',
+								type: 'variable',
+								variableName: defPath,
+								definitionLine: def.line,
+								normalizedText: normalizedDef,
+								tag,
+							})
 						}
 					}
-				}
 
+					// `.map()`-driven {item.label} — trace the loop param through to the
+					// data source array and index every concrete element.
+					if (!directMatch && currentExpr) {
+						indexExpressionTextRef(exprPath, currentExpr, cached, relFile, tag)
+					}
+				}
+			}
+
+			if (normalizedText && normalizedText.length >= 2) {
 				// Index static text content
 				const completeSnippet = extractCompleteTagSnippet(cached.lines, line - 1, tag)
 				const snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
@@ -435,81 +475,191 @@ export function indexFileContent(cached: CachedParsedFile, relFile: string): voi
 			// Also index component props
 			if (node.type === 'component') {
 				for (const attr of elemNode.attributes) {
-					if (attr.type === 'attribute' && attr.kind === 'quoted' && attr.value) {
-						const normalizedValue = normalizeText(attr.value)
-						if (normalizedValue && normalizedValue.length >= 2) {
-							addToTextSearchIndex({
-								file: relFile,
-								line: attr.position?.start.line ?? line,
-								snippet: cached.lines[(attr.position?.start.line ?? line) - 1] || '',
-								type: 'prop',
-								variableName: attr.name,
-								normalizedText: normalizedValue,
-								tag,
-							})
-						}
+					if (attr.type !== 'attribute' || !attr.value) continue
+
+					let propValue: string | null = null
+					if (attr.kind === 'quoted') {
+						propValue = attr.value
+					} else if (attr.kind === 'expression') {
+						// Common author pattern: pass a string-literal prop with backticks
+						// (e.g. `heading={\`Tři bytové domy...\`}`) so smart quotes can sit
+						// inside without escaping. Render-time the value is plain text — to
+						// the dev-middleware fallback, the rendered element looks like static
+						// content. Index the literal so source lookup can find the call site.
+						propValue = extractSimpleStringLiteral(attr.value)
 					}
+					if (!propValue) continue
+
+					const normalizedValue = normalizeText(propValue)
+					if (!normalizedValue || normalizedValue.length < 2) continue
+
+					addToTextSearchIndex({
+						file: relFile,
+						line: attr.position?.start.line ?? line,
+						snippet: cached.lines[(attr.position?.start.line ?? line) - 1] || '',
+						type: 'prop',
+						variableName: attr.name,
+						normalizedText: normalizedValue,
+						tag,
+					})
 				}
 			}
 		}
 
 		if ('children' in node && Array.isArray(node.children)) {
 			for (const child of node.children) {
-				visit(child)
+				visit(child, currentExpr)
 			}
 		}
 	}
 
-	visit(cached.ast)
+	visit(cached.ast, null)
 }
 
 /**
- * Resolve a .map() callback parameter back to the source array path.
+ * Index text from an expression-based `{loopVar.prop}` (or `{loopVar}`) by tracing
+ * the loop variable through enclosing `.map()` calls back to the data source array,
+ * then adding every concrete array element's matching property to the text index.
  *
- * Given expression text like:
- *   "categories.map((cat) => (\n  cat.images.map((img, i) => (\n    "
- * and a parameter name like "img", returns "categories[*].images" — the
- * array path that the parameter iterates over.
- *
- * Supports chained .map() calls (nested loops).
+ * Without this, `<a>{item.label}</a>` inside `links.map((item) => ...)` would
+ * never match definitions like `links[0].label` because `item` isn't a variable
+ * definition — it's a `.map()` callback parameter.
  */
-export function resolveMapChain(exprTexts: string[], paramName: string): string | null {
-	const fullText = exprTexts.join('')
+function indexExpressionTextRef(
+	exprPath: string,
+	parentExpression: AstroNode,
+	cached: CachedParsedFile,
+	relFile: string,
+	tag: string,
+): void {
+	const baseMatch = exprPath.match(/^(\w+)(.*)$/)
+	if (!baseMatch) return
+	const baseVar = baseMatch[1]!
+	const suffix = baseMatch[2] ?? ''
 
-	// Find all .map() calls: <arrayExpr>.map((<param>, ...) =>
-	// Capture: [1] = array expression, [2] = first callback parameter
-	const mapPattern = /([\w.[\]]+)\.map\(\s*\(\s*(\w+)/g
-	const maps: Array<{ arrayExpr: string; param: string }> = []
-	let match: RegExpExecArray | null
-	while ((match = mapPattern.exec(fullText)) !== null) {
-		maps.push({ arrayExpr: match[1]!, param: match[2]! })
-	}
-
-	if (maps.length === 0) return null
-
-	// Find which .map() provides our paramName
-	const directMap = maps.find(m => m.param === paramName)
-	if (!directMap) return null
-
-	// Resolve the array expression by substituting outer .map() params
-	// e.g., "cat.images" where "cat" comes from "categories.map((cat) => ...)"
-	let arrayPath = directMap.arrayExpr
-	for (const outerMap of maps) {
-		if (outerMap === directMap) continue
-		// If arrayPath starts with an outer param name, substitute it
-		// e.g., "cat.images" and cat comes from "categories" → "categories[*].images"
-		if (arrayPath === outerMap.param || arrayPath.startsWith(outerMap.param + '.')) {
-			const suffix = arrayPath.slice(outerMap.param.length) // ".images" or ""
-			const resolvedOuter = resolveMapChain(exprTexts, outerMap.param)
-			if (resolvedOuter) {
-				arrayPath = resolvedOuter + '[*]' + suffix
-			} else {
-				arrayPath = outerMap.arrayExpr + '[*]' + suffix
+	const exprTexts: string[] = []
+	if ('children' in parentExpression && Array.isArray(parentExpression.children)) {
+		for (const child of parentExpression.children) {
+			if (child.type === 'text' && (child as TextNode).value) {
+				exprTexts.push((child as TextNode).value)
 			}
 		}
 	}
+	if (exprTexts.length === 0) return
 
-	return arrayPath
+	const resolved = resolveMapChain(exprTexts, baseVar)
+	if (!resolved) return
+
+	// Only one of leafSuffix and suffix is non-empty in well-formed code:
+	// destructured `{label}` resolves to leafSuffix=".label"; simple-param
+	// `{item.label}` resolves to leafSuffix="" with suffix=".label".
+	const leafRegex = makeLeafPathRegex({
+		arrayPath: resolved.arrayPath,
+		leafSuffix: resolved.leafSuffix + suffix,
+	})
+
+	for (const def of cached.variableDefinitions) {
+		const defPath = buildDefinitionPath(def)
+		if (!leafRegex.test(defPath)) continue
+		const normalizedDef = normalizeText(def.value)
+		if (normalizedDef.length < 2) continue
+		addToTextSearchIndex({
+			file: relFile,
+			line: def.line,
+			snippet: cached.lines[def.line - 1] || '',
+			type: 'variable',
+			variableName: defPath,
+			definitionLine: def.line,
+			normalizedText: normalizedDef,
+			tag,
+		})
+	}
+}
+
+export interface ResolvedMapChain {
+	/** Source array path with [*] wildcards for nested chains, e.g. "links" or "categories[*].images" */
+	arrayPath: string
+	/** Leaf suffix appended to a concrete element. Empty for simple params, ".<propName>" for destructured. */
+	leafSuffix: string
+}
+
+/**
+ * Parsed `.map()` invocation found in expression text.
+ * Either has a simple parameter name OR a list of destructured property names.
+ */
+interface MapInvocation {
+	arrayExpr: string
+	/** Simple callback parameter, e.g. `(item)` → `"item"`. Null when the callback destructures. */
+	param: string | null
+	/** Destructured property names from `({ a, b: bAlias = 'x' })`. Captures the local binding name. */
+	destructured: string[]
+}
+
+/**
+ * Parse all `.map(...)` invocations from joined expression text. Captures both simple
+ * params (`(item)`) and destructured object params (`({ label, href })`).
+ */
+function parseMapInvocations(fullText: string): MapInvocation[] {
+	const mapPattern = /([\w.[\]]+)\.map\(\s*(?:\(\s*(\w+)|\(\s*\{([^}]+)\})/g
+	const maps: MapInvocation[] = []
+	let match: RegExpExecArray | null
+	while ((match = mapPattern.exec(fullText)) !== null) {
+		const arrayExpr = match[1]!
+		const simple = match[2] ?? null
+		const destructured: string[] = match[3]
+			? match[3].split(',').map((entry) => {
+				// Capture the *local binding* — alias for `prop: alias`, otherwise prop itself.
+				const trimmed = entry.trim()
+				if (!trimmed) return ''
+				const renameMatch = trimmed.match(/^(\w+)\s*:\s*(\w+)/)
+				if (renameMatch) return renameMatch[2]!
+				const nameMatch = trimmed.match(/^(\w+)/)
+				return nameMatch?.[1] ?? ''
+			}).filter(Boolean)
+			: []
+		maps.push({ arrayExpr, param: simple, destructured })
+	}
+	return maps
+}
+
+/**
+ * Resolve a `.map()` callback parameter back to the source array path.
+ *
+ * Examples:
+ *   `images.map((img) => …)` looking for `img`
+ *     → `{ arrayPath: "images", leafSuffix: "" }`
+ *   `categories.map((cat) => cat.images.map((img) => …))` looking for `img`
+ *     → `{ arrayPath: "categories[*].images", leafSuffix: "" }`
+ *   `links.map(({ label, href }) => …)` looking for `label`
+ *     → `{ arrayPath: "links", leafSuffix: ".label" }`
+ *
+ * Returns null when the name doesn't appear as a parameter or destructured binding.
+ */
+export function resolveMapChain(exprTexts: string[], paramName: string): ResolvedMapChain | null {
+	const maps = parseMapInvocations(exprTexts.join(''))
+	if (maps.length === 0) return null
+
+	// Prefer simple-param match (most common); fall back to destructured.
+	const directMap = maps.find((m) => m.param === paramName)
+		?? maps.find((m) => m.destructured.includes(paramName))
+	if (!directMap) return null
+
+	const isDestructured = directMap.param !== paramName
+	const leafSuffix = isDestructured ? `.${paramName}` : ''
+
+	// Resolve the array expression by substituting outer .map() params (chained / nested loops).
+	let arrayPath = directMap.arrayExpr
+	for (const outerMap of maps) {
+		if (outerMap === directMap) continue
+		if (!outerMap.param) continue // Outer destructure can't appear as the head of `arrayExpr`.
+		if (arrayPath === outerMap.param || arrayPath.startsWith(outerMap.param + '.')) {
+			const suffix = arrayPath.slice(outerMap.param.length)
+			const resolvedOuter = resolveMapChain(exprTexts, outerMap.param)
+			arrayPath = (resolvedOuter ? resolvedOuter.arrayPath : outerMap.arrayExpr) + '[*]' + suffix
+		}
+	}
+
+	return { arrayPath, leafSuffix }
 }
 
 /**
@@ -551,15 +701,18 @@ function indexExpressionImageSrc(
 	if (exprTexts.length === 0) return
 
 	// Resolve the .map() chain to find the source array path
-	const arrayPath = resolveMapChain(exprTexts, exprValue)
-	if (!arrayPath) return
+	const resolved = resolveMapChain(exprTexts, exprValue)
+	if (!resolved) return
+
+	const leafRegex = makeLeafPathRegex(resolved)
 
 	for (const def of cached.variableDefinitions) {
 		const defPath = buildDefinitionPath(def)
-		// Match definitions that are direct children of the array
-		// e.g., for "images" match "images[0]", "images[1]"
-		// e.g., for "categories[*].images" match "categories[0].images[0]", etc.
-		if (isChildOfArray(defPath, arrayPath)) {
+		// Match definitions that are leaves under the array
+		// e.g., simple: "images" matches "images[0]", "images[1]"
+		// e.g., destructured: arrayPath="links", leafSuffix=".src" matches "links[0].src"
+		// e.g., nested: "categories[*].images" matches "categories[0].images[0]", etc.
+		if (leafRegex.test(defPath)) {
 			const snippet = cached.lines[def.line - 1]?.trim() || ''
 			addToImageSearchIndex({
 				file: relFile,
@@ -572,27 +725,41 @@ function indexExpressionImageSrc(
 }
 
 /**
+ * Compile a wildcard array path into the inner regex body. `[*]` segments
+ * become `\[\d+\]`; everything else is escaped literal.
+ *
+ * Examples:
+ *   "links"               → /links/
+ *   "categories[*].images" → /categories\[\d+\]\.images/
+ */
+export function wildcardPathToRegexBody(arrayPath: string): string {
+	const segments = arrayPath.split('[*]')
+	let body = ''
+	for (let i = 0; i < segments.length; i++) {
+		body += escapeRegex(segments[i]!)
+		if (i < segments.length - 1) body += '\\[\\d+\\]'
+	}
+	return body
+}
+
+/**
+ * Build a regex that matches concrete leaf paths *one level under* a resolved
+ * .map() chain — appends `\[\d+\]` for the array element index, then the
+ * literal `leafSuffix` (e.g. `.label`).
+ */
+export function makeLeafPathRegex({ arrayPath, leafSuffix }: ResolvedMapChain): RegExp {
+	return new RegExp('^' + wildcardPathToRegexBody(arrayPath) + '\\[\\d+\\]' + escapeRegex(leafSuffix) + '$')
+}
+
+/**
  * Check if a definition path is a direct element of the given array path.
- * Converts the arrayPath pattern (with optional [*] wildcards) into a regex
- * that matches concrete indices.
  *
  * e.g., "images[0]" is a child of "images"
  * e.g., "categories[0].images[1]" is a child of "categories[*].images"
  * e.g., "categories[0].images[1].url" is NOT a child (too deep)
  */
 export function isChildOfArray(defPath: string, arrayPath: string): boolean {
-	// Split arrayPath on [*] to get segments, then build a regex
-	// "categories[*].images" → ["categories", ".images"] → /^categories\[\d+\]\.images\[\d+\]$/
-	const segments = arrayPath.split('[*]')
-	let regexStr = '^'
-	for (let i = 0; i < segments.length; i++) {
-		regexStr += escapeRegex(segments[i]!)
-		if (i < segments.length - 1) {
-			regexStr += '\\[\\d+\\]'
-		}
-	}
-	regexStr += '\\[\\d+\\]$'
-	return new RegExp(regexStr).test(defPath)
+	return makeLeafPathRegex({ arrayPath, leafSuffix: '' }).test(defPath)
 }
 
 /**
@@ -1072,6 +1239,46 @@ export function findTranslationByKeyAndText(key: string, normalizedText: string)
 		fallback ??= textEntryToLocation(entry)
 	}
 	return fallback
+}
+
+/**
+ * Look up a `variable`-type index hit for `textContent`+`tag` constrained to a
+ * specific source file. Used when an entry already has a sourcePath (set from
+ * Astro's `data-astro-source-file`) but we want to upgrade the sourceLine from
+ * the JSX template line to the actual variable definition line. Same-file
+ * constraint avoids cross-file false positives where the same string lives in
+ * an unrelated file.
+ *
+ * Astro stamps `data-astro-source-file` with an absolute filesystem path while
+ * the search index stores paths relative to the project root, so the caller's
+ * `file` is normalized to relative form before comparison.
+ */
+export function findVariableHitInFile(
+	textContent: string,
+	tag: string,
+	file: string,
+): SourceLocation | undefined {
+	const normalizedSearch = normalizeText(textContent)
+	const tagLower = tag.toLowerCase()
+	const fileRel = toProjectRelativePath(file)
+	const index = getTextSearchIndex()
+	for (const entry of index) {
+		if (entry.file !== fileRel) continue
+		if (entry.type !== 'variable') continue
+		if (entry.normalizedText !== normalizedSearch) continue
+		if (entry.tag !== tagLower) continue
+		return textEntryToLocation(entry)
+	}
+	return undefined
+}
+
+/**
+ * Convert a file path to project-relative form, accepting either absolute
+ * paths (as Astro stamps them) or already-relative paths (as the index uses).
+ */
+function toProjectRelativePath(file: string): string {
+	if (!path.isAbsolute(file)) return file
+	return path.relative(getProjectRoot(), file)
 }
 
 /**

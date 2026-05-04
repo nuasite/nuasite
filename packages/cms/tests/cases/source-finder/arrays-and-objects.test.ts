@@ -213,6 +213,255 @@ const numbers = ['One', 'Two', 'Three', 'Four', 'Five'];
 		expect(result?.type).toBe('variable')
 		expect(result?.variableName).toBe('numbers[3]')
 	})
+
+	test('should find text from .map() over array of objects', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Stats.astro',
+			`---
+const facts = [
+	{ label: 'Lokalita', value: 'Kolín' },
+	{ label: 'Bytové jednotky v prodeji', value: '76 bytů' },
+	{ label: 'Předpokládané dokončení', value: '2027' },
+]
+---
+<section>
+	{
+		facts.map((fact) => (
+			<div>
+				<span>{fact.label}</span>
+				<span>{fact.value}</span>
+			</div>
+		))
+	}
+</section>
+`,
+		)
+
+		const { initializeSearchIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		const labelResult = await findSourceLocation('Lokalita', 'span')
+		expect(labelResult).toBeDefined()
+		expect(labelResult?.file).toBe('src/components/Stats.astro')
+		expect(labelResult?.line).toBe(3)
+		expect(labelResult?.type).toBe('variable')
+		expect(labelResult?.variableName).toBe('facts[0].label')
+
+		const valueResult = await findSourceLocation('76 bytů', 'span')
+		expect(valueResult).toBeDefined()
+		expect(valueResult?.file).toBe('src/components/Stats.astro')
+		expect(valueResult?.line).toBe(4)
+		expect(valueResult?.variableName).toBe('facts[1].value')
+	})
+
+	test('should find text from .map() over flat string array', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Tags.astro',
+			`---
+const tags = ['Alpha', 'Beta', 'Gamma']
+---
+<ul>
+	{tags.map((t) => <li>{t}</li>)}
+</ul>
+`,
+		)
+
+		const { initializeSearchIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		const result = await findSourceLocation('Beta', 'li')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Tags.astro')
+		expect(result?.type).toBe('variable')
+		expect(result?.variableName).toBe('tags[1]')
+	})
+
+	test('should find text from expression-prop template literal passed to component', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/SectionHeading.astro',
+			`---
+const { heading } = Astro.props;
+const Tag = 'h2';
+---
+<Tag class="display-section" set:html={heading} />
+`,
+		)
+		await ctx.writeFile(
+			'src/components/Intro.astro',
+			`---
+import SectionHeading from './SectionHeading.astro';
+---
+<section>
+	<SectionHeading heading={\`Tři bytové domy jako další díl „skládačky".\`} />
+</section>
+`,
+		)
+
+		const { initializeSearchIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		const result = await findSourceLocation('Tři bytové domy jako další díl „skládačky".', 'h2')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Intro.astro')
+		expect(result?.type).toBe('prop')
+		expect(result?.variableName).toBe('heading')
+	})
+
+	test('should find text from expression-prop double-quoted string', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Banner.astro',
+			`---
+const { title } = Astro.props;
+---
+<h1 set:html={title} />
+`,
+		)
+		await ctx.writeFile(
+			'src/components/Page.astro',
+			`---
+import Banner from './Banner.astro';
+---
+<Banner title={"Welcome to our site"} />
+`,
+		)
+
+		const { initializeSearchIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		const result = await findSourceLocation('Welcome to our site', 'h1')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Page.astro')
+		expect(result?.type).toBe('prop')
+	})
+
+	test('extracted snippet matches file content byte-for-byte (blank lines preserved)', async () => {
+		// Regression: extractCompleteTagSnippet used to skip blank lines, producing
+		// a snippet that wouldn't pass `content.includes(snippet)` in the writer when
+		// the file had a blank line (e.g. between frontmatter --- and the template).
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		const fileContent = `---
+const facts = [
+	{ label: 'Lokalita', value: 'Kolín' },
+]
+---
+
+<section>
+	{
+		facts.map((fact) => (
+			<span>{fact.value}</span>
+		))
+	}
+</section>
+`
+		await ctx.writeFile('src/components/Stats.astro', fileContent)
+
+		const path = await import('node:path')
+		const { initializeSearchIndex } = await import('../../../src/source-finder/search-index')
+		const { enhanceManifestWithSourceSnippets } = await import('../../../src/source-finder/snippet-utils')
+		await initializeSearchIndex()
+
+		const enhanced = await enhanceManifestWithSourceSnippets({
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'span',
+				text: 'Kolín',
+				sourcePath: path.resolve(ctx.tempDir, 'src/components/Stats.astro'),
+				sourceLine: 10,
+			},
+		})
+
+		const snippet = enhanced['cms-1']!.sourceSnippet!
+		expect(snippet).toBeDefined()
+		expect(fileContent.includes(snippet)).toBe(true)
+	})
+
+	test('overrides Astro template-line sourceLine with variable definition line (absolute path from Astro)', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Stats.astro',
+			`---
+const facts = [
+	{ label: 'Lokalita', value: 'Kolín' },
+	{ label: 'Bytové jednotky v prodeji', value: '76 bytů' },
+]
+---
+<section>
+	{
+		facts.map((fact) => (
+			<div>
+				<span>{fact.label}</span>
+				<span>{fact.value}</span>
+			</div>
+		))
+	}
+</section>
+`,
+		)
+
+		const path = await import('node:path')
+		const { initializeSearchIndex } = await import('../../../src/source-finder/search-index')
+		const { enhanceManifestWithSourceSnippets } = await import('../../../src/source-finder/snippet-utils')
+		await initializeSearchIndex()
+
+		// Astro stamps `data-astro-source-file` with absolute paths and points
+		// `sourceLine` at the JSX template line, not the data definition.
+		const absoluteStatsPath = path.resolve(ctx.tempDir, 'src/components/Stats.astro')
+		const enhanced = await enhanceManifestWithSourceSnippets({
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'span',
+				text: 'Kolín',
+				sourcePath: absoluteStatsPath,
+				sourceLine: 11, // JSX template line
+			},
+		})
+
+		expect(enhanced['cms-1']!.variableName).toBe('facts[0].value')
+		expect(enhanced['cms-1']!.sourceLine).toBe(3) // upgraded to data definition line
+		// Path may be normalized to project-relative form.
+		expect(enhanced['cms-1']!.sourcePath?.endsWith('src/components/Stats.astro')).toBe(true)
+	})
+
+	test('should find text from .map() with destructured params', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Menu.astro',
+			`---
+const links = [
+	{ label: 'Home', href: '/' },
+	{ label: 'About', href: '/about' },
+]
+---
+<nav>
+	{links.map(({ label, href }) => <a href={href}>{label}</a>)}
+</nav>
+`,
+		)
+
+		const { initializeSearchIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		const result = await findSourceLocation('About', 'a')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/components/Menu.astro')
+		expect(result?.type).toBe('variable')
+		expect(result?.variableName).toBe('links[1].label')
+	})
 }, { setupAstro: false })
 
 withTempDir('findSourceLocation - Prop Default Array Values', (getCtx) => {
@@ -470,6 +719,87 @@ const { links } = Astro.props;
 		expect(result?.file).toBe('src/pages/menu.astro')
 		expect(result?.type).toBe('variable')
 		expect(result?.variableName).toBe('menuLinks[1].label')
+	})
+
+	test('should track .map() loop param across file boundary', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		// Parent passes the array; child renders via .map()
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			`---
+import Nav from '../components/Nav.astro';
+const navItems = [
+	{ label: 'Home', href: '/' },
+	{ label: 'About', href: '/about' },
+	{ label: 'Contact', href: '/contact' },
+];
+---
+<Nav items={navItems} />
+`,
+		)
+
+		await ctx.writeFile(
+			'src/components/Nav.astro',
+			`---
+interface Props {
+	items: Array<{ label: string; href: string }>;
+}
+const { items } = Astro.props;
+---
+<nav>
+	{items.map((item) => <a href={item.href}>{item.label}</a>)}
+</nav>
+`,
+		)
+
+		const { initializeSearchIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		const result = await findSourceLocation('About', 'a')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/pages/index.astro')
+		expect(result?.type).toBe('variable')
+		expect(result?.variableName).toBe('navItems[1].label')
+	})
+
+	test('should track destructured .map() loop param across file boundary', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/pages/page.astro',
+			`---
+import Menu from '../components/Menu.astro';
+const links = [
+	{ label: 'Home', href: '/' },
+	{ label: 'About', href: '/about' },
+];
+---
+<Menu items={links} />
+`,
+		)
+
+		await ctx.writeFile(
+			'src/components/Menu.astro',
+			`---
+const { items } = Astro.props;
+---
+<nav>
+	{items.map(({ label, href }) => <a href={href}>{label}</a>)}
+</nav>
+`,
+		)
+
+		const { initializeSearchIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		const result = await findSourceLocation('About', 'a')
+
+		expect(result).toBeDefined()
+		expect(result?.file).toBe('src/pages/page.astro')
+		expect(result?.type).toBe('variable')
+		expect(result?.variableName).toBe('links[1].label')
 	})
 
 	test('should track expression prop from layout to page', async () => {

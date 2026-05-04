@@ -6,9 +6,18 @@ import { escapeRegex, resolveSourcePath } from '../utils'
 import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
 import { findComponentProp, findExpressionProp, findSpreadProp } from './element-finder'
+import { wildcardPathToRegexBody } from './search-index'
 import { normalizeText } from './snippet-utils'
 import type { ImportInfo, SourceLocation, VariableDefinition } from './types'
 import { getExportedDefinitions, resolveImportPath } from './variable-extraction'
+
+/**
+ * Compile a wildcard path like `navItems[*].label` into a regex matching
+ * concrete definition paths (`navItems[0].label`, `navItems[3].label`, …).
+ */
+function buildWildcardPathRegex(wildcardPath: string): RegExp {
+	return new RegExp('^' + wildcardPathToRegexBody(wildcardPath) + '$')
+}
 
 // ============================================================================
 // Expression Prop Search
@@ -104,16 +113,17 @@ async function searchDirForExpressionProp(
 				if (exprPropMatch) {
 					// The expression text might be a simple variable like 'navItems'
 					const exprText = exprPropMatch.expressionText
-
-					// Build the corresponding path in the parent's variable definitions
-					// e.g., if expressionPath is 'items[0]' and exprText is 'navItems',
-					// we look for 'navItems[0]' in the parent's definitions
+					// Substitute the parent's local name for the child's:
+					//   child `items[0]`  +  parent `navItems`  →  `navItems[0]`
+					// May contain `[*]` wildcards when the child resolved a `.map()` callback
+					// param — compare via regex to match concrete indices in the parent.
 					const parentPath = expressionPath.replace(/^[^.[]+/, exprText)
+					const parentPathRegex = parentPath.includes('[*]') ? buildWildcardPathRegex(parentPath) : null
 
-					// Check if the value is in local variable definitions
 					for (const def of cached.variableDefinitions) {
 						const defPath = buildDefinitionPath(def)
-						if (defPath === parentPath) {
+						const matches = parentPathRegex ? parentPathRegex.test(defPath) : defPath === parentPath
+						if (matches) {
 							const normalizedDef = normalizeText(def.value)
 							if (normalizedDef === normalizedSearch) {
 								return {

@@ -22,6 +22,7 @@ import {
 	findInTextIndex,
 	findTemplateElementUsingStringLiteral,
 	findTranslationByKeyAndText,
+	findVariableHitInFile,
 	initializeSearchIndex,
 	isTranslationFilePath,
 } from './search-index'
@@ -849,28 +850,30 @@ export async function enhanceManifestWithSourceSnippets(
 			}
 		}
 
-		// Missing source info — try the text search index as a last resort.
-		// Two cases reach here without a sourcePath/sourceLine:
-		// (1) text rendered through a translation helper (e.g. `{t(locale, 'key')}`),
-		//     which the marking phase can't trace to the originating i18n JSON;
-		// (2) static template text under runtimes that don't inject
-		//     `data-astro-source-*` attributes. Only (1) needs the translation
-		//     treatment (text edits target the JSON, styling disabled); (2) just
-		//     needs source coordinates so standard snippet extraction below picks
-		//     up the full element.
+		// Two cases want the index over the marking phase:
+		// (1) text rendered via translation helpers / runtimes that don't inject
+		//     `data-astro-source-*` (toast i18n the JSON; rendered template gets coords).
+		// (2) `{fact.value}`-style expressions where Astro points sourceLine at the
+		//     JSX template line — the real edit target is the variable definition.
 		const trimmedEntryText = entry.text?.trim()
-		if (!entry.sourceSnippet && trimmedEntryText && entry.tag && (!entry.sourcePath || !entry.sourceLine)) {
-			const indexHit = findInTextIndex(trimmedEntryText, entry.tag)
-			if (indexHit) {
-				if (isTranslationFilePath(indexHit.file)) {
-					const resolved = await applyTranslationSource(entry, indexHit, entry.attributes, entry.colorClasses)
+		const alreadyResolved = entry.sourceSnippet || entry.variableName
+		if (!alreadyResolved && trimmedEntryText && entry.tag) {
+			const sameFileHit = entry.sourcePath
+				? findVariableHitInFile(trimmedEntryText, entry.tag, entry.sourcePath)
+				: undefined
+			const noCoords = !entry.sourcePath || !entry.sourceLine
+			const winner = sameFileHit ?? (noCoords ? findInTextIndex(trimmedEntryText, entry.tag) : undefined)
+
+			if (winner) {
+				if (isTranslationFilePath(winner.file)) {
+					const resolved = await applyTranslationSource(entry, winner, entry.attributes, entry.colorClasses)
 					return [id, resolved] as const
 				}
 				entry = {
 					...entry,
-					sourcePath: indexHit.file,
-					sourceLine: indexHit.line,
-					...(indexHit.variableName ? { variableName: indexHit.variableName } : {}),
+					sourcePath: winner.file,
+					sourceLine: winner.line,
+					...(winner.variableName ? { variableName: winner.variableName } : {}),
 				}
 			}
 		}

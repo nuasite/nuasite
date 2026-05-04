@@ -726,7 +726,7 @@ withTempDir('findInImageIndex', (getCtx) => {
 describe('resolveMapChain', () => {
 	test('simple .map() with single parameter', () => {
 		const result = resolveMapChain(['images.map((img, i) => (\n  '], 'img')
-		expect(result).toBe('images')
+		expect(result).toEqual({ arrayPath: 'images', leafSuffix: '' })
 	})
 
 	test('nested .map() chains', () => {
@@ -734,7 +734,7 @@ describe('resolveMapChain', () => {
 			['categories.map((cat) => (\n  cat.images.map((img, i) => (\n    '],
 			'img',
 		)
-		expect(result).toBe('categories[*].images')
+		expect(result).toEqual({ arrayPath: 'categories[*].images', leafSuffix: '' })
 	})
 
 	test('returns null for unknown parameter', () => {
@@ -745,6 +745,29 @@ describe('resolveMapChain', () => {
 	test('returns null for no .map() calls', () => {
 		const result = resolveMapChain(['<div>{title}</div>'], 'title')
 		expect(result).toBeNull()
+	})
+
+	test('destructured single property', () => {
+		const result = resolveMapChain(['links.map(({ label }) => (\n  '], 'label')
+		expect(result).toEqual({ arrayPath: 'links', leafSuffix: '.label' })
+	})
+
+	test('destructured multiple properties', () => {
+		const result = resolveMapChain(['links.map(({ label, href }) => (\n  '], 'href')
+		expect(result).toEqual({ arrayPath: 'links', leafSuffix: '.href' })
+	})
+
+	test('destructured with renamed binding', () => {
+		const result = resolveMapChain(['links.map(({ label: text }) => (\n  '], 'text')
+		expect(result).toEqual({ arrayPath: 'links', leafSuffix: '.text' })
+	})
+
+	test('destructured inside nested chain', () => {
+		const result = resolveMapChain(
+			['categories.map((cat) => (\n  cat.images.map(({ url }) => (\n    '],
+			'url',
+		)
+		expect(result).toEqual({ arrayPath: 'categories[*].images', leafSuffix: '.url' })
 	})
 })
 

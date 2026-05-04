@@ -1,6 +1,7 @@
 import type { ComponentNode, ElementNode, Node as AstroNode, TextNode } from '@astrojs/compiler/types'
 
 import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
+import { makeLeafPathRegex, resolveMapChain } from './search-index'
 import { normalizeText } from './snippet-utils'
 import type {
 	ComponentPropMatch,
@@ -100,7 +101,9 @@ export function findElementWithText(
 		return match?.[1] ?? exprPath
 	}
 
-	function visit(node: AstroNode) {
+	function visit(node: AstroNode, parentExpression: AstroNode | null) {
+		const currentExpr = node.type === 'expression' ? node : parentExpression
+
 		// Check if this is an element or component matching our tag
 		if ((node.type === 'element' || node.type === 'component') && node.name.toLowerCase() === tagLower) {
 			const elemNode = node as ElementNode | ComponentNode
@@ -166,6 +169,43 @@ export function findElementWithText(
 									importInfo,
 									expressionPath: exprPath,
 								})
+							} else if (currentExpr) {
+								// `baseVar` may be a `.map()` callback parameter or destructured
+								// property. Resolve it to the source array; if the array is local
+								// take the leaf, otherwise surface as a cross-file prop candidate.
+								const mapMatch = resolveMapForLocal(
+									exprPath,
+									currentExpr,
+									variableDefinitions,
+									normalizedSearch,
+								)
+								if (mapMatch && bestScore < 100) {
+									bestScore = 100
+									bestMatch = {
+										line,
+										type: 'variable',
+										variableName: mapMatch.variableName,
+										definitionLine: mapMatch.definitionLine,
+									}
+									return
+								}
+
+								if (!mapMatch) {
+									const mapPropCandidate = resolveMapForProp(
+										exprPath,
+										currentExpr,
+										propAliases,
+									)
+									if (mapPropCandidate) {
+										propCandidates.push({
+											line,
+											type: 'variable',
+											usesProp: true,
+											propName: mapPropCandidate.propName,
+											expressionPath: mapPropCandidate.expressionPath,
+										})
+									}
+								}
 							}
 						}
 					}
@@ -224,7 +264,7 @@ export function findElementWithText(
 		// Recursively visit children
 		if ('children' in node && Array.isArray(node.children)) {
 			for (const child of node.children) {
-				visit(child)
+				visit(child, currentExpr)
 			}
 		}
 	}
@@ -245,8 +285,100 @@ export function findElementWithText(
 		return null
 	}
 
-	visit(ast)
+	visit(ast, null)
 	return { bestMatch, propCandidates, importCandidates }
+}
+
+/**
+ * Collect the joined text of every direct text child of an expression node.
+ * Used to feed `resolveMapChain` with the surrounding `.map(...)` source.
+ */
+function collectExpressionText(parentExpression: AstroNode): string[] {
+	const exprTexts: string[] = []
+	if ('children' in parentExpression && Array.isArray(parentExpression.children)) {
+		for (const child of parentExpression.children) {
+			if (child.type === 'text' && (child as TextNode).value) {
+				exprTexts.push((child as TextNode).value)
+			}
+		}
+	}
+	return exprTexts
+}
+
+/**
+ * Resolve a `.map()` loop variable reference (`item.label` or destructured `label`)
+ * against local variable definitions, returning the concrete element whose value
+ * matches `normalizedSearch`. Returns null when the chain doesn't resolve or no
+ * leaf value matches.
+ */
+function resolveMapForLocal(
+	exprPath: string,
+	parentExpression: AstroNode,
+	variableDefinitions: VariableDefinition[],
+	normalizedSearch: string,
+): { variableName: string; definitionLine: number } | null {
+	const baseMatch = exprPath.match(/^(\w+)(.*)$/)
+	if (!baseMatch) return null
+	const baseVar = baseMatch[1]!
+	const suffix = baseMatch[2] ?? ''
+
+	const exprTexts = collectExpressionText(parentExpression)
+	if (exprTexts.length === 0) return null
+
+	const resolved = resolveMapChain(exprTexts, baseVar)
+	if (!resolved) return null
+
+	const leafRegex = makeLeafPathRegex({
+		arrayPath: resolved.arrayPath,
+		leafSuffix: resolved.leafSuffix + suffix,
+	})
+
+	for (const def of variableDefinitions) {
+		const defPath = buildDefinitionPath(def)
+		if (!leafRegex.test(defPath)) continue
+		if (normalizeText(def.value) === normalizedSearch) {
+			return { variableName: defPath, definitionLine: def.line }
+		}
+	}
+	return null
+}
+
+/**
+ * Resolve a `.map()` loop variable reference against prop aliases, returning a
+ * cross-file candidate when the source array comes from props. The expression
+ * path encodes the wildcard chain (e.g. `items[*].label`) so cross-file lookups
+ * can match concrete parent definitions.
+ */
+function resolveMapForProp(
+	exprPath: string,
+	parentExpression: AstroNode,
+	propAliases: Map<string, string>,
+): { propName: string; expressionPath: string } | null {
+	const baseMatch = exprPath.match(/^(\w+)(.*)$/)
+	if (!baseMatch) return null
+	const baseVar = baseMatch[1]!
+	const suffix = baseMatch[2] ?? ''
+
+	const exprTexts = collectExpressionText(parentExpression)
+	if (exprTexts.length === 0) return null
+
+	const resolved = resolveMapChain(exprTexts, baseVar)
+	if (!resolved) return null
+
+	// The head of the resolved arrayPath is the local name of the array; if that
+	// local name is a prop alias, we have a cross-file candidate.
+	const headMatch = resolved.arrayPath.match(/^(\w+)/)
+	if (!headMatch) return null
+	const arrayHead = headMatch[1]!
+	const actualPropName = propAliases.get(arrayHead)
+	if (!actualPropName) return null
+
+	// Build the expression path the parent should match: e.g. `items[*].label`.
+	// Cross-file lookup combines this with the parent's local binding.
+	return {
+		propName: actualPropName,
+		expressionPath: resolved.arrayPath + '[*]' + resolved.leafSuffix + suffix,
+	}
 }
 
 // ============================================================================
