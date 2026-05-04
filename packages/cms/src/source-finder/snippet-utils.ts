@@ -110,20 +110,19 @@ export function findTextDefinitionLine(
  * this function searches backwards to find the opening tag first.
  */
 export function extractCompleteTagSnippet(lines: string[], startLine: number, tag: string): string {
-	// Pattern to match opening tag - either followed by whitespace/>, or at end of line (multi-line tag)
 	const escapedTag = escapeRegex(tag)
+	// Opening tag — followed by whitespace/`>`, or at end of line (multi-line tag).
 	const openTagPattern = new RegExp(`<${escapedTag}(?:[\\s>]|$)`, 'gi')
+	const selfClosingPattern = new RegExp(`<${escapedTag}[^>]*/>`, 'gi')
+	const closeTagPattern = new RegExp(`</${escapedTag}>`, 'gi')
 
-	// Check if the start line contains the opening tag
 	let actualStartLine = startLine
 	const startLineContent = lines[startLine] || ''
 	if (!openTagPattern.test(startLineContent)) {
-		// Search backwards to find the opening tag
+		// Search backwards for the opening tag.
 		for (let i = startLine - 1; i >= Math.max(0, startLine - 20); i--) {
 			const line = lines[i]
 			if (!line) continue
-
-			// Reset regex lastIndex for fresh test
 			openTagPattern.lastIndex = 0
 			if (openTagPattern.test(line)) {
 				actualStartLine = i
@@ -136,37 +135,40 @@ export function extractCompleteTagSnippet(lines: string[], startLine: number, ta
 	let depth = 0
 	let foundClosing = false
 
-	// Start from the opening tag line
 	for (let i = actualStartLine; i < Math.min(actualStartLine + 30, lines.length); i++) {
-		const line = lines[i]
+		const line = lines[i] ?? ''
 
-		if (!line) {
-			continue
-		}
-
+		// Preserve blank lines verbatim — the snippet must match the file byte-for-byte
+		// so the writer's `content.includes(sourceSnippet)` check passes. Blank lines
+		// are common between frontmatter and the template body.
 		snippetLines.push(line)
+		if (!line) continue
 
-		// Count opening and closing tags
-		// Opening tag can be followed by whitespace, >, or end of line (multi-line tag)
-		const openTags = (line.match(new RegExp(`<${escapedTag}(?:[\\s>]|$)`, 'gi')) || []).length
-		const selfClosing = (line.match(new RegExp(`<${escapedTag}[^>]*/>`, 'gi')) || []).length
-		const closeTags = (line.match(new RegExp(`</${escapedTag}>`, 'gi')) || []).length
+		const openTags = countMatches(line, openTagPattern)
+		const selfClosing = countMatches(line, selfClosingPattern)
+		const closeTags = countMatches(line, closeTagPattern)
 
 		depth += openTags - selfClosing - closeTags
 
-		// If we found a self-closing tag or closed all tags, we're done
 		if (selfClosing > 0 || (depth <= 0 && (closeTags > 0 || openTags > 0))) {
 			foundClosing = true
 			break
 		}
 	}
 
-	// If we didn't find closing tag, just return the first line
 	if (!foundClosing && snippetLines.length > 1) {
 		return snippetLines[0]!
 	}
 
 	return snippetLines.join('\n')
+}
+
+/** Count global-regex matches on a string without allocating the match array. */
+function countMatches(str: string, pattern: RegExp): number {
+	pattern.lastIndex = 0
+	let count = 0
+	while (pattern.exec(str) !== null) count++
+	return count
 }
 
 /**
@@ -199,8 +201,10 @@ export function extractOpeningTagWithLine(
 ): { snippet: string; startLine: number } | undefined {
 	const escapedTag = escapeRegex(tag)
 	const openTagPattern = new RegExp(`<${escapedTag}(?:[\\s>]|$)`, 'gi')
+	// Match `<tag …>` (the closing > of the opening tag), or `<tag … />` (self-closing).
+	const openTagMatcher = new RegExp(`<${escapedTag}[^>]*>`, 'i')
+	const selfClosingMatcher = new RegExp(`<${escapedTag}[^>]*/\\s*>`, 'i')
 
-	// Find the line containing the opening tag
 	let actualStartLine = startLine
 	const startLineContent = lines[startLine] || ''
 	if (!openTagPattern.test(startLineContent)) {
@@ -215,7 +219,6 @@ export function extractOpeningTagWithLine(
 		}
 	}
 
-	// Collect lines until we find the closing > of the opening tag
 	const snippetLines: string[] = []
 	for (let i = actualStartLine; i < Math.min(actualStartLine + 10, lines.length); i++) {
 		const line = lines[i]
@@ -224,15 +227,12 @@ export function extractOpeningTagWithLine(
 		snippetLines.push(line)
 		const combined = snippetLines.join('\n')
 
-		// Check if we have the complete opening tag (found the closing >)
-		// Match from <tag to the first > that's not part of => or />
-		const openTagMatch = combined.match(new RegExp(`<${escapedTag}[^>]*>`, 'i'))
+		const openTagMatch = combined.match(openTagMatcher)
 		if (openTagMatch) {
 			return { snippet: openTagMatch[0], startLine: actualStartLine }
 		}
 
-		// Also check for self-closing tag
-		const selfClosingMatch = combined.match(new RegExp(`<${escapedTag}[^>]*/\\s*>`, 'i'))
+		const selfClosingMatch = combined.match(selfClosingMatcher)
 		if (selfClosingMatch) {
 			return { snippet: selfClosingMatch[0], startLine: actualStartLine }
 		}

@@ -265,6 +265,8 @@ function hasExpressionChild(node: AstroNode): { found: boolean; varNames: string
 function extractCompleteTagSnippet(lines: string[], startLine: number, tag: string): string {
 	const escapedTag = escapeRegex(tag)
 	const openTagPattern = new RegExp(`<${escapedTag}(?:[\\s>]|$)`, 'gi')
+	const selfClosingPattern = new RegExp(`<${escapedTag}[^>]*/>`, 'gi')
+	const closeTagPattern = new RegExp(`</${escapedTag}>`, 'gi')
 
 	let actualStartLine = startLine
 	const startLineContent = lines[startLine] || ''
@@ -285,14 +287,16 @@ function extractCompleteTagSnippet(lines: string[], startLine: number, tag: stri
 	let foundClosing = false
 
 	for (let i = actualStartLine; i < Math.min(actualStartLine + 30, lines.length); i++) {
-		const line = lines[i]
+		const line = lines[i] ?? ''
+
+		// Preserve blank lines verbatim so the writer's `content.includes(snippet)`
+		// check passes — file content has the blank lines, the snippet must too.
+		snippetLines.push(line)
 		if (!line) continue
 
-		snippetLines.push(line)
-
-		const openTags = (line.match(new RegExp(`<${escapedTag}(?:[\\s>]|$)`, 'gi')) || []).length
-		const selfClosing = (line.match(new RegExp(`<${escapedTag}[^>]*/>`, 'gi')) || []).length
-		const closeTags = (line.match(new RegExp(`</${escapedTag}>`, 'gi')) || []).length
+		const openTags = countMatches(line, openTagPattern)
+		const selfClosing = countMatches(line, selfClosingPattern)
+		const closeTags = countMatches(line, closeTagPattern)
 
 		depth += openTags - selfClosing - closeTags
 
@@ -309,6 +313,14 @@ function extractCompleteTagSnippet(lines: string[], startLine: number, tag: stri
 	return snippetLines.join('\n')
 }
 
+/** Count global-regex matches on a string without allocating the match array. */
+function countMatches(str: string, pattern: RegExp): number {
+	pattern.lastIndex = 0
+	let count = 0
+	while (pattern.exec(str) !== null) count++
+	return count
+}
+
 /**
  * Extract the opening tag from source lines with its start line number.
  * Local version for indexing (to avoid circular dependency)
@@ -320,6 +332,8 @@ function extractOpeningTagWithLine(
 ): { snippet: string; startLine: number } | undefined {
 	const escapedTag = escapeRegex(tag)
 	const openTagPattern = new RegExp(`<${escapedTag}(?:[\\s>]|$)`, 'gi')
+	const openTagMatcher = new RegExp(`<${escapedTag}[^>]*>`, 'i')
+	const selfClosingMatcher = new RegExp(`<${escapedTag}[^>]*/\\s*>`, 'i')
 
 	let actualStartLine = startLine
 	const startLineContent = lines[startLine] || ''
@@ -343,12 +357,12 @@ function extractOpeningTagWithLine(
 		snippetLines.push(line)
 		const combined = snippetLines.join('\n')
 
-		const openTagMatch = combined.match(new RegExp(`<${escapedTag}[^>]*>`, 'i'))
+		const openTagMatch = combined.match(openTagMatcher)
 		if (openTagMatch) {
 			return { snippet: openTagMatch[0], startLine: actualStartLine }
 		}
 
-		const selfClosingMatch = combined.match(new RegExp(`<${escapedTag}[^>]*/\\s*>`, 'i'))
+		const selfClosingMatch = combined.match(selfClosingMatcher)
 		if (selfClosingMatch) {
 			return { snippet: selfClosingMatch[0], startLine: actualStartLine }
 		}
