@@ -14,6 +14,7 @@ const {
 	networkErrorMessage = "Network error!",
 	tryAgainMessage = "Try again",
 	fastSubmitMessage = "Please wait a moment before submitting.",
+	submitAnywayLabel = "Send anyway",
 	...rest
 } = Astro.props
 
@@ -94,10 +95,15 @@ const tokenId = `${tokenFieldName}_${formId}`
 				<span>{successMessage}</span>
 			</div>
 			<div data-status="error" class="hidden text-red-600 bg-red-50 border border-red-200 rounded-md p-3 mb-4">
-				<svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
-					<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-				</svg>
-				<span>{errorMessage}</span>
+				<div>
+					<svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+					</svg>
+					<span>{errorMessage}</span>
+				</div>
+				<button type="button" data-action="submit-anyway" class="hidden mt-2 px-3 py-1 text-sm font-medium border border-red-300 rounded hover:bg-red-100">
+					{submitAnywayLabel}
+				</button>
 			</div>
 			<div data-status="loading" class="hidden text-blue-600 bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
 				<svg class="w-5 h-5 inline mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -149,6 +155,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 			const successStatus = statusContainer?.querySelector('[data-status="success"]')
 			const errorStatus = statusContainer?.querySelector('[data-status="error"]')
 			const loadingStatus = statusContainer?.querySelector('[data-status="loading"]')
+			const submitAnywayButton = errorStatus?.querySelector('[data-action="submit-anyway"]') as HTMLButtonElement | null
 
 			const hideAllStatus = () => {
 				statusContainer?.classList.add('hidden')
@@ -173,13 +180,14 @@ const tokenId = `${tokenFieldName}_${formId}`
 				}
 			}
 
-			const showError = (msg = errorMessage) => {
+			const showError = (msg = errorMessage, allowOverride = false) => {
 				if (!errorStatus) return
 				const span = errorStatus.querySelector('span')
 				if (span && msg) {
 					span.textContent = msg
 					showStatus(errorStatus)
 				}
+				submitAnywayButton?.classList.toggle('hidden', !allowOverride)
 			}
 
 			const showLoading = (msg = submittingMessage) => {
@@ -208,6 +216,8 @@ const tokenId = `${tokenFieldName}_${formId}`
 			}
 
 			let activationTime = performance.now()
+			let lastHumanityFailure: string | null = null
+			let bypassHumanityCheck = false
 
 			const refreshSubmissionGuards = () => {
 				activationTime = performance.now()
@@ -227,6 +237,13 @@ const tokenId = `${tokenFieldName}_${formId}`
 				}
 			}
 
+			submitAnywayButton?.addEventListener('click', () => {
+				bypassHumanityCheck = true
+				submitAnywayButton.classList.add('hidden')
+				activationTime = performance.now()
+				form.requestSubmit()
+			}, { signal: this.abortController.signal })
+
 			form.addEventListener('submit', async (e) => {
 				e.preventDefault()
 
@@ -238,10 +255,21 @@ const tokenId = `${tokenFieldName}_${formId}`
 
 				trackForm('attempt', { formData: formDataForTracking })
 
-				if (!this.passesHumanityChecks(form)) {
-					trackForm('reject', { reason: 'humanity_check_failed', formData: formDataForTracking })
-					showError(tryAgainMessage)
-					return
+				if (bypassHumanityCheck) {
+					trackForm('humanity_override', {
+						reason: `accepted_after_humanity_warning:${lastHumanityFailure ?? 'unknown'}`,
+						formData: formDataForTracking,
+					})
+					bypassHumanityCheck = false
+					lastHumanityFailure = null
+				} else {
+					const humanityFailure = this.checkHumanity(form)
+					if (humanityFailure) {
+						lastHumanityFailure = humanityFailure
+						trackForm('reject', { reason: `humanity_check_failed:${humanityFailure}`, formData: formDataForTracking })
+						showError(tryAgainMessage, true)
+						return
+					}
 				}
 
 				const elapsed = performance.now() - activationTime
@@ -337,50 +365,47 @@ const tokenId = `${tokenFieldName}_${formId}`
 			);
 		}
 
-		private detectSuspiciousBrowser(): boolean {
+		private detectSuspiciousBrowser(): string | null {
 			const ua = window.navigator.userAgent
 			const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
 
-			// Check for headless browser indicators
-			const suspiciousIndicators = [
-				// WebDriver API presence (set to true in automated browsers)
-				navigator.webdriver === true,
-				// Empty plugins list is only suspicious on desktop — mobile browsers normally have none
-				!isMobile && !window.navigator.plugins.length,
-				!window.navigator.languages.length,
+			// WebDriver API presence (set to true in automated browsers)
+			if (navigator.webdriver === true) return 'webdriver'
+			// Empty plugins list is only suspicious on desktop — mobile browsers normally have none
+			if (!isMobile && !window.navigator.plugins.length) return 'no_plugins'
+			if (!window.navigator.languages.length) return 'no_languages'
 
-				// Headless Chrome indicators
-				ua.includes('HeadlessChrome'),
-				window.outerWidth === 0,
-				window.outerHeight === 0,
+			if (ua.includes('HeadlessChrome')) return 'headless_chrome'
+			// Zero outer dimensions only flag on desktop — mobile in-app webviews (FB, IG, TikTok) legitimately report 0
+			if (!isMobile && window.outerWidth === 0) return 'zero_outer_width'
+			if (!isMobile && window.outerHeight === 0) return 'zero_outer_height'
 
-				// Puppeteer indicators
-				(window as any).__nightmare,
-				(window as any)._phantom,
-				(window as any).callPhantom,
-			];
+			if ((window as any).__nightmare) return 'nightmare'
+			if ((window as any)._phantom) return 'phantom'
+			if ((window as any).callPhantom) return 'call_phantom'
 
-			return suspiciousIndicators.some(indicator => indicator);
+			return null
 		}
 
-		private passesHumanityChecks(form: HTMLFormElement): boolean {
+		private checkHumanity(form: HTMLFormElement): string | null {
 			const timeSpent = Date.now() - this.startTime;
 
-			if (timeSpent < 3000) return false;
+			if (timeSpent < 3000) return 'too_fast'
 
-			if (this.getInteractionScore() < 2) return false;
+			if (this.getInteractionScore() < 2) return 'low_interaction'
 
 			for (const fieldName of this.honeypotFieldNames) {
 				const field = form.querySelector(`[name="${fieldName}"]`) as HTMLInputElement
-				if (field && field.value.trim()) return false
+				if (field && field.value.trim()) return `honeypot:${fieldName}`
 			}
 
 			const cssHoneypot = form.querySelector('input[style*="position: absolute; left: -9999px"]') as HTMLInputElement
-			if (cssHoneypot && cssHoneypot.value.trim()) return false
+			if (cssHoneypot && cssHoneypot.value.trim()) return 'css_honeypot'
 
-			if (this.detectSuspiciousBrowser()) return false
+			const suspicious = this.detectSuspiciousBrowser()
+			if (suspicious) return `suspicious_browser:${suspicious}`
 
-			return true
+			return null
 		}
 	}
 

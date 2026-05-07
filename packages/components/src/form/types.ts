@@ -14,6 +14,8 @@ interface BaseProps extends astroHTML.JSX.FormHTMLAttributes {
 	tryAgainMessage?: string
 	/** Message to display when form submission is fast */
 	fastSubmitMessage?: string
+	/** Label for the manual override button shown after a humanity-check rejection */
+	submitAnywayLabel?: string
 }
 
 /**

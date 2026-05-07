@@ -129,7 +129,9 @@ function handleLockedClick(event: Event): void {
 		inFlightLockedFetch = fetchManifest()
 			.then((fresh) => signals.setManifest(fresh))
 			.catch(() => {})
-			.finally(() => { inFlightLockedFetch = null })
+			.finally(() => {
+				inFlightLockedFetch = null
+			})
 	}
 	inFlightLockedFetch.then(() => {
 		if (signals.manifest.value.entries[id]?.sourcePath) {
