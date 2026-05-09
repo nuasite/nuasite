@@ -21,7 +21,7 @@ async function readFile(p: string): Promise<string> {
 
 async function runBuild(): Promise<void> {
 	await fs.rm(distDir, { recursive: true, force: true })
-	const result = spawnSync('bun', ['x', 'astro', 'build'], {
+	const result = spawnSync('bun', ['--bun', 'x', 'astro', 'build'], {
 		cwd: fixtureRoot,
 		encoding: 'utf8',
 		env: { ...process.env, NODE_ENV: 'production' },
