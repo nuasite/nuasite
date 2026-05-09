@@ -151,14 +151,14 @@ function RedirectRow({ rule, isEditing }: { rule: RedirectRule; isEditing: boole
 	}
 
 	return (
-		<div class="flex items-center gap-3 p-3 bg-white/5 rounded-cms-sm border border-white/10 group">
+		<div class="flex items-center gap-3 p-3 bg-white/5 rounded-cms-sm border border-white/10 group h-[34px]">
 			<div class="flex-1 min-w-0 flex items-center gap-2 text-sm">
 				<span class="text-white/80 truncate">{rule.source}</span>
 				<span class="text-white/30 shrink-0">→</span>
 				<span class="text-white/60 truncate">{rule.destination}</span>
 			</div>
 			<span class="text-xs text-white/30 tabular-nums shrink-0">{rule.statusCode}</span>
-			<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+			<div class="flex gap-1 shrink-0 -ml-3 max-w-0 overflow-hidden opacity-0 group-hover:ml-0 group-hover:max-w-[80px] group-hover:opacity-100 transition-all duration-200 ease-out">
 				<button
 					type="button"
 					onClick={() => setRedirectsManagerEditing(rule.lineIndex)}

@@ -53,7 +53,7 @@ export function ModalHeader({ title, onBack, onClose }: {
 
 export function ModalFooter({ children }: { children: ComponentChildren }) {
 	return (
-		<div class="flex items-center justify-end gap-2 p-5 border-t border-white/10 bg-white/5 rounded-b-cms-xl">
+		<div class="flex items-center justify-end gap-2 py-3.5 px-4 border-t border-white/10 bg-white/5 rounded-b-cms-xl">
 			{children}
 		</div>
 	)
@@ -80,7 +80,7 @@ export function CancelButton({ onClick, label = 'Cancel', className }: { onClick
 			type="button"
 			onClick={onClick}
 			class={cn(
-				'p-2.5 text-sm text-white/80 font-medium rounded-cms-pill hover:bg-white/10 hover:text-white transition-colors cursor-pointer',
+				'py-2.5 px-3.5 text-sm text-white/80 font-medium rounded-cms-pill hover:bg-white/10 hover:text-white transition-colors cursor-pointer',
 				className,
 			)}
 			data-cms-ui

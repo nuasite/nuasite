@@ -71,23 +71,17 @@
   cursor: pointer;
 }
 
-.cms-root input[type="date"]::-webkit-calendar-picker-indicator,
-.cms-root input[type="datetime-local"]::-webkit-calendar-picker-indicator,
-.cms-root input[type="time"]::-webkit-calendar-picker-indicator,
-.cms-root input[type="month"]::-webkit-calendar-picker-indicator,
-.cms-root input[type="week"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
+.cms-root select {
+  /* -moz-appearance: none dropped — Firefox 70+ honors the standard appearance property. */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff66' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem;
+  padding-right: 2rem;
+  /* appearance: none strips the native click affordance — restore it explicitly. */
   cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 150ms;
-}
-
-.cms-root input[type="date"]:hover::-webkit-calendar-picker-indicator,
-.cms-root input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator,
-.cms-root input[type="time"]:hover::-webkit-calendar-picker-indicator,
-.cms-root input[type="month"]:hover::-webkit-calendar-picker-indicator,
-.cms-root input[type="week"]:hover::-webkit-calendar-picker-indicator {
-  opacity: 1;
 }
 
 /* Custom animations for CMS */

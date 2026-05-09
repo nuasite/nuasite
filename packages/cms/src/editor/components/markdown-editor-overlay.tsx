@@ -397,7 +397,7 @@ export function MarkdownEditorOverlay() {
 	return (
 		<div
 			style={{ zIndex: Z_INDEX.MODAL }}
-			class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 backdrop-blur-md"
+			class="fixed inset-0 bg-black/40 flex items-start justify-center p-4 pt-[5vh] backdrop-blur-md"
 			data-cms-ui
 			onMouseDown={stopPropagation}
 			onClick={stopPropagation}
@@ -570,7 +570,7 @@ export function MarkdownEditorOverlay() {
 										showFrontmatter ? 'max-h-[40vh] opacity-100 border-b' : 'max-h-0 opacity-0 border-b-0',
 									)}
 								>
-									<div class="px-5 py-4 bg-white/5 overflow-y-auto max-h-[40vh]">
+									<div class="px-5 py-4 bg-white/5 overflow-y-auto max-h-[40vh]" style={{ scrollbarGutter: 'stable' }}>
 										{isCreateMode && createOptions
 											? (
 												<CreateModeFrontmatter

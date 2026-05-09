@@ -162,6 +162,20 @@ export function ImageField({ label, value, placeholder, onChange, onBrowse, isDi
 									{value}
 								</span>
 							</div>
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation()
+									onChange('')
+								}}
+								class="absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center bg-black/60 hover:bg-red-500/80 text-white rounded-cms-xs opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+								title="Remove image from this field"
+								data-cms-ui
+							>
+								<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+								</svg>
+							</button>
 						</div>
 						<div class="flex w-full mt-1.5 gap-2">
 							<button

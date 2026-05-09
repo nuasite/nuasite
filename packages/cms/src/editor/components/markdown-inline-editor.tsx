@@ -11,6 +11,7 @@ import {
 } from '@milkdown/preset-commonmark'
 import { gfm, toggleStrikethroughCommand } from '@milkdown/preset-gfm'
 import { callCommand, insert, replaceAll } from '@milkdown/utils'
+import { lift } from 'prosemirror-commands'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { useLinkPopover } from '../hooks/useLinkPopover'
 import { uploadMedia } from '../markdown-api'
@@ -176,10 +177,29 @@ export function MarkdownInlineEditor({
 		() => runCommand(toggleStrikethroughCommand.key),
 		[runCommand],
 	)
-	const handleQuote = useCallback(
-		() => runCommand(wrapInBlockquoteCommand.key),
-		[runCommand],
-	)
+	const handleQuote = useCallback(() => {
+		if (!editorInstanceRef.current) return
+		try {
+			const view = editorInstanceRef.current.ctx.get(editorViewCtx)
+			const { $from } = view.state.selection
+			let inBlockquote = false
+			for (let depth = $from.depth; depth > 0; depth--) {
+				if ($from.node(depth).type.name === 'blockquote') {
+					inBlockquote = true
+					break
+				}
+			}
+			if (inBlockquote) {
+				// Lift selection out of the blockquote (may need multiple lifts for nested wrappers)
+				lift(view.state, view.dispatch)
+				view.focus()
+			} else {
+				runCommand(wrapInBlockquoteCommand.key)
+			}
+		} catch {
+			runCommand(wrapInBlockquoteCommand.key)
+		}
+	}, [runCommand])
 
 	// Check if selection is inside a list of given type
 	const checkInList = useCallback(

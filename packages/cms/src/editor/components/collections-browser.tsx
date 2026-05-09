@@ -254,7 +254,7 @@ export function CollectionsBrowser() {
 						class="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left"
 						data-cms-ui
 					>
-						<div class="shrink-0 w-10 h-10 bg-cms-primary/20 rounded-cms-md flex items-center justify-center">
+						<div class="shrink-0 w-10 h-10 bg-cms-primary/20 rounded-cms-sm flex items-center justify-center">
 							<CollectionIcon />
 						</div>
 						<div class="flex-1 min-w-0">
