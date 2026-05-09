@@ -1,0 +1,45 @@
+---
+// This file is checked by `astro check` but never routed (lives outside src/pages/).
+// It guards <Fragment of={...} props={...}> type-safety: each `@ts-expect-error`
+// must fire — if Astro stops catching one of these mistakes, astro check will
+// fail with "Unused @ts-expect-error".
+import NuaFragment from '@nuasite/astro-fragments/Fragment.astro'
+import LatestPosts from '../fragments/LatestPosts.astro'
+import RelatedPosts from '../fragments/RelatedPosts.astro'
+
+const slug = 'hello'
+---
+
+{/* valid: target has no declared Props */}
+<NuaFragment of={LatestPosts} props={{}} />
+
+{/* valid: required slug, optional limit */}
+<NuaFragment of={RelatedPosts} props={{ slug }} />
+<NuaFragment of={RelatedPosts} props={{ slug, limit: 5 }} />
+
+{/* @ts-expect-error: missing required `of` */}
+<NuaFragment props={{}} />
+
+{/* @ts-expect-error: missing required `props` */}
+<NuaFragment of={LatestPosts} />
+
+{/* @ts-expect-error: missing required `props` */}
+<NuaFragment of={RelatedPosts} />
+
+{/* @ts-expect-error: `of` must be a component, not a string */}
+<NuaFragment of="not a component" props={{}} />
+
+{/* @ts-expect-error: `of` must be a component, not a number */}
+<NuaFragment of={42} props={{}} />
+
+{/* @ts-expect-error: missing required `slug` inside props */}
+<NuaFragment of={RelatedPosts} props={{}} />
+
+{/* @ts-expect-error: `slug` must be string, not number */}
+<NuaFragment of={RelatedPosts} props={{ slug: 42 }} />
+
+{/* @ts-expect-error: `limit` must be number, not string */}
+<NuaFragment of={RelatedPosts} props={{ slug, limit: '5' }} />
+
+{/* @ts-expect-error: unknown prop `bogus` */}
+<NuaFragment of={RelatedPosts} props={{ slug, bogus: 'x' }} />

@@ -23,9 +23,9 @@ const { title } = Astro.props as Props
 		<h1>{title}</h1>
 		<p>This is the post {slug}.</p>
 	</article>
-	<Fragment of={RelatedPosts} slug={slug} />
+	<Fragment of={RelatedPosts} props={{ slug }} />
 	<footer>
-		<Fragment of={LatestPosts} />
+		<Fragment of={LatestPosts} props={{}} />
 	</footer>
 </body>
 </html>
