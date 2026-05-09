@@ -1,0 +1,31 @@
+---
+import Fragment from '@nuasite/astro-fragments/Fragment.astro'
+import LatestPosts from '../../fragments/LatestPosts.astro'
+import RelatedPosts from '../../fragments/RelatedPosts.astro'
+
+export function getStaticPaths() {
+	return [
+		{ params: { slug: 'hello-world' }, props: { title: 'Hello world' } },
+		{ params: { slug: 'second-post' }, props: { title: 'Second post' } },
+		{ params: { slug: 'third-post' }, props: { title: 'Third post' } },
+	]
+}
+
+interface Props { title: string }
+const { slug } = Astro.params
+const { title } = Astro.props as Props
+---
+<!DOCTYPE html>
+<html>
+<head><title>{title}</title></head>
+<body>
+	<article>
+		<h1>{title}</h1>
+		<p>This is the post {slug}.</p>
+	</article>
+	<Fragment of={RelatedPosts} slug={slug} />
+	<footer>
+		<Fragment of={LatestPosts} />
+	</footer>
+</body>
+</html>
