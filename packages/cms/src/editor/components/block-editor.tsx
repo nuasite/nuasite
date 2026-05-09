@@ -388,20 +388,20 @@ export function BlockEditor({
 									<div class="flex gap-2 justify-between">
 										<button
 											onClick={() => setMode('confirm-remove')}
-											class="px-4 py-2.5 bg-cms-error text-white rounded-cms-pill cursor-pointer hover:bg-red-600 transition-colors font-medium"
+											class="p-2.5 bg-cms-error text-white rounded-cms-pill cursor-pointer hover:bg-red-600 transition-colors font-medium"
 										>
 											{isArrayItem ? 'Remove item' : 'Remove'}
 										</button>
 										<div class="flex gap-2">
 											<button
 												onClick={onClose}
-												class="px-4 py-2.5 bg-white/10 text-white/80 rounded-cms-pill cursor-pointer hover:bg-white/20 hover:text-white transition-colors font-medium"
+												class="p-2.5 bg-white/10 text-white/80 rounded-cms-pill cursor-pointer hover:bg-white/20 hover:text-white transition-colors font-medium"
 											>
 												Cancel
 											</button>
 											<button
 												onClick={handleSave}
-												class="px-4 py-2.5 bg-cms-primary text-cms-primary-text rounded-cms-pill cursor-pointer hover:bg-cms-primary-hover transition-all font-medium"
+												class="p-2.5 bg-cms-primary text-cms-primary-text rounded-cms-pill cursor-pointer hover:bg-cms-primary-hover transition-all font-medium"
 											>
 												Save
 											</button>
@@ -429,7 +429,7 @@ export function BlockEditor({
 								<div class="flex gap-2 justify-end pt-4 border-t border-white/10 mt-4">
 									<button
 										onClick={handleBackToEdit}
-										class="px-4 py-2.5 bg-white/10 text-white/80 rounded-cms-pill cursor-pointer hover:bg-white/20 hover:text-white transition-colors font-medium"
+										class="p-2.5 bg-white/10 text-white/80 rounded-cms-pill cursor-pointer hover:bg-white/20 hover:text-white transition-colors font-medium"
 									>
 										Cancel
 									</button>
@@ -440,7 +440,7 @@ export function BlockEditor({
 												onClose()
 											}
 										}}
-										class="px-4 py-2.5 bg-cms-error text-white rounded-cms-pill cursor-pointer hover:bg-red-600 transition-colors font-medium"
+										class="p-2.5 bg-cms-error text-white rounded-cms-pill cursor-pointer hover:bg-red-600 transition-colors font-medium"
 									>
 										{isArrayItem ? 'Confirm remove item' : 'Confirm remove'}
 									</button>
@@ -478,13 +478,13 @@ export function BlockEditor({
 								<div class="flex gap-2 justify-end pt-4 border-t border-white/10 mt-4">
 									<button
 										onClick={() => isArrayItem ? handleBackToEdit() : setMode('insert-picker')}
-										class="px-4 py-2.5 bg-white/10 text-white/80 rounded-cms-pill cursor-pointer hover:bg-white/20 hover:text-white transition-colors font-medium"
+										class="p-2.5 bg-white/10 text-white/80 rounded-cms-pill cursor-pointer hover:bg-white/20 hover:text-white transition-colors font-medium"
 									>
 										Back
 									</button>
 									<button
 										onClick={handleConfirmInsert}
-										class="px-4 py-2.5 bg-cms-primary text-cms-primary-text rounded-cms-pill cursor-pointer hover:bg-cms-primary-hover transition-all font-medium"
+										class="p-2.5 bg-cms-primary text-cms-primary-text rounded-cms-pill cursor-pointer hover:bg-cms-primary-hover transition-all font-medium"
 									>
 										{isArrayItem ? 'Add item' : 'Insert component'}
 									</button>
@@ -510,7 +510,7 @@ export function BlockEditor({
 								<div class="mt-5 pt-4 border-t border-white/10">
 									<button
 										onClick={handleBackToEdit}
-										class="w-full px-4 py-2.5 bg-white/10 text-white/80 rounded-cms-pill cursor-pointer hover:bg-white/20 hover:text-white transition-colors font-medium"
+										class="w-full px-4 py-2 bg-white/10 text-white/80 rounded-cms-pill cursor-pointer hover:bg-white/20 hover:text-white transition-colors font-medium"
 									>
 										Back to edit
 									</button>

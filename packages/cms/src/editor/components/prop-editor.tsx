@@ -68,7 +68,7 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 			<select
 				value={value}
 				onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
-				class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+				class="w-full p-2.5 bg-white/10 border border-white/20 text-[13px] text-white outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
 			>
 				{!prop.required && <option value="">— None —</option>}
 				{unionOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
@@ -84,7 +84,7 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 					value={value}
 					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 					placeholder={prop.defaultValue || 'Select an image...'}
-					class="flex-1 px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+					class="flex-1 p-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
 				/>
 				<button
 					type="button"
@@ -122,7 +122,7 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 					value={value}
 					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 					placeholder={prop.defaultValue || '#000000'}
-					class="flex-1 px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md font-mono"
+					class="flex-1 p-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md font-mono"
 				/>
 			</div>
 		)
@@ -135,7 +135,7 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 				onInput={(e) => onChange((e.target as HTMLTextAreaElement).value)}
 				placeholder={prop.defaultValue || `Enter ${prop.name}...`}
 				rows={3}
-				class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md resize-y"
+				class="w-full p-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md resize-y"
 			/>
 		)
 	}
@@ -146,7 +146,7 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 			value={value}
 			onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 			placeholder={prop.defaultValue || `Enter ${prop.name}...`}
-			class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+			class="w-full p-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
 		/>
 	)
 }
@@ -256,7 +256,7 @@ function ReferenceSelect({ collection, value, required, onChange }: {
 					onInput={(e) => setNewName((e.target as HTMLInputElement).value)}
 					placeholder="Enter name..."
 					required
-					class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+					class="w-full p-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
 					autoFocus
 				/>
 				<div class="text-[11px] text-white/40 font-mono">
@@ -301,7 +301,7 @@ function ReferenceSelect({ collection, value, required, onChange }: {
 				value={value}
 				onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 				placeholder={`Enter ${collection} entry ID...`}
-				class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+				class="w-full p-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
 			/>
 		)
 	}
@@ -319,7 +319,7 @@ function ReferenceSelect({ collection, value, required, onChange }: {
 				onFocus={() => setIsOpen(true)}
 				onBlur={() => setTimeout(closeDropdown, 150)}
 				placeholder={`Select ${collection} entry...`}
-				class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+				class="w-full p-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
 			/>
 			<DropdownPanel
 				triggerRef={inputRef}

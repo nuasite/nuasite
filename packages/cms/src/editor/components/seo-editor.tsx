@@ -55,10 +55,11 @@ interface SeoFieldProps {
 	value: string | undefined
 	placeholder?: string
 	multiline?: boolean
+	tooltip?: string
 	onChange: (id: string, value: string, originalValue: string) => void
 }
 
-function SeoField({ label, id, value, placeholder, multiline, onChange }: SeoFieldProps) {
+function SeoField({ label, id, value, placeholder, multiline, tooltip, onChange }: SeoFieldProps) {
 	const pendingChange = id ? getPendingSeoChange(id) : undefined
 	const currentValue = pendingChange?.newValue ?? value ?? ''
 	const isDirty = pendingChange?.isDirty ?? false
@@ -75,7 +76,19 @@ function SeoField({ label, id, value, placeholder, multiline, onChange }: SeoFie
 	return (
 		<div class="space-y-1.5">
 			<div class="flex items-center justify-between">
-				<label class="text-sm font-medium text-white/80">{label}</label>
+				<div class="flex items-center gap-1.5">
+					<label class="text-sm font-medium text-white/80">{label}</label>
+					{tooltip && (
+						<span class="relative group/tooltip inline-flex" data-cms-ui>
+							<svg class="w-3.5 h-3.5 text-white/40 hover:text-white/70 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							<span class="absolute left-0 top-full mt-1 w-64 p-2 bg-black/90 text-white text-xs rounded-cms-sm opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all z-10 pointer-events-none">
+								{tooltip}
+							</span>
+						</span>
+					)}
+				</div>
 				{isDirty && <span class="text-xs text-cms-primary font-medium">Modified</span>}
 			</div>
 			<InputComponent
@@ -84,7 +97,7 @@ function SeoField({ label, id, value, placeholder, multiline, onChange }: SeoFie
 				placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
 				onInput={handleChange}
 				disabled={!id}
-				class={`w-full px-4 py-2.5 bg-white/10 border rounded-cms-md text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors ${
+				class={`w-full p-2.5 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors ${
 					isDirty
 						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
 						: 'border-white/20 focus:border-white/40 focus:ring-white/10'
@@ -327,6 +340,7 @@ export function SeoEditor() {
 										id={seoData.canonical.id}
 										value={seoData.canonical.href}
 										placeholder="https://example.com/page"
+										tooltip="The preferred URL for this page. Tells search engines which version to index when the same content is reachable from multiple URLs (e.g. with/without query parameters)."
 										onChange={handleFieldChange}
 									/>
 								)}

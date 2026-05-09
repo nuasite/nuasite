@@ -341,7 +341,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 														setIsMenuOpen(false)
 													}}
 													class={cn(
-														'w-full px-4 py-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3',
+														'w-full p-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3',
 														item.isActive
 															? 'bg-white/20 text-white'
 															: 'text-white/80 hover:bg-white/10 hover:text-white',
@@ -369,7 +369,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 																	return next
 																})
 															}}
-															class="w-full px-4 py-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-white/80 hover:bg-white/10 hover:text-white"
+															class="w-full p-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-white/80 hover:bg-white/10 hover:text-white"
 														>
 															<span class="shrink-0 opacity-70">{section.icon}</span>
 															{section.label}
@@ -416,7 +416,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 														item.onClick()
 														setIsMenuOpen(false)
 													}}
-													class="w-full px-4 py-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-red-400/80 hover:bg-red-500/10 hover:text-red-400"
+													class="w-full p-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-red-400/80 hover:bg-red-500/10 hover:text-red-400"
 												>
 													<span class="shrink-0 opacity-70">{item.icon}</span>
 													{item.label}

@@ -36,9 +36,16 @@ export function MarkdownEditorOverlay() {
 	const collectionDef = editorState.collectionDefinition
 
 	const activeCollectionDef = isCreateMode ? createOptions?.collectionDefinition : collectionDef
-	const { sidebar: sidebarFields, header: headerFields } = activeCollectionDef
-		? partitionFields(activeCollectionDef.fields)
-		: { sidebar: [], header: [] }
+	// Always surface a Draft toggle in the sidebar — even when the schema scanner
+	// didn't pick it up (e.g. inferred schemas where draft only appears on some entries).
+	// Push a proper FieldDefinition into the input list so partitionFields() handles
+	// placement (above the Date field) via its existing logic.
+	const fields: FieldDefinition[] = activeCollectionDef ? [...activeCollectionDef.fields] : []
+	const draftInPage = page && Object.hasOwn(page.frontmatter, 'draft')
+	if (draftInPage && !fields.some((f) => f.name === 'draft')) {
+		fields.push({ name: 'draft', type: 'boolean', required: false, position: 'sidebar' })
+	}
+	const { sidebar: sidebarFields, header: headerFields } = partitionFields(fields)
 	const hasSidebar = sidebarFields.length > 0
 	const isDataCollection = activeCollectionDef?.type === 'data'
 	// Derive MDX mode from the actual file extension when available
@@ -436,6 +443,11 @@ export function MarkdownEditorOverlay() {
 						<span class="text-base font-semibold text-white truncate">
 							{(page.frontmatter.title as string) || (page.frontmatter.name as string) || (isDataCollection ? 'Entry name' : 'Page title')}
 						</span>
+						{activeCollectionDef && (
+							<span class="shrink-0 px-2 py-0.5 text-xs font-medium text-white/70 bg-white/10 rounded-full border border-white/15">
+								{activeCollectionDef.label}
+							</span>
+						)}
 					</div>
 					<div class="flex items-center gap-2 shrink-0">
 						{!isDataCollection && (
@@ -530,26 +542,54 @@ export function MarkdownEditorOverlay() {
 					{/* Main: frontmatter header + editor */}
 					<div class="flex-1 min-w-0 flex flex-col">
 						{/* Frontmatter Editor (header-positioned fields only) */}
-						{(showFrontmatter || isDataCollection) && (
-							<div class={`px-5 py-4 border-b border-white/10 bg-white/5 overflow-y-auto ${isDataCollection ? 'flex-1' : 'max-h-[40vh]'}`}>
-								{isCreateMode && createOptions
-									? (
-										<CreateModeFrontmatter
-											page={page}
-											collectionDefinition={createOptions.collectionDefinition}
-											fields={headerFields}
-											onSlugManualEdit={() => setSlugManuallyEdited(true)}
-										/>
-									)
-									: (
-										<EditModeFrontmatter
-											page={page}
-											collectionDefinition={collectionDef}
-											fields={headerFields}
-										/>
+						{isDataCollection
+							? (
+								<div class="px-5 py-4 border-b border-white/10 bg-white/5 overflow-y-auto flex-1">
+									{isCreateMode && createOptions
+										? (
+											<CreateModeFrontmatter
+												page={page}
+												collectionDefinition={createOptions.collectionDefinition}
+												fields={headerFields}
+												onSlugManualEdit={() => setSlugManuallyEdited(true)}
+											/>
+										)
+										: (
+											<EditModeFrontmatter
+												page={page}
+												collectionDefinition={collectionDef}
+												fields={headerFields}
+											/>
+										)}
+								</div>
+							)
+							: (
+								<div
+									class={cn(
+										'overflow-hidden transition-[max-height,opacity,border-bottom-width] duration-300 ease-out border-white/10',
+										showFrontmatter ? 'max-h-[40vh] opacity-100 border-b' : 'max-h-0 opacity-0 border-b-0',
 									)}
-							</div>
-						)}
+								>
+									<div class="px-5 py-4 bg-white/5 overflow-y-auto max-h-[40vh]">
+										{isCreateMode && createOptions
+											? (
+												<CreateModeFrontmatter
+													page={page}
+													collectionDefinition={createOptions.collectionDefinition}
+													fields={headerFields}
+													onSlugManualEdit={() => setSlugManuallyEdited(true)}
+												/>
+											)
+											: (
+												<EditModeFrontmatter
+													page={page}
+													collectionDefinition={collectionDef}
+													fields={headerFields}
+												/>
+											)}
+									</div>
+								</div>
+							)}
 
 						{/* Editor — hidden for data collections (JSON/YAML have no body) */}
 						{!isDataCollection && (

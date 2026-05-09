@@ -30,6 +30,7 @@
 
   /* Border & Radius */
   --color-cms-border: rgba(0, 0, 0, 0.08);
+  --radius-cms-xs: 5px;
   --radius-cms-sm: 8px;
   --radius-cms-md: 16px;
   --radius-cms-lg: 24px;
@@ -64,6 +65,29 @@
 .cms-root *::before,
 .cms-root *::after {
   box-sizing: border-box;
+}
+
+.cms-root button:not(:disabled) {
+  cursor: pointer;
+}
+
+.cms-root input[type="date"]::-webkit-calendar-picker-indicator,
+.cms-root input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.cms-root input[type="time"]::-webkit-calendar-picker-indicator,
+.cms-root input[type="month"]::-webkit-calendar-picker-indicator,
+.cms-root input[type="week"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 150ms;
+}
+
+.cms-root input[type="date"]:hover::-webkit-calendar-picker-indicator,
+.cms-root input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator,
+.cms-root input[type="time"]:hover::-webkit-calendar-picker-indicator,
+.cms-root input[type="month"]:hover::-webkit-calendar-picker-indicator,
+.cms-root input[type="week"]:hover::-webkit-calendar-picker-indicator {
+  opacity: 1;
 }
 
 /* Custom animations for CMS */

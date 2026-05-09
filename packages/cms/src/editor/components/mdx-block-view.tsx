@@ -434,7 +434,7 @@ export function MdxBlockCard({ componentName, props, hasExpressions, slotContent
 			data-cms-ui
 		>
 			{/* Header */}
-			<div class="flex items-center justify-between px-4 py-2.5 bg-white/5 border-b border-white/10 rounded-t-cms-md">
+			<div class="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10 rounded-t-cms-md">
 				<div class="flex items-center gap-2">
 					<MdxComponentIcon />
 					<span class="text-[13px] font-semibold text-white">{componentName}</span>
@@ -461,7 +461,7 @@ export function MdxBlockCard({ componentName, props, hasExpressions, slotContent
 
 			{/* Slot content editor */}
 			{hasSlotContent && (
-				<div class="px-4 py-2.5 border-b border-white/10" data-mdx-action="children">
+				<div class="px-4 py-2 border-b border-white/10" data-mdx-action="children">
 					<MiniMilkdownEditor
 						value={slotContent || ''}
 						onChange={onSlotContentChange}

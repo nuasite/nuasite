@@ -583,17 +583,6 @@ export function MarkdownInlineEditor({
 				</div>
 			</div>
 
-			{/* Link edit popover — rendered outside the toolbar stacking context so it layers above the sidebar */}
-			{linkPopoverState && (
-				<LinkEditPopover
-					initialUrl={linkPopoverState.href}
-					suggestions={pageSuggestions}
-					onApply={applyLink}
-					onRemove={linkPopoverState.isEdit ? removeLink : undefined}
-					onClose={closeLinkPopover}
-				/>
-			)}
-
 			{/* Editor */}
 			<div
 				class={`flex-1 min-h-0 overflow-auto relative transition-colors ${isDragging ? 'bg-cms-primary/10' : ''}`}
@@ -602,6 +591,18 @@ export function MarkdownInlineEditor({
 				onDrop={handleDrop}
 				onPaste={handlePaste}
 			>
+				{/* Link edit popover — overlays the top of the editor so it doesn't push content */}
+				{linkPopoverState && (
+					<div class="absolute top-0 left-0 right-0 z-40">
+						<LinkEditPopover
+							initialUrl={linkPopoverState.href}
+							suggestions={pageSuggestions}
+							onApply={applyLink}
+							onRemove={linkPopoverState.isEdit ? removeLink : undefined}
+							onClose={closeLinkPopover}
+						/>
+					</div>
+				)}
 				<div
 					ref={editorRef}
 					class="milkdown-editor milkdown-dark prose prose-invert prose-sm max-w-none p-6 min-h-75 focus:outline-none"

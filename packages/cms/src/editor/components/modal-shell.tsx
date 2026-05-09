@@ -80,7 +80,7 @@ export function CancelButton({ onClick, label = 'Cancel', className }: { onClick
 			type="button"
 			onClick={onClick}
 			class={cn(
-				'px-4 py-2.5 text-sm text-white/80 font-medium rounded-cms-pill hover:bg-white/10 hover:text-white transition-colors cursor-pointer',
+				'p-2.5 text-sm text-white/80 font-medium rounded-cms-pill hover:bg-white/10 hover:text-white transition-colors cursor-pointer',
 				className,
 			)}
 			data-cms-ui

@@ -4,6 +4,8 @@ import { getDropdownPosition } from '../constants'
 import { useClickOutsideEscape } from '../hooks/useClickOutsideEscape'
 import { useSearchFilter } from '../hooks/useSearchFilter'
 import { cn } from '../lib/cn'
+import { uploadMedia } from '../markdown-api'
+import { config, showToast } from '../signals'
 
 // ============================================================================
 // Field Label
@@ -95,53 +97,128 @@ export interface ImageFieldProps {
 
 export function ImageField({ label, value, placeholder, onChange, onBrowse, isDirty, onReset, required }: ImageFieldProps) {
 	const hasImage = !!value && value.length > 0
+	const fileInputRef = useRef<HTMLInputElement>(null)
+	const [isUploading, setIsUploading] = useState(false)
+	const [isDragOver, setIsDragOver] = useState(false)
+	// Track the src that failed so the fallback resets automatically when `value` changes
+	const [failedSrc, setFailedSrc] = useState<string | null>(null)
+	const showFallback = hasImage && failedSrc === value
+
+	const handleUploadClick = useCallback(() => {
+		fileInputRef.current?.click()
+	}, [])
+
+	const uploadFile = useCallback(async (file: File) => {
+		const cfg = config.value
+		if (!cfg) {
+			showToast('CMS not configured', 'error')
+			return
+		}
+		setIsUploading(true)
+		try {
+			const result = await uploadMedia(cfg, file)
+			if (result.success && result.url) {
+				onChange(result.url)
+				showToast('File uploaded', 'success')
+			} else {
+				showToast(result.error || 'Upload failed', 'error')
+			}
+		} catch {
+			showToast('Upload failed', 'error')
+		} finally {
+			setIsUploading(false)
+		}
+	}, [onChange])
 
 	return (
-		<div class="space-y-1.5 min-w-0">
+		<div class="space-y-2 min-w-0">
 			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
-			{hasImage && (
-				<div
-					class="relative w-full rounded-cms-sm overflow-hidden bg-white/5 border border-white/10 cursor-pointer group"
-					onClick={onBrowse}
-					data-cms-ui
-				>
-					<img
-						src={value}
-						alt={label}
-						class="w-full h-auto max-h-48"
-						onError={(e) => {
-							;(e.target as HTMLImageElement).style.display = 'none'
-						}}
-					/>
-					<div class="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-						<span class="text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Change</span>
+			<input
+				ref={fileInputRef}
+				type="file"
+				accept="image/*"
+				class="hidden"
+				onChange={handleFileChange}
+				data-cms-ui
+			/>
+			{hasImage
+				? (
+					<div class="w-full max-w-sm space-y-2">
+						<div
+							class="relative w-full rounded-cms-sm overflow-hidden bg-white/5 border border-white/10 cursor-pointer group"
+							onClick={onBrowse}
+							data-cms-ui
+						>
+							<img
+								src={value}
+								alt={label}
+								class="w-full h-auto max-h-48 object-contain"
+								onError={(e) => {
+									;(e.target as HTMLImageElement).style.display = 'none'
+								}}
+							/>
+							<div class="absolute inset-x-0 bottom-0 px-2 py-1.5 bg-linear-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+								<span class="block text-white text-[11px] font-medium truncate" title={value}>
+									{value}
+								</span>
+							</div>
+						</div>
+						<div class="flex w-full mt-1.5 gap-2">
+							<button
+								type="button"
+								onClick={handleUploadClick}
+								disabled={isUploading}
+								class="flex-1 px-3 py-1.5 bg-cms-primary hover:bg-cms-primary-hover text-cms-primary-text text-xs font-medium rounded-cms-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+								data-cms-ui
+							>
+								{isUploading ? 'Uploading…' : 'Upload'}
+							</button>
+							<button
+								type="button"
+								onClick={onBrowse}
+								class="flex-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 text-xs text-white rounded-cms-sm transition-colors cursor-pointer"
+								data-cms-ui
+							>
+								Browse
+							</button>
+						</div>
 					</div>
-				</div>
-			)}
-			<div class="flex gap-2 min-w-0">
-				<input
-					type="text"
-					value={value ?? ''}
-					placeholder={placeholder}
-					required={required}
-					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
-					class={cn(
-						'flex-1 min-w-0 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
-						isDirty
-							? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
-							: 'border-white/20 focus:border-white/40 focus:ring-white/10',
-					)}
-					data-cms-ui
-				/>
-				<button
-					type="button"
-					onClick={onBrowse}
-					class="shrink-0 px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-cms-sm text-sm text-white transition-colors cursor-pointer"
-					data-cms-ui
-				>
-					Browse
-				</button>
-			</div>
+				)
+				: (
+					<div class="flex gap-2 min-w-0">
+						<input
+							type="text"
+							value={value ?? ''}
+							placeholder={placeholder}
+							required={required}
+							onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+							class={cn(
+								'flex-1 min-w-0 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
+								isDirty
+									? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
+									: 'border-white/20 focus:border-white/40 focus:ring-white/10',
+							)}
+							data-cms-ui
+						/>
+						<button
+							type="button"
+							onClick={onBrowse}
+							class="shrink-0 px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-cms-sm text-sm text-white transition-colors cursor-pointer"
+							data-cms-ui
+						>
+							Browse
+						</button>
+						<button
+							type="button"
+							onClick={handleUploadClick}
+							disabled={isUploading}
+							class="shrink-0 px-3 py-2 bg-cms-primary hover:bg-cms-primary-hover text-cms-primary-text rounded-cms-sm text-sm font-medium transition-colors cursor-pointer disabled:opacity-50"
+							data-cms-ui
+						>
+							{isUploading ? '…' : 'Upload'}
+						</button>
+					</div>
+				)}
 		</div>
 	)
 }
@@ -212,7 +289,7 @@ export interface SelectFieldProps {
 
 export function SelectField({ label, value, options, onChange, isDirty, onReset, allowEmpty = true }: SelectFieldProps) {
 	return (
-		<div class="space-y-1.5">
+		<div class="space-y-2">
 			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
 			<select
 				value={value ?? ''}
@@ -267,9 +344,12 @@ export function ToggleField({ label, value, onChange, isDirty, onReset }: Toggle
 			>
 				<span
 					class={cn(
-						'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm pointer-events-none',
-						isOn && 'translate-x-4',
+						'absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm pointer-events-none',
+						isOn ? 'translate-x-4 bg-[#404040]' : 'translate-x-0 bg-white',
 					)}
+					style={{
+						transition: 'transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 200ms ease-out',
+					}}
 				/>
 			</button>
 		</div>
@@ -375,6 +455,17 @@ export function DropdownPanel({ triggerRef, isOpen, onClose, maxHeight = 192, ch
 			style={getDropdownPosition(triggerRef.current, maxHeight)}
 			data-cms-ui
 		>
+			<button
+				type="button"
+				onClick={onClose}
+				class="absolute top-1.5 right-1.5 w-5 h-5 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 rounded-cms-xs transition-colors z-10"
+				title="Close"
+				data-cms-ui
+			>
+				<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</button>
 			{children}
 		</div>
 	)
@@ -634,7 +725,7 @@ export function MultiSelectField({ label, selected, options, onChange, isDirty, 
 									)}
 								>
 									{isSelected && (
-										<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<svg class="w-3 h-3 text-cms-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
 										</svg>
 									)}

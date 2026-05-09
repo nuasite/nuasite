@@ -11,12 +11,26 @@ import { formatFieldLabel, FrontmatterField, SchemaFrontmatterField } from './fr
 export function partitionFields(fields: FieldDefinition[]): { sidebar: FieldDefinition[]; header: FieldDefinition[] } {
 	const sidebar: FieldDefinition[] = []
 	const header: FieldDefinition[] = []
+	let draftField: FieldDefinition | null = null
 	for (const field of fields) {
 		if (field.hidden) continue
+		if (field.name === 'draft' && field.position !== 'header') {
+			draftField = field
+			continue
+		}
 		if (field.position === 'sidebar') {
 			sidebar.push(field)
 		} else {
 			header.push(field)
+		}
+	}
+	if (draftField) {
+		// Insert Draft above the Date field in sidebar; otherwise prepend.
+		const dateIdx = sidebar.findIndex((f) => f.name === 'date' || f.type === 'date')
+		if (dateIdx >= 0) {
+			sidebar.splice(dateIdx, 0, draftField)
+		} else {
+			sidebar.unshift(draftField)
 		}
 	}
 	return { sidebar, header }
@@ -94,9 +108,11 @@ interface FrontmatterSidebarProps {
 
 export function FrontmatterSidebar({ fields, page, collectionDefinition }: FrontmatterSidebarProps) {
 	const [state, setState] = useState(loadSidebarState)
+	const [isAnimating, setIsAnimating] = useState(false)
 	const isResizing = useRef(false)
 	const startX = useRef(0)
 	const startWidth = useRef(0)
+	const animationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	const { width, collapsed } = state
 
@@ -108,8 +124,17 @@ export function FrontmatterSidebar({ fields, page, collectionDefinition }: Front
 		})
 	}, [])
 
+	const toggleCollapsed = useCallback(() => {
+		if (animationTimeout.current) clearTimeout(animationTimeout.current)
+		setIsAnimating(true)
+		updateState({ collapsed: !collapsed })
+		animationTimeout.current = setTimeout(() => setIsAnimating(false), 300)
+	}, [collapsed, updateState])
+
 	const handleMouseDown = useCallback((e: MouseEvent) => {
 		e.preventDefault()
+		if (animationTimeout.current) clearTimeout(animationTimeout.current)
+		setIsAnimating(false)
 		isResizing.current = true
 		startX.current = e.clientX
 		startWidth.current = width
@@ -151,7 +176,11 @@ export function FrontmatterSidebar({ fields, page, collectionDefinition }: Front
 
 	return (
 		<div
-			class={cn('relative shrink-0 border-l border-white/10 bg-white/5 flex', collapsed && 'w-8')}
+			class={cn(
+				'relative shrink-0 border-l border-white/10 bg-white/5 flex overflow-hidden',
+				isAnimating && 'transition-[width] duration-300 ease-out',
+				collapsed && 'w-8',
+			)}
 			style={collapsed ? undefined : { width: `${width}px` }}
 			data-cms-ui
 		>
@@ -166,27 +195,50 @@ export function FrontmatterSidebar({ fields, page, collectionDefinition }: Front
 			{/* Collapse toggle */}
 			<button
 				type="button"
-				onClick={() => updateState({ collapsed: !collapsed })}
-				class="absolute top-2 left-0 -translate-x-1/2 z-20 w-5 h-5 rounded-full bg-cms-dark border border-white/20 flex items-center justify-center text-white/50 hover:text-white hover:border-white/40 transition-colors"
+				onClick={toggleCollapsed}
+				class="absolute top-2 left-1.5 -translate-x-1/2 z-20 w-5 h-5 rounded-cms-xs bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 flex items-center justify-center text-white/50 hover:text-white transition-colors"
 				title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 				data-cms-ui
 			>
-				<svg
-					class={cn('w-3 h-3 transition-transform', collapsed && 'rotate-180')}
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<path d="m15 18-6-6 6-6" />
-				</svg>
+				<span class="relative w-3 h-3 inline-block">
+					<svg
+						class={cn(
+							'absolute inset-0 w-3 h-3 transition-opacity duration-200 ease-out',
+							collapsed ? 'opacity-0' : 'opacity-100',
+						)}
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="M3 5v14" />
+						<path d="M21 12H7" />
+						<path d="m15 18 6-6-6-6" />
+					</svg>
+					<svg
+						class={cn(
+							'absolute inset-0 w-3 h-3 transition-opacity duration-200 ease-out',
+							collapsed ? 'opacity-100' : 'opacity-0',
+						)}
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="M3 19V5" />
+						<path d="m13 6-6 6 6 6" />
+						<path d="M7 12h14" />
+					</svg>
+				</span>
 			</button>
 
 			{/* Sidebar content */}
 			{!collapsed && (
-				<div class="flex-1 overflow-y-auto p-4 space-y-3 min-w-0">
+				<div class="flex-1 overflow-y-auto p-3 pt-10 space-y-3 min-w-0">
 					{groups.map((group, gi) => (
 						<div key={gi} data-cms-ui>
 							{group.group && <GroupHeader label={group.group} />}

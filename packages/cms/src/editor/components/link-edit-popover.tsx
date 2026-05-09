@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { cn } from '../lib/cn'
 import { HighlightMatch } from './fields'
 import { PrimaryButton } from './modal-shell'
 
@@ -131,7 +132,10 @@ export function LinkEditPopover({ initialUrl, suggestions, onApply, onRemove, on
 		>
 			<form
 				onSubmit={handleSubmit}
-				class={`flex items-center gap-2 ${inline ? 'py-1.5' : 'px-4 py-2.5 bg-cms-dark border-b border-white/10'}`}
+				class={cn(
+					'flex items-center gap-2',
+					inline ? 'py-1.5' : 'px-4 py-2 bg-cms-dark border-b border-white/10',
+				)}
 			>
 				<svg class="w-4 h-4 text-white/40 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 					<path
@@ -152,7 +156,7 @@ export function LinkEditPopover({ initialUrl, suggestions, onApply, onRemove, on
 						onBlur={handleBlur}
 						onKeyDown={handleKeyDown}
 						autocomplete="off"
-						class="w-full bg-white/5 border border-white/10 rounded-cms-sm px-2.5 py-1.5 text-[13px] text-white placeholder:text-white/30 outline-none focus:border-cms-primary/50 transition-colors"
+						class="w-full bg-white/5 border border-white/10 rounded-cms-sm px-2.5 py-1.5 text-[13px] text-white placeholder:text-white/30 outline-none focus:border-white/40 transition-colors"
 						data-cms-ui
 					/>
 					{showDropdown && (
@@ -169,11 +173,12 @@ export function LinkEditPopover({ initialUrl, suggestions, onApply, onRemove, on
 										e.preventDefault()
 										selectOption(opt.value)
 									}}
-									class={`w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer ${
+									class={cn(
+										'w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer',
 										i === highlightedIndex
 											? 'bg-white/15 text-white'
-											: 'text-white/70 hover:bg-white/10 hover:text-white'
-									}`}
+											: 'text-white/70 hover:bg-white/10 hover:text-white',
+									)}
 									data-cms-ui
 								>
 									<span class="block truncate font-medium">

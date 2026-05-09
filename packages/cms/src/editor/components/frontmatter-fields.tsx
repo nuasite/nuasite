@@ -66,9 +66,21 @@ export function FrontmatterField({
 					type="checkbox"
 					checked={value}
 					onChange={(e) => onChange((e.target as HTMLInputElement).checked)}
-					class="w-4 h-4 rounded border-white/20 bg-white/10 text-cms-primary focus:ring-cms-primary focus:ring-offset-0 cursor-pointer"
+					class="sr-only peer"
 					data-cms-ui
 				/>
+				<span
+					class={cn(
+						'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+						value ? 'bg-cms-primary border-cms-primary' : 'border-white/30 bg-white/5',
+					)}
+				>
+					{value && (
+						<svg class="w-3 h-3 text-cms-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+						</svg>
+					)}
+				</span>
 				{label}
 			</label>
 		)
@@ -191,7 +203,8 @@ export function CreateModeFrontmatter({
 }: CreateModeFrontmatterProps) {
 	const allFields = fields ?? collectionDefinition.fields
 	// In create mode, skip complex fields (arrays, objects) — they can be edited after creation
-	const displayFields = allFields.filter(f => f.type !== 'array' && f.type !== 'object')
+	// Draft is always rendered in the sidebar — never inline in the header.
+	const displayFields = allFields.filter(f => f.type !== 'array' && f.type !== 'object' && f.name !== 'draft')
 	const groups = groupFields(displayFields)
 
 	return (
@@ -323,14 +336,15 @@ export function EditModeFrontmatter({
 	collectionDefinition,
 	fields,
 }: EditModeFrontmatterProps) {
-	const displayFields = fields ?? collectionDefinition?.fields ?? []
+	const displayFields = (fields ?? collectionDefinition?.fields ?? []).filter((f) => f.name !== 'draft')
 	// Collect schema field names for filtering extra keys
 	const schemaFieldNames = new Set(
 		collectionDefinition?.fields.map((f) => f.name) ?? [],
 	)
-	// Frontmatter keys not covered by the schema (user-added fields)
+	// Frontmatter keys not covered by the schema (user-added fields). Draft is always
+	// rendered in the sidebar — never inline in the header — so exclude it here.
 	const extraKeys = Object.keys(page.frontmatter).filter(
-		(key) => !schemaFieldNames.has(key),
+		(key) => !schemaFieldNames.has(key) && key !== 'draft',
 	)
 	const groups = groupFields(displayFields)
 
