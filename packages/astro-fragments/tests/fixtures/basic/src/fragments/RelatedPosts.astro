@@ -1,0 +1,16 @@
+---
+interface Props {
+	slug: string
+	limit?: number
+}
+const { slug, limit = 3 } = Astro.props as Props
+
+const candidates = ['hello-world', 'second-post', 'third-post', 'fourth-post']
+const related = candidates.filter(s => s !== slug).slice(0, limit)
+---
+<aside class="related">
+	<h3>Related to {slug}</h3>
+	<ul>
+		{related.map(s => <li><a href={`/blog/${s}`}>{s}</a></li>)}
+	</ul>
+</aside>

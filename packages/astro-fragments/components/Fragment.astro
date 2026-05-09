@@ -1,0 +1,40 @@
+---
+import { isRegistryEnabled, registerFragment, validateProps } from '../src/registry.ts'
+
+interface Props {
+	of: any
+	[key: string]: unknown
+}
+
+const { of: Component, ...rawProps } = Astro.props as Props
+
+if (!Component) {
+	throw new Error('<Fragment> requires an `of` prop pointing to an Astro component.')
+}
+
+const moduleId: string | undefined = (Component as any)?.moduleId
+if (!moduleId) {
+	throw new Error('<Fragment of={...}> received a component without a moduleId. Make sure you imported an .astro component (not a JSX/TSX one or a runtime factory).')
+}
+
+const props = rawProps as Record<string, unknown>
+const componentLabel = moduleId.split('/').pop() ?? moduleId
+
+validateProps(props, componentLabel)
+
+const shouldExtract = isRegistryEnabled()
+let hash: string | null = null
+if (shouldExtract) {
+	hash = registerFragment({
+		component: Component,
+		moduleId,
+		props,
+		pageUrl: Astro.url?.pathname,
+	})
+}
+---
+{hash ? (
+	<x-fragment id={hash}></x-fragment>
+) : (
+	<Component {...props} />
+)}

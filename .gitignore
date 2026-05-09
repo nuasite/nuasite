@@ -17,3 +17,8 @@
 
 # claude
 .claude/agent-canvas
+
+# astro-fragments fixture artefacts
+/packages/astro-fragments/tests/fixtures/**/.astro
+/packages/astro-fragments/tests/fixtures/**/dist
+/packages/astro-fragments/tests/fixtures/**/node_modules
