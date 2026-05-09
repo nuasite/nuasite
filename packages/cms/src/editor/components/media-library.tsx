@@ -236,7 +236,7 @@ export function MediaLibrary() {
 				data-cms-ui
 			>
 				{/* Header */}
-				<div class="flex items-center justify-between p-5 border-b border-white/10">
+				<div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
 					<h2 class="text-lg font-semibold text-white">Media Library</h2>
 					<CloseButton onClick={handleClose} />
 				</div>
@@ -287,7 +287,7 @@ export function MediaLibrary() {
 							placeholder="Search files..."
 							value={searchQuery}
 							onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
-							class="flex-1 p-2.5 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10"
+							class="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10"
 							data-cms-ui
 						/>
 						<button
@@ -430,7 +430,7 @@ export function MediaLibrary() {
 										<button
 											type="button"
 											onClick={() => navigateToFolder(folder.path)}
-											class="w-full h-full rounded-cms-sm overflow-hidden border-2 border-white/10 hover:border-white/30 focus:outline-none focus:border-white/30 transition-all bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-2"
+											class="w-full h-full rounded-cms-sm overflow-hidden border-2 border-white/10 hover:border-white/30 focus:outline-none focus:border-white/40 transition-all bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-2"
 											data-cms-ui
 										>
 											<svg
@@ -459,7 +459,7 @@ export function MediaLibrary() {
 										<button
 											type="button"
 											onClick={() => handleSelectImage(item)}
-											class="w-full h-full rounded-cms-sm overflow-hidden border-2 border-white/10 hover:border-cms-primary focus:outline-none focus:border-cms-primary transition-all"
+											class="w-full h-full rounded-cms-sm overflow-hidden border-2 border-white/10 hover:border-cms-primary focus:outline-none focus:border-white/40 transition-all"
 											data-cms-ui
 										>
 											{item.contentType.startsWith('image/')

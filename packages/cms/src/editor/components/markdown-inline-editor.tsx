@@ -14,6 +14,7 @@ import { callCommand, insert, replaceAll } from '@milkdown/utils'
 import { lift } from 'prosemirror-commands'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { useLinkPopover } from '../hooks/useLinkPopover'
+import { cn } from '../lib/cn'
 import { uploadMedia } from '../markdown-api'
 import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-plugin'
 import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
@@ -442,6 +443,7 @@ export function MarkdownInlineEditor({
 						onClick={() => handleInsertHeading(1)}
 						title="Heading 1"
 						active={activeFormats.heading === 1}
+						compact
 					>
 						<span class="text-xs font-bold">H1</span>
 					</ToolbarButton>
@@ -449,6 +451,7 @@ export function MarkdownInlineEditor({
 						onClick={() => handleInsertHeading(2)}
 						title="Heading 2"
 						active={activeFormats.heading === 2}
+						compact
 					>
 						<span class="text-xs font-bold">H2</span>
 					</ToolbarButton>
@@ -456,6 +459,7 @@ export function MarkdownInlineEditor({
 						onClick={() => handleInsertHeading(3)}
 						title="Heading 3"
 						active={activeFormats.heading === 3}
+						compact
 					>
 						<span class="text-xs font-bold">H3</span>
 					</ToolbarButton>
@@ -463,6 +467,7 @@ export function MarkdownInlineEditor({
 						onClick={() => handleInsertHeading(4)}
 						title="Heading 4"
 						active={activeFormats.heading === 4}
+						compact
 					>
 						<span class="text-xs font-bold">H4</span>
 					</ToolbarButton>
@@ -687,6 +692,8 @@ interface ToolbarButtonProps {
 	title: string
 	children: preact.ComponentChildren
 	active?: boolean
+	/** Use tighter padding suitable for text-only labels like H1/H2 */
+	compact?: boolean
 }
 
 function ToolbarButton({
@@ -694,16 +701,19 @@ function ToolbarButton({
 	title,
 	children,
 	active,
+	compact,
 }: ToolbarButtonProps) {
 	return (
 		<button
 			type="button"
 			onClick={onClick}
-			class={`p-2 rounded-cms-sm transition-colors ${
+			class={cn(
+				'rounded-cms-sm transition-colors',
+				compact ? 'px-2 pt-0.5 pb-1' : 'p-2',
 				active
 					? 'bg-cms-primary text-cms-primary-text'
-					: 'hover:bg-white/10 text-white/70 hover:text-white'
-			}`}
+					: 'hover:bg-white/10 text-white/70 hover:text-white',
+			)}
 			title={title}
 			data-cms-ui
 		>

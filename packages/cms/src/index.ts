@@ -34,6 +34,12 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		theme?: Record<string, string>
 		themePreset?: string
 		features?: CmsFeatures
+		/**
+		 * Describes the host site's color theme. The CMS draws editor chrome and outlines
+		 * in a contrasting color. 'auto' (default) detects via prefers-color-scheme and
+		 * the page's computed background.
+		 */
+		siteTheme?: 'auto' | 'light' | 'dark'
 	}
 	/**
 	 * Proxy /_nua/cms requests to this target URL during dev.

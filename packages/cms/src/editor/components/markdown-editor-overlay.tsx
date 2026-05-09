@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { slugify } from '../../shared'
 import { updateMarkdownPage } from '../api'
 import { STORAGE_KEYS, Z_INDEX } from '../constants'
+import { cn } from '../lib/cn'
 import { createMarkdownPage } from '../markdown-api'
 import { MDX_EXPR_PREFIX } from '../milkdown-mdx-plugin'
 import {
@@ -13,11 +14,13 @@ import {
 	markdownEditorState,
 	pendingCollectionEntries,
 	resetMarkdownEditorState,
+	showConfirmDialog,
 	showToast,
 	startRedirectCountdown,
 	updateMarkdownFrontmatter,
 } from '../signals'
 import { clearMarkdownDraft } from '../storage'
+import type { FieldDefinition } from '../types'
 import { CreateModeFrontmatter, EditModeFrontmatter } from './frontmatter-fields'
 import { FrontmatterSidebar, partitionFields } from './frontmatter-sidebar'
 import { MarkdownInlineEditor } from './markdown-inline-editor'
@@ -65,14 +68,19 @@ export function MarkdownEditorOverlay() {
 	const previewTargetRef = useRef<HTMLElement | null>(null)
 	const editorInstanceRef = useRef<Editor | null>(null)
 
-	// Lock page scroll while the modal overlay is visible (not during preview)
+	// Lock page scroll while the modal overlay is visible (not during preview).
+	// scrollbar-gutter: stable reserves space for the scrollbar so the page
+	// doesn't shift horizontally when overflow flips to hidden — no manual padding math.
 	useEffect(() => {
 		if (!page || isPreview) return
 		const html = document.documentElement
 		const prevOverflow = html.style.overflow
+		const prevGutter = html.style.scrollbarGutter
 		html.style.overflow = 'hidden'
+		html.style.scrollbarGutter = 'stable'
 		return () => {
 			html.style.overflow = prevOverflow
+			html.style.scrollbarGutter = prevGutter
 		}
 	}, [!!page, isPreview])
 
@@ -327,7 +335,18 @@ export function MarkdownEditorOverlay() {
 		}
 	}, [isPreview, restoreOriginalHTML, findMarkdownWrapper])
 
-	const handleCancel = useCallback(() => {
+	const handleCancel = useCallback(async () => {
+		const hasUnsavedChanges = currentMarkdownPage.value?.isDirty === true
+		if (hasUnsavedChanges) {
+			const confirmed = await showConfirmDialog({
+				title: 'Discard changes?',
+				message: 'You have unsaved changes. Discard them and close?',
+				confirmLabel: 'Discard',
+				cancelLabel: 'Keep editing',
+				variant: 'danger',
+			})
+			if (!confirmed) return
+		}
 		restoreOriginalHTML()
 		isMarkdownPreview.value = false
 		resetMarkdownEditorState()
@@ -403,9 +422,10 @@ export function MarkdownEditorOverlay() {
 			onClick={stopPropagation}
 		>
 			<form
-				class={`bg-cms-dark rounded-cms-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 w-full max-h-[90vh] flex flex-col ${
-					hasSidebar ? 'max-w-6xl' : 'max-w-4xl'
-				}`}
+				class={cn(
+					'bg-cms-dark rounded-cms-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 w-full max-h-[90vh] flex flex-col overflow-hidden',
+					hasSidebar ? 'max-w-6xl' : 'max-w-4xl',
+				)}
 				data-cms-ui
 				onSubmit={(e) => {
 					e.preventDefault()
@@ -479,7 +499,7 @@ export function MarkdownEditorOverlay() {
 										d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
 									/>
 								</svg>
-								Metadata
+								{showFrontmatter ? 'Hide' : 'Show'} Metadata
 								<svg
 									class={`w-3.5 h-3.5 transition-transform ${showFrontmatter ? 'rotate-180' : ''}`}
 									fill="none"

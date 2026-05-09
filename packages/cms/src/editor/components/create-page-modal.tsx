@@ -75,7 +75,7 @@ function ModeCard({ icon, title, description, onClick }: {
 		<button
 			type="button"
 			onClick={onClick}
-			class="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left cursor-pointer"
+			class="group w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left cursor-pointer"
 			data-cms-ui
 		>
 			<div class="shrink-0 w-10 h-10 bg-cms-primary/20 rounded-cms-sm flex items-center justify-center">
@@ -222,7 +222,7 @@ function NewPageForm() {
 						onInput={(e) => form.handleTitleChange((e.target as HTMLInputElement).value)}
 						placeholder="My New Page"
 						required
-						class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white placeholder:text-white/30 focus:outline-none focus:border-cms-primary/50"
+						class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white placeholder:text-white/30 focus:outline-none focus:border-white/40"
 						autoFocus
 						data-cms-ui
 					/>
@@ -240,7 +240,7 @@ function NewPageForm() {
 							class="flex-1 bg-transparent text-white placeholder:text-white/30 focus:outline-none"
 							data-cms-ui
 						/>
-					</div>
+					</label>
 				</Field>
 
 				{layouts.length > 0 && (
@@ -248,7 +248,7 @@ function NewPageForm() {
 						<select
 							value={selectedLayout}
 							onChange={(e) => setSelectedLayout((e.target as HTMLSelectElement).value || undefined)}
-							class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white focus:outline-none focus:border-cms-primary/50"
+							class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white focus:outline-none focus:border-white/40"
 							data-cms-ui
 						>
 							{layouts.map((l) => <option key={l.path} value={l.path}>{l.name}</option>)}
@@ -325,7 +325,7 @@ function DuplicatePageForm() {
 							form.resetSlugManual()
 						}}
 						required
-						class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white focus:outline-none focus:border-cms-primary/50"
+						class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white focus:outline-none focus:border-white/40"
 						data-cms-ui
 					>
 						{pages.map((p) => (
@@ -342,7 +342,7 @@ function DuplicatePageForm() {
 						value={form.title}
 						onInput={(e) => form.handleTitleChange((e.target as HTMLInputElement).value)}
 						placeholder="Page title"
-						class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white placeholder:text-white/30 focus:outline-none focus:border-cms-primary/50"
+						class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white placeholder:text-white/30 focus:outline-none focus:border-white/40"
 						data-cms-ui
 					/>
 				</Field>
@@ -359,7 +359,7 @@ function DuplicatePageForm() {
 							class="flex-1 bg-transparent text-white placeholder:text-white/30 focus:outline-none"
 							data-cms-ui
 						/>
-					</div>
+					</label>
 				</Field>
 
 				<label class="flex items-center gap-2.5 cursor-pointer" data-cms-ui>
@@ -441,7 +441,7 @@ function CollectionPicker() {
 						key={col.name}
 						type="button"
 						onClick={() => handleSelectCollection(col.name)}
-						class="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left cursor-pointer"
+						class="group w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left cursor-pointer"
 						data-cms-ui
 					>
 						<div class="shrink-0 w-10 h-10 bg-cms-primary/20 rounded-cms-sm flex items-center justify-center">
@@ -588,7 +588,7 @@ export function CollectionIcon() {
 
 export function ChevronRightIcon() {
 	return (
-		<svg class="w-5 h-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<svg class="w-5 h-5 text-white/40 group-hover:text-cms-primary transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 		</svg>
 	)

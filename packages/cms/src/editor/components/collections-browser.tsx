@@ -97,7 +97,7 @@ export function CollectionsBrowser() {
 
 		return (
 			<ModalBackdrop onClose={handleClose} extraClass="flex flex-col max-h-[80vh]">
-				<div class="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
+				<div class="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
 					<div class="flex items-center gap-3">
 						<button
 							type="button"
@@ -132,11 +132,11 @@ export function CollectionsBrowser() {
 								placeholder="Search..."
 								value={search}
 								onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
-								class="w-full pl-9 pr-3 py-2 text-sm text-white bg-white/5 border border-white/10 rounded-cms-lg placeholder:text-white/30 focus:outline-none focus:border-white/20"
+								class="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 focus:outline-none"
 								data-cms-ui
 							/>
-						</div>
-						<div class="text-white/30 text-xs mt-2">
+						</label>
+						<div class="text-white/30 text-xs mt-2 ml-4">
 							{search
 								? `${filteredEntries.length} of ${entries.length}`
 								: `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`}
@@ -186,7 +186,7 @@ export function CollectionsBrowser() {
 									<button
 										type="button"
 										onClick={() => handleEntryClick(entry.slug, entry.sourcePath)}
-										class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 rounded-cms-lg transition-colors text-left group"
+										class="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/10 rounded-cms-md transition-colors text-left group"
 										data-cms-ui
 									>
 										<div class="flex-1 min-w-0">
@@ -210,7 +210,7 @@ export function CollectionsBrowser() {
 											<TrashIcon />
 										</button>
 										<svg
-											class="w-4 h-4 text-white/20 group-hover:text-white/40 shrink-0 transition-colors"
+											class="w-4 h-4 text-white/20 group-hover:text-cms-primary shrink-0 transition-colors"
 											fill="none"
 											stroke="currentColor"
 											viewBox="0 0 24 24"
@@ -251,7 +251,7 @@ export function CollectionsBrowser() {
 						key={col.name}
 						type="button"
 						onClick={() => selectBrowserCollection(col.name)}
-						class="w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left"
+						class="group w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left cursor-pointer"
 						data-cms-ui
 					>
 						<div class="shrink-0 w-10 h-10 bg-cms-primary/20 rounded-cms-sm flex items-center justify-center">

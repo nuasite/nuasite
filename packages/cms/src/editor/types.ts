@@ -54,6 +54,14 @@ export interface CmsConfig {
 	features?: CmsFeatures
 	/** Maximum upload size in bytes for media uploads (injected by the integration). */
 	maxUploadSize?: number
+	/**
+	 * Describes the host site's color theme. The CMS draws editor chrome and outlines
+	 * in a contrasting color so they read clearly against the page being edited.
+	 *  - 'light' — host is light → CMS uses dark outlines
+	 *  - 'dark'  — host is dark → CMS uses light outlines
+	 *  - 'auto'  (default) — detect from `prefers-color-scheme` and the page background
+	 */
+	siteTheme?: 'auto' | 'light' | 'dark'
 }
 
 export interface ComponentProp {

@@ -75,7 +75,7 @@ export function DeletePageDialog() {
 								value={state.redirectTo}
 								onInput={(e) => setDeletePageRedirectTo((e.target as HTMLInputElement).value)}
 								placeholder="/"
-								class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white placeholder:text-white/30 focus:outline-none focus:border-cms-primary/50"
+								class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-cms-md text-white placeholder:text-white/30 focus:outline-none focus:border-white/40"
 								data-cms-ui
 							/>
 						</div>

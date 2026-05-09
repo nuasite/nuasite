@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'preact/hooks'
 import { saveBatchChanges } from '../api'
 import { isApplyingUndoRedo, recordChange } from '../history'
+import { cn } from '../lib/cn'
 import {
 	clearPendingSeoChanges,
 	closeSeoEditor,
@@ -16,7 +17,7 @@ import {
 } from '../signals'
 import type { ChangePayload, PageSeoData, PendingSeoChange } from '../types'
 import { ColorField, ComboBoxField, ImageField } from './fields'
-import { CancelButton, CloseButton, ModalBackdrop } from './modal-shell'
+import { CancelButton, CloseButton, ModalBackdrop, Section } from './modal-shell'
 import { Spinner } from './spinner'
 
 const OG_TYPE_OPTIONS = [
@@ -97,11 +98,12 @@ function SeoField({ label, id, value, placeholder, multiline, tooltip, onChange 
 				placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
 				onInput={handleChange}
 				disabled={!id}
-				class={`w-full p-2.5 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors ${
-					isDirty
-						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
-						: 'border-white/20 focus:border-white/40 focus:ring-white/10'
-				} ${!id ? 'opacity-50 cursor-not-allowed' : ''} ${multiline ? 'min-h-20 resize-y' : ''}`}
+				class={cn(
+					'w-full p-2.5 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors focus:border-white/40 focus:ring-white/10',
+					isDirty ? 'border-white/30' : 'border-white/20',
+					!id && 'opacity-50 cursor-not-allowed',
+					multiline && 'min-h-20 resize-y',
+				)}
 				data-cms-ui
 			/>
 		</div>
@@ -120,19 +122,13 @@ function useSeoMeta(tag: { id?: string; content: string } | undefined) {
 	}
 }
 
-interface SeoSectionProps {
-	title: string
-	children: preact.ComponentChildren
-}
-
-function SeoSection({ title, children }: SeoSectionProps) {
+function SeoSection({ title, children }: { title: string; children: preact.ComponentChildren }) {
 	return (
-		<div class="space-y-4">
-			<h3 class="text-sm font-semibold text-white/60 uppercase tracking-wider">{title}</h3>
+		<Section title={title}>
 			<div class="space-y-4">
 				{children}
 			</div>
-		</div>
+		</Section>
 	)
 }
 
@@ -273,7 +269,7 @@ export function SeoEditor() {
 	return (
 		<ModalBackdrop onClose={handleClose} maxWidth="max-w-2xl" extraClass="max-h-[85vh] flex flex-col">
 			{/* Header */}
-			<div class="flex items-center justify-between p-5 border-b border-white/10">
+			<div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
 				<div class="flex items-center gap-3">
 					<h2 class="text-lg font-semibold text-white">SEO Settings</h2>
 					{dirtyCount > 0 && (
@@ -390,7 +386,6 @@ export function SeoEditor() {
 												<ImageField
 													label={label}
 													value={currentValue}
-													placeholder="/favicon.svg"
 													onChange={(v) => {
 														if (faviconId) handleFieldChange(faviconId, v, originalValue)
 													}}
@@ -433,7 +428,6 @@ export function SeoEditor() {
 										<ImageField
 											label="OG Image"
 											value={ogImage.current}
-											placeholder="/images/og-image.jpg"
 											onChange={(v) => {
 												if (ogImage.id) handleFieldChange(ogImage.id, v, ogImage.original)
 											}}
@@ -516,7 +510,6 @@ export function SeoEditor() {
 										<ImageField
 											label="Twitter Image"
 											value={twitterImage.current}
-											placeholder="/images/twitter-image.jpg"
 											onChange={(v) => {
 												if (twitterImage.id) handleFieldChange(twitterImage.id, v, twitterImage.original)
 											}}
@@ -569,11 +562,12 @@ export function SeoEditor() {
 						type="button"
 						onClick={handleSaveAll}
 						disabled={dirtyCount === 0 || isSaving}
-						class={`px-5 py-2 text-sm font-medium rounded-cms-pill transition-colors flex items-center gap-2 ${
+						class={cn(
+							'px-5 py-2 text-sm font-medium rounded-cms-pill transition-colors flex items-center gap-2',
 							dirtyCount > 0 && !isSaving
 								? 'bg-cms-primary text-cms-primary-text hover:bg-cms-primary-hover'
-								: 'bg-white/10 text-white/40 cursor-not-allowed'
-						}`}
+								: 'bg-white/10 text-white/40 cursor-not-allowed',
+						)}
 						data-cms-ui
 					>
 						{isSaving && <Spinner />}

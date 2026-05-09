@@ -238,7 +238,7 @@ export function FrontmatterSidebar({ fields, page, collectionDefinition }: Front
 
 			{/* Sidebar content */}
 			{!collapsed && (
-				<div class="flex-1 overflow-y-auto p-3 pt-10 space-y-3 min-w-0">
+				<div class="flex-1 overflow-y-auto p-3 pt-10 space-y-3 min-w-0" style={{ scrollbarGutter: 'stable' }}>
 					{groups.map((group, gi) => (
 						<div key={gi} data-cms-ui>
 							{group.group && <GroupHeader label={group.group} />}

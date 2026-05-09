@@ -46,6 +46,9 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const isSaving = signals.isSaving.value
 	const showEditableHighlights = signals.showEditableHighlights.value
 	const isPreviewingMarkdown = signals.isMarkdownPreview.value
+	const isSideModalOpen = signals.isColorEditorOpen.value
+		|| signals.isAttributeEditorOpen.value
+		|| signals.isBgImageOverlayOpen.value
 	const currentPageCollection = signals.currentPageCollection.value
 	const [isMenuOpen, setIsMenuOpen] = useState(false)
 	const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
@@ -53,6 +56,9 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const versionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	if (isPreviewingMarkdown) return null
+	// Right-anchored side panels (color editor, attribute editor, background-image overlay)
+	// would visually overlap the right-anchored toolbar pill — hide while any of them is open.
+	if (isSideModalOpen) return null
 
 	const stopPropagation = (e: Event) => e.stopPropagation()
 
@@ -201,7 +207,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 			class={cn(
 				'fixed bottom-4 sm:bottom-8 font-sans transition-all duration-300',
 				isToolbarOpen
-					? 'left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2'
+					? 'left-4 right-4 sm:right-8 sm:left-auto sm:-translate-x-1/2'
 					: 'right-4 sm:right-8',
 			)}
 			data-cms-ui
@@ -213,9 +219,9 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 				{isToolbarOpen && !showingOriginal && callbacks.onToggleHighlights && (
 					<ToolbarButton
 						onClick={() => callbacks.onToggleHighlights?.()}
-						class={'flex gap-2.5 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white py-2! pr-1.5!'}
+						class={'flex min-w-[157px] gap-2.5 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white py-2! pr-1.5!'}
 					>
-						Outlines
+						{showEditableHighlights ? 'Hide Outlines' : 'Show Outlines'}
 						<span
 							class={cn(
 								'inline-block w-6 h-6 rounded-full shrink-0 transition-colors',
