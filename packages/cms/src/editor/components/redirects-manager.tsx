@@ -47,9 +47,10 @@ export function RedirectsManager() {
 				</Section>
 			</div>
 
-			<div class="shrink-0 p-5 border-t border-white/10 bg-white/5 rounded-b-cms-xl space-y-3">
-				<h3 class="text-sm font-semibold text-white/60 uppercase tracking-wider">Add new</h3>
-				<AddRedirectForm />
+			<div class="shrink-0 p-5 pb-6 border-t border-white/10 bg-white/5 rounded-b-cms-xl">
+				<Section title="Add redirect">
+					<AddRedirectForm />
+				</Section>
 			</div>
 		</ModalBackdrop>
 	)
