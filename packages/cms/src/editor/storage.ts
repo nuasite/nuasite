@@ -14,46 +14,68 @@ import type {
 } from './types'
 
 // ============================================================================
+// JSON-based storage helpers — all browser-storage access in this module
+// goes through these so the try/catch + console.warn pattern lives in one place.
+// ============================================================================
+
+function readJson<T>(storage: Storage, key: string, fallback: T, label: string): T {
+	try {
+		const raw = storage.getItem(key)
+		return raw === null ? fallback : (JSON.parse(raw) as T)
+	} catch (e) {
+		console.warn(`[CMS] ${label}:`, e)
+		return fallback
+	}
+}
+
+function writeJson(storage: Storage, key: string, value: unknown, label: string): void {
+	try {
+		storage.setItem(key, JSON.stringify(value))
+	} catch (e) {
+		console.warn(`[CMS] ${label}:`, e)
+	}
+}
+
+function removeKey(storage: Storage, key: string, label: string): void {
+	try {
+		storage.removeItem(key)
+	} catch (e) {
+		console.warn(`[CMS] ${label}:`, e)
+	}
+}
+
+function collectDirtyEdits<C, E>(
+	pendingChanges: Map<string, C>,
+	pickFields: (change: C) => E,
+	isDirty: (change: C) => boolean,
+): Record<string, E> {
+	const edits: Record<string, E> = {}
+	pendingChanges.forEach((change, cmsId) => {
+		if (isDirty(change)) edits[cmsId] = pickFields(change)
+	})
+	return edits
+}
+
+// ============================================================================
 // Text Edits
 // ============================================================================
 
 export function saveEditsToStorage(pendingChanges: Map<string, PendingChange>): void {
-	const edits: SavedEdits = {}
-
-	pendingChanges.forEach((change, cmsId) => {
-		if (change.isDirty) {
-			edits[cmsId] = {
-				originalText: change.originalText,
-				newText: change.newText,
-				currentHTML: change.currentHTML,
-				hasStyledContent: change.hasStyledContent,
-			}
-		}
-	})
-
-	try {
-		sessionStorage.setItem(STORAGE_KEYS.PENDING_EDITS, JSON.stringify(edits))
-	} catch (e) {
-		console.warn('[CMS] Failed to save edits to storage:', e)
-	}
+	const edits = collectDirtyEdits(pendingChanges, (c) => ({
+		originalText: c.originalText,
+		newText: c.newText,
+		currentHTML: c.currentHTML,
+		hasStyledContent: c.hasStyledContent,
+	}), (c) => c.isDirty)
+	writeJson(sessionStorage, STORAGE_KEYS.PENDING_EDITS, edits, 'Failed to save edits to storage')
 }
 
 export function loadEditsFromStorage(): SavedEdits {
-	try {
-		const stored = sessionStorage.getItem(STORAGE_KEYS.PENDING_EDITS)
-		return stored ? JSON.parse(stored) : {}
-	} catch (e) {
-		console.warn('[CMS] Failed to load edits from storage:', e)
-		return {}
-	}
+	return readJson<SavedEdits>(sessionStorage, STORAGE_KEYS.PENDING_EDITS, {}, 'Failed to load edits from storage')
 }
 
 export function clearEditsFromStorage(): void {
-	try {
-		sessionStorage.removeItem(STORAGE_KEYS.PENDING_EDITS)
-	} catch (e) {
-		console.warn('[CMS] Failed to clear edits from storage:', e)
-	}
+	removeKey(sessionStorage, STORAGE_KEYS.PENDING_EDITS, 'Failed to clear edits from storage')
 }
 
 // ============================================================================
@@ -61,43 +83,27 @@ export function clearEditsFromStorage(): void {
 // ============================================================================
 
 export function saveImageEditsToStorage(pendingImageChanges: Map<string, PendingImageChange>): void {
-	const edits: SavedImageEdits = {}
-
-	pendingImageChanges.forEach((change, cmsId) => {
-		if (change.isDirty) {
-			edits[cmsId] = {
-				originalSrc: change.originalSrc,
-				newSrc: change.newSrc,
-				originalAlt: change.originalAlt,
-				newAlt: change.newAlt,
-				originalSrcSet: change.originalSrcSet,
-			}
-		}
-	})
-
-	try {
-		sessionStorage.setItem(STORAGE_KEYS.PENDING_IMAGE_EDITS, JSON.stringify(edits))
-	} catch (e) {
-		console.warn('[CMS] Failed to save image edits to storage:', e)
-	}
+	const edits = collectDirtyEdits(pendingImageChanges, (c) => ({
+		originalSrc: c.originalSrc,
+		newSrc: c.newSrc,
+		originalAlt: c.originalAlt,
+		newAlt: c.newAlt,
+		originalSrcSet: c.originalSrcSet,
+	}), (c) => c.isDirty)
+	writeJson(sessionStorage, STORAGE_KEYS.PENDING_IMAGE_EDITS, edits, 'Failed to save image edits to storage')
 }
 
 export function loadImageEditsFromStorage(): SavedImageEdits {
-	try {
-		const stored = sessionStorage.getItem(STORAGE_KEYS.PENDING_IMAGE_EDITS)
-		return stored ? JSON.parse(stored) : {}
-	} catch (e) {
-		console.warn('[CMS] Failed to load image edits from storage:', e)
-		return {}
-	}
+	return readJson<SavedImageEdits>(
+		sessionStorage,
+		STORAGE_KEYS.PENDING_IMAGE_EDITS,
+		{},
+		'Failed to load image edits from storage',
+	)
 }
 
 export function clearImageEditsFromStorage(): void {
-	try {
-		sessionStorage.removeItem(STORAGE_KEYS.PENDING_IMAGE_EDITS)
-	} catch (e) {
-		console.warn('[CMS] Failed to clear image edits from storage:', e)
-	}
+	removeKey(sessionStorage, STORAGE_KEYS.PENDING_IMAGE_EDITS, 'Failed to clear image edits from storage')
 }
 
 // ============================================================================
@@ -105,40 +111,24 @@ export function clearImageEditsFromStorage(): void {
 // ============================================================================
 
 export function saveColorEditsToStorage(pendingColorChanges: Map<string, PendingColorChange>): void {
-	const edits: SavedColorEdits = {}
-
-	pendingColorChanges.forEach((change, cmsId) => {
-		if (change.isDirty) {
-			edits[cmsId] = {
-				originalClasses: change.originalClasses,
-				newClasses: change.newClasses,
-			}
-		}
-	})
-
-	try {
-		sessionStorage.setItem(STORAGE_KEYS.PENDING_COLOR_EDITS, JSON.stringify(edits))
-	} catch (e) {
-		console.warn('[CMS] Failed to save color edits to storage:', e)
-	}
+	const edits = collectDirtyEdits(pendingColorChanges, (c) => ({
+		originalClasses: c.originalClasses,
+		newClasses: c.newClasses,
+	}), (c) => c.isDirty)
+	writeJson(sessionStorage, STORAGE_KEYS.PENDING_COLOR_EDITS, edits, 'Failed to save color edits to storage')
 }
 
 export function loadColorEditsFromStorage(): SavedColorEdits {
-	try {
-		const stored = sessionStorage.getItem(STORAGE_KEYS.PENDING_COLOR_EDITS)
-		return stored ? JSON.parse(stored) : {}
-	} catch (e) {
-		console.warn('[CMS] Failed to load color edits from storage:', e)
-		return {}
-	}
+	return readJson<SavedColorEdits>(
+		sessionStorage,
+		STORAGE_KEYS.PENDING_COLOR_EDITS,
+		{},
+		'Failed to load color edits from storage',
+	)
 }
 
 export function clearColorEditsFromStorage(): void {
-	try {
-		sessionStorage.removeItem(STORAGE_KEYS.PENDING_COLOR_EDITS)
-	} catch (e) {
-		console.warn('[CMS] Failed to clear color edits from storage:', e)
-	}
+	removeKey(sessionStorage, STORAGE_KEYS.PENDING_COLOR_EDITS, 'Failed to clear color edits from storage')
 }
 
 // ============================================================================
@@ -146,40 +136,24 @@ export function clearColorEditsFromStorage(): void {
 // ============================================================================
 
 export function saveAttributeEditsToStorage(pendingAttributeChanges: Map<string, PendingAttributeChange>): void {
-	const edits: SavedAttributeEdits = {}
-
-	pendingAttributeChanges.forEach((change, cmsId) => {
-		if (change.isDirty) {
-			edits[cmsId] = {
-				originalAttributes: change.originalAttributes,
-				newAttributes: change.newAttributes,
-			}
-		}
-	})
-
-	try {
-		sessionStorage.setItem(STORAGE_KEYS.PENDING_ATTRIBUTE_EDITS, JSON.stringify(edits))
-	} catch (e) {
-		console.warn('[CMS] Failed to save attribute edits to storage:', e)
-	}
+	const edits = collectDirtyEdits(pendingAttributeChanges, (c) => ({
+		originalAttributes: c.originalAttributes,
+		newAttributes: c.newAttributes,
+	}), (c) => c.isDirty)
+	writeJson(sessionStorage, STORAGE_KEYS.PENDING_ATTRIBUTE_EDITS, edits, 'Failed to save attribute edits to storage')
 }
 
 export function loadAttributeEditsFromStorage(): SavedAttributeEdits {
-	try {
-		const stored = sessionStorage.getItem(STORAGE_KEYS.PENDING_ATTRIBUTE_EDITS)
-		return stored ? JSON.parse(stored) : {}
-	} catch (e) {
-		console.warn('[CMS] Failed to load attribute edits from storage:', e)
-		return {}
-	}
+	return readJson<SavedAttributeEdits>(
+		sessionStorage,
+		STORAGE_KEYS.PENDING_ATTRIBUTE_EDITS,
+		{},
+		'Failed to load attribute edits from storage',
+	)
 }
 
 export function clearAttributeEditsFromStorage(): void {
-	try {
-		sessionStorage.removeItem(STORAGE_KEYS.PENDING_ATTRIBUTE_EDITS)
-	} catch (e) {
-		console.warn('[CMS] Failed to clear attribute edits from storage:', e)
-	}
+	removeKey(sessionStorage, STORAGE_KEYS.PENDING_ATTRIBUTE_EDITS, 'Failed to clear attribute edits from storage')
 }
 
 // ============================================================================
@@ -187,46 +161,30 @@ export function clearAttributeEditsFromStorage(): void {
 // ============================================================================
 
 export function saveBgImageEditsToStorage(pendingBgImageChanges: Map<string, PendingBackgroundImageChange>): void {
-	const edits: SavedBackgroundImageEdits = {}
-
-	pendingBgImageChanges.forEach((change, cmsId) => {
-		if (change.isDirty) {
-			edits[cmsId] = {
-				originalBgImageClass: change.originalBgImageClass,
-				newBgImageClass: change.newBgImageClass,
-				originalBgSize: change.originalBgSize,
-				newBgSize: change.newBgSize,
-				originalBgPosition: change.originalBgPosition,
-				newBgPosition: change.newBgPosition,
-				originalBgRepeat: change.originalBgRepeat,
-				newBgRepeat: change.newBgRepeat,
-			}
-		}
-	})
-
-	try {
-		sessionStorage.setItem(STORAGE_KEYS.PENDING_BG_IMAGE_EDITS, JSON.stringify(edits))
-	} catch (e) {
-		console.warn('[CMS] Failed to save bg image edits to storage:', e)
-	}
+	const edits = collectDirtyEdits(pendingBgImageChanges, (c) => ({
+		originalBgImageClass: c.originalBgImageClass,
+		newBgImageClass: c.newBgImageClass,
+		originalBgSize: c.originalBgSize,
+		newBgSize: c.newBgSize,
+		originalBgPosition: c.originalBgPosition,
+		newBgPosition: c.newBgPosition,
+		originalBgRepeat: c.originalBgRepeat,
+		newBgRepeat: c.newBgRepeat,
+	}), (c) => c.isDirty)
+	writeJson(sessionStorage, STORAGE_KEYS.PENDING_BG_IMAGE_EDITS, edits, 'Failed to save bg image edits to storage')
 }
 
 export function loadBgImageEditsFromStorage(): SavedBackgroundImageEdits {
-	try {
-		const stored = sessionStorage.getItem(STORAGE_KEYS.PENDING_BG_IMAGE_EDITS)
-		return stored ? JSON.parse(stored) : {}
-	} catch (e) {
-		console.warn('[CMS] Failed to load bg image edits from storage:', e)
-		return {}
-	}
+	return readJson<SavedBackgroundImageEdits>(
+		sessionStorage,
+		STORAGE_KEYS.PENDING_BG_IMAGE_EDITS,
+		{},
+		'Failed to load bg image edits from storage',
+	)
 }
 
 export function clearBgImageEditsFromStorage(): void {
-	try {
-		sessionStorage.removeItem(STORAGE_KEYS.PENDING_BG_IMAGE_EDITS)
-	} catch (e) {
-		console.warn('[CMS] Failed to clear bg image edits from storage:', e)
-	}
+	removeKey(sessionStorage, STORAGE_KEYS.PENDING_BG_IMAGE_EDITS, 'Failed to clear bg image edits from storage')
 }
 
 // ============================================================================
@@ -234,29 +192,15 @@ export function clearBgImageEditsFromStorage(): void {
 // ============================================================================
 
 export function saveSettingsToStorage(settings: CmsSettings): void {
-	try {
-		localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings))
-	} catch (e) {
-		console.warn('[CMS] Failed to save settings to storage:', e)
-	}
+	writeJson(localStorage, STORAGE_KEYS.SETTINGS, settings, 'Failed to save settings to storage')
 }
 
 export function loadSettingsFromStorage(): CmsSettings | null {
-	try {
-		const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS)
-		return stored ? JSON.parse(stored) : null
-	} catch (e) {
-		console.warn('[CMS] Failed to load settings from storage:', e)
-		return null
-	}
+	return readJson<CmsSettings | null>(localStorage, STORAGE_KEYS.SETTINGS, null, 'Failed to load settings from storage')
 }
 
 export function clearSettingsFromStorage(): void {
-	try {
-		localStorage.removeItem(STORAGE_KEYS.SETTINGS)
-	} catch (e) {
-		console.warn('[CMS] Failed to clear settings from storage:', e)
-	}
+	removeKey(localStorage, STORAGE_KEYS.SETTINGS, 'Failed to clear settings from storage')
 }
 
 // ============================================================================
@@ -271,36 +215,29 @@ export interface PendingEntryNavigation {
 }
 
 export function savePendingEntryNavigation(entry: PendingEntryNavigation): void {
-	try {
-		sessionStorage.setItem(STORAGE_KEYS.PENDING_ENTRY_NAVIGATION, JSON.stringify(entry))
-	} catch (e) {
-		console.warn('[CMS] Failed to save pending entry navigation:', e)
-	}
+	writeJson(sessionStorage, STORAGE_KEYS.PENDING_ENTRY_NAVIGATION, entry, 'Failed to save pending entry navigation')
 }
 
 export function hasPendingEntryNavigation(): boolean {
-	try {
-		const stored = sessionStorage.getItem(STORAGE_KEYS.PENDING_ENTRY_NAVIGATION)
-		if (!stored) return false
-		const entry: PendingEntryNavigation = JSON.parse(stored)
-		return window.location.pathname === entry.pathname
-	} catch {
-		return false
-	}
+	const entry = readJson<PendingEntryNavigation | null>(
+		sessionStorage,
+		STORAGE_KEYS.PENDING_ENTRY_NAVIGATION,
+		null,
+		'Failed to load pending entry navigation',
+	)
+	return !!entry && window.location.pathname === entry.pathname
 }
 
 export function loadPendingEntryNavigation(): PendingEntryNavigation | null {
-	try {
-		const stored = sessionStorage.getItem(STORAGE_KEYS.PENDING_ENTRY_NAVIGATION)
-		if (!stored) return null
-		const entry: PendingEntryNavigation = JSON.parse(stored)
-		if (window.location.pathname !== entry.pathname) return null
-		sessionStorage.removeItem(STORAGE_KEYS.PENDING_ENTRY_NAVIGATION)
-		return entry
-	} catch (e) {
-		console.warn('[CMS] Failed to load pending entry navigation:', e)
-		return null
-	}
+	const entry = readJson<PendingEntryNavigation | null>(
+		sessionStorage,
+		STORAGE_KEYS.PENDING_ENTRY_NAVIGATION,
+		null,
+		'Failed to load pending entry navigation',
+	)
+	if (!entry || window.location.pathname !== entry.pathname) return null
+	removeKey(sessionStorage, STORAGE_KEYS.PENDING_ENTRY_NAVIGATION, 'Failed to clear pending entry navigation')
+	return entry
 }
 
 // ============================================================================
@@ -308,20 +245,59 @@ export function loadPendingEntryNavigation(): PendingEntryNavigation | null {
 // ============================================================================
 
 export function saveEditingState(isEditing: boolean): void {
-	try {
-		if (isEditing) {
-			sessionStorage.setItem(STORAGE_KEYS.IS_EDITING, '1')
-		} else {
-			sessionStorage.removeItem(STORAGE_KEYS.IS_EDITING)
-		}
-	} catch (e) {
-		console.warn('[CMS] Failed to save editing state:', e)
+	if (isEditing) {
+		writeJson(sessionStorage, STORAGE_KEYS.IS_EDITING, true, 'Failed to save editing state')
+	} else {
+		removeKey(sessionStorage, STORAGE_KEYS.IS_EDITING, 'Failed to clear editing state')
 	}
 }
 
 export function loadEditingState(): boolean {
+	return readJson<boolean>(sessionStorage, STORAGE_KEYS.IS_EDITING, false, 'Failed to load editing state')
+}
+
+// ============================================================================
+// Markdown Drafts (per-file, sessionStorage)
+// ============================================================================
+
+export interface MarkdownDraft {
+	frontmatter: Record<string, unknown>
+	content: string
+	savedAt: number
+}
+
+function markdownDraftKey(filePath: string): string {
+	return `${STORAGE_KEYS.MARKDOWN_DRAFT_PREFIX}${filePath}`
+}
+
+export function saveMarkdownDraft(
+	filePath: string,
+	frontmatter: Record<string, unknown>,
+	content: string,
+): void {
+	if (!filePath) return
+	const draft: MarkdownDraft = { frontmatter, content, savedAt: Date.now() }
+	writeJson(sessionStorage, markdownDraftKey(filePath), draft, 'Failed to save markdown draft')
+}
+
+export function loadMarkdownDraft(filePath: string): MarkdownDraft | null {
+	if (!filePath) return null
+	return readJson<MarkdownDraft | null>(sessionStorage, markdownDraftKey(filePath), null, 'Failed to load markdown draft')
+}
+
+export function clearMarkdownDraft(filePath: string): void {
+	if (!filePath) return
+	removeKey(sessionStorage, markdownDraftKey(filePath), 'Failed to clear markdown draft')
+}
+
+/** True when at least one markdown draft is present in sessionStorage. */
+export function hasAnyMarkdownDraft(): boolean {
 	try {
-		return sessionStorage.getItem(STORAGE_KEYS.IS_EDITING) === '1'
+		for (let i = 0; i < sessionStorage.length; i++) {
+			const key = sessionStorage.key(i)
+			if (key?.startsWith(STORAGE_KEYS.MARKDOWN_DRAFT_PREFIX)) return true
+		}
+		return false
 	} catch {
 		return false
 	}

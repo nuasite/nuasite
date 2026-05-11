@@ -57,7 +57,7 @@ import {
 	updateSettings,
 } from './signals'
 import * as signals from './signals'
-import { hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, saveSettingsToStorage } from './storage'
+import { hasAnyMarkdownDraft, hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, saveSettingsToStorage } from './storage'
 import CMS_STYLES from './styles.css?inline'
 import { generateCSSVariables, resolveTheme } from './themes'
 
@@ -124,12 +124,17 @@ const CmsUI = () => {
 		}
 	}, [config, updateUI])
 
-	// Auto-open markdown editor when there's a pending entry navigation from collections browser
+	// Waits for the manifest before opening — currentPageCollection depends on it.
+	const draftAutoOpenedRef = useRef(false)
+	const manifestState = signals.manifest.value
 	useEffect(() => {
-		if (hasPendingEntryNavigation()) {
-			openMarkdownEditorForCurrentPage()
-		}
-	}, [])
+		if (draftAutoOpenedRef.current) return
+		if (!hasPendingEntryNavigation() && !hasAnyMarkdownDraft()) return
+		const hasCollections = manifestState.collections && Object.keys(manifestState.collections).length > 0
+		if (!hasCollections) return
+		draftAutoOpenedRef.current = true
+		openMarkdownEditorForCurrentPage()
+	}, [manifestState])
 
 	// Send select-mode click selection to parent window via postMessage
 	const prevSelectModeRef = useRef<string | null>(null)

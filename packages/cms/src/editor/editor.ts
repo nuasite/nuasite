@@ -208,6 +208,27 @@ export async function startEditMode(
 	editModeAbortController = new AbortController()
 	const editModeSignal = editModeAbortController.signal
 
+	const savedEdits = loadEditsFromStorage()
+	const savedImageEdits = loadImageEditsFromStorage()
+	const savedColorEdits = loadColorEditsFromStorage()
+	const savedAttributeEdits = loadAttributeEditsFromStorage()
+
+	// Paint saved edits before awaiting the manifest so slow fetches don't show stale text.
+	// The captured pre-paint state is read by the wiring loop later as the pendingChange origin —
+	// without it the source writer would search the source file for the already-edited text.
+	const preEagerPaintDomState = new Map<string, { html: string; text: string }>()
+	for (const [cmsId, edit] of Object.entries(savedEdits)) {
+		const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${cmsId}"]`) as HTMLElement | null
+		if (!el) continue
+		preEagerPaintDomState.set(cmsId, {
+			html: el.innerHTML,
+			text: getEditableTextFromElement(el),
+		})
+		if (el.innerHTML !== edit.currentHTML) {
+			el.innerHTML = edit.currentHTML
+		}
+	}
+
 	try {
 		const manifest = await fetchManifest()
 		signals.setManifest(manifest)
@@ -217,11 +238,6 @@ export async function startEditMode(
 		console.error('[CMS] Failed to load manifest:', err)
 		return
 	}
-
-	const savedEdits = loadEditsFromStorage()
-	const savedImageEdits = loadImageEditsFromStorage()
-	const savedColorEdits = loadColorEditsFromStorage()
-	const savedAttributeEdits = loadAttributeEditsFromStorage()
 	const savedBgImageEdits = loadBgImageEditsFromStorage()
 	const currentManifest = signals.manifest.value
 
@@ -343,8 +359,9 @@ export async function startEditMode(
 		setupAttributeTracking(config, el, cmsId, savedAttributeEdits[cmsId])
 
 		if (!signals.pendingChanges.value.has(cmsId)) {
-			const originalHTML = el.innerHTML
-			const originalText = getEditableTextFromElement(el)
+			const preEagerPaint = preEagerPaintDomState.get(cmsId)
+			const originalHTML = preEagerPaint?.html ?? el.innerHTML
+			const originalText = preEagerPaint?.text ?? getEditableTextFromElement(el)
 
 			logDebug(config.debug, 'Setting up element:', cmsId, 'originalText:', originalText)
 

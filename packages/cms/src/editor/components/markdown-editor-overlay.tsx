@@ -17,6 +17,7 @@ import {
 	startRedirectCountdown,
 	updateMarkdownFrontmatter,
 } from '../signals'
+import { clearMarkdownDraft } from '../storage'
 import { CreateModeFrontmatter, EditModeFrontmatter } from './frontmatter-fields'
 import { FrontmatterSidebar, partitionFields } from './frontmatter-sidebar'
 import { MarkdownInlineEditor } from './markdown-inline-editor'
@@ -163,6 +164,7 @@ export function MarkdownEditorOverlay() {
 					isMarkdownPreview.value = false
 					setIsSaving(false)
 
+					clearMarkdownDraft(currentPage.filePath)
 					showToast('Content saved', 'success')
 					// Clear pending entry navigation so editor doesn't auto-open after save
 					sessionStorage.removeItem(STORAGE_KEYS.PENDING_ENTRY_NAVIGATION)
