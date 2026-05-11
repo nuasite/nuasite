@@ -236,9 +236,19 @@ export async function startEditMode(
 	// Without this, slow or failing manifest fetches (e.g. sandbox cold-start) leave the
 	// user looking at the original text under an active edit-mode toolbar — until they
 	// toggle edit mode off/on and the manifest finally lands.
+	//
+	// Captures pre-paint HTML/text per element so the manifest-gated loop below can still
+	// register correct originalHTML/originalText for pendingChanges — otherwise the source
+	// writer would treat the edited text as the original and fail to match it in the source.
+	const preEagerPaintDomState = new Map<string, { html: string; text: string }>()
 	for (const [cmsId, edit] of Object.entries(savedEdits)) {
 		const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${cmsId}"]`) as HTMLElement | null
-		if (el && el.innerHTML !== edit.currentHTML) {
+		if (!el) continue
+		preEagerPaintDomState.set(cmsId, {
+			html: el.innerHTML,
+			text: getEditableTextFromElement(el),
+		})
+		if (el.innerHTML !== edit.currentHTML) {
 			el.innerHTML = edit.currentHTML
 		}
 	}
@@ -375,8 +385,12 @@ export async function startEditMode(
 		setupAttributeTracking(config, el, cmsId, savedAttributeEdits[cmsId])
 
 		if (!signals.pendingChanges.value.has(cmsId)) {
-			const originalHTML = el.innerHTML
-			const originalText = getEditableTextFromElement(el)
+			// If we eager-painted a saved edit onto this element, use the pre-paint state
+			// as the origin — otherwise the source writer would later try to match the
+			// already-edited text against the source file and fail.
+			const preEagerPaint = preEagerPaintDomState.get(cmsId)
+			const originalHTML = preEagerPaint?.html ?? el.innerHTML
+			const originalText = preEagerPaint?.text ?? getEditableTextFromElement(el)
 
 			logDebug(config.debug, 'Setting up element:', cmsId, 'originalText:', originalText)
 
