@@ -192,14 +192,21 @@ function hasStyledContent(el: HTMLElement): boolean {
 
 /**
  * Fetch the manifest with retry — sandbox runtimes (e.g. pletivo) may need a moment
- * after page load before the manifest endpoint responds successfully, and they may
- * also serve an empty manifest while the SSG side is still writing it. Retry on both
- * fetch errors and (when the DOM clearly expects entries) empty-manifest responses.
+ * after page load before the manifest endpoint responds successfully. Three retriable
+ * transient states are handled here:
+ *   1. Fetch failures (network/timeout).
+ *   2. Empty entries when the DOM clearly expects them (CMS markers visible in DOM).
+ *   3. Entries missing sourcePath for elements we have saved edits for — this means
+ *      the html-processor has populated the manifest but the source-finder pipeline
+ *      hasn't caught up yet, so the wiring loop would mark our edited element as
+ *      "locked" and skip pendingChange registration.
  */
-async function fetchManifestWithRetry(maxAttempts = 5, baseDelayMs = 300): Promise<CmsManifest> {
+async function fetchManifestWithRetry(savedEditIds: string[], maxAttempts = 5, baseDelayMs = 300): Promise<CmsManifest> {
 	const domCmsIdCount = document.querySelectorAll(`[${CSS.ID_ATTRIBUTE}]`).length
 	const domExpectsEntries = domCmsIdCount > 0
-	console.log(`[CMS debug] startEditMode: DOM has ${domCmsIdCount} cms elements; expectEntries=${domExpectsEntries}`)
+	console.log(
+		`[CMS debug] startEditMode: DOM has ${domCmsIdCount} cms elements; expectEntries=${domExpectsEntries}; awaiting sourcePath for ${savedEditIds.length} savedEdit ids`,
+	)
 	let lastErr: unknown
 	let lastManifest: CmsManifest | undefined
 
@@ -209,13 +216,14 @@ async function fetchManifestWithRetry(maxAttempts = 5, baseDelayMs = 300): Promi
 			const manifest = await fetchManifest()
 			lastManifest = manifest
 			const entryCount = Object.keys(manifest.entries ?? {}).length
+			const savedEditsMissingSource = savedEditIds.filter((id) => !manifest.entries?.[id]?.sourcePath)
 			const ms = Date.now() - attemptStart
 			console.log(
-				`[CMS debug] manifest attempt ${i + 1}/${maxAttempts}: ${ms}ms, entries=${entryCount}, hasCollections=${
-					Object.keys(manifest.collections ?? {}).length > 0
-				}`,
+				`[CMS debug] manifest attempt ${i + 1}/${maxAttempts}: ${ms}ms, entries=${entryCount}, savedEditsMissingSourcePath=${savedEditsMissingSource.length}`,
 			)
-			if (!domExpectsEntries || entryCount > 0) return manifest
+			const entriesReady = !domExpectsEntries || entryCount > 0
+			const savedEditsReady = savedEditsMissingSource.length === 0
+			if (entriesReady && savedEditsReady) return manifest
 		} catch (err) {
 			lastErr = err
 			const ms = Date.now() - attemptStart
@@ -229,7 +237,7 @@ async function fetchManifestWithRetry(maxAttempts = 5, baseDelayMs = 300): Promi
 	}
 
 	if (lastManifest) {
-		console.log('[CMS debug] giving up retries, returning last (possibly empty) manifest')
+		console.log('[CMS debug] giving up retries, returning last (possibly incomplete) manifest')
 		return lastManifest
 	}
 	console.log('[CMS debug] giving up retries with no manifest at all — throwing')
@@ -296,7 +304,7 @@ export async function startEditMode(
 	// Fetch with retry — sandbox runtimes like pletivo may take a moment after page load
 	// before the manifest endpoint responds successfully.
 	try {
-		const manifest = await fetchManifestWithRetry()
+		const manifest = await fetchManifestWithRetry(Object.keys(savedEdits))
 		signals.setManifest(manifest)
 		const entryCount = getManifestEntryCount(manifest)
 		logDebug(config.debug, 'Loaded manifest with', entryCount, 'entries')
