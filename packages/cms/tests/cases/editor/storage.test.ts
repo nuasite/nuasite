@@ -1,5 +1,12 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { clearEditsFromStorage, loadEditsFromStorage, saveEditsToStorage } from '../../../src/editor/storage'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import {
+	clearEditsFromStorage,
+	clearMarkdownDraft,
+	loadEditsFromStorage,
+	loadMarkdownDraft,
+	saveEditsToStorage,
+	saveMarkdownDraft,
+} from '../../../src/editor/storage'
 import type { PendingChange } from '../../../src/editor/types'
 
 beforeEach(() => {
@@ -130,4 +137,54 @@ test('saveEditsToStorage handles multiple changes', () => {
 	expect(Object.keys(loaded).length).toBe(2)
 	expect(loaded['id-1']?.newText).toBe('Modified 1')
 	expect(loaded['id-2']?.newText).toBe('Modified 2')
+})
+
+describe('markdown drafts', () => {
+	const filePath = '/content/blog/test-post.md'
+
+	test('saveMarkdownDraft + loadMarkdownDraft round-trip', () => {
+		saveMarkdownDraft(filePath, { title: 'Hello', date: '2026-05-11' }, 'Body content')
+
+		const loaded = loadMarkdownDraft(filePath)
+		expect(loaded).not.toBeNull()
+		expect(loaded?.content).toBe('Body content')
+		expect(loaded?.frontmatter).toEqual({ title: 'Hello', date: '2026-05-11' })
+		expect(typeof loaded?.savedAt).toBe('number')
+	})
+
+	test('loadMarkdownDraft returns null when no draft exists', () => {
+		expect(loadMarkdownDraft(filePath)).toBeNull()
+	})
+
+	test('clearMarkdownDraft removes the draft', () => {
+		saveMarkdownDraft(filePath, { title: 'X' }, 'body')
+		expect(loadMarkdownDraft(filePath)).not.toBeNull()
+
+		clearMarkdownDraft(filePath)
+		expect(loadMarkdownDraft(filePath)).toBeNull()
+	})
+
+	test('drafts are keyed per filePath', () => {
+		saveMarkdownDraft('/content/blog/a.md', { title: 'A' }, 'body a')
+		saveMarkdownDraft('/content/blog/b.md', { title: 'B' }, 'body b')
+
+		expect(loadMarkdownDraft('/content/blog/a.md')?.content).toBe('body a')
+		expect(loadMarkdownDraft('/content/blog/b.md')?.content).toBe('body b')
+
+		clearMarkdownDraft('/content/blog/a.md')
+		expect(loadMarkdownDraft('/content/blog/a.md')).toBeNull()
+		expect(loadMarkdownDraft('/content/blog/b.md')?.content).toBe('body b')
+	})
+
+	test('helpers no-op on empty filePath', () => {
+		// Doesn't throw and doesn't write a key
+		saveMarkdownDraft('', { title: 'X' }, 'body')
+		expect(loadMarkdownDraft('')).toBeNull()
+		clearMarkdownDraft('')
+	})
+
+	test('loadMarkdownDraft handles invalid JSON gracefully', () => {
+		sessionStorage.setItem('cms-markdown-draft:/x.md', 'not json')
+		expect(loadMarkdownDraft('/x.md')).toBeNull()
+	})
 })

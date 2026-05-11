@@ -93,6 +93,8 @@ export const STORAGE_KEYS = {
 	SETTINGS: 'cms-settings',
 	PENDING_ENTRY_NAVIGATION: 'cms-pending-entry-navigation',
 	IS_EDITING: 'cms-is-editing',
+	/** Prefix for per-file markdown draft entries; full key is `${MARKDOWN_DRAFT_PREFIX}${filePath}`. */
+	MARKDOWN_DRAFT_PREFIX: 'cms-markdown-draft:',
 } as const
 
 /**

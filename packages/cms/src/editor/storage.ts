@@ -328,6 +328,54 @@ export function loadEditingState(): boolean {
 }
 
 // ============================================================================
+// Markdown Drafts (per-file, sessionStorage)
+// ============================================================================
+
+export interface MarkdownDraft {
+	frontmatter: Record<string, unknown>
+	content: string
+	savedAt: number
+}
+
+function markdownDraftKey(filePath: string): string {
+	return `${STORAGE_KEYS.MARKDOWN_DRAFT_PREFIX}${filePath}`
+}
+
+export function saveMarkdownDraft(
+	filePath: string,
+	frontmatter: Record<string, unknown>,
+	content: string,
+): void {
+	if (!filePath) return
+	try {
+		const draft: MarkdownDraft = { frontmatter, content, savedAt: Date.now() }
+		sessionStorage.setItem(markdownDraftKey(filePath), JSON.stringify(draft))
+	} catch (e) {
+		console.warn('[CMS] Failed to save markdown draft:', e)
+	}
+}
+
+export function loadMarkdownDraft(filePath: string): MarkdownDraft | null {
+	if (!filePath) return null
+	try {
+		const raw = sessionStorage.getItem(markdownDraftKey(filePath))
+		return raw ? (JSON.parse(raw) as MarkdownDraft) : null
+	} catch (e) {
+		console.warn('[CMS] Failed to load markdown draft:', e)
+		return null
+	}
+}
+
+export function clearMarkdownDraft(filePath: string): void {
+	if (!filePath) return
+	try {
+		sessionStorage.removeItem(markdownDraftKey(filePath))
+	} catch (e) {
+		console.warn('[CMS] Failed to clear markdown draft:', e)
+	}
+}
+
+// ============================================================================
 // Clear All
 // ============================================================================
 

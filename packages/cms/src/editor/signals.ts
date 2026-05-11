@@ -1,8 +1,9 @@
-import { batch, computed, type Signal, signal } from '@preact/signals'
+import { batch, computed, effect, type Signal, signal } from '@preact/signals'
 import { slugifyHref } from '../shared'
 import { fetchManifest, getMarkdownContent } from './api'
 import type { ToastMessage, ToastType } from './components/toast/types'
 import { getConfig } from './config'
+import { clearMarkdownDraft, loadMarkdownDraft, saveMarkdownDraft } from './storage'
 import type {
 	AttributeEditorState,
 	BlockEditorState,
@@ -307,6 +308,23 @@ export const currentMarkdownPage = computed(
 	() => markdownEditorState.value.currentPage,
 )
 export const isMarkdownPreview = signal(false)
+
+// Debounce-persist dirty markdown edits to sessionStorage, keyed by file path.
+// Survives page reload (sandbox auto-reload, accidental cmd-R, network blip) but dies on tab close.
+const DRAFT_PERSIST_DEBOUNCE_MS = 500
+let draftPersistTimer: ReturnType<typeof setTimeout> | null = null
+
+effect(() => {
+	const state = markdownEditorState.value
+	const page = state.currentPage
+	if (!state.isOpen || !page || !page.isDirty || state.mode !== 'edit' || !page.filePath) return
+
+	const { filePath, frontmatter, content } = page
+	if (draftPersistTimer) clearTimeout(draftPersistTimer)
+	draftPersistTimer = setTimeout(() => {
+		saveMarkdownDraft(filePath, frontmatter, content)
+	}, DRAFT_PERSIST_DEBOUNCE_MS)
+})
 
 // ============================================================================
 // MDX Component Block State Signals
@@ -853,6 +871,61 @@ function parseFrontmatterValue(value: string): unknown {
 	return value
 }
 
+function frontmatterEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+	const aKeys = Object.keys(a)
+	const bKeys = Object.keys(b)
+	if (aKeys.length !== bKeys.length) return false
+	for (const k of aKeys) {
+		if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) return false
+	}
+	return true
+}
+
+function formatDraftAge(savedAt: number): string {
+	const elapsedMs = Date.now() - savedAt
+	const minutes = Math.floor(elapsedMs / 60_000)
+	if (minutes < 1) return 'just now'
+	if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+	const hours = Math.floor(minutes / 60)
+	if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+	return new Date(savedAt).toLocaleString()
+}
+
+/**
+ * If a sessionStorage draft exists for `filePath` and differs from the freshly fetched
+ * content, ask the user whether to restore it. Returns the (possibly overridden) frontmatter
+ * and content. The `isDirty` flag indicates whether the result came from a recovered draft.
+ */
+async function maybeRecoverDraft(
+	filePath: string,
+	fetchedFrontmatter: Record<string, unknown>,
+	fetchedContent: string,
+): Promise<{ frontmatter: Record<string, unknown>; content: string; isDirty: boolean }> {
+	const draft = loadMarkdownDraft(filePath)
+	if (!draft) return { frontmatter: fetchedFrontmatter, content: fetchedContent, isDirty: false }
+
+	const sameContent = draft.content === fetchedContent
+	const sameFrontmatter = frontmatterEqual(draft.frontmatter, fetchedFrontmatter)
+	if (sameContent && sameFrontmatter) {
+		clearMarkdownDraft(filePath)
+		return { frontmatter: fetchedFrontmatter, content: fetchedContent, isDirty: false }
+	}
+
+	const recover = await showConfirmDialog({
+		title: 'Recover unsaved changes?',
+		message: `An unsaved draft from ${formatDraftAge(draft.savedAt)} exists for this entry. Recover it, or discard?`,
+		confirmLabel: 'Recover draft',
+		cancelLabel: 'Discard',
+		variant: 'warning',
+	})
+
+	if (recover) {
+		return { frontmatter: draft.frontmatter, content: draft.content, isDirty: true }
+	}
+	clearMarkdownDraft(filePath)
+	return { frontmatter: fetchedFrontmatter, content: fetchedContent, isDirty: false }
+}
+
 /**
  * Open the markdown editor for the current page's collection entry.
  * Refreshes the manifest first to ensure we have the latest content.
@@ -896,14 +969,16 @@ export async function openMarkdownEditorForCurrentPage(): Promise<boolean> {
 	// Look up collection definition for schema-aware field rendering
 	const collectionDefinition = manifest.value.collectionDefinitions?.[collection.collectionName]
 
+	const recovered = await maybeRecoverDraft(collection.sourcePath, frontmatter, content)
+
 	markdownEditorState.value = {
 		isOpen: true,
 		currentPage: {
 			filePath: collection.sourcePath,
 			slug: collection.collectionSlug,
-			frontmatter: frontmatter as import('./types').BlogFrontmatter,
-			content,
-			isDirty: false,
+			frontmatter: recovered.frontmatter as import('./types').BlogFrontmatter,
+			content: recovered.content,
+			isDirty: recovered.isDirty,
 		},
 		activeElementId: collection.wrapperId ?? null,
 		mode: 'edit',
@@ -1114,14 +1189,16 @@ export async function openMarkdownEditorForEntry(
 		console.error('[CMS] Failed to fetch markdown content for entry:', err)
 	}
 
+	const recovered = await maybeRecoverDraft(sourcePath, frontmatter, content)
+
 	markdownEditorState.value = {
 		isOpen: true,
 		currentPage: {
 			filePath: sourcePath,
 			slug,
-			frontmatter: frontmatter as import('./types').BlogFrontmatter,
-			content,
-			isDirty: false,
+			frontmatter: recovered.frontmatter as import('./types').BlogFrontmatter,
+			content: recovered.content,
+			isDirty: recovered.isDirty,
 		},
 		activeElementId: null,
 		mode: 'edit',
