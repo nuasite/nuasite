@@ -208,6 +208,22 @@ export async function startEditMode(
 	editModeAbortController = new AbortController()
 	const editModeSignal = editModeAbortController.signal
 
+	const savedEdits = loadEditsFromStorage()
+	const savedImageEdits = loadImageEditsFromStorage()
+	const savedColorEdits = loadColorEditsFromStorage()
+	const savedAttributeEdits = loadAttributeEditsFromStorage()
+
+	// Eagerly paint saved text edits onto the DOM before awaiting the manifest.
+	// Without this, slow or failing manifest fetches (e.g. sandbox cold-start) leave the
+	// user looking at the original text under an active edit-mode toolbar — until they
+	// toggle edit mode off/on and the manifest finally lands.
+	for (const [cmsId, edit] of Object.entries(savedEdits)) {
+		const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${cmsId}"]`) as HTMLElement | null
+		if (el && el.innerHTML !== edit.currentHTML) {
+			el.innerHTML = edit.currentHTML
+		}
+	}
+
 	try {
 		const manifest = await fetchManifest()
 		signals.setManifest(manifest)
@@ -217,11 +233,6 @@ export async function startEditMode(
 		console.error('[CMS] Failed to load manifest:', err)
 		return
 	}
-
-	const savedEdits = loadEditsFromStorage()
-	const savedImageEdits = loadImageEditsFromStorage()
-	const savedColorEdits = loadColorEditsFromStorage()
-	const savedAttributeEdits = loadAttributeEditsFromStorage()
 	const savedBgImageEdits = loadBgImageEditsFromStorage()
 	const currentManifest = signals.manifest.value
 
