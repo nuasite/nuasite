@@ -57,7 +57,7 @@ import {
 	updateSettings,
 } from './signals'
 import * as signals from './signals'
-import { hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, saveSettingsToStorage } from './storage'
+import { hasAnyMarkdownDraft, hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, saveSettingsToStorage } from './storage'
 import CMS_STYLES from './styles.css?inline'
 import { generateCSSVariables, resolveTheme } from './themes'
 
@@ -124,9 +124,10 @@ const CmsUI = () => {
 		}
 	}, [config, updateUI])
 
-	// Auto-open markdown editor when there's a pending entry navigation from collections browser
+	// Auto-open markdown editor when there's a pending entry navigation from collections browser,
+	// or an unsaved sessionStorage draft from before a page reload (sandbox auto-reload, accidental cmd-R, etc).
 	useEffect(() => {
-		if (hasPendingEntryNavigation()) {
+		if (hasPendingEntryNavigation() || hasAnyMarkdownDraft()) {
 			openMarkdownEditorForCurrentPage()
 		}
 	}, [])

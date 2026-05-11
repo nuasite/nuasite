@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
 	clearEditsFromStorage,
 	clearMarkdownDraft,
+	hasAnyMarkdownDraft,
 	loadEditsFromStorage,
 	loadMarkdownDraft,
 	saveEditsToStorage,
@@ -186,5 +187,21 @@ describe('markdown drafts', () => {
 	test('loadMarkdownDraft handles invalid JSON gracefully', () => {
 		sessionStorage.setItem('cms-markdown-draft:/x.md', 'not json')
 		expect(loadMarkdownDraft('/x.md')).toBeNull()
+	})
+
+	test('hasAnyMarkdownDraft reflects presence of any draft key', () => {
+		expect(hasAnyMarkdownDraft()).toBe(false)
+
+		saveMarkdownDraft('/content/blog/x.md', { title: 'X' }, 'body')
+		expect(hasAnyMarkdownDraft()).toBe(true)
+
+		clearMarkdownDraft('/content/blog/x.md')
+		expect(hasAnyMarkdownDraft()).toBe(false)
+	})
+
+	test('hasAnyMarkdownDraft ignores unrelated sessionStorage keys', () => {
+		sessionStorage.setItem('cms-pending-edits', '{}')
+		sessionStorage.setItem('cms-settings', '{}')
+		expect(hasAnyMarkdownDraft()).toBe(false)
 	})
 })

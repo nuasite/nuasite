@@ -375,6 +375,19 @@ export function clearMarkdownDraft(filePath: string): void {
 	}
 }
 
+/** True when at least one markdown draft is present in sessionStorage. */
+export function hasAnyMarkdownDraft(): boolean {
+	try {
+		for (let i = 0; i < sessionStorage.length; i++) {
+			const key = sessionStorage.key(i)
+			if (key?.startsWith(STORAGE_KEYS.MARKDOWN_DRAFT_PREFIX)) return true
+		}
+		return false
+	} catch {
+		return false
+	}
+}
+
 // ============================================================================
 // Clear All
 // ============================================================================
