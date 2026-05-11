@@ -314,17 +314,38 @@ export const isMarkdownPreview = signal(false)
 const DRAFT_PERSIST_DEBOUNCE_MS = 500
 let draftPersistTimer: ReturnType<typeof setTimeout> | null = null
 
+function persistCurrentDraftIfDirty(): void {
+	const state = markdownEditorState.value
+	const page = state.currentPage
+	if (!state.isOpen || !page || !page.isDirty || state.mode !== 'edit' || !page.filePath) return
+	saveMarkdownDraft(page.filePath, page.frontmatter, page.content)
+}
+
+function flushPendingDraft(): void {
+	if (draftPersistTimer) {
+		clearTimeout(draftPersistTimer)
+		draftPersistTimer = null
+	}
+	persistCurrentDraftIfDirty()
+}
+
 effect(() => {
 	const state = markdownEditorState.value
 	const page = state.currentPage
 	if (!state.isOpen || !page || !page.isDirty || state.mode !== 'edit' || !page.filePath) return
 
-	const { filePath, frontmatter, content } = page
 	if (draftPersistTimer) clearTimeout(draftPersistTimer)
 	draftPersistTimer = setTimeout(() => {
-		saveMarkdownDraft(filePath, frontmatter, content)
+		draftPersistTimer = null
+		persistCurrentDraftIfDirty()
 	}, DRAFT_PERSIST_DEBOUNCE_MS)
 })
+
+// Flush the pending draft synchronously before the page unloads.
+// `pagehide` fires reliably on tab close, reload, and back/forward nav (unlike `beforeunload` which is throttled).
+if (typeof window !== 'undefined') {
+	window.addEventListener('pagehide', flushPendingDraft)
+}
 
 // ============================================================================
 // MDX Component Block State Signals

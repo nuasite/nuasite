@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import {
 	currentMarkdownPage,
 	isMarkdownPreview,
@@ -10,6 +10,7 @@ import {
 	updateMarkdownContent,
 	updateMarkdownFrontmatter,
 } from '../../../src/editor/signals'
+import { loadMarkdownDraft } from '../../../src/editor/storage'
 import type { BlogFrontmatter, MarkdownPageEntry } from '../../../src/editor/types'
 
 const makePage = (overrides?: Partial<MarkdownPageEntry>): MarkdownPageEntry => ({
@@ -23,6 +24,11 @@ const makePage = (overrides?: Partial<MarkdownPageEntry>): MarkdownPageEntry => 
 
 beforeEach(() => {
 	resetAllState()
+	sessionStorage.clear()
+})
+
+afterEach(() => {
+	sessionStorage.clear()
 })
 
 describe('markdown editor signal reads (stale closure prevention)', () => {
@@ -175,5 +181,79 @@ describe('markdown content updates do not lose data', () => {
 		updateMarkdownContent('Changed content')
 
 		expect(currentMarkdownPage.value?.filePath).toBe('/content/blog/my-post.md')
+	})
+})
+
+describe('draft persistence to sessionStorage', () => {
+	const filePath = '/content/blog/test-post.md'
+
+	const waitForDebounce = () => new Promise((resolve) => setTimeout(resolve, 700))
+
+	test('updateMarkdownFrontmatter({ title }) writes the new title to the draft', async () => {
+		setMarkdownPage(makePage({ filePath }))
+		setMarkdownEditorOpen(true)
+		markdownEditorState.value = { ...markdownEditorState.value, mode: 'edit' }
+
+		updateMarkdownFrontmatter({ title: 'Brand new title' })
+
+		expect(loadMarkdownDraft(filePath)).toBeNull() // not yet — debounced
+
+		await waitForDebounce()
+
+		const draft = loadMarkdownDraft(filePath)
+		expect(draft).not.toBeNull()
+		expect(draft?.frontmatter.title).toBe('Brand new title')
+		expect(draft?.content).toBe('Initial content')
+	})
+
+	test('updateMarkdownContent writes the new content to the draft', async () => {
+		setMarkdownPage(makePage({ filePath }))
+		setMarkdownEditorOpen(true)
+		markdownEditorState.value = { ...markdownEditorState.value, mode: 'edit' }
+
+		updateMarkdownContent('Edited body')
+
+		await waitForDebounce()
+
+		const draft = loadMarkdownDraft(filePath)
+		expect(draft?.content).toBe('Edited body')
+	})
+
+	test('does not persist in create mode (no filePath yet)', async () => {
+		setMarkdownPage(makePage({ filePath: '' }))
+		setMarkdownEditorOpen(true)
+		markdownEditorState.value = { ...markdownEditorState.value, mode: 'create' }
+
+		updateMarkdownFrontmatter({ title: 'New draft post' })
+
+		await waitForDebounce()
+
+		expect(sessionStorage.length).toBe(0)
+	})
+
+	test('does not persist when not dirty', async () => {
+		setMarkdownPage(makePage({ filePath }))
+		setMarkdownEditorOpen(true)
+		markdownEditorState.value = { ...markdownEditorState.value, mode: 'edit' }
+
+		// No update — still clean
+		await waitForDebounce()
+
+		expect(loadMarkdownDraft(filePath)).toBeNull()
+	})
+
+	test('pagehide flushes pending draft synchronously before debounce fires', () => {
+		setMarkdownPage(makePage({ filePath }))
+		setMarkdownEditorOpen(true)
+		markdownEditorState.value = { ...markdownEditorState.value, mode: 'edit' }
+
+		updateMarkdownFrontmatter({ title: 'Quick edit' })
+		expect(loadMarkdownDraft(filePath)).toBeNull() // still debounced
+
+		// Simulate tab reload / close: pagehide dispatches a synchronous flush
+		window.dispatchEvent(new Event('pagehide'))
+
+		const draft = loadMarkdownDraft(filePath)
+		expect(draft?.frontmatter.title).toBe('Quick edit')
 	})
 })
