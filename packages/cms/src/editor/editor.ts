@@ -34,7 +34,7 @@ import {
 	saveImageEditsToStorage,
 } from './storage'
 import type { Attribute } from './types'
-import type { AttributeChangePayload, ChangePayload, CmsConfig, ManifestEntry, SavedAttributeEdit } from './types'
+import type { AttributeChangePayload, ChangePayload, CmsConfig, CmsManifest, ManifestEntry, SavedAttributeEdit } from './types'
 
 // CSS attribute for markdown content elements
 const MARKDOWN_ATTRIBUTE = 'data-cms-markdown'
@@ -191,6 +191,25 @@ function hasStyledContent(el: HTMLElement): boolean {
 }
 
 /**
+ * Fetch the manifest with retry — sandbox runtimes (e.g. pletivo) may need a
+ * moment after page load before the manifest endpoint responds successfully.
+ */
+async function fetchManifestWithRetry(maxAttempts = 3, baseDelayMs = 400): Promise<CmsManifest> {
+	let lastErr: unknown
+	for (let i = 0; i < maxAttempts; i++) {
+		try {
+			return await fetchManifest()
+		} catch (err) {
+			lastErr = err
+			if (i < maxAttempts - 1) {
+				await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (i + 1)))
+			}
+		}
+	}
+	throw lastErr
+}
+
+/**
  * Start edit mode - enables inline editing on all CMS elements.
  * Uses signals for state management.
  */
@@ -224,13 +243,15 @@ export async function startEditMode(
 		}
 	}
 
+	// Fetch with retry — sandbox runtimes like pletivo may take a moment after page load
+	// before the manifest endpoint responds successfully.
 	try {
-		const manifest = await fetchManifest()
+		const manifest = await fetchManifestWithRetry()
 		signals.setManifest(manifest)
 		const entryCount = getManifestEntryCount(manifest)
 		logDebug(config.debug, 'Loaded manifest with', entryCount, 'entries')
 	} catch (err) {
-		console.error('[CMS] Failed to load manifest:', err)
+		console.error('[CMS] Failed to load manifest after retries:', err)
 		return
 	}
 	const savedBgImageEdits = loadBgImageEditsFromStorage()
