@@ -88,6 +88,42 @@ Pluggable adapter pattern (`MediaStorageAdapter` interface):
 
 Prefer AST-based approaches when building new CMS functionality. Use `@astrojs/compiler` for `.astro` template analysis, Babel for frontmatter/JS extraction, and `node-html-parser` for rendered HTML — rather than regex or string matching. The existing `ast-parser.ts` and `ast-extractors.ts` utilities provide cached parsing and node walking to build on.
 
+### Styling: prefer `cn()` over inline `style={}` and template-literal class composition
+
+The editor uses `cn()` from `editor/lib/cn.ts` (clsx + twMerge) to compose Tailwind classes. Two anti-patterns to avoid:
+
+**1. Inline `style={}` for boolean toggles** — class swaps inside `cn()` are equivalent and consistent with the rest of the codebase. Tailwind's `transition-[property]` + class swap composes cleanly:
+
+```tsx
+// Avoid
+<div style={{ opacity: collapsed ? 0 : 1 }} />
+
+// Prefer
+<div class={cn('transition-opacity', collapsed ? 'opacity-0' : 'opacity-100')} />
+```
+
+**2. Template-literal class composition with ternaries** — `cn()` is more readable and `twMerge` deduplicates conflicting Tailwind classes (e.g. when a parent passes `p-4` and the component has `p-2`):
+
+```tsx
+// Avoid
+class={`${padding} rounded-cms-sm transition-colors ${
+    active ? 'bg-cms-primary text-cms-primary-text' : 'hover:bg-white/10 text-white/70'
+}`}
+
+// Prefer
+class={cn(
+    padding,
+    'rounded-cms-sm transition-colors',
+    active ? 'bg-cms-primary text-cms-primary-text' : 'hover:bg-white/10 text-white/70',
+)}
+```
+
+Inline `style={}` remains fine for:
+
+- Continuous numeric values (e.g. drag-resize widths)
+- CSS properties without a Tailwind utility (e.g. `scrollbar-gutter`, complex `cubic-bezier` transitions)
+- Values from runtime computation that can't be enumerated as classes
+
 ## Testing
 
 Test utilities in `tests/utils/`:
