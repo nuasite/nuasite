@@ -219,7 +219,9 @@ async function fetchManifestWithRetry(savedEditIds: string[], maxAttempts = 5, b
 			const savedEditsMissingSource = savedEditIds.filter((id) => !manifest.entries?.[id]?.sourcePath)
 			const ms = Date.now() - attemptStart
 			console.log(
-				`[CMS debug] manifest attempt ${i + 1}/${maxAttempts}: ${ms}ms, entries=${entryCount}, savedEditsMissingSourcePath=${savedEditsMissingSource.length}`,
+				`[CMS debug] manifest attempt ${
+					i + 1
+				}/${maxAttempts}: ${ms}ms, entries=${entryCount}, savedEditsMissingSourcePath=${savedEditsMissingSource.length}`,
 			)
 			const entriesReady = !domExpectsEntries || entryCount > 0
 			const savedEditsReady = savedEditsMissingSource.length === 0

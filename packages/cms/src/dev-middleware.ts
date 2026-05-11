@@ -75,6 +75,13 @@ export function createDevMiddleware(
 ) {
 	const isPublicStaticFile = options.isPublicStaticFile ?? (() => false)
 
+	// Tracks in-flight Phase 2 enhancement promises per page so that requests for the
+	// page manifest can await source-path resolution before responding. Without this,
+	// hosts that serve HTML faster than the source-finder pipeline completes (e.g.
+	// pletivo, sandbox runtimes) leak a partial manifest where entries have tag/text
+	// but no sourcePath, which the editor then treats as locked elements.
+	const pendingPhase2: Map<string, Promise<void>> = new Map()
+
 	// Serve uploaded media files directly from disk.
 	// Vite's public dir middleware caches file listings, so newly uploaded files
 	// may not be available immediately. This middleware bypasses that cache.
@@ -209,7 +216,7 @@ export function createDevMiddleware(
 	})
 
 	// Serve per-page manifest endpoints (e.g., /about.json for /about page)
-	server.middlewares.use((req, res, next) => {
+	server.middlewares.use(async (req, res, next) => {
 		const url = (req.url || '').split('?')[0]!
 
 		// Match /*.json pattern (but not files that actually exist)
@@ -222,6 +229,18 @@ export function createDevMiddleware(
 			let pagePath = '/' + match[1]
 			if (pagePath === '/index') {
 				pagePath = '/'
+			}
+
+			// If Phase 2 source resolution is still in flight for this page, wait for it
+			// so the response includes full sourcePath data — avoids the race where the
+			// editor fetches a partial manifest and locks elements it can't yet edit.
+			const inFlight = pendingPhase2.get(pagePath)
+			if (inFlight) {
+				try {
+					await inFlight
+				} catch {
+					// fall through — serve whatever partial manifest we have
+				}
 			}
 
 			const pageData = manifestWriter.getPageManifest(pagePath)
@@ -329,8 +348,27 @@ export function createDevMiddleware(
 					res.end(transformed, ...args)
 
 					// Phase 2 (background): resolve source locations and enhance manifest
-					// This runs after the page is already visible to the user
-					enhanceManifestInBackground(pagePath, entries, components, collection, seo, colDefs, config, manifestWriter)
+					// This runs after the page is already visible to the user. We track it
+					// in pendingPhase2 so the manifest endpoint can await completion before
+					// responding — otherwise clients fetching the manifest in the brief gap
+					// between HTML response and Phase 2 completion get entries without
+					// sourcePath.
+					const phase2 = enhanceManifestInBackground(
+						pagePath,
+						entries,
+						components,
+						collection,
+						seo,
+						colDefs,
+						config,
+						manifestWriter,
+					)
+					pendingPhase2.set(pagePath, phase2)
+					phase2.finally(() => {
+						if (pendingPhase2.get(pagePath) === phase2) {
+							pendingPhase2.delete(pagePath)
+						}
+					})
 				})
 				.catch((error) => {
 					console.error('[cms] Error transforming HTML:', error)
