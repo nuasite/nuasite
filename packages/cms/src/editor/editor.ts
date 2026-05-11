@@ -197,25 +197,42 @@ function hasStyledContent(el: HTMLElement): boolean {
  * fetch errors and (when the DOM clearly expects entries) empty-manifest responses.
  */
 async function fetchManifestWithRetry(maxAttempts = 5, baseDelayMs = 300): Promise<CmsManifest> {
-	const domExpectsEntries = document.querySelector(`[${CSS.ID_ATTRIBUTE}]`) !== null
+	const domCmsIdCount = document.querySelectorAll(`[${CSS.ID_ATTRIBUTE}]`).length
+	const domExpectsEntries = domCmsIdCount > 0
+	console.log(`[CMS debug] startEditMode: DOM has ${domCmsIdCount} cms elements; expectEntries=${domExpectsEntries}`)
 	let lastErr: unknown
 	let lastManifest: CmsManifest | undefined
 
 	for (let i = 0; i < maxAttempts; i++) {
+		const attemptStart = Date.now()
 		try {
 			const manifest = await fetchManifest()
 			lastManifest = manifest
-			const hasEntries = Object.keys(manifest.entries ?? {}).length > 0
-			if (!domExpectsEntries || hasEntries) return manifest
+			const entryCount = Object.keys(manifest.entries ?? {}).length
+			const ms = Date.now() - attemptStart
+			console.log(
+				`[CMS debug] manifest attempt ${i + 1}/${maxAttempts}: ${ms}ms, entries=${entryCount}, hasCollections=${
+					Object.keys(manifest.collections ?? {}).length > 0
+				}`,
+			)
+			if (!domExpectsEntries || entryCount > 0) return manifest
 		} catch (err) {
 			lastErr = err
+			const ms = Date.now() - attemptStart
+			console.log(`[CMS debug] manifest attempt ${i + 1}/${maxAttempts}: ${ms}ms FAILED:`, err)
 		}
 		if (i < maxAttempts - 1) {
-			await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (i + 1)))
+			const wait = baseDelayMs * (i + 1)
+			console.log(`[CMS debug] waiting ${wait}ms before retry`)
+			await new Promise((resolve) => setTimeout(resolve, wait))
 		}
 	}
 
-	if (lastManifest) return lastManifest
+	if (lastManifest) {
+		console.log('[CMS debug] giving up retries, returning last (possibly empty) manifest')
+		return lastManifest
+	}
+	console.log('[CMS debug] giving up retries with no manifest at all — throwing')
 	throw lastErr
 }
 
@@ -227,6 +244,7 @@ export async function startEditMode(
 	config: CmsConfig,
 	onStateChange?: () => void,
 ): Promise<void> {
+	console.log('[CMS debug] startEditMode called at', new Date().toISOString())
 	signals.setEditing(true)
 	saveEditingState(true)
 	disableAllInteractiveElements()
@@ -241,6 +259,11 @@ export async function startEditMode(
 	const savedImageEdits = loadImageEditsFromStorage()
 	const savedColorEdits = loadColorEditsFromStorage()
 	const savedAttributeEdits = loadAttributeEditsFromStorage()
+	console.log(
+		`[CMS debug] loaded from sessionStorage: text=${Object.keys(savedEdits).length}, image=${Object.keys(savedImageEdits).length}, color=${
+			Object.keys(savedColorEdits).length
+		}, attr=${Object.keys(savedAttributeEdits).length}`,
+	)
 
 	// Eagerly paint saved text edits onto the DOM before awaiting the manifest.
 	// Without this, slow or failing manifest fetches (e.g. sandbox cold-start) leave the
@@ -251,17 +274,24 @@ export async function startEditMode(
 	// register correct originalHTML/originalText for pendingChanges — otherwise the source
 	// writer would treat the edited text as the original and fail to match it in the source.
 	const preEagerPaintDomState = new Map<string, { html: string; text: string }>()
+	let eagerPaintedCount = 0
+	let eagerMissingCount = 0
 	for (const [cmsId, edit] of Object.entries(savedEdits)) {
 		const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${cmsId}"]`) as HTMLElement | null
-		if (!el) continue
+		if (!el) {
+			eagerMissingCount++
+			continue
+		}
 		preEagerPaintDomState.set(cmsId, {
 			html: el.innerHTML,
 			text: getEditableTextFromElement(el),
 		})
 		if (el.innerHTML !== edit.currentHTML) {
 			el.innerHTML = edit.currentHTML
+			eagerPaintedCount++
 		}
 	}
+	console.log(`[CMS debug] eager-paint: painted=${eagerPaintedCount}, missingInDom=${eagerMissingCount}`)
 
 	// Fetch with retry — sandbox runtimes like pletivo may take a moment after page load
 	// before the manifest endpoint responds successfully.
@@ -515,6 +545,12 @@ export async function startEditMode(
 			}, TIMING.BLUR_DELAY_MS)
 		})
 	})
+
+	console.log(
+		`[CMS debug] startEditMode wiring done: pendingChanges=${signals.pendingChanges.value.size}, dirty=${signals.dirtyChangesCount.value}, manifest entries=${
+			Object.keys(signals.manifest.value.entries ?? {}).length
+		}`,
+	)
 
 	// Check for pending entry navigation (from collections browser cross-page navigation)
 	const pendingEntry = loadPendingEntryNavigation()
