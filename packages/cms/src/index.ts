@@ -229,7 +229,8 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 						if (hasPrebuiltBundle) {
 							// Pre-built bundle exists (npm install case):
 							// Serve it via a virtual module — no JSX pragma, Tailwind, or aliases needed.
-							const bundleContent = readFileSync(editorBundlePath!, 'utf-8')
+							// Read on every load() so rebuilds during dev pick up without restarting
+							// the host (Astro, pletivo, etc).
 							vitePlugins.push({
 								name: 'nuasite-cms-editor',
 								resolveId(id: string) {
@@ -239,7 +240,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 								},
 								load(id: string) {
 									if (id === VIRTUAL_CMS_PATH) {
-										return bundleContent
+										return readFileSync(editorBundlePath!, 'utf-8')
 									}
 								},
 							})
