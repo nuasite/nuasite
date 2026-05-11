@@ -191,21 +191,31 @@ function hasStyledContent(el: HTMLElement): boolean {
 }
 
 /**
- * Fetch the manifest with retry — sandbox runtimes (e.g. pletivo) may need a
- * moment after page load before the manifest endpoint responds successfully.
+ * Fetch the manifest with retry — sandbox runtimes (e.g. pletivo) may need a moment
+ * after page load before the manifest endpoint responds successfully, and they may
+ * also serve an empty manifest while the SSG side is still writing it. Retry on both
+ * fetch errors and (when the DOM clearly expects entries) empty-manifest responses.
  */
-async function fetchManifestWithRetry(maxAttempts = 3, baseDelayMs = 400): Promise<CmsManifest> {
+async function fetchManifestWithRetry(maxAttempts = 5, baseDelayMs = 300): Promise<CmsManifest> {
+	const domExpectsEntries = document.querySelector(`[${CSS.ID_ATTRIBUTE}]`) !== null
 	let lastErr: unknown
+	let lastManifest: CmsManifest | undefined
+
 	for (let i = 0; i < maxAttempts; i++) {
 		try {
-			return await fetchManifest()
+			const manifest = await fetchManifest()
+			lastManifest = manifest
+			const hasEntries = Object.keys(manifest.entries ?? {}).length > 0
+			if (!domExpectsEntries || hasEntries) return manifest
 		} catch (err) {
 			lastErr = err
-			if (i < maxAttempts - 1) {
-				await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (i + 1)))
-			}
+		}
+		if (i < maxAttempts - 1) {
+			await new Promise((resolve) => setTimeout(resolve, baseDelayMs * (i + 1)))
 		}
 	}
+
+	if (lastManifest) return lastManifest
 	throw lastErr
 }
 
