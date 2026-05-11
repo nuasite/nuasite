@@ -347,12 +347,9 @@ export function createDevMiddleware(
 					}
 					res.end(transformed, ...args)
 
-					// Phase 2 (background): resolve source locations and enhance manifest
-					// This runs after the page is already visible to the user. We track it
-					// in pendingPhase2 so the manifest endpoint can await completion before
-					// responding — otherwise clients fetching the manifest in the brief gap
-					// between HTML response and Phase 2 completion get entries without
-					// sourcePath.
+					// Phase 2 runs after the HTML is sent so the page renders without waiting on
+					// source resolution. The manifest endpoint awaits this promise (via
+					// pendingPhase2) so it never returns entries with missing sourcePath.
 					const phase2 = enhanceManifestInBackground(
 						pagePath,
 						entries,

@@ -309,15 +309,23 @@ export const currentMarkdownPage = computed(
 )
 export const isMarkdownPreview = signal(false)
 
-// Debounce-persist dirty markdown edits to sessionStorage, keyed by file path.
-// Survives page reload (sandbox auto-reload, accidental cmd-R, network blip) but dies on tab close.
 const DRAFT_PERSIST_DEBOUNCE_MS = 500
 let draftPersistTimer: ReturnType<typeof setTimeout> | null = null
+let lastPersistedSnapshot: string | null = null
 
-function persistCurrentDraftIfDirty(): void {
+function getPersistablePage(): MarkdownPageEntry | null {
 	const state = markdownEditorState.value
 	const page = state.currentPage
-	if (!state.isOpen || !page || !page.isDirty || state.mode !== 'edit' || !page.filePath) return
+	if (!state.isOpen || !page || !page.isDirty || state.mode !== 'edit' || !page.filePath) return null
+	return page
+}
+
+function persistCurrentDraftIfDirty(): void {
+	const page = getPersistablePage()
+	if (!page) return
+	const snapshot = `${page.filePath} ${JSON.stringify(page.frontmatter)} ${page.content}`
+	if (snapshot === lastPersistedSnapshot) return
+	lastPersistedSnapshot = snapshot
 	saveMarkdownDraft(page.filePath, page.frontmatter, page.content)
 }
 
@@ -330,10 +338,7 @@ function flushPendingDraft(): void {
 }
 
 effect(() => {
-	const state = markdownEditorState.value
-	const page = state.currentPage
-	if (!state.isOpen || !page || !page.isDirty || state.mode !== 'edit' || !page.filePath) return
-
+	if (!getPersistablePage()) return
 	if (draftPersistTimer) clearTimeout(draftPersistTimer)
 	draftPersistTimer = setTimeout(() => {
 		draftPersistTimer = null
@@ -341,8 +346,7 @@ effect(() => {
 	}, DRAFT_PERSIST_DEBOUNCE_MS)
 })
 
-// Flush the pending draft synchronously before the page unloads.
-// `pagehide` fires reliably on tab close, reload, and back/forward nav (unlike `beforeunload` which is throttled).
+// `pagehide` fires reliably on tab close, reload, and back/forward nav, unlike `beforeunload` which is throttled.
 if (typeof window !== 'undefined') {
 	window.addEventListener('pagehide', flushPendingDraft)
 }
@@ -892,14 +896,18 @@ function parseFrontmatterValue(value: string): unknown {
 	return value
 }
 
-function frontmatterEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-	const aKeys = Object.keys(a)
-	const bKeys = Object.keys(b)
-	if (aKeys.length !== bKeys.length) return false
-	for (const k of aKeys) {
-		if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) return false
+function deepEqual(a: unknown, b: unknown): boolean {
+	if (a === b) return true
+	if (a === null || b === null || typeof a !== typeof b || typeof a !== 'object') return false
+	if (Array.isArray(a)) {
+		if (!Array.isArray(b) || a.length !== b.length) return false
+		return a.every((v, i) => deepEqual(v, b[i]))
 	}
-	return true
+	const aObj = a as Record<string, unknown>
+	const bObj = b as Record<string, unknown>
+	const aKeys = Object.keys(aObj)
+	if (aKeys.length !== Object.keys(bObj).length) return false
+	return aKeys.every((k) => deepEqual(aObj[k], bObj[k]))
 }
 
 function formatDraftAge(savedAt: number): string {
@@ -926,7 +934,7 @@ async function maybeRecoverDraft(
 	if (!draft) return { frontmatter: fetchedFrontmatter, content: fetchedContent, isDirty: false }
 
 	const sameContent = draft.content === fetchedContent
-	const sameFrontmatter = frontmatterEqual(draft.frontmatter, fetchedFrontmatter)
+	const sameFrontmatter = deepEqual(draft.frontmatter, fetchedFrontmatter)
 	if (sameContent && sameFrontmatter) {
 		clearMarkdownDraft(filePath)
 		return { frontmatter: fetchedFrontmatter, content: fetchedContent, isDirty: false }

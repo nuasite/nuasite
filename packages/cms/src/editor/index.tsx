@@ -124,9 +124,7 @@ const CmsUI = () => {
 		}
 	}, [config, updateUI])
 
-	// Auto-open markdown editor when there's a pending entry navigation from collections browser,
-	// or an unsaved sessionStorage draft from before a page reload (sandbox auto-reload, accidental cmd-R, etc).
-	// Waits for the manifest to load before firing — currentPageCollection depends on it.
+	// Waits for the manifest before opening — currentPageCollection depends on it.
 	const draftAutoOpenedRef = useRef(false)
 	const manifestState = signals.manifest.value
 	useEffect(() => {

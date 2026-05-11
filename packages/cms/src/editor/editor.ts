@@ -213,11 +213,9 @@ export async function startEditMode(
 	const savedColorEdits = loadColorEditsFromStorage()
 	const savedAttributeEdits = loadAttributeEditsFromStorage()
 
-	// Eagerly paint saved text edits onto the DOM before awaiting the manifest, so the
-	// user sees their previous content immediately even when manifest fetch is slow.
-	// Captures pre-paint HTML/text per element so the manifest-gated loop below can
-	// register correct originalHTML/originalText for pendingChanges — otherwise the
-	// source writer would treat the edited text as the original.
+	// Paint saved edits before awaiting the manifest so slow fetches don't show stale text.
+	// The captured pre-paint state is read by the wiring loop later as the pendingChange origin —
+	// without it the source writer would search the source file for the already-edited text.
 	const preEagerPaintDomState = new Map<string, { html: string; text: string }>()
 	for (const [cmsId, edit] of Object.entries(savedEdits)) {
 		const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${cmsId}"]`) as HTMLElement | null
@@ -361,9 +359,6 @@ export async function startEditMode(
 		setupAttributeTracking(config, el, cmsId, savedAttributeEdits[cmsId])
 
 		if (!signals.pendingChanges.value.has(cmsId)) {
-			// If we eager-painted a saved edit onto this element, use the pre-paint state
-			// as the origin — otherwise the source writer would later try to match the
-			// already-edited text against the source file and fail.
 			const preEagerPaint = preEagerPaintDomState.get(cmsId)
 			const originalHTML = preEagerPaint?.html ?? el.innerHTML
 			const originalText = preEagerPaint?.text ?? getEditableTextFromElement(el)
