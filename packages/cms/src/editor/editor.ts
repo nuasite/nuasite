@@ -307,6 +307,13 @@ export async function startEditMode(
 	const savedBgImageEdits = loadBgImageEditsFromStorage()
 	const currentManifest = signals.manifest.value
 
+	const savedEditIds = new Set(Object.keys(savedEdits))
+	const trace = (cmsId: string, reason: string, extra?: unknown) => {
+		if (savedEditIds.has(cmsId)) {
+			console.log(`[CMS debug] savedEdit ${cmsId}: ${reason}`, extra ?? '')
+		}
+	}
+
 	getAllCmsElements().forEach(el => {
 		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
 		if (!cmsId) return
@@ -314,12 +321,14 @@ export async function startEditMode(
 		// Skip component elements - they should not be contentEditable
 		// Components are marked with data-cms-component-id and are block-level editable
 		if (el.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)) {
+			trace(cmsId, 'gate: component element')
 			logDebug(config.debug, 'Skipping component element:', cmsId)
 			makeElementNonEditable(el)
 			return
 		}
 
 		if (!hasManifestEntry(currentManifest, cmsId)) {
+			trace(cmsId, 'gate: not in manifest')
 			logDebug(config.debug, 'Skipping element not in manifest:', cmsId)
 			makeElementNonEditable(el)
 			return
@@ -329,6 +338,7 @@ export async function startEditMode(
 		// Reference elements open a picker to change the reference, not inline text editing
 		const manifestEntry = currentManifest.entries[cmsId]
 		if (manifestEntry?.referenceCollection && manifestEntry.referencedBy?.length) {
+			trace(cmsId, 'gate: reference field', { referenceCollection: manifestEntry.referenceCollection })
 			logDebug(config.debug, 'Reference element detected:', cmsId, manifestEntry.referenceCollection)
 			makeElementNonEditable(el)
 			setupReferenceClickHandler(config, el, cmsId, manifestEntry, currentManifest)
@@ -338,6 +348,7 @@ export async function startEditMode(
 		// Check if this is a markdown content element
 		// Markdown elements use WYSIWYG editing instead of contentEditable
 		if (el.hasAttribute(MARKDOWN_ATTRIBUTE)) {
+			trace(cmsId, 'gate: markdown wrapper')
 			logDebug(config.debug, 'Markdown element detected:', cmsId)
 			makeElementNonEditable(el)
 			// Add click handler for markdown elements to open the editor
@@ -348,6 +359,7 @@ export async function startEditMode(
 		// Check if this is an image element
 		// Image elements open the media library for replacement
 		if (el.hasAttribute(IMAGE_ATTRIBUTE)) {
+			trace(cmsId, 'gate: image element')
 			logDebug(config.debug, 'Image element detected:', cmsId)
 			makeElementNonEditable(el)
 			setupImageClickHandler(config, el as HTMLImageElement, cmsId, savedImageEdits[cmsId], onStateChange)
@@ -357,6 +369,7 @@ export async function startEditMode(
 		// Check if this is a background image element
 		// Background image elements are edited via the bg image overlay panel
 		if (el.hasAttribute(BG_IMAGE_ATTRIBUTE)) {
+			trace(cmsId, 'gate: bg image element')
 			logDebug(config.debug, 'Background image element detected:', cmsId)
 			makeElementNonEditable(el)
 			setupBgImageTracking(config, el, cmsId, savedBgImageEdits[cmsId])
@@ -366,12 +379,20 @@ export async function startEditMode(
 		// Without a source path, the writer has nowhere to persist text edits — lock
 		// the element so it can't be typed into and the user gets told why on click.
 		if (!manifestEntry?.sourcePath) {
+			trace(cmsId, 'gate: no sourcePath in manifest entry', {
+				entry: { tag: manifestEntry?.tag, text: manifestEntry?.text?.slice(0, 40) },
+			})
 			logDebug(config.debug, 'Skipping element without source path:', cmsId)
 			makeElementNonEditable(el)
 			el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
 			el.addEventListener('click', handleLockedClick, { signal: editModeSignal })
 			return
 		}
+
+		trace(cmsId, 'PASSED all gates → will be wired up as editable', {
+			tag: manifestEntry.tag,
+			sourcePath: manifestEntry.sourcePath,
+		})
 
 		makeElementEditable(el)
 
