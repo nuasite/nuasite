@@ -34,7 +34,7 @@ import {
 	saveImageEditsToStorage,
 } from './storage'
 import type { Attribute } from './types'
-import type { AttributeChangePayload, ChangePayload, CmsConfig, CmsManifest, ManifestEntry, SavedAttributeEdit } from './types'
+import type { AttributeChangePayload, ChangePayload, CmsConfig, ManifestEntry, SavedAttributeEdit } from './types'
 
 // CSS attribute for markdown content elements
 const MARKDOWN_ATTRIBUTE = 'data-cms-markdown'
@@ -191,62 +191,6 @@ function hasStyledContent(el: HTMLElement): boolean {
 }
 
 /**
- * Fetch the manifest with retry — sandbox runtimes (e.g. pletivo) may need a moment
- * after page load before the manifest endpoint responds successfully. Three retriable
- * transient states are handled here:
- *   1. Fetch failures (network/timeout).
- *   2. Empty entries when the DOM clearly expects them (CMS markers visible in DOM).
- *   3. Entries missing sourcePath for elements we have saved edits for — this means
- *      the html-processor has populated the manifest but the source-finder pipeline
- *      hasn't caught up yet, so the wiring loop would mark our edited element as
- *      "locked" and skip pendingChange registration.
- */
-async function fetchManifestWithRetry(savedEditIds: string[], maxAttempts = 5, baseDelayMs = 300): Promise<CmsManifest> {
-	const domCmsIdCount = document.querySelectorAll(`[${CSS.ID_ATTRIBUTE}]`).length
-	const domExpectsEntries = domCmsIdCount > 0
-	console.log(
-		`[CMS debug] startEditMode: DOM has ${domCmsIdCount} cms elements; expectEntries=${domExpectsEntries}; awaiting sourcePath for ${savedEditIds.length} savedEdit ids`,
-	)
-	let lastErr: unknown
-	let lastManifest: CmsManifest | undefined
-
-	for (let i = 0; i < maxAttempts; i++) {
-		const attemptStart = Date.now()
-		try {
-			const manifest = await fetchManifest()
-			lastManifest = manifest
-			const entryCount = Object.keys(manifest.entries ?? {}).length
-			const savedEditsMissingSource = savedEditIds.filter((id) => !manifest.entries?.[id]?.sourcePath)
-			const ms = Date.now() - attemptStart
-			console.log(
-				`[CMS debug] manifest attempt ${
-					i + 1
-				}/${maxAttempts}: ${ms}ms, entries=${entryCount}, savedEditsMissingSourcePath=${savedEditsMissingSource.length}`,
-			)
-			const entriesReady = !domExpectsEntries || entryCount > 0
-			const savedEditsReady = savedEditsMissingSource.length === 0
-			if (entriesReady && savedEditsReady) return manifest
-		} catch (err) {
-			lastErr = err
-			const ms = Date.now() - attemptStart
-			console.log(`[CMS debug] manifest attempt ${i + 1}/${maxAttempts}: ${ms}ms FAILED:`, err)
-		}
-		if (i < maxAttempts - 1) {
-			const wait = baseDelayMs * (i + 1)
-			console.log(`[CMS debug] waiting ${wait}ms before retry`)
-			await new Promise((resolve) => setTimeout(resolve, wait))
-		}
-	}
-
-	if (lastManifest) {
-		console.log('[CMS debug] giving up retries, returning last (possibly incomplete) manifest')
-		return lastManifest
-	}
-	console.log('[CMS debug] giving up retries with no manifest at all — throwing')
-	throw lastErr
-}
-
-/**
  * Start edit mode - enables inline editing on all CMS elements.
  * Uses signals for state management.
  */
@@ -254,7 +198,6 @@ export async function startEditMode(
 	config: CmsConfig,
 	onStateChange?: () => void,
 ): Promise<void> {
-	console.log('[CMS debug] startEditMode called at', new Date().toISOString())
 	signals.setEditing(true)
 	saveEditingState(true)
 	disableAllInteractiveElements()
@@ -269,60 +212,36 @@ export async function startEditMode(
 	const savedImageEdits = loadImageEditsFromStorage()
 	const savedColorEdits = loadColorEditsFromStorage()
 	const savedAttributeEdits = loadAttributeEditsFromStorage()
-	console.log(
-		`[CMS debug] loaded from sessionStorage: text=${Object.keys(savedEdits).length}, image=${Object.keys(savedImageEdits).length}, color=${
-			Object.keys(savedColorEdits).length
-		}, attr=${Object.keys(savedAttributeEdits).length}`,
-	)
 
-	// Eagerly paint saved text edits onto the DOM before awaiting the manifest.
-	// Without this, slow or failing manifest fetches (e.g. sandbox cold-start) leave the
-	// user looking at the original text under an active edit-mode toolbar — until they
-	// toggle edit mode off/on and the manifest finally lands.
-	//
-	// Captures pre-paint HTML/text per element so the manifest-gated loop below can still
-	// register correct originalHTML/originalText for pendingChanges — otherwise the source
-	// writer would treat the edited text as the original and fail to match it in the source.
+	// Eagerly paint saved text edits onto the DOM before awaiting the manifest, so the
+	// user sees their previous content immediately even when manifest fetch is slow.
+	// Captures pre-paint HTML/text per element so the manifest-gated loop below can
+	// register correct originalHTML/originalText for pendingChanges — otherwise the
+	// source writer would treat the edited text as the original.
 	const preEagerPaintDomState = new Map<string, { html: string; text: string }>()
-	let eagerPaintedCount = 0
-	let eagerMissingCount = 0
 	for (const [cmsId, edit] of Object.entries(savedEdits)) {
 		const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${cmsId}"]`) as HTMLElement | null
-		if (!el) {
-			eagerMissingCount++
-			continue
-		}
+		if (!el) continue
 		preEagerPaintDomState.set(cmsId, {
 			html: el.innerHTML,
 			text: getEditableTextFromElement(el),
 		})
 		if (el.innerHTML !== edit.currentHTML) {
 			el.innerHTML = edit.currentHTML
-			eagerPaintedCount++
 		}
 	}
-	console.log(`[CMS debug] eager-paint: painted=${eagerPaintedCount}, missingInDom=${eagerMissingCount}`)
 
-	// Fetch with retry — sandbox runtimes like pletivo may take a moment after page load
-	// before the manifest endpoint responds successfully.
 	try {
-		const manifest = await fetchManifestWithRetry(Object.keys(savedEdits))
+		const manifest = await fetchManifest()
 		signals.setManifest(manifest)
 		const entryCount = getManifestEntryCount(manifest)
 		logDebug(config.debug, 'Loaded manifest with', entryCount, 'entries')
 	} catch (err) {
-		console.error('[CMS] Failed to load manifest after retries:', err)
+		console.error('[CMS] Failed to load manifest:', err)
 		return
 	}
 	const savedBgImageEdits = loadBgImageEditsFromStorage()
 	const currentManifest = signals.manifest.value
-
-	const savedEditIds = new Set(Object.keys(savedEdits))
-	const trace = (cmsId: string, reason: string, extra?: unknown) => {
-		if (savedEditIds.has(cmsId)) {
-			console.log(`[CMS debug] savedEdit ${cmsId}: ${reason}`, extra ?? '')
-		}
-	}
 
 	getAllCmsElements().forEach(el => {
 		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
@@ -331,14 +250,12 @@ export async function startEditMode(
 		// Skip component elements - they should not be contentEditable
 		// Components are marked with data-cms-component-id and are block-level editable
 		if (el.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)) {
-			trace(cmsId, 'gate: component element')
 			logDebug(config.debug, 'Skipping component element:', cmsId)
 			makeElementNonEditable(el)
 			return
 		}
 
 		if (!hasManifestEntry(currentManifest, cmsId)) {
-			trace(cmsId, 'gate: not in manifest')
 			logDebug(config.debug, 'Skipping element not in manifest:', cmsId)
 			makeElementNonEditable(el)
 			return
@@ -348,7 +265,6 @@ export async function startEditMode(
 		// Reference elements open a picker to change the reference, not inline text editing
 		const manifestEntry = currentManifest.entries[cmsId]
 		if (manifestEntry?.referenceCollection && manifestEntry.referencedBy?.length) {
-			trace(cmsId, 'gate: reference field', { referenceCollection: manifestEntry.referenceCollection })
 			logDebug(config.debug, 'Reference element detected:', cmsId, manifestEntry.referenceCollection)
 			makeElementNonEditable(el)
 			setupReferenceClickHandler(config, el, cmsId, manifestEntry, currentManifest)
@@ -358,7 +274,6 @@ export async function startEditMode(
 		// Check if this is a markdown content element
 		// Markdown elements use WYSIWYG editing instead of contentEditable
 		if (el.hasAttribute(MARKDOWN_ATTRIBUTE)) {
-			trace(cmsId, 'gate: markdown wrapper')
 			logDebug(config.debug, 'Markdown element detected:', cmsId)
 			makeElementNonEditable(el)
 			// Add click handler for markdown elements to open the editor
@@ -369,7 +284,6 @@ export async function startEditMode(
 		// Check if this is an image element
 		// Image elements open the media library for replacement
 		if (el.hasAttribute(IMAGE_ATTRIBUTE)) {
-			trace(cmsId, 'gate: image element')
 			logDebug(config.debug, 'Image element detected:', cmsId)
 			makeElementNonEditable(el)
 			setupImageClickHandler(config, el as HTMLImageElement, cmsId, savedImageEdits[cmsId], onStateChange)
@@ -379,7 +293,6 @@ export async function startEditMode(
 		// Check if this is a background image element
 		// Background image elements are edited via the bg image overlay panel
 		if (el.hasAttribute(BG_IMAGE_ATTRIBUTE)) {
-			trace(cmsId, 'gate: bg image element')
 			logDebug(config.debug, 'Background image element detected:', cmsId)
 			makeElementNonEditable(el)
 			setupBgImageTracking(config, el, cmsId, savedBgImageEdits[cmsId])
@@ -389,20 +302,12 @@ export async function startEditMode(
 		// Without a source path, the writer has nowhere to persist text edits — lock
 		// the element so it can't be typed into and the user gets told why on click.
 		if (!manifestEntry?.sourcePath) {
-			trace(cmsId, 'gate: no sourcePath in manifest entry', {
-				entry: { tag: manifestEntry?.tag, text: manifestEntry?.text?.slice(0, 40) },
-			})
 			logDebug(config.debug, 'Skipping element without source path:', cmsId)
 			makeElementNonEditable(el)
 			el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
 			el.addEventListener('click', handleLockedClick, { signal: editModeSignal })
 			return
 		}
-
-		trace(cmsId, 'PASSED all gates → will be wired up as editable', {
-			tag: manifestEntry.tag,
-			sourcePath: manifestEntry.sourcePath,
-		})
 
 		makeElementEditable(el)
 
@@ -576,12 +481,6 @@ export async function startEditMode(
 			}, TIMING.BLUR_DELAY_MS)
 		})
 	})
-
-	console.log(
-		`[CMS debug] startEditMode wiring done: pendingChanges=${signals.pendingChanges.value.size}, dirty=${signals.dirtyChangesCount.value}, manifest entries=${
-			Object.keys(signals.manifest.value.entries ?? {}).length
-		}`,
-	)
 
 	// Check for pending entry navigation (from collections browser cross-page navigation)
 	const pendingEntry = loadPendingEntryNavigation()
