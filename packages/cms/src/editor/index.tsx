@@ -126,11 +126,17 @@ const CmsUI = () => {
 
 	// Auto-open markdown editor when there's a pending entry navigation from collections browser,
 	// or an unsaved sessionStorage draft from before a page reload (sandbox auto-reload, accidental cmd-R, etc).
+	// Waits for the manifest to load before firing — currentPageCollection depends on it.
+	const draftAutoOpenedRef = useRef(false)
+	const manifestState = signals.manifest.value
 	useEffect(() => {
-		if (hasPendingEntryNavigation() || hasAnyMarkdownDraft()) {
-			openMarkdownEditorForCurrentPage()
-		}
-	}, [])
+		if (draftAutoOpenedRef.current) return
+		if (!hasPendingEntryNavigation() && !hasAnyMarkdownDraft()) return
+		const hasCollections = manifestState.collections && Object.keys(manifestState.collections).length > 0
+		if (!hasCollections) return
+		draftAutoOpenedRef.current = true
+		openMarkdownEditorForCurrentPage()
+	}, [manifestState])
 
 	// Send select-mode click selection to parent window via postMessage
 	const prevSelectModeRef = useRef<string | null>(null)
