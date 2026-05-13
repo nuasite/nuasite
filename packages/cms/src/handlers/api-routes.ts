@@ -69,7 +69,8 @@ function custom(method: string, route: string, handler: RouteHandler): [string, 
 	return [`${method}:${route}`, handler]
 }
 
-/** Allowed MIME types for media uploads */
+/** Allowed MIME types for media uploads. Videos are intentionally excluded —
+ *  they belong on a CDN (Mux, YouTube), not in the repo's public/uploads dir. */
 const ALLOWED_UPLOAD_TYPES = new Set([
 	'image/jpeg',
 	'image/png',
@@ -77,8 +78,6 @@ const ALLOWED_UPLOAD_TYPES = new Set([
 	'image/webp',
 	'image/avif',
 	'image/x-icon',
-	'video/mp4',
-	'video/webm',
 	'application/pdf',
 ])
 
