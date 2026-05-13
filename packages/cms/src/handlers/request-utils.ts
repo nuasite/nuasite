@@ -3,6 +3,15 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 /** Maximum request body size: 10 MB */
 const MAX_BODY_SIZE = 10 * 1024 * 1024
 
+/** Thrown by readBody when the streamed body exceeds the configured limit.
+ *  Lets callers distinguish "client sent too much" from transport errors. */
+export class BodyTooLargeError extends Error {
+	constructor(public readonly maxSize: number) {
+		super(`Request body exceeds maximum size of ${maxSize} bytes`)
+		this.name = 'BodyTooLargeError'
+	}
+}
+
 export function readBody(req: IncomingMessage, maxSize: number = MAX_BODY_SIZE): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
 		const chunks: Buffer[] = []
@@ -11,7 +20,7 @@ export function readBody(req: IncomingMessage, maxSize: number = MAX_BODY_SIZE):
 			totalSize += chunk.length
 			if (totalSize > maxSize) {
 				req.destroy()
-				reject(new Error(`Request body exceeds maximum size of ${maxSize} bytes`))
+				reject(new BodyTooLargeError(maxSize))
 				return
 			}
 			chunks.push(chunk)

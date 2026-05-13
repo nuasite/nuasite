@@ -65,7 +65,15 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	 * @default false
 	 */
 	usePolling?: boolean
+	/**
+	 * Maximum upload size in bytes. Applied to `/_nua/cms/media/upload` requests
+	 * (enforced on the server and pre-checked on the client).
+	 * @default 10 * 1024 * 1024 (10 MB)
+	 */
+	maxUploadSize?: number
 }
+
+const DEFAULT_MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 const VIRTUAL_CMS_PATH = '/@nuasite/cms-editor.js'
 
@@ -89,16 +97,20 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		mdxComponentDirs,
 		usePolling = false,
 		seo = { trackSeo: true, markTitle: true, parseJsonLd: true },
+		maxUploadSize = DEFAULT_MAX_UPLOAD_SIZE,
 	} = options
 
 	// When no proxy, enable local CMS API with default media adapter
 	const enableCmsApi = !proxy
 	const mediaAdapter = media ?? (enableCmsApi ? createLocalStorageAdapter() : undefined)
 
-	// Default apiBase to local dev server when no proxy
-	const resolvedCmsConfig = enableCmsApi && !cmsConfig?.apiBase
-		? { ...cmsConfig, apiBase: '/_nua/cms' }
-		: cmsConfig
+	// Default apiBase to local dev server when no proxy; thread maxUploadSize through
+	// to the editor so the client can pre-check before sending the upload.
+	const resolvedCmsConfig = {
+		...(cmsConfig ?? {}),
+		...(enableCmsApi && !cmsConfig?.apiBase ? { apiBase: '/_nua/cms' } : {}),
+		maxUploadSize,
+	}
 
 	let componentDefinitions: Record<string, ComponentDefinition> = {}
 	let isPublicStaticFile: ((urlPath: string) => boolean) | undefined
@@ -203,9 +215,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				if (command === 'dev') {
 					const editorSrc = src ?? VIRTUAL_CMS_PATH
 
-					const configScript = resolvedCmsConfig
-						? `window.NuaCmsConfig = ${JSON.stringify(resolvedCmsConfig)};`
-						: ''
+					const configScript = `window.NuaCmsConfig = ${JSON.stringify(resolvedCmsConfig)};`
 
 					injectScript(
 						'page',
@@ -320,7 +330,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					manifestWriter,
 					componentDefinitions,
 					idCounter,
-					{ enableCmsApi, mediaAdapter, isPublicStaticFile },
+					{ enableCmsApi, mediaAdapter, isPublicStaticFile, maxUploadSize },
 				)
 				logger.info('CMS dev middleware initialized')
 				if (enableCmsApi) {

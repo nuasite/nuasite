@@ -76,6 +76,15 @@ export function uploadMedia(
 	onProgress?: (percent: number) => void,
 	options?: { folder?: string; context?: MediaUploadContext },
 ): Promise<MediaUploadResponse> {
+	if (config.maxUploadSize && file.size > config.maxUploadSize) {
+		const limitMb = Math.round(config.maxUploadSize / (1024 * 1024))
+		const fileMb = (file.size / (1024 * 1024)).toFixed(1)
+		return Promise.resolve({
+			success: false,
+			error: `File is too large (${fileMb} MB, limit ${limitMb} MB)`,
+		})
+	}
+
 	const formData = new FormData()
 	formData.append('file', file)
 

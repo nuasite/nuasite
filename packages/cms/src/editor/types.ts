@@ -52,6 +52,8 @@ export interface CmsConfig {
 	theme?: CmsThemeConfig
 	themePreset?: CmsThemePreset
 	features?: CmsFeatures
+	/** Maximum upload size in bytes for media uploads (injected by the integration). */
+	maxUploadSize?: number
 }
 
 export interface ComponentProp {

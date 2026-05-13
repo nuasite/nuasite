@@ -12,7 +12,7 @@ import { handleInsertComponent, handleRemoveComponent } from './component-ops'
 import { handleCreateMarkdown, handleDeleteMarkdown, handleGetMarkdownContent, handleRenameMarkdown, handleUpdateMarkdown } from './markdown-ops'
 import { handleCheckSlugExists, handleCreatePage, handleDeletePage, handleDuplicatePage, handleGetLayouts } from './page-ops'
 import { handleAddRedirect, handleDeleteRedirect, handleGetRedirects, handleUpdateRedirect } from './redirect-ops'
-import { parseJsonBody, parseMultipartFile, readBody, sendError, sendJson } from './request-utils'
+import { BodyTooLargeError, parseJsonBody, parseMultipartFile, readBody, sendError, sendJson } from './request-utils'
 import { handleUpdate } from './source-writer'
 
 export interface RouteContext {
@@ -22,6 +22,7 @@ export interface RouteContext {
 	manifestWriter: ManifestWriter
 	contentDir: string
 	mediaAdapter?: MediaStorageAdapter
+	maxUploadSize: number
 }
 
 type RouteHandler = (ctx: RouteContext) => Promise<void>
@@ -151,8 +152,28 @@ const routeMap = new Map<string, RouteHandler>([
 			sendError(ctx.res, 'Expected multipart/form-data')
 			return
 		}
+
+		const limit = ctx.maxUploadSize
+		const tooLargeMsg = `File too large (max ${Math.round(limit / (1024 * 1024))} MB)`
+
+		// Reject early via Content-Length so we don't stream a huge payload only to drop it.
+		const declared = parseInt(ctx.req.headers['content-length'] ?? '', 10)
+		if (Number.isFinite(declared) && declared > limit) {
+			sendError(ctx.res, tooLargeMsg, 413)
+			return
+		}
+
 		const query = getQuery(ctx)
-		const body = await readBody(ctx.req, 50 * 1024 * 1024)
+		let body: Buffer
+		try {
+			body = await readBody(ctx.req, limit)
+		} catch (err) {
+			if (err instanceof BodyTooLargeError) {
+				sendError(ctx.res, tooLargeMsg, 413)
+				return
+			}
+			throw err
+		}
 		const file = parseMultipartFile(body, contentType)
 		if (!file) {
 			sendError(ctx.res, 'No file found in request')
@@ -245,15 +266,8 @@ const routeMap = new Map<string, RouteHandler>([
 	get('deployment/status', async () => ({ currentDeployment: null, pendingCount: 0, deploymentEnabled: false })),
 ])
 
-export async function handleCmsApiRoute(
-	route: string,
-	req: IncomingMessage,
-	res: ServerResponse,
-	manifestWriter: ManifestWriter,
-	contentDir: string,
-	mediaAdapter?: MediaStorageAdapter,
-): Promise<void> {
-	const ctx: RouteContext = { req, res, route, manifestWriter, contentDir, mediaAdapter }
+export async function handleCmsApiRoute(ctx: RouteContext): Promise<void> {
+	const { req, res, route } = ctx
 
 	// Exact match lookup
 	const handler = routeMap.get(`${req.method}:${route}`)

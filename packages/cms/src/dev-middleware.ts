@@ -63,6 +63,8 @@ export interface DevMiddlewareOptions {
 	 * corrupted by injected markers).
 	 */
 	isPublicStaticFile?: (urlPath: string) => boolean
+	/** Maximum upload size in bytes for /_nua/cms/media/upload. */
+	maxUploadSize: number
 }
 
 export function createDevMiddleware(
@@ -71,7 +73,7 @@ export function createDevMiddleware(
 	manifestWriter: ManifestWriter,
 	componentDefinitions: Record<string, ComponentDefinition>,
 	idCounter: { value: number },
-	options: DevMiddlewareOptions = {},
+	options: DevMiddlewareOptions,
 ) {
 	const isPublicStaticFile = options.isPublicStaticFile ?? (() => false)
 
@@ -129,7 +131,15 @@ export function createDevMiddleware(
 
 			const route = url.replace('/_nua/cms/', '').split('?')[0]!
 
-			handleCmsApiRoute(route, req, res, manifestWriter, config.contentDir, options.mediaAdapter)
+			handleCmsApiRoute({
+				req,
+				res,
+				route,
+				manifestWriter,
+				contentDir: config.contentDir,
+				mediaAdapter: options.mediaAdapter,
+				maxUploadSize: options.maxUploadSize,
+			})
 				.catch((error) => {
 					console.error('[astro-cms] API error:', error)
 					sendError(res, 'Internal server error', 500)
