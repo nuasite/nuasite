@@ -769,6 +769,36 @@ describe('resolveMapChain', () => {
 		)
 		expect(result).toEqual({ arrayPath: 'categories[*].images', leafSuffix: '.url' })
 	})
+
+	test('member access on simple param', () => {
+		const result = resolveMapChain(['services.map((service, index) => (\n  '], 'service.image')
+		expect(result).toEqual({ arrayPath: 'services', leafSuffix: '.image' })
+	})
+
+	test('deeper member access on simple param', () => {
+		const result = resolveMapChain(['cards.map((card) => (\n  '], 'card.photo.url')
+		expect(result).toEqual({ arrayPath: 'cards', leafSuffix: '.photo.url' })
+	})
+
+	test('member access with numeric index', () => {
+		const result = resolveMapChain(['cards.map((card) => (\n  '], 'card.images[0]')
+		expect(result).toEqual({ arrayPath: 'cards', leafSuffix: '.images[0]' })
+	})
+
+	test('optional chaining on simple param', () => {
+		const result = resolveMapChain(['services.map((service) => (\n  '], 'service?.image')
+		expect(result).toEqual({ arrayPath: 'services', leafSuffix: '.image' })
+	})
+
+	test('member access on destructured param', () => {
+		const result = resolveMapChain(['items.map(({ photo }) => (\n  '], 'photo.url')
+		expect(result).toEqual({ arrayPath: 'items', leafSuffix: '.photo.url' })
+	})
+
+	test('member access whose base is not a map param', () => {
+		const result = resolveMapChain(['services.map((service) => (\n  '], 'other.image')
+		expect(result).toBeNull()
+	})
 })
 
 // ============================================================================

@@ -1,4 +1,6 @@
 import type { ComponentNode, ElementNode, Node as AstroNode, TextNode } from '@astrojs/compiler/types'
+import { parse as parseBabel } from '@babel/parser'
+import type { Expression } from '@babel/types'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -622,6 +624,42 @@ function parseMapInvocations(fullText: string): MapInvocation[] {
 	return maps
 }
 
+const BARE_IDENTIFIER = /^[A-Za-z_$][\w$]*$/
+
+function walkAccessor(node: Expression): { base: string; suffix: string } | null {
+	if (node.type === 'Identifier') {
+		return { base: node.name, suffix: '' }
+	}
+	if (node.type === 'MemberExpression' || node.type === 'OptionalMemberExpression') {
+		if (node.object.type === 'Super') return null
+		const inner = walkAccessor(node.object)
+		if (!inner) return null
+		const { property, computed } = node
+		let part: string
+		if (!computed && property.type === 'Identifier') {
+			part = `.${property.name}`
+		} else if (computed && property.type === 'NumericLiteral') {
+			part = `[${property.value}]`
+		} else {
+			return null
+		}
+		return { base: inner.base, suffix: inner.suffix + part }
+	}
+	return null
+}
+
+function parseAccessorChain(exprText: string): { base: string; suffix: string } | null {
+	if (BARE_IDENTIFIER.test(exprText)) return { base: exprText, suffix: '' }
+	try {
+		const file = parseBabel(exprText, { sourceType: 'module', plugins: ['typescript'] })
+		const stmt = file.program.body[0]
+		if (!stmt || stmt.type !== 'ExpressionStatement') return null
+		return walkAccessor(stmt.expression)
+	} catch {
+		return null
+	}
+}
+
 /**
  * Resolve a `.map()` callback parameter back to the source array path.
  *
@@ -632,6 +670,8 @@ function parseMapInvocations(fullText: string): MapInvocation[] {
  *     → `{ arrayPath: "categories[*].images", leafSuffix: "" }`
  *   `links.map(({ label, href }) => …)` looking for `label`
  *     → `{ arrayPath: "links", leafSuffix: ".label" }`
+ *   `services.map((service) => …)` looking for `service.image`
+ *     → `{ arrayPath: "services", leafSuffix: ".image" }`
  *
  * Returns null when the name doesn't appear as a parameter or destructured binding.
  */
@@ -639,13 +679,16 @@ export function resolveMapChain(exprTexts: string[], paramName: string): Resolve
 	const maps = parseMapInvocations(exprTexts.join(''))
 	if (maps.length === 0) return null
 
-	// Prefer simple-param match (most common); fall back to destructured.
-	const directMap = maps.find((m) => m.param === paramName)
-		?? maps.find((m) => m.destructured.includes(paramName))
+	const access = parseAccessorChain(paramName)
+	const baseName = access?.base ?? paramName
+	const memberSuffix = access?.suffix ?? ''
+
+	const directMap = maps.find((m) => m.param === baseName)
+		?? maps.find((m) => m.destructured.includes(baseName))
 	if (!directMap) return null
 
-	const isDestructured = directMap.param !== paramName
-	const leafSuffix = isDestructured ? `.${paramName}` : ''
+	const isDestructured = directMap.param !== baseName
+	const leafSuffix = (isDestructured ? `.${baseName}` : '') + memberSuffix
 
 	// Resolve the array expression by substituting outer .map() params (chained / nested loops).
 	let arrayPath = directMap.arrayExpr
