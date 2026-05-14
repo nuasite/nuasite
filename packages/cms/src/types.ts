@@ -70,6 +70,10 @@ export interface ImageMetadata {
 	srcSet?: string
 	/** Image sizes attribute */
 	sizes?: string
+	/** 0-based DOM-order index of this `<img>` among same-(src, sourceFile)
+	 *  occurrences on the page. Disambiguates source location when the same
+	 *  image URL appears multiple times in the same source file. */
+	srcOccurrence?: number
 }
 
 /** Identifies the (collection, entry, field) destination for an editor upload. */

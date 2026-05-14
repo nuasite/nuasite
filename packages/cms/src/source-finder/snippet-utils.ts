@@ -629,6 +629,7 @@ function resolveTranslationKeyFromSnippet(
 export async function enhanceManifestWithSourceSnippets(
 	entries: Record<string, ManifestEntry>,
 	collectionDefinitions?: Record<string, CollectionDefinition>,
+	pageFiles?: readonly string[],
 ): Promise<Record<string, ManifestEntry>> {
 	// Ensure the search index is ready (returns immediately if already built,
 	// otherwise waits for the in-flight initialization or triggers a new one).
@@ -750,7 +751,19 @@ export async function enhanceManifestWithSourceSnippets(
 			}
 
 			// ── Non-collection images: find via search index / AST ──
-			const imageLocation = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
+			const preferredLocation = entry.sourcePath
+				? {
+					file: entry.sourcePath,
+					line: entry.sourceLine,
+					srcOccurrence: entry.imageMetadata.srcOccurrence,
+				}
+				: undefined
+			const imageLocation = await findImageSourceLocation(
+				entry.imageMetadata.src,
+				entry.imageMetadata.srcSet,
+				pageFiles,
+				preferredLocation,
+			)
 			if (imageLocation) {
 				const sourceHash = generateSourceHash(imageLocation.snippet || entry.imageMetadata.src)
 				const updated: ManifestEntry = {
@@ -862,7 +875,7 @@ export async function enhanceManifestWithSourceSnippets(
 				? findVariableHitInFile(trimmedEntryText, entry.tag, entry.sourcePath)
 				: undefined
 			const noCoords = !entry.sourcePath || !entry.sourceLine
-			const winner = sameFileHit ?? (noCoords ? findInTextIndex(trimmedEntryText, entry.tag) : undefined)
+			const winner = sameFileHit ?? (noCoords ? findInTextIndex(trimmedEntryText, entry.tag, pageFiles) : undefined)
 
 			if (winner) {
 				if (isTranslationFilePath(winner.file)) {
@@ -1059,7 +1072,7 @@ export async function enhanceManifestWithSourceSnippets(
 
 					// Last resort — consult the text index (covers i18n JSON dictionaries
 					// and any other indexed text that shares no tag with the rendered element).
-					const indexHit = findInTextIndex(trimmedText, entry.tag)
+					const indexHit = findInTextIndex(trimmedText, entry.tag, pageFiles)
 					if (indexHit && indexHit.file !== entry.sourcePath) {
 						const resolved = await applyTranslationSource(entry, indexHit, attributes, colorClasses)
 						return [id, resolved] as const

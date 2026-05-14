@@ -10,6 +10,9 @@
 
 import type { Node as AstroNode } from '@astrojs/compiler/types'
 import { describe, expect, test } from 'bun:test'
+import path from 'node:path'
+import { getProjectRoot } from '../../../src/config'
+import { getCachedParsedFile } from '../../../src/source-finder/ast-parser'
 import {
 	addToImageSearchIndex,
 	addToTextSearchIndex,
@@ -660,6 +663,45 @@ withTempDir('findInTextIndex', (getCtx) => {
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/pages/index.astro')
 	})
+
+	test('pageFiles preference picks the matching page over earlier-indexed entries', () => {
+		addToTextSearchIndex({
+			file: 'src/pages/page-a.astro',
+			line: 3,
+			snippet: '<h1>Shared Heading</h1>',
+			type: 'static',
+			normalizedText: 'shared heading',
+			tag: 'h1',
+		})
+		addToTextSearchIndex({
+			file: 'src/pages/page-b.astro',
+			line: 9,
+			snippet: '<h1>Shared Heading</h1>',
+			type: 'static',
+			normalizedText: 'shared heading',
+			tag: 'h1',
+		})
+
+		const result = findInTextIndex('Shared Heading', 'h1', ['src/pages/page-b.astro'])
+
+		expect(result?.file).toBe('src/pages/page-b.astro')
+		expect(result?.line).toBe(9)
+	})
+
+	test('pageFiles falls back to non-page match when no page-file entry exists', () => {
+		addToTextSearchIndex({
+			file: 'src/components/Card.astro',
+			line: 4,
+			snippet: '<h2>Component Heading</h2>',
+			type: 'static',
+			normalizedText: 'component heading',
+			tag: 'h2',
+		})
+
+		const result = findInTextIndex('Component Heading', 'h2', ['src/pages/page-a.astro'])
+
+		expect(result?.file).toBe('src/components/Card.astro')
+	})
 })
 
 // ============================================================================
@@ -716,6 +758,199 @@ withTempDir('findInImageIndex', (getCtx) => {
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/First.astro')
+	})
+
+	test('pageFiles preference picks the matching page over earlier-indexed entries', () => {
+		addToImageSearchIndex({
+			file: 'src/pages/page-a.astro',
+			line: 3,
+			snippet: '<img src="/shared.png" />',
+			src: '/shared.png',
+		})
+		addToImageSearchIndex({
+			file: 'src/pages/page-b.astro',
+			line: 7,
+			snippet: '<img src="/shared.png" />',
+			src: '/shared.png',
+		})
+
+		const result = findInImageIndex('/shared.png', ['src/pages/page-b.astro'])
+
+		expect(result?.file).toBe('src/pages/page-b.astro')
+		expect(result?.line).toBe(7)
+	})
+
+	test('pageFiles falls back to non-page match when no page-file entry exists', () => {
+		addToImageSearchIndex({
+			file: 'src/components/Card.astro',
+			line: 2,
+			snippet: '<img src="/only.png" />',
+			src: '/only.png',
+		})
+
+		const result = findInImageIndex('/only.png', ['src/pages/page-a.astro'])
+
+		expect(result?.file).toBe('src/components/Card.astro')
+	})
+
+	test('preferredLocation picks the exact per-occurrence entry when same image appears twice on a page', () => {
+		addToImageSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 5,
+			snippet: '<img src="/x.jpg" />',
+			src: '/x.jpg',
+		})
+		addToImageSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 7,
+			snippet: '<img src="/x.jpg" />',
+			src: '/x.jpg',
+		})
+
+		const result = findInImageIndex('/x.jpg', undefined, { file: 'src/pages/index.astro', line: 7 })
+
+		expect(result?.line).toBe(7)
+	})
+
+	test('preferredLocation normalizes absolute paths as Astro stamps them', () => {
+		addToImageSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 5,
+			snippet: '<img src="/x.jpg" />',
+			src: '/x.jpg',
+		})
+		addToImageSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 7,
+			snippet: '<img src="/x.jpg" />',
+			src: '/x.jpg',
+		})
+
+		const absolutePath = path.join(getProjectRoot(), 'src/pages/index.astro')
+		const result = findInImageIndex('/x.jpg', undefined, { file: absolutePath, line: 7 })
+
+		expect(result?.line).toBe(7)
+	})
+
+	test('preferredLocation falls back to other priorities when no exact match exists', () => {
+		addToImageSearchIndex({
+			file: 'src/components/Card.astro',
+			line: 3,
+			snippet: '<img src="/y.jpg" />',
+			src: '/y.jpg',
+		})
+
+		// Astro attributed to the page, but the actual index entry lives in the component
+		const result = findInImageIndex('/y.jpg', undefined, { file: 'src/pages/index.astro', line: 99 })
+
+		expect(result?.file).toBe('src/components/Card.astro')
+		expect(result?.line).toBe(3)
+	})
+
+	test('srcOccurrence picks the Nth entry when line attribution does not disambiguate', () => {
+		// Simulates the real bug: Astro stamps a wrapper element (line 2) for both
+		// `<img>` tags, so both manifest entries get sourceLine=2 — but the index
+		// has entries at lines 5 and 7 for the actual imgs. Without occurrence,
+		// both entries would resolve to the first index match.
+		addToImageSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 5,
+			snippet: '<img src="/x.jpg" />',
+			src: '/x.jpg',
+		})
+		addToImageSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 7,
+			snippet: '<img src="/x.jpg" />',
+			src: '/x.jpg',
+		})
+
+		const first = findInImageIndex('/x.jpg', undefined, {
+			file: 'src/pages/index.astro',
+			line: 2, // wrapper line — doesn't match any index entry
+			srcOccurrence: 0,
+		})
+		const second = findInImageIndex('/x.jpg', undefined, {
+			file: 'src/pages/index.astro',
+			line: 2,
+			srcOccurrence: 1,
+		})
+
+		expect(first?.line).toBe(5)
+		expect(second?.line).toBe(7)
+	})
+
+	test('srcOccurrence wins over coincidentally-matching preferred line', () => {
+		// Real-world scenario from skolkaeduart: both manifest entries get
+		// sourceLine=14 from the wrapping data-astro-source-loc, which happens
+		// to coincide with the first data-definition line in the index.
+		// The Nth occurrence (1) must still resolve to its own line (23),
+		// not be hijacked by the coincidental line=14 match.
+		addToImageSearchIndex({
+			file: 'src/pages/podpora.astro',
+			line: 14,
+			snippet: 'image: "/uploads/x.jpg"',
+			src: '/uploads/x.jpg',
+		})
+		addToImageSearchIndex({
+			file: 'src/pages/podpora.astro',
+			line: 23,
+			snippet: 'image: "/uploads/x.jpg"',
+			src: '/uploads/x.jpg',
+		})
+
+		const first = findInImageIndex('/uploads/x.jpg', undefined, {
+			file: 'src/pages/podpora.astro',
+			line: 14, // matches an entry, but occurrence is the source of truth
+			srcOccurrence: 0,
+		})
+		const second = findInImageIndex('/uploads/x.jpg', undefined, {
+			file: 'src/pages/podpora.astro',
+			line: 14, // would coincidentally match the first entry
+			srcOccurrence: 1,
+		})
+
+		expect(first?.line).toBe(14)
+		expect(second?.line).toBe(23)
+	})
+})
+
+// End-to-end test using real Astro parsing — verifies that the indexer's line
+// number matches what Astro stamps in `data-astro-source-loc`, so the
+// preferredLocation lookup actually disambiguates same-image-twice on a page.
+withTempDir('findInImageIndex e2e: same image twice on a page', (getCtx) => {
+	test('preferredLocation with absolute Astro-style path picks the per-occurrence index entry', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			`---
+---
+<div>
+  <img src="/x.jpg" alt="first" />
+  <p>between</p>
+  <img src="/x.jpg" alt="second" />
+</div>
+`,
+		)
+
+		const filePath = path.join(ctx.tempDir, 'src/pages/index.astro')
+		const cached = await getCachedParsedFile(filePath)
+		expect(cached).toBeDefined()
+		indexFileImages(cached!, 'src/pages/index.astro')
+
+		const entries = getImageSearchIndex().filter((e) => e.src === '/x.jpg')
+		expect(entries).toHaveLength(2)
+		const [first, second] = entries
+		expect(first!.line).not.toBe(second!.line)
+
+		// Astro stamps absolute paths — pass one to verify normalization works end-to-end
+		const absolutePath = path.join(getProjectRoot(), 'src/pages/index.astro')
+		const hitFirst = findInImageIndex('/x.jpg', undefined, { file: absolutePath, line: first!.line })
+		const hitSecond = findInImageIndex('/x.jpg', undefined, { file: absolutePath, line: second!.line })
+
+		expect(hitFirst?.line).toBe(first!.line)
+		expect(hitSecond?.line).toBe(second!.line)
 	})
 })
 

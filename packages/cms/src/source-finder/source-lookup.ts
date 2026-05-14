@@ -17,14 +17,18 @@ import type { SourceLocation } from './types'
 /**
  * Find source file and line number for text content.
  * Uses pre-built search index for fast lookups.
+ *
+ * `pageFiles` disambiguates when the same text appears on multiple pages —
+ * the lookup prefers index entries whose file is one of the candidates.
  */
 export async function findSourceLocation(
 	textContent: string,
 	tag: string,
+	pageFiles?: readonly string[],
 ): Promise<SourceLocation | undefined> {
 	// Use index if available (much faster)
 	if (isSearchIndexInitialized()) {
-		const indexHit = findInTextIndex(textContent, tag)
+		const indexHit = findInTextIndex(textContent, tag, pageFiles)
 		if (indexHit) return indexHit
 		// Fall through to slow search on miss — covers cases the per-file
 		// indexer can't pre-emit, like a child component's `.map()` over a

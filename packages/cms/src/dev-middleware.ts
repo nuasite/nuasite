@@ -591,20 +591,33 @@ export async function enhanceManifestInBackground(
 			}
 		}
 
-		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions)
+		const pageFiles = getPageFileCandidates(pagePath)
+		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions, pageFiles)
 
 		// Fallback for entries without sourcePath — search index can still find them
 		for (const entry of Object.values(enhanced)) {
 			if (entry.sourceSnippet || entry.sourcePath) continue
 			if (entry.imageMetadata?.src) {
-				const loc = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
+				const preferredLocation = entry.sourcePath
+					? {
+						file: entry.sourcePath,
+						line: entry.sourceLine,
+						srcOccurrence: entry.imageMetadata.srcOccurrence,
+					}
+					: undefined
+				const loc = await findImageSourceLocation(
+					entry.imageMetadata.src,
+					entry.imageMetadata.srcSet,
+					pageFiles,
+					preferredLocation,
+				)
 				if (loc) {
 					entry.sourcePath = loc.file
 					entry.sourceLine = loc.line
 					entry.sourceSnippet = loc.snippet
 				}
 			} else if (entry.text && entry.tag) {
-				const loc = await findSourceLocation(entry.text, entry.tag)
+				const loc = await findSourceLocation(entry.text, entry.tag, pageFiles)
 				if (loc) {
 					entry.sourcePath = loc.file
 					entry.sourceLine = loc.line

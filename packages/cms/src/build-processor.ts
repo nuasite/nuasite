@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { getProjectRoot } from './config'
 import { detectArrayPattern, extractArrayElementProps } from './handlers/array-ops'
-import { extractPropsFromSource, findComponentInvocationLine, findFrontmatterEnd } from './handlers/component-ops'
+import { extractPropsFromSource, findComponentInvocationLine, findFrontmatterEnd, getPageFileCandidates } from './handlers/component-ops'
 import { extractComponentName, processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import { generateComponentPreviews } from './preview-generator'
@@ -374,13 +374,27 @@ async function processFile(
 		}
 	}
 
+	const pageFiles = getPageFileCandidates(pagePath)
+
 	// Process entries in parallel for better performance
 	const entryLookups = Object.values(result.entries).map(async (entry) => {
 		// Handle image entries specially - always search by image src
 		// The sourcePath from HTML attributes may point to a shared Image component
 		// rather than the file that actually uses the component with the src value
 		if (entry.imageMetadata?.src) {
-			const imageSource = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet)
+			const preferredLocation = entry.sourcePath
+				? {
+					file: entry.sourcePath,
+					line: entry.sourceLine,
+					srcOccurrence: entry.imageMetadata.srcOccurrence,
+				}
+				: undefined
+			const imageSource = await findImageSourceLocation(
+				entry.imageMetadata.src,
+				entry.imageMetadata.srcSet,
+				pageFiles,
+				preferredLocation,
+			)
 			if (imageSource) {
 				entry.sourcePath = imageSource.file
 				entry.sourceLine = imageSource.line
@@ -412,7 +426,7 @@ async function processFile(
 		}
 
 		// Fall back to searching Astro files
-		const sourceLocation = await findSourceLocation(entry.text, entry.tag)
+		const sourceLocation = await findSourceLocation(entry.text, entry.tag, pageFiles)
 		if (sourceLocation) {
 			entry.sourcePath = sourceLocation.file
 			entry.sourceLine = sourceLocation.line

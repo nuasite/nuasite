@@ -24,7 +24,7 @@ import {
 	setSearchIndexInitialized,
 } from './cache'
 import { extractAstroImageOriginalUrl, extractImageSnippet, extractInnerHtmlFromSnippet, normalizeText } from './snippet-utils'
-import type { CachedParsedFile, SearchIndexEntry, SourceLocation } from './types'
+import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types'
 
 /** Collection data files live under this path — used to prefer them over templates */
 const CONTENT_DIR_PREFIX = 'src/content/'
@@ -1268,6 +1268,37 @@ function textEntryToLocation(entry: SearchIndexEntry): SourceLocation {
 	}
 }
 
+/** Helper to build SourceLocation from an image index entry */
+function imageEntryToLocation(entry: ImageIndexEntry): SourceLocation {
+	return {
+		file: entry.file,
+		line: entry.line,
+		snippet: entry.snippet,
+		type: 'static',
+	}
+}
+
+/**
+ * Classify a candidate result by file priority and stash it into the right
+ * bucket. Returns the result if it's a collection-file match (caller should
+ * return immediately — collection data files are always authoritative).
+ */
+interface RankedMatches {
+	page?: SourceLocation
+	other?: SourceLocation
+}
+function rankAndStash(
+	file: string,
+	result: SourceLocation,
+	pageFiles: readonly string[] | undefined,
+	matches: RankedMatches,
+): SourceLocation | undefined {
+	if (isCollectionFile(file)) return result
+	if (pageFiles?.includes(file)) matches.page ??= result
+	else matches.other ??= result
+	return undefined
+}
+
 /**
  * Look up an i18n dictionary entry by its literal key (e.g. `nav.prague4`),
  * preferring the match whose value equals `normalizedText` so the right locale
@@ -1325,55 +1356,56 @@ function toProjectRelativePath(file: string): string {
 }
 
 /**
- * Fast text lookup using pre-built index
+ * Fast text lookup using pre-built index.
+ *
+ * Priority order: collection data files > entries in `pageFiles` > anything
+ * else. Translation-tag (i18n dictionary) hits beat non-collection template
+ * matches — a dictionary entry is an authoritative translatable signal
+ * whereas a same-text template hit is often coincidental.
  */
-export function findInTextIndex(textContent: string, tag: string): SourceLocation | undefined {
+export function findInTextIndex(
+	textContent: string,
+	tag: string,
+	pageFiles?: readonly string[],
+): SourceLocation | undefined {
 	const normalizedSearch = normalizeText(textContent)
 	const tagLower = tag.toLowerCase()
 	const index = getTextSearchIndex()
-
-	// Single pass for exact matches: collect the best same-tag template hit
-	// *and* any i18n dictionary hit at once. A JSON dictionary entry is an
-	// authoritative translatable signal, so it beats a non-collection
-	// template match (which is often a coincidental same-text element).
-	let bestMatch: SourceLocation | undefined
+	const matches: RankedMatches = {}
 	let translationHit: SourceLocation | undefined
+
 	for (const entry of index) {
 		if (entry.normalizedText !== normalizedSearch) continue
 		if (entry.tag === tagLower) {
-			const result = textEntryToLocation(entry)
-			if (isCollectionFile(entry.file)) return result
-			bestMatch ??= result
+			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches)
+			if (collectionHit) return collectionHit
 		} else if (entry.tag === TRANSLATION_TAG_MARKER) {
 			translationHit ??= textEntryToLocation(entry)
 		}
 	}
 	if (translationHit) return translationHit
-	if (bestMatch) return bestMatch
+	const sameTag = matches.page ?? matches.other
+	if (sameTag) return sameTag
 
-	// Then try partial match for longer text — prefer collection data files
 	if (normalizedSearch.length > 10) {
 		const textPreview = normalizedSearch.slice(0, Math.min(30, normalizedSearch.length))
 		for (const entry of index) {
-			if (entry.tag === tagLower && entry.normalizedText.includes(textPreview)) {
-				const result = textEntryToLocation(entry)
-				if (isCollectionFile(entry.file)) return result
-				bestMatch ??= result
-			}
+			if (entry.tag !== tagLower) continue
+			if (!entry.normalizedText.includes(textPreview)) continue
+			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches)
+			if (collectionHit) return collectionHit
 		}
-		if (bestMatch) return bestMatch
+		const partial = matches.page ?? matches.other
+		if (partial) return partial
 	}
 
-	// Try any tag match — prefer collection data files
 	for (const entry of index) {
-		if (entry.normalizedText === normalizedSearch) {
-			const result = textEntryToLocation(entry)
-			if (isCollectionFile(entry.file)) return result
-			bestMatch ??= result
-		}
+		if (entry.normalizedText !== normalizedSearch) continue
+		const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches)
+		if (collectionHit) return collectionHit
 	}
 
-	return bestMatch
+	return matches.page ?? matches.other
 }
 
 /**
@@ -1388,34 +1420,57 @@ function extractPathname(src: string): string {
 }
 
 /**
- * Fast image lookup using pre-built index
+ * Fast image lookup using pre-built index.
+ *
+ * Priority order:
+ *   1. `preferredLocation` (file, srcOccurrence) — Nth index entry for
+ *      (src, file). Deterministic per-DOM-order; preferred over `line` because
+ *      Astro's `data-astro-source-loc` often points at a common ancestor and
+ *      collides for multiple imgs sharing the same src.
+ *   2. `preferredLocation` (file, line) exact match — used when occurrence
+ *      isn't provided (Astro's stamping happens to be precise enough).
+ *   3. Collection data files (always authoritative).
+ *   4. Entries in `pageFiles` — disambiguates same image across multiple pages.
+ *   5. Any other match.
  */
-export function findInImageIndex(imageSrc: string): SourceLocation | undefined {
+export function findInImageIndex(
+	imageSrc: string,
+	pageFiles?: readonly string[],
+	preferredLocation?: { file: string; line?: number; srcOccurrence?: number },
+): SourceLocation | undefined {
 	const index = getImageSearchIndex()
 
 	// Dev-mode optimized URLs (`/_image?href=...`, `/@image/...?f=...`) embed the source
 	// path; try both the raw URL and the decoded path so callers don't need to pre-decode.
 	const decoded = extractAstroImageOriginalUrl(imageSrc)
 	const candidates = decoded && decoded !== imageSrc ? [imageSrc, decoded] : [imageSrc]
+	// Astro stamps absolute paths in `data-astro-source-file`; the index uses
+	// project-relative paths. Normalize before comparing.
+	const preferredFile = preferredLocation ? toProjectRelativePath(preferredLocation.file) : undefined
+	const preferredLine = preferredLocation?.line
+	const preferredOccurrence = preferredLocation?.srcOccurrence
 
-	// Exact match — prefer collection data files (src/content/) over templates.
-	// The same image URL can appear in both a collection data file and a template
-	// that statically renders the collection. The data file is the authoritative source.
-	let bestMatch: SourceLocation | undefined
+	const matches: RankedMatches = {}
+	let occurrenceCounter = 0
+	let occurrenceMatch: SourceLocation | undefined
+	let lineMatch: SourceLocation | undefined
 	for (const entry of index) {
 		if (!candidates.includes(entry.src)) continue
-		const result: SourceLocation = {
-			file: entry.file,
-			line: entry.line,
-			snippet: entry.snippet,
-			type: 'static',
+		if (preferredFile && entry.file === preferredFile) {
+			if (preferredOccurrence !== undefined && occurrenceCounter++ === preferredOccurrence) {
+				occurrenceMatch ??= imageEntryToLocation(entry)
+			}
+			if (preferredLine !== undefined && entry.line === preferredLine) {
+				lineMatch ??= imageEntryToLocation(entry)
+			}
 		}
-		if (isCollectionFile(entry.file)) {
-			return result // Collection data file — always preferred
-		}
-		bestMatch ??= result // Keep first non-collection match as fallback
+		const collectionHit = rankAndStash(entry.file, imageEntryToLocation(entry), pageFiles, matches)
+		if (collectionHit) return collectionHit
 	}
-	if (bestMatch) return bestMatch
+	if (occurrenceMatch) return occurrenceMatch
+	if (lineMatch) return lineMatch
+	const exact = matches.page ?? matches.other
+	if (exact) return exact
 
 	// Fallback: path suffix matching for CDN-transformed URLs
 	// e.g., rendered src "/cdn-cgi/image/.../assets/photo.webp" should match
@@ -1423,19 +1478,11 @@ export function findInImageIndex(imageSrc: string): SourceLocation | undefined {
 	const targetPath = extractPathname(imageSrc)
 	for (const entry of index) {
 		const entryPath = extractPathname(entry.src)
-		if (entryPath.length > 5 && (targetPath.endsWith(entryPath) || entryPath.endsWith(targetPath))) {
-			const result: SourceLocation = {
-				file: entry.file,
-				line: entry.line,
-				snippet: entry.snippet,
-				type: 'static',
-			}
-			if (isCollectionFile(entry.file)) {
-				return result
-			}
-			bestMatch ??= result
-		}
+		if (entryPath.length <= 5) continue
+		if (!targetPath.endsWith(entryPath) && !entryPath.endsWith(targetPath)) continue
+		const collectionHit = rankAndStash(entry.file, imageEntryToLocation(entry), pageFiles, matches)
+		if (collectionHit) return collectionHit
 	}
 
-	return bestMatch
+	return matches.page ?? matches.other
 }

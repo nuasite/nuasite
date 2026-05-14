@@ -141,21 +141,28 @@ function parseSrcsetUrls(srcSet: string): string[] {
  * Also checks srcset URLs as fallback when src doesn't match (e.g., when src
  * is a local upload path but srcset contains CDN-transformed original URLs).
  * Uses pre-built search index for fast lookups.
+ *
+ * `pageFiles` disambiguates the same image URL across pages.
+ * `preferredLocation` disambiguates the same image URL within one page —
+ * pass the manifest entry's Astro attribution and the lookup will return the
+ * matching per-occurrence index entry when one exists.
  */
 export async function findImageSourceLocation(
 	imageSrc: string,
 	imageSrcSet?: string,
+	pageFiles?: readonly string[],
+	preferredLocation?: { file: string; line?: number; srcOccurrence?: number },
 ): Promise<SourceLocation | undefined> {
 	// Use index if available (much faster)
 	if (isSearchIndexInitialized()) {
-		const result = findInImageIndex(imageSrc)
+		const result = findInImageIndex(imageSrc, pageFiles, preferredLocation)
 		if (result) return result
 
 		// Fallback: try URLs extracted from srcset
 		if (imageSrcSet) {
 			const srcsetUrls = parseSrcsetUrls(imageSrcSet)
 			for (const url of srcsetUrls) {
-				const srcsetResult = findInImageIndex(url)
+				const srcsetResult = findInImageIndex(url, pageFiles, preferredLocation)
 				if (srcsetResult) return srcsetResult
 			}
 		}

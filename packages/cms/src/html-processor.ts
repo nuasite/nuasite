@@ -662,6 +662,12 @@ export async function processHtml(
 		sourceLine?: number
 	}
 	const imageEntries = new Map<string, ImageEntry>()
+	// Per (sourceFile, src) DOM-order occurrence counter. When the same image
+	// URL appears N times rendered from the same source file, this lets us
+	// map each rendered `<img>` to the Nth index entry for that (file, src)
+	// — disambiguating cases where data-astro-source-loc alone doesn't (e.g.
+	// when only a wrapper element carries the source attribution).
+	const srcOccurrenceCounts = new Map<string, number>()
 	root.querySelectorAll('img').forEach((node) => {
 		// Skip if already marked
 		if (node.getAttribute(attributeName)) return
@@ -682,12 +688,17 @@ export async function processHtml(
 
 		const { sourceFile, sourceLine } = findAncestorSourceLocation(node)
 
+		const occurrenceKey = `${sourceFile ?? ''}\0${src}`
+		const srcOccurrence = srcOccurrenceCounts.get(occurrenceKey) ?? 0
+		srcOccurrenceCounts.set(occurrenceKey, srcOccurrence + 1)
+
 		// Build image metadata
 		const metadata: ImageMetadata = {
 			src,
 			alt: node.getAttribute('alt') || '',
 			srcSet: node.getAttribute('srcset') || undefined,
 			sizes: node.getAttribute('sizes') || undefined,
+			srcOccurrence,
 		}
 
 		// Store image info for manifest
