@@ -751,7 +751,10 @@ export async function enhanceManifestWithSourceSnippets(
 			}
 
 			// ── Non-collection images: find via search index / AST ──
-			const preferredLocation = entry.sourcePath
+			// Always pass preferredLocation when srcOccurrence is set, even if
+			// entry.sourcePath is missing — html-processor populates srcOccurrence
+			// independently of Astro's source attribution.
+			const preferredLocation = entry.sourcePath || entry.imageMetadata.srcOccurrence !== undefined
 				? {
 					file: entry.sourcePath,
 					line: entry.sourceLine,

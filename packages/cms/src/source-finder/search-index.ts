@@ -1436,7 +1436,7 @@ function extractPathname(src: string): string {
 export function findInImageIndex(
 	imageSrc: string,
 	pageFiles?: readonly string[],
-	preferredLocation?: { file: string; line?: number; srcOccurrence?: number },
+	preferredLocation?: { file?: string; line?: number; srcOccurrence?: number },
 ): SourceLocation | undefined {
 	const index = getImageSearchIndex()
 
@@ -1446,7 +1446,7 @@ export function findInImageIndex(
 	const candidates = decoded && decoded !== imageSrc ? [imageSrc, decoded] : [imageSrc]
 	// Astro stamps absolute paths in `data-astro-source-file`; the index uses
 	// project-relative paths. Normalize before comparing.
-	const preferredFile = preferredLocation ? toProjectRelativePath(preferredLocation.file) : undefined
+	const preferredFile = preferredLocation?.file ? toProjectRelativePath(preferredLocation.file) : undefined
 	const preferredLine = preferredLocation?.line
 	const preferredOccurrence = preferredLocation?.srcOccurrence
 
@@ -1454,13 +1454,21 @@ export function findInImageIndex(
 	let occurrenceCounter = 0
 	let occurrenceMatch: SourceLocation | undefined
 	let lineMatch: SourceLocation | undefined
+	const pageSet = pageFiles?.length ? new Set(pageFiles) : undefined
+	// Scope occurrence counting: if preferredFile is set, only that file.
+	// Otherwise fall back to pageFiles. Otherwise count across the whole index.
+	const occurrenceScope = (file: string): boolean => {
+		if (preferredFile) return file === preferredFile
+		if (pageSet) return pageSet.has(file)
+		return true
+	}
 	for (const entry of index) {
 		if (!candidates.includes(entry.src)) continue
-		if (preferredFile && entry.file === preferredFile) {
+		if (occurrenceScope(entry.file)) {
 			if (preferredOccurrence !== undefined && occurrenceCounter++ === preferredOccurrence) {
 				occurrenceMatch ??= imageEntryToLocation(entry)
 			}
-			if (preferredLine !== undefined && entry.line === preferredLine) {
+			if (preferredLine !== undefined && entry.line === preferredLine && (!preferredFile || entry.file === preferredFile)) {
 				lineMatch ??= imageEntryToLocation(entry)
 			}
 		}

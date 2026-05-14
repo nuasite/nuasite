@@ -382,7 +382,7 @@ async function processFile(
 		// The sourcePath from HTML attributes may point to a shared Image component
 		// rather than the file that actually uses the component with the src value
 		if (entry.imageMetadata?.src) {
-			const preferredLocation = entry.sourcePath
+			const preferredLocation = entry.sourcePath || entry.imageMetadata.srcOccurrence !== undefined
 				? {
 					file: entry.sourcePath,
 					line: entry.sourceLine,

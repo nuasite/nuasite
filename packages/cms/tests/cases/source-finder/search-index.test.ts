@@ -880,6 +880,30 @@ withTempDir('findInImageIndex', (getCtx) => {
 		expect(second?.line).toBe(7)
 	})
 
+	test('srcOccurrence works without preferredFile, scoped to pageFiles', () => {
+		// Real-world: html-processor populates srcOccurrence even when Astro
+		// doesn't stamp data-astro-source-* on the rendered <img>. In that case
+		// entry.sourcePath is undefined and preferredLocation has no file.
+		addToImageSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 14,
+			snippet: '<img src="/x.jpg" />',
+			src: '/x.jpg',
+		})
+		addToImageSearchIndex({
+			file: 'src/pages/index.astro',
+			line: 23,
+			snippet: '<img src="/x.jpg" />',
+			src: '/x.jpg',
+		})
+
+		const first = findInImageIndex('/x.jpg', ['src/pages/index.astro'], { srcOccurrence: 0 })
+		const second = findInImageIndex('/x.jpg', ['src/pages/index.astro'], { srcOccurrence: 1 })
+
+		expect(first?.line).toBe(14)
+		expect(second?.line).toBe(23)
+	})
+
 	test('srcOccurrence wins over coincidentally-matching preferred line', () => {
 		// Real-world scenario from skolkaeduart: both manifest entries get
 		// sourceLine=14 from the wrapping data-astro-source-loc, which happens

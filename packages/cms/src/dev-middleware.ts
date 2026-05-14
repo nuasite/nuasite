@@ -598,7 +598,7 @@ export async function enhanceManifestInBackground(
 		for (const entry of Object.values(enhanced)) {
 			if (entry.sourceSnippet || entry.sourcePath) continue
 			if (entry.imageMetadata?.src) {
-				const preferredLocation = entry.sourcePath
+				const preferredLocation = entry.sourcePath || entry.imageMetadata.srcOccurrence !== undefined
 					? {
 						file: entry.sourcePath,
 						line: entry.sourceLine,

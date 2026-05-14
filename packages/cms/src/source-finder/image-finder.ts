@@ -151,7 +151,7 @@ export async function findImageSourceLocation(
 	imageSrc: string,
 	imageSrcSet?: string,
 	pageFiles?: readonly string[],
-	preferredLocation?: { file: string; line?: number; srcOccurrence?: number },
+	preferredLocation?: { file?: string; line?: number; srcOccurrence?: number },
 ): Promise<SourceLocation | undefined> {
 	// Use index if available (much faster)
 	if (isSearchIndexInitialized()) {
