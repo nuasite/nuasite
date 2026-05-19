@@ -10,6 +10,7 @@ import {
 	setDeletingPage,
 	showToast,
 } from '../signals'
+import { STRINGS } from '../strings'
 import { CancelButton, ModalBackdrop, ModalFooter, ModalHeader } from './modal-shell'
 
 export function DeletePageDialog() {
@@ -35,10 +36,10 @@ export function DeletePageDialog() {
 
 		if (result.success) {
 			resetDeletePageState()
-			showToast('Page deleted', 'success')
+			showToast(STRINGS.page.deleted, 'success')
 			window.location.href = currentState.createRedirect && currentState.redirectTo ? currentState.redirectTo : '/'
 		} else {
-			showToast(result.error || 'Failed to delete page', 'error')
+			showToast(result.error || STRINGS.page.deleteFailed, 'error')
 		}
 	}, [])
 

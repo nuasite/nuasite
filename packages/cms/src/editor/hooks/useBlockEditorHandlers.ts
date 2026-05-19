@@ -2,6 +2,7 @@ import { useCallback, useState } from 'preact/hooks'
 import { logDebug } from '../dom'
 import { getComponentInstances } from '../manifest'
 import * as signals from '../signals'
+import { STRINGS } from '../strings'
 import type { CmsConfig, CmsManifest, ComponentInstance, InsertPosition } from '../types'
 
 /**
@@ -86,7 +87,7 @@ export function useBlockEditorHandlers({
 		(componentId: string, props: Record<string, any>) => {
 			logDebug(config.debug, 'Update props for component:', componentId, props)
 			// TODO: Implement prop update logic - this will require server-side file modification
-			showToast('Props updated (preview only)', 'info')
+			showToast(STRINGS.block.propsPreviewOnly, 'info')
 		},
 		[config.debug, showToast],
 	)
@@ -151,7 +152,7 @@ export function useBlockEditorHandlers({
 						throw new Error(error || 'Failed to add array item')
 					}
 
-					showToast(`Item added ${position} current item`, 'success')
+					showToast(STRINGS.block.insertItem(position), 'success')
 				} else {
 					// Standard component insertion
 					const response = await fetch(`${config.apiBase}/insert-component`, {
@@ -175,7 +176,7 @@ export function useBlockEditorHandlers({
 						throw new Error(error || 'Failed to insert component')
 					}
 
-					showToast(`${componentName} inserted ${position} component`, 'success')
+					showToast(STRINGS.block.insertComponent(componentName, position), 'success')
 				}
 			} catch (error) {
 				console.error('[CMS] Failed to insert component:', error)
@@ -183,7 +184,7 @@ export function useBlockEditorHandlers({
 				// Remove the preview on failure
 				previewEl?.remove()
 
-				showToast(arrayMode ? 'Failed to add array item' : 'Failed to insert component', 'error')
+				showToast(arrayMode ? STRINGS.block.insertItemFailed : STRINGS.block.insertComponentFailed, 'error')
 			}
 		},
 		[config.apiBase, config.debug, config, showToast],
@@ -232,7 +233,7 @@ export function useBlockEditorHandlers({
 					throw new Error(error || `Failed to ${arrayMode ? 'remove item' : 'remove component'}`)
 				}
 
-				showToast(arrayMode ? 'Item removed' : 'Component removed', 'success')
+				showToast(arrayMode ? STRINGS.block.removeItem : STRINGS.block.removeComponent, 'success')
 
 				// Visually collapse and hide the component until HMR refreshes the page
 				if (componentEl) {
@@ -240,7 +241,7 @@ export function useBlockEditorHandlers({
 				}
 			} catch (error) {
 				console.error('[CMS] Failed to remove component:', error)
-				showToast(arrayMode ? 'Failed to remove item' : 'Failed to remove component', 'error')
+				showToast(arrayMode ? STRINGS.block.removeItemFailed : STRINGS.block.removeComponentFailed, 'error')
 
 				// Restore the component's appearance on failure
 				if (componentEl) {

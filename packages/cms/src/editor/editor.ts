@@ -33,6 +33,7 @@ import {
 	saveEditsToStorage,
 	saveImageEditsToStorage,
 } from './storage'
+import { STRINGS } from './strings'
 import type { Attribute } from './types'
 import type { AttributeChangePayload, ChangePayload, CmsConfig, ManifestEntry, SavedAttributeEdit } from './types'
 
@@ -88,7 +89,7 @@ function notifyFormattingBlocked(): void {
 		return
 	}
 	lastFormattingBlockedToastAt = now
-	signals.showToast("Formatting isn't available — this text is used as a plain value", 'info')
+	signals.showToast(STRINGS.editor.formattingBlocked, 'info')
 }
 
 export function notifyLockedElement(): void {
@@ -97,7 +98,7 @@ export function notifyLockedElement(): void {
 		return
 	}
 	lastLockedToastAt = now
-	signals.showToast("This text can't be edited here — no source file is linked to it", 'info')
+	signals.showToast(STRINGS.editor.lockedElement, 'info')
 }
 
 /**
@@ -1197,14 +1198,14 @@ function setupMarkdownClickHandler(
 		const entry = manifest.entries[cmsId] as ManifestEntry | undefined
 
 		if (!entry) {
-			signals.showToast('Markdown element not found in manifest', 'error')
+			signals.showToast(STRINGS.editor.markdownNotInManifest, 'error')
 			return
 		}
 
 		// Check if it has a content path for markdown
 		const contentPath = entry.contentPath
 		if (!contentPath) {
-			signals.showToast('No markdown file path configured for this element', 'error')
+			signals.showToast(STRINGS.editor.noMarkdownPath, 'error')
 			return
 		}
 
@@ -1213,7 +1214,7 @@ function setupMarkdownClickHandler(
 			const result = await getMarkdownContent(config.apiBase, contentPath)
 
 			if (!result) {
-				signals.showToast('Markdown content not found', 'error')
+				signals.showToast(STRINGS.editor.markdownContentMissing, 'error')
 				return
 			}
 
@@ -1231,7 +1232,7 @@ function setupMarkdownClickHandler(
 			signals.setMarkdownEditorOpen(true)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error'
-			signals.showToast(`Failed to load markdown: ${message}`, 'error')
+			signals.showToast(STRINGS.editor.markdownLoadFailed(message), 'error')
 			logDebug(config.debug, 'Failed to fetch markdown content:', error)
 		}
 	})

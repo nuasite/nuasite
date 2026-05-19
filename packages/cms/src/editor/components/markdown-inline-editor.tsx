@@ -19,6 +19,7 @@ import { uploadMedia } from '../markdown-api'
 import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-plugin'
 import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
 import { config, mdxComponentPickerOpen, openMediaLibraryWithCallback, resetMarkdownEditorState, showToast, updateMarkdownContent } from '../signals'
+import { STRINGS } from '../strings'
 import { LinkEditPopover } from './link-edit-popover'
 import { MdxComponentIcon } from './mdx-block-view'
 import { MdxComponentPicker } from './mdx-component-picker'
@@ -110,7 +111,7 @@ export function MarkdownInlineEditor({
 				cleanupTracking = setupFormatTracking(editor, setActiveFormats)
 			} catch (error) {
 				console.error('Milkdown editor initialization failed:', error)
-				showToast('Failed to initialize markdown editor', 'error')
+				showToast(STRINGS.markdown.initFailed, 'error')
 			}
 		}
 
@@ -290,7 +291,7 @@ export function MarkdownInlineEditor({
 
 		const file = files[0]
 		if (!file || !file.type.startsWith('image/')) {
-			showToast('Please drop an image file', 'error')
+			showToast(STRINGS.media.imageRequired, 'error')
 			return
 		}
 
@@ -309,16 +310,16 @@ export function MarkdownInlineEditor({
 				if (editorInstanceRef.current) {
 					try {
 						editorInstanceRef.current.action(insert(imageMarkdown))
-						showToast('Image uploaded and inserted', 'success')
+						showToast(STRINGS.media.imageInserted, 'success')
 					} catch (error) {
 						console.error('Failed to insert image:', error)
 					}
 				}
 			} else {
-				showToast(result.error || 'Upload failed', 'error')
+				showToast(result.error || STRINGS.media.uploadFailed, 'error')
 			}
 		} catch (error) {
-			showToast('Upload failed', 'error')
+			showToast(STRINGS.media.uploadFailed, 'error')
 		} finally {
 			setUploadProgress(null)
 		}
@@ -347,13 +348,13 @@ export function MarkdownInlineEditor({
 
 						if (editorInstanceRef.current) {
 							editorInstanceRef.current.action(insert(imageMarkdown))
-							showToast('Image uploaded and inserted', 'success')
+							showToast(STRINGS.media.imageInserted, 'success')
 						}
 					} else {
-						showToast(result.error || 'Upload failed', 'error')
+						showToast(result.error || STRINGS.media.uploadFailed, 'error')
 					}
 				} catch (error) {
-					showToast('Upload failed', 'error')
+					showToast(STRINGS.media.uploadFailed, 'error')
 				} finally {
 					setUploadProgress(null)
 				}

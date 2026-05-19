@@ -4,6 +4,7 @@ import { CMS_VERSION, Z_INDEX } from '../constants'
 import { cn } from '../lib/cn'
 import * as signals from '../signals'
 import { showConfirmDialog } from '../signals'
+import { STRINGS } from '../strings'
 import type { CollectionDefinition } from '../types'
 import { Spinner } from './spinner'
 
@@ -64,10 +65,10 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 
 	const handleDiscard = async () => {
 		const confirmed = await showConfirmDialog({
-			title: 'Discard Changes',
-			message: 'Discard all changes? This cannot be undone.',
-			confirmLabel: 'Discard',
-			cancelLabel: 'Cancel',
+			title: STRINGS.dialog.discardAll.title,
+			message: STRINGS.dialog.discardAll.message,
+			confirmLabel: STRINGS.dialog.discardAll.confirm,
+			cancelLabel: STRINGS.dialog.discardAll.cancel,
 			variant: 'danger',
 		})
 		if (confirmed) {
@@ -82,7 +83,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const topLevelItems: MenuItem[] = []
 	if (callbacks.onSelectElement && signals.config.value.features?.selectElement) {
 		topLevelItems.push({
-			label: 'Select Element',
+			label: STRINGS.toolbar.selectElement,
 			icon: (
 				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />

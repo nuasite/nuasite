@@ -12,6 +12,7 @@ import {
 	updateMarkdownFrontmatter,
 	updateMarkdownPageMeta,
 } from '../signals'
+import { STRINGS } from '../strings'
 import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
 import { ColorField, ComboBoxField, ImageField, MultiSelectField, NumberField, TextField, ToggleField } from './fields'
 import { groupFields } from './frontmatter-sidebar'
@@ -330,13 +331,13 @@ function SlugField({ page }: { page: MarkdownPageEntry }) {
 			if (result.success && result.newSlug && result.newFilePath) {
 				updateMarkdownPageMeta({ slug: result.newSlug, filePath: result.newFilePath })
 				setLocalSlug(result.newSlug)
-				showToast('Slug updated', 'success')
+				showToast(STRINGS.slug.updated, 'success')
 			} else {
-				showToast(result.error || 'Failed to rename', 'error')
+				showToast(result.error || STRINGS.slug.renameFailed, 'error')
 				setLocalSlug(page.slug)
 			}
 		} catch {
-			showToast('Failed to rename', 'error')
+			showToast(STRINGS.slug.renameFailed, 'error')
 			setLocalSlug(page.slug)
 		} finally {
 			setIsRenaming(false)

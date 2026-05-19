@@ -15,6 +15,7 @@ import {
 	setPendingSeoChange,
 	showToast,
 } from '../signals'
+import { STRINGS } from '../strings'
 import type { ChangePayload, PageSeoData, PendingSeoChange } from '../types'
 import { ColorField, ComboBoxField, ImageField } from './fields'
 import { CancelButton, CloseButton, ModalBackdrop, Section } from './modal-shell'
@@ -231,14 +232,14 @@ export function SeoEditor() {
 
 			if (result.errors && result.errors.length > 0) {
 				const details = result.errors.map(e => e.error).join('; ')
-				showToast(`SEO save failed: ${details}`, 'error')
+				showToast(STRINGS.seo.saveFailed(details), 'error')
 			} else {
-				showToast(`Saved ${result.updated} SEO change(s) successfully!`, 'success')
+				showToast(STRINGS.seo.saveSuccess(result.updated), 'success')
 				clearPendingSeoChanges()
 				closeSeoEditor()
 			}
 		} catch (error) {
-			showToast(error instanceof Error ? error.message : 'Failed to save SEO changes', 'error')
+			showToast(error instanceof Error ? error.message : STRINGS.seo.saveFailedFallback, 'error')
 		} finally {
 			setIsSaving(false)
 		}
