@@ -17,7 +17,6 @@ export function partitionFields(fields: FieldDefinition[]): { sidebar: FieldDefi
 		}
 	}
 	if (toggleField) {
-		// Insert the publish toggle above the publish-date field in sidebar; otherwise prepend.
 		const dateIdx = sidebar.findIndex((f) => f.role === 'publish-date')
 		if (dateIdx >= 0) {
 			sidebar.splice(dateIdx, 0, toggleField)

@@ -25,7 +25,6 @@ withTempDir('collection-scanner: semantic role detection', (getCtx) => {
 		const result = await scanCollections()
 		const fields = result['posts']!.fields
 		const toggles = fields.filter((f: FieldDefinition) => f.role === 'publish-toggle')
-		// Only the first matching boolean is tagged — one toggle per collection.
 		expect(toggles.length).toBe(1)
 		expect(['isDraft', 'published']).toContain(toggles[0]!.name)
 	})
