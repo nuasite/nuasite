@@ -1,12 +1,28 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash } from 'node:crypto'
 
 export type AstroComponentFactory = (...args: any[]) => any
 
 export interface FragmentEntry {
 	hash: string
-	component: AstroComponentFactory
+	/**
+	 * The component factory itself. Optional because hosts that implement
+	 * incremental rebuilds (e.g. pletivo) replay registrations from a cache
+	 * without re-importing the page module; in that case the integration
+	 * resolves the factory lazily from `moduleId` only if it actually needs
+	 * to re-render the fragment.
+	 */
+	component?: AstroComponentFactory
 	props: Record<string, unknown>
 	moduleId: string
+	/**
+	 * Pages that contain a `<Fragment>` referencing this entry. Populated
+	 * from the `pageUrl` field of `registerFragment` calls. Replayed
+	 * registrations from an incremental host typically don't carry
+	 * `pageUrl` — for those, the integration recovers `usedBy` by
+	 * scanning `<x-fragment id>` placeholders in dist/, so the final
+	 * manifest is correct even though this in-memory Set may be empty.
+	 */
 	usedBy: Set<string>
 }
 
@@ -33,7 +49,10 @@ function getState(): RegistryState {
 export function enableRegistry(projectRoot: string): void {
 	const state = getState()
 	state.enabled = true
-	state.projectRoot = projectRoot
+	// Force a trailing `/` so prefix checks (`moduleId.startsWith(projectRoot)`)
+	// can't false-match a sibling project whose root happens to share a
+	// prefix — e.g. `/home/me/site` vs `/home/me/site-old/foo.astro`.
+	state.projectRoot = projectRoot.endsWith('/') ? projectRoot : projectRoot + '/'
 	state.entries.clear()
 }
 
@@ -114,7 +133,13 @@ export class FragmentRegistrationError extends Error {
 }
 
 export interface RegisterParams {
-	component: AstroComponentFactory
+	/**
+	 * The component factory. Optional — when omitted (e.g. a host replaying
+	 * cached registrations on an incremental rebuild), the integration will
+	 * lazy-import the factory from `moduleId` if and only if the fragment
+	 * actually needs to be rendered.
+	 */
+	component?: AstroComponentFactory
 	moduleId: string
 	props: Record<string, unknown>
 	pageUrl?: string
@@ -130,12 +155,21 @@ export function registerFragment(params: RegisterParams): string {
 	const hash = computeFragmentHash(params.moduleId, params.props, state.projectRoot)
 	const existing = state.entries.get(hash)
 	if (existing) {
-		if (existing.component !== params.component) {
+		// Hash-collision sanity check — only enforceable when both sides
+		// carry a concrete component fn. Replayed registrations (no fn)
+		// rely on `moduleId`+`props` identity which the hash already covers.
+		if (existing.component && params.component && existing.component !== params.component) {
 			throw new FragmentRegistrationError(
 				`Hash collision: two different components produced the same fragment id "${hash}". Existing: ${existing.moduleId}, new: ${params.moduleId}.`,
 			)
 		}
+		// Upgrade a previously-lazy entry once a real component shows up,
+		// so renderFragments can use it without doing an import().
+		if (!existing.component && params.component) {
+			existing.component = params.component
+		}
 		if (params.pageUrl) existing.usedBy.add(params.pageUrl)
+		recordInRenderPass(hash)
 		return hash
 	}
 	const entry: FragmentEntry = {
@@ -147,6 +181,7 @@ export function registerFragment(params: RegisterParams): string {
 	}
 	if (params.pageUrl) entry.usedBy.add(params.pageUrl)
 	state.entries.set(hash, entry)
+	recordInRenderPass(hash)
 	return hash
 }
 
@@ -156,4 +191,50 @@ export function getFragments(): FragmentEntry[] {
 
 export function getProjectRoot(): string | null {
 	return getState().projectRoot
+}
+
+// ── Render-pass scope ───────────────────────────────────────────────
+//
+// Hosts that want per-page fragment lists (so they can persist them
+// for incremental replay) wrap their page-render call in
+// `runInRenderPass(pageId, fn)`. Every `registerFragment` invocation
+// inside the async scope tags the resulting hash with the pass; the
+// caller receives the deduplicated list of fragment ids alongside the
+// render result.
+//
+// Load-bearing assumption: fragment components must call
+// `registerFragment` on **every** render, even when the entry already
+// exists in the registry (the call is cheap — it just bumps `usedBy`
+// and re-records the pass). If a component short-circuits a re-render,
+// its fragment will drop out of the per-page list and break replay on
+// the next incremental build. The bundled `<Fragment>` Astro component
+// follows this contract; custom hosts must match it.
+
+interface RenderPassState {
+	pageId: string
+	fragmentIds: Set<string>
+}
+
+const renderPassStorage = new AsyncLocalStorage<RenderPassState>()
+
+export interface RenderPassResult<T> {
+	value: T
+	fragmentIds: string[]
+}
+
+export async function runInRenderPass<T>(
+	pageId: string,
+	fn: () => T | Promise<T>,
+): Promise<RenderPassResult<T>> {
+	const fragmentIds = new Set<string>()
+	const value = await renderPassStorage.run(
+		{ pageId, fragmentIds },
+		async () => fn(),
+	)
+	return { value, fragmentIds: [...fragmentIds] }
+}
+
+function recordInRenderPass(hash: string): void {
+	const pass = renderPassStorage.getStore()
+	if (pass) pass.fragmentIds.add(hash)
 }
