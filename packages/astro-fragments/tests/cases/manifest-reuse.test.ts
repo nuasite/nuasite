@@ -3,11 +3,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import {
-	pickReusableManifestIds,
-	readExistingManifest,
-	validateAcceptable,
-} from '../../src/integration.ts'
+import { pickReusableManifestIds, readExistingManifest, validateAcceptable } from '../../src/integration.ts'
 import { buildManifest, type FragmentManifest } from '../../src/manifest.ts'
 
 let tmpDir = ''
@@ -162,7 +158,7 @@ describe('validateAcceptable', () => {
 				],
 				new Set(['aaa']),
 				new Set(['bbb']),
-			),
+			)
 		).not.toThrow()
 	})
 
@@ -172,7 +168,7 @@ describe('validateAcceptable', () => {
 				[{ id: 'orphan', pageFile: 'index.html' }],
 				new Set(['aaa']),
 				new Set(['bbb']),
-			),
+			)
 		).toThrow(/orphan/)
 	})
 

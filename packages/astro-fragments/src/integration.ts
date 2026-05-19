@@ -5,14 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { mapWithConcurrency } from './concurrency.ts'
 import { buildManifest, type FragmentManifest, type FragmentManifestEntry } from './manifest.ts'
-import {
-	type AstroComponentFactory,
-	disableRegistry,
-	enableRegistry,
-	type FragmentEntry,
-	getFragments,
-	getProjectRoot,
-} from './registry.ts'
+import { type AstroComponentFactory, disableRegistry, enableRegistry, type FragmentEntry, getFragments, getProjectRoot } from './registry.ts'
 import { scanDistForPlaceholders } from './scan.ts'
 
 export interface AstroFragmentsOptions {
@@ -147,7 +140,9 @@ async function renderFragments({ distDir, outputDir, manifestName, concurrency, 
 
 	const projectRoot = getProjectRoot()
 
-	let containerPromise: Promise<{ renderToString: (c: AstroComponentFactory, opts: { props: Record<string, unknown> }) => Promise<string> }> | undefined
+	let containerPromise:
+		| Promise<{ renderToString: (c: AstroComponentFactory, opts: { props: Record<string, unknown> }) => Promise<string> }>
+		| undefined
 	function getContainer() {
 		if (!containerPromise) {
 			containerPromise = (async () => {
@@ -173,10 +168,10 @@ async function renderFragments({ distDir, outputDir, manifestName, concurrency, 
 					mod = await import(pathToFileURL(absPath).href)
 				} catch (e) {
 					throw new Error(
-						`Failed to lazy-import fragment component "${moduleId}" from ${absPath}. ` +
-							`The integration tried to resolve the component on demand because no factory was registered for fragment ` +
-							`(this happens when a host like pletivo replays cached fragment registrations on an incremental rebuild). ` +
-							`Make sure the host runtime supports importing .astro modules. Original error: ${(e as Error).message}`,
+						`Failed to lazy-import fragment component "${moduleId}" from ${absPath}. `
+							+ `The integration tried to resolve the component on demand because no factory was registered for fragment `
+							+ `(this happens when a host like pletivo replays cached fragment registrations on an incremental rebuild). `
+							+ `Make sure the host runtime supports importing .astro modules. Original error: ${(e as Error).message}`,
 						{ cause: e },
 					)
 				}
