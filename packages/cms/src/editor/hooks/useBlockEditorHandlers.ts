@@ -152,7 +152,7 @@ export function useBlockEditorHandlers({
 						throw new Error(error || 'Failed to add array item')
 					}
 
-					showToast(STRINGS.block.itemAdded(position), 'success')
+					showToast(STRINGS.block.insertItem(position), 'success')
 				} else {
 					// Standard component insertion
 					const response = await fetch(`${config.apiBase}/insert-component`, {
@@ -176,7 +176,7 @@ export function useBlockEditorHandlers({
 						throw new Error(error || 'Failed to insert component')
 					}
 
-					showToast(STRINGS.block.componentInserted(componentName, position), 'success')
+					showToast(STRINGS.block.insertComponent(componentName, position), 'success')
 				}
 			} catch (error) {
 				console.error('[CMS] Failed to insert component:', error)
@@ -184,7 +184,7 @@ export function useBlockEditorHandlers({
 				// Remove the preview on failure
 				previewEl?.remove()
 
-				showToast(arrayMode ? STRINGS.block.insertArrayFailed : STRINGS.block.insertComponentFailed, 'error')
+				showToast(arrayMode ? STRINGS.block.insertItemFailed : STRINGS.block.insertComponentFailed, 'error')
 			}
 		},
 		[config.apiBase, config.debug, config, showToast],
@@ -233,7 +233,7 @@ export function useBlockEditorHandlers({
 					throw new Error(error || `Failed to ${arrayMode ? 'remove item' : 'remove component'}`)
 				}
 
-				showToast(arrayMode ? STRINGS.block.itemRemoved : STRINGS.block.componentRemoved, 'success')
+				showToast(arrayMode ? STRINGS.block.removeItem : STRINGS.block.removeComponent, 'success')
 
 				// Visually collapse and hide the component until HMR refreshes the page
 				if (componentEl) {
@@ -241,7 +241,7 @@ export function useBlockEditorHandlers({
 				}
 			} catch (error) {
 				console.error('[CMS] Failed to remove component:', error)
-				showToast(arrayMode ? STRINGS.block.removeArrayFailed : STRINGS.block.removeComponentFailed, 'error')
+				showToast(arrayMode ? STRINGS.block.removeItemFailed : STRINGS.block.removeComponentFailed, 'error')
 
 				// Restore the component's appearance on failure
 				if (componentEl) {

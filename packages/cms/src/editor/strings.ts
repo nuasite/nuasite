@@ -1,15 +1,10 @@
 /**
- * Central catalog of editor UI strings.
- *
- * Step 1 of the i18n groundwork — pure centralization, no locale switching.
- * Parametrized messages are exposed as functions so a future `t(key, vars)`
- * helper can swap them out without touching call sites.
- *
- * Conventions:
- * - Grouped by feature (`dialog`, `toast`, `editor`, …) — not by message kind.
- * - Static literals are plain strings; messages with variables are functions.
- * - Keep keys descriptive enough to read at the call site without context.
+ * Central catalog of editor UI strings. Step 1 of i18n groundwork — no locale
+ * switching yet. Parametrized messages are functions so a future `t(key, vars)`
+ * helper can swap them in without touching call sites.
  */
+import type { InsertPosition } from './types'
+
 export const STRINGS = {
 	dialog: {
 		defaults: {
@@ -35,6 +30,11 @@ export const STRINGS = {
 		selectElement: 'Select Element',
 	},
 
+	editingMode: {
+		enabled: 'CMS editing enabled',
+		disabled: 'CMS editing disabled',
+	},
+
 	editor: {
 		formattingBlocked: "Formatting isn't available — this text is used as a plain value",
 		lockedElement: "This text can't be edited here — no source file is linked to it",
@@ -53,18 +53,71 @@ export const STRINGS = {
 
 	block: {
 		propsPreviewOnly: 'Props updated (preview only)',
-		itemAdded: (position: string) => `Item added ${position} current item`,
-		componentInserted: (componentName: string, position: string) => `${componentName} inserted ${position} component`,
-		insertArrayFailed: 'Failed to add array item',
+		insertItem: (position: InsertPosition) => `Item added ${position} current item`,
+		insertComponent: (componentName: string, position: InsertPosition) => `${componentName} inserted ${position} component`,
+		insertItemFailed: 'Failed to add array item',
 		insertComponentFailed: 'Failed to insert component',
-		itemRemoved: 'Item removed',
-		componentRemoved: 'Component removed',
-		removeArrayFailed: 'Failed to remove item',
+		removeItem: 'Item removed',
+		removeComponent: 'Component removed',
+		removeItemFailed: 'Failed to remove item',
 		removeComponentFailed: 'Failed to remove component',
 	},
 
 	reference: {
 		updated: 'Reference updated',
 		updateFailed: 'Failed to update reference',
+	},
+
+	markdown: {
+		saveSuccess: 'Content saved',
+		saveFailed: 'Failed to save markdown',
+		saveFailedDetails: (message: string) => `Save failed: ${message}`,
+		initFailed: 'Failed to initialize markdown editor',
+		titleRequired: 'Please enter a title',
+		slugRequired: 'Please enter a slug',
+		pageCreated: 'Page created',
+		createFailed: 'Failed to create page',
+		createFailedDetails: (message: string) => `Create failed: ${message}`,
+		previewElementMissing: 'Could not find page element to preview',
+		previewGenerationFailed: 'Failed to generate preview',
+	},
+
+	media: {
+		notConfigured: 'CMS not configured',
+		loadFailed: 'Failed to load media library',
+		imageRequired: 'Please drop an image file',
+		uploadSucceeded: 'File uploaded successfully',
+		uploadedNextToEntry: 'Uploaded next to entry',
+		fileUploaded: 'File uploaded',
+		imageInserted: 'Image uploaded and inserted',
+		uploadFailed: 'Upload failed',
+		invalidFolderName: 'Invalid folder name',
+		folderCreated: 'Folder created',
+		folderCreateFailed: 'Failed to create folder',
+	},
+
+	redirects: {
+		updated: 'Redirect updated',
+		updateFailed: 'Failed to update',
+		deleted: 'Redirect deleted',
+		deleteFailed: 'Failed to delete',
+		added: 'Redirect added',
+		addFailed: 'Failed to add redirect',
+	},
+
+	slug: {
+		updated: 'Slug updated',
+		renameFailed: 'Failed to rename',
+	},
+
+	page: {
+		deleted: 'Page deleted',
+		deleteFailed: 'Failed to delete page',
+	},
+
+	seo: {
+		saveSuccess: (updated: number) => `Saved ${updated} SEO change(s) successfully!`,
+		saveFailed: (details: string) => `SEO save failed: ${details}`,
+		saveFailedFallback: 'Failed to save SEO changes',
 	},
 } as const

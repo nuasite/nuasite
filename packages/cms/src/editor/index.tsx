@@ -739,7 +739,7 @@ class CmsEditor {
 		this.appRoot.style.display = isHidden ? 'block' : 'none'
 
 		// Use signals.showToast for consistency
-		signals.showToast(isHidden ? 'CMS editing enabled' : 'CMS editing disabled', 'info')
+		signals.showToast(isHidden ? STRINGS.editingMode.enabled : STRINGS.editingMode.disabled, 'info')
 	}
 }
 

@@ -3,6 +3,7 @@ import { Z_INDEX } from '../constants'
 import { useSearchFilter } from '../hooks/useSearchFilter'
 import { createMediaFolder, fetchMediaLibrary, fetchProjectImages, uploadMedia } from '../markdown-api'
 import { config, isMediaLibraryOpen, mediaLibraryState, resetMediaLibraryState, showToast } from '../signals'
+import { STRINGS } from '../strings'
 import type { MediaFolderItem, MediaItem, MediaTypeFilter } from '../types'
 import { CloseButton, PrimaryButton } from './modal-shell'
 import { Spinner } from './spinner'
@@ -77,7 +78,7 @@ export function MediaLibrary() {
 			}
 			setAllItems(combined)
 		} catch (error) {
-			showToast('Failed to load media library', 'error')
+			showToast(STRINGS.media.loadFailed, 'error')
 		} finally {
 			setIsLoading(false)
 		}
@@ -129,7 +130,7 @@ export function MediaLibrary() {
 				if (uploadContext && result.url.startsWith('./')) {
 					insertCallback?.(result.url, '')
 					handleClose()
-					showToast('Uploaded next to entry', 'success')
+					showToast(STRINGS.media.uploadedNextToEntry, 'success')
 					return
 				}
 
@@ -142,12 +143,12 @@ export function MediaLibrary() {
 					folder: currentFolder || undefined,
 				}
 				setAllItems((prev) => [newItem, ...prev])
-				showToast('File uploaded successfully', 'success')
+				showToast(STRINGS.media.uploadSucceeded, 'success')
 			} else {
-				showToast(result.error || 'Upload failed', 'error')
+				showToast(result.error || STRINGS.media.uploadFailed, 'error')
 			}
 		} catch (error) {
-			showToast('Upload failed', 'error')
+			showToast(STRINGS.media.uploadFailed, 'error')
 		} finally {
 			setUploadProgress(null)
 		}
@@ -167,7 +168,7 @@ export function MediaLibrary() {
 
 		const file = e.dataTransfer?.files[0]
 		if (!file || !file.type.startsWith('image/')) {
-			showToast('Please drop an image file', 'error')
+			showToast(STRINGS.media.imageRequired, 'error')
 			return
 		}
 		await handleUploadFile(file)
@@ -182,7 +183,7 @@ export function MediaLibrary() {
 		const name = newFolderName.trim()
 		if (!name) return
 		if (/[/\\:*?"<>|]/.test(name)) {
-			showToast('Invalid folder name', 'error')
+			showToast(STRINGS.media.invalidFolderName, 'error')
 			return
 		}
 		const folderPath = currentFolder ? `${currentFolder}/${name}` : name
@@ -190,12 +191,12 @@ export function MediaLibrary() {
 			const result = await createMediaFolder(config.value, folderPath)
 			if (result.success) {
 				setFolders((prev) => [...prev, { name, path: folderPath }].sort((a, b) => a.name.localeCompare(b.name)))
-				showToast('Folder created', 'success')
+				showToast(STRINGS.media.folderCreated, 'success')
 			} else {
-				showToast(result.error || 'Failed to create folder', 'error')
+				showToast(result.error || STRINGS.media.folderCreateFailed, 'error')
 			}
 		} catch {
-			showToast('Failed to create folder', 'error')
+			showToast(STRINGS.media.folderCreateFailed, 'error')
 		}
 		setNewFolderName('')
 		setShowNewFolderInput(false)

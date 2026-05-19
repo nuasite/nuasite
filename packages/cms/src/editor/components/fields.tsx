@@ -7,6 +7,7 @@ import { useSearchFilter } from '../hooks/useSearchFilter'
 import { cn } from '../lib/cn'
 import { uploadMedia } from '../markdown-api'
 import { config, showToast } from '../signals'
+import { STRINGS } from '../strings'
 
 // ============================================================================
 // Field Label
@@ -123,7 +124,7 @@ export function ImageField({ label, value, onChange, onBrowse, isDirty, onReset 
 	const uploadFile = useCallback(async (file: File) => {
 		const cfg = config.value
 		if (!cfg) {
-			showToast('CMS not configured', 'error')
+			showToast(STRINGS.media.notConfigured, 'error')
 			return
 		}
 		setIsUploading(true)
@@ -131,12 +132,12 @@ export function ImageField({ label, value, onChange, onBrowse, isDirty, onReset 
 			const result = await uploadMedia(cfg, file)
 			if (result.success && result.url) {
 				onChange(result.url)
-				showToast('File uploaded', 'success')
+				showToast(STRINGS.media.fileUploaded, 'success')
 			} else {
-				showToast(result.error || 'Upload failed', 'error')
+				showToast(result.error || STRINGS.media.uploadFailed, 'error')
 			}
 		} catch {
-			showToast('Upload failed', 'error')
+			showToast(STRINGS.media.uploadFailed, 'error')
 		} finally {
 			setIsUploading(false)
 		}

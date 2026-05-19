@@ -181,17 +181,17 @@ export function MarkdownEditorOverlay() {
 					setIsSaving(false)
 
 					clearMarkdownDraft(currentPage.filePath)
-					showToast('Content saved', 'success')
+					showToast(STRINGS.markdown.saveSuccess, 'success')
 					// Clear pending entry navigation so editor doesn't auto-open after save
 					sessionStorage.removeItem(STORAGE_KEYS.PENDING_ENTRY_NAVIGATION)
 					resetMarkdownEditorState()
 				} else {
-					showToast(result.error || 'Failed to save markdown', 'error')
+					showToast(result.error || STRINGS.markdown.saveFailed, 'error')
 					setIsSaving(false)
 				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : 'Unknown error'
-				showToast(`Save failed: ${message}`, 'error')
+				showToast(STRINGS.markdown.saveFailedDetails(message), 'error')
 				setIsSaving(false)
 			}
 		},
@@ -206,13 +206,13 @@ export function MarkdownEditorOverlay() {
 
 		const title = (currentPage.frontmatter.title as string) || ''
 		if (!title.trim()) {
-			showToast('Please enter a title', 'error')
+			showToast(STRINGS.markdown.titleRequired, 'error')
 			return
 		}
 
 		const slug = currentPage.slug || slugify(title)
 		if (!slug) {
-			showToast('Please enter a slug', 'error')
+			showToast(STRINGS.markdown.slugRequired, 'error')
 			return
 		}
 
@@ -252,17 +252,17 @@ export function MarkdownEditorOverlay() {
 					}
 				}
 
-				showToast('Page created', 'success')
+				showToast(STRINGS.markdown.pageCreated, 'success')
 				resetMarkdownEditorState()
 				if (redirectUrl) {
 					startRedirectCountdown(redirectUrl, title.trim())
 				}
 			} else {
-				showToast(result.error || 'Failed to create page', 'error')
+				showToast(result.error || STRINGS.markdown.createFailed, 'error')
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error'
-			showToast(`Create failed: ${message}`, 'error')
+			showToast(STRINGS.markdown.createFailedDetails(message), 'error')
 		} finally {
 			setIsSaving(false)
 		}
@@ -276,7 +276,7 @@ export function MarkdownEditorOverlay() {
 			// Enter preview — inject editor HTML into the markdown wrapper element.
 			const el = findMarkdownWrapper()
 			if (!el) {
-				showToast('Could not find page element to preview', 'error')
+				showToast(STRINGS.markdown.previewElementMissing, 'error')
 				return
 			}
 			originalHTMLRef.current = el.innerHTML
@@ -323,7 +323,7 @@ export function MarkdownEditorOverlay() {
 				console.error('Failed to get editor HTML for preview:', error)
 				originalHTMLRef.current = null
 				previewTargetRef.current = null
-				showToast('Failed to generate preview', 'error')
+				showToast(STRINGS.markdown.previewGenerationFailed, 'error')
 				return
 			}
 			setIsPreview(true)

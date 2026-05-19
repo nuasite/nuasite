@@ -9,6 +9,7 @@ import {
 	setRedirectsManagerRules,
 	showToast,
 } from '../signals'
+import { STRINGS } from '../strings'
 import type { RedirectRule } from '../types'
 import { ModalBackdrop, ModalHeader, Section } from './modal-shell'
 
@@ -78,9 +79,9 @@ function RedirectRow({ rule, isEditing }: { rule: RedirectRule; isEditing: boole
 		if (result.success) {
 			setRedirectsManagerEditing(null)
 			await refreshRedirects()
-			showToast('Redirect updated', 'success')
+			showToast(STRINGS.redirects.updated, 'success')
 		} else {
-			showToast(result.error || 'Failed to update', 'error')
+			showToast(result.error || STRINGS.redirects.updateFailed, 'error')
 		}
 	}, [rule.lineIndex, source, destination, statusCode])
 
@@ -91,9 +92,9 @@ function RedirectRow({ rule, isEditing }: { rule: RedirectRule; isEditing: boole
 		const result = await deleteRedirect(cfg, { lineIndex: rule.lineIndex })
 		if (result.success) {
 			await refreshRedirects()
-			showToast('Redirect deleted', 'success')
+			showToast(STRINGS.redirects.deleted, 'success')
 		} else {
-			showToast(result.error || 'Failed to delete', 'error')
+			showToast(result.error || STRINGS.redirects.deleteFailed, 'error')
 		}
 	}, [rule.lineIndex])
 
@@ -217,9 +218,9 @@ function AddRedirectForm() {
 			setSource('')
 			setDestination('')
 			await refreshRedirects()
-			showToast('Redirect added', 'success')
+			showToast(STRINGS.redirects.added, 'success')
 		} else {
-			showToast(result.error || 'Failed to add redirect', 'error')
+			showToast(result.error || STRINGS.redirects.addFailed, 'error')
 		}
 	}, [source, destination])
 
