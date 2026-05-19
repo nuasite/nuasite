@@ -50,6 +50,25 @@ const FREE_TEXT_FIELD_NAMES = new Set([
 	'caption',
 ])
 
+/** Normalized names (lowercased, underscores/hyphens stripped) that mark a field as the publish toggle. */
+const PUBLISH_TOGGLE_NAMES = new Set(['draft', 'isdraft', 'published', 'ispublished', 'unpublished'])
+
+/** Normalized names that mark a field as the publish/release date anchor. */
+const PUBLISH_DATE_NAMES = new Set([
+	'date',
+	'pubdate',
+	'publishdate',
+	'publisheddate',
+	'publishedate',
+	'publishedat',
+	'datepublished',
+])
+
+/** Normalize a field name for case- and separator-insensitive matching against the *_NAMES sets above. */
+function normalizeFieldName(name: string): string {
+	return name.toLowerCase().replace(/[_-]/g, '')
+}
+
 /**
  * Observed values for a single field across multiple files
  */
@@ -121,7 +140,7 @@ function assignFieldMetadata(
 ): void {
 	for (const field of fields) {
 		// Scanner defaults: well-known fields go to sidebar
-		if (SIDEBAR_FIELD_NAMES.has(field.name.toLowerCase()) || field.type === 'image' || field.type === 'boolean') {
+		if (SIDEBAR_FIELD_NAMES.has(normalizeFieldName(field.name)) || field.type === 'image' || field.type === 'boolean') {
 			field.position = 'sidebar'
 		} else {
 			field.position = 'header'
@@ -228,7 +247,7 @@ function mergeFieldObservations(observations: FieldObservation[]): FieldDefiniti
 		}
 
 		// For text fields, check if we should treat as select (limited unique values)
-		if (fieldType === 'text' && !FREE_TEXT_FIELD_NAMES.has(obs.name.toLowerCase())) {
+		if (fieldType === 'text' && !FREE_TEXT_FIELD_NAMES.has(normalizeFieldName(obs.name))) {
 			const uniqueValues = [...new Set(nonNullValues.map(v => String(v)))]
 			const uniqueRatio = uniqueValues.length / nonNullValues.length
 			// Only treat as select if unique values are limited AND not nearly all unique
@@ -583,6 +602,33 @@ function detectReferenceFieldsBySlugMatch(collections: Record<string, Collection
 	}
 }
 
+/**
+ * Tag fields with semantic roles so the editor UI can position them without
+ * matching on Astro-specific field names. Detection lives here — the layer
+ * that already knows it's parsing Astro content collections.
+ */
+function assignSemanticRoles(collections: Record<string, CollectionDefinition>): void {
+	for (const def of Object.values(collections)) {
+		let toggle: FieldDefinition | undefined
+		let dateByName: FieldDefinition | undefined
+		let dateByType: FieldDefinition | undefined
+		for (const field of def.fields) {
+			if (field.hidden || field.role) continue
+			const normalized = normalizeFieldName(field.name)
+			if (!toggle && field.type === 'boolean' && PUBLISH_TOGGLE_NAMES.has(normalized)) {
+				toggle = field
+			} else if (!dateByName && PUBLISH_DATE_NAMES.has(normalized)) {
+				dateByName = field
+			} else if (!dateByType && (field.type === 'date' || field.type === 'datetime')) {
+				dateByType = field
+			}
+		}
+		if (toggle) toggle.role = 'publish-toggle'
+		const date = dateByName ?? dateByType
+		if (date) date.role = 'publish-date'
+	}
+}
+
 /** Suffixes that indicate a field is a derived href/url/slug companion */
 const HREF_SUFFIXES = ['href', 'url', 'link', 'slug', 'path'] as const
 
@@ -749,6 +795,7 @@ export async function scanCollections(contentDir: string = 'src/content'): Promi
 	applyParsedConfig(collections, parsed)
 	detectReferenceFields(collections, parsed)
 	detectDerivedHrefFields(collections)
+	assignSemanticRoles(collections)
 	applyCollectionOrderBy(collections, parsed)
 
 	return collections
