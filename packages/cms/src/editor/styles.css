@@ -30,6 +30,7 @@
 
   /* Border & Radius */
   --color-cms-border: rgba(0, 0, 0, 0.08);
+  --radius-cms-xs: 5px;
   --radius-cms-sm: 8px;
   --radius-cms-md: 16px;
   --radius-cms-lg: 24px;
@@ -58,12 +59,43 @@
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Render all native form chrome (date picker indicator, scrollbars, autofill,
+     default controls) in dark-mode colors. Replaces a webkit-only `filter: invert(1)`
+     workaround that didn't cover Firefox. */
+  color-scheme: dark;
 }
 
 .cms-root *,
 .cms-root *::before,
 .cms-root *::after {
   box-sizing: border-box;
+}
+
+.cms-root button:not(:disabled) {
+  cursor: pointer;
+}
+
+.cms-root select {
+  /* -moz-appearance: none dropped — Firefox 70+ honors the standard appearance property. */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff66' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem;
+  padding-right: 2rem;
+  /* appearance: none strips the native click affordance — restore it explicitly. */
+  cursor: pointer;
+}
+
+.cms-root input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.cms-root input[type="number"]::-webkit-inner-spin-button,
+.cms-root input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 /* Custom animations for CMS */
@@ -242,13 +274,54 @@
 
 .milkdown-dark .ProseMirror h1 {
   font-size: 1.75em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 0.3em;
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .milkdown-dark .ProseMirror h2 {
   font-size: 1.5em;
 }
+
+.milkdown-editor .ProseMirror h1,
+.milkdown-editor .ProseMirror h2,
+.milkdown-editor .ProseMirror h3,
+.milkdown-editor .ProseMirror h4,
+.milkdown-editor .ProseMirror h5,
+.milkdown-editor .ProseMirror h6 {
+  position: relative;
+  padding-right: 3em;
+}
+
+.milkdown-editor .ProseMirror h1::after,
+.milkdown-editor .ProseMirror h2::after,
+.milkdown-editor .ProseMirror h3::after,
+.milkdown-editor .ProseMirror h4::after,
+.milkdown-editor .ProseMirror h5::after,
+.milkdown-editor .ProseMirror h6::after {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.15em 0.6em;
+  font-size: 0.55em;
+  font-weight: 600;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--color-cms-primary);
+  background: rgba(223, 255, 64, 0.12);
+  border: 1px solid rgba(223, 255, 64, 0.3);
+  border-radius: 9999px;
+  letter-spacing: 0.05em;
+  user-select: none;
+  pointer-events: none;
+  line-height: 1.3;
+}
+
+.milkdown-editor .ProseMirror h1::after { content: "H1"; }
+.milkdown-editor .ProseMirror h2::after { content: "H2"; }
+.milkdown-editor .ProseMirror h3::after { content: "H3"; }
+.milkdown-editor .ProseMirror h4::after { content: "H4"; }
+.milkdown-editor .ProseMirror h5::after { content: "H5"; }
+.milkdown-editor .ProseMirror h6::after { content: "H6"; }
 
 .milkdown-dark .ProseMirror h3 {
   font-size: 1.25em;

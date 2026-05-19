@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
+import { cn } from '../lib/cn'
 import { buildAstroUploadContext, getCollectionEntryOptions } from '../manifest'
 import { renameMarkdownPage } from '../markdown-api'
 import {
@@ -17,6 +18,37 @@ import { groupFields } from './frontmatter-sidebar'
 
 function isArrayOfObjects(value: unknown[]): value is Record<string, unknown>[] {
 	return value.length > 0 && typeof value[0] === 'object' && value[0] !== null
+}
+
+/** Checkbox below a URL field that toggles opening the link in a new tab. */
+function OpenInNewTabToggle({ field }: { field: FieldDefinition }) {
+	const fm = markdownEditorState.value.currentPage?.frontmatter ?? {}
+	const targetKey = `${field.name}OpenInNewTab`
+	const isChecked = fm[targetKey] === true
+	return (
+		<label class="flex items-center gap-2 mt-2 text-xs text-white/70 cursor-pointer w-fit" data-cms-ui>
+			<input
+				type="checkbox"
+				checked={isChecked}
+				onChange={(e) => updateMarkdownFrontmatter({ [targetKey]: (e.target as HTMLInputElement).checked })}
+				class="sr-only peer"
+				data-cms-ui
+			/>
+			<span
+				class={cn(
+					'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+					isChecked ? 'bg-cms-primary border-cms-primary' : 'border-white/30 bg-white/5',
+				)}
+			>
+				{isChecked && (
+					<svg class="w-3 h-3 text-cms-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+					</svg>
+				)}
+			</span>
+			Open in new tab
+		</label>
+	)
 }
 
 function FieldGroupHeader({ group, children }: { group: string | null; children: ComponentChildren }) {
@@ -66,9 +98,21 @@ export function FrontmatterField({
 					type="checkbox"
 					checked={value}
 					onChange={(e) => onChange((e.target as HTMLInputElement).checked)}
-					class="w-4 h-4 rounded border-white/20 bg-white/10 text-cms-primary focus:ring-cms-primary focus:ring-offset-0 cursor-pointer"
+					class="sr-only peer"
 					data-cms-ui
 				/>
+				<span
+					class={cn(
+						'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+						value ? 'bg-cms-primary border-cms-primary' : 'border-white/30 bg-white/5',
+					)}
+				>
+					{value && (
+						<svg class="w-3 h-3 text-cms-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+						</svg>
+					)}
+				</span>
 				{label}
 			</label>
 		)
@@ -83,7 +127,7 @@ export function FrontmatterField({
 					type="date"
 					value={typeof value === 'string' ? value.split('T')[0] : ''}
 					onChange={(e) => onChange((e.target as HTMLInputElement).value)}
-					class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white focus:outline-none focus:border-cms-primary"
+					class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white focus:outline-none focus:border-white/40"
 					data-cms-ui
 				/>
 			</div>
@@ -119,7 +163,7 @@ export function FrontmatterField({
 						onChange(arrayValue)
 					}}
 					placeholder={`Enter ${label.toLowerCase()} separated by commas`}
-					class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-cms-primary"
+					class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-white/40"
 					data-cms-ui
 				/>
 			</div>
@@ -150,7 +194,7 @@ export function FrontmatterField({
 					value={typeof value === 'string' ? value : ''}
 					onChange={(e) => onChange((e.target as HTMLTextAreaElement).value)}
 					rows={3}
-					class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-cms-primary resize-none"
+					class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-white/40 resize-none"
 					data-cms-ui
 				/>
 			</div>
@@ -165,7 +209,7 @@ export function FrontmatterField({
 				type="text"
 				value={typeof value === 'string' ? value : String(value ?? '')}
 				onChange={(e) => onChange((e.target as HTMLInputElement).value)}
-				class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-cms-primary"
+				class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-white/40"
 				data-cms-ui
 			/>
 		</div>
@@ -190,38 +234,53 @@ export function CreateModeFrontmatter({
 	onSlugManualEdit,
 }: CreateModeFrontmatterProps) {
 	const allFields = fields ?? collectionDefinition.fields
+	const urlFieldNames = new Set(allFields.filter((f) => f.type === 'url' || /link|href|url/i.test(f.name)).map((f) => f.name))
+	const isOpenInNewTabSibling = (name: string) => {
+		if (!name.endsWith('OpenInNewTab')) return false
+		const base = name.slice(0, -'OpenInNewTab'.length)
+		return urlFieldNames.has(base)
+	}
 	// In create mode, skip complex fields (arrays, objects) — they can be edited after creation
-	const displayFields = allFields.filter(f => f.type !== 'array' && f.type !== 'object')
+	// Draft is always rendered in the sidebar — never inline in the header.
+	// `*OpenInNewTab` siblings are handled by the OpenInNewTabToggle next to the URL field.
+	const displayFields = allFields.filter(f => f.type !== 'array' && f.type !== 'object' && f.name !== 'draft' && !isOpenInNewTabSibling(f.name))
 	const groups = groupFields(displayFields)
 
 	return (
 		<div class="space-y-4">
 			{/* Slug field */}
 			<div>
-				<label class="block text-xs font-medium text-white/70 mb-1.5">
-					URL Slug
+				<div class="flex items-center gap-1.5 mb-1.5">
+					<label class="block text-xs font-medium text-white/70">URL Slug</label>
+					<span class="relative group/tt inline-flex" data-cms-ui>
+						<svg class="w-3.5 h-3.5 text-white/40 hover:text-white/70 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<span class="absolute left-0 top-full mt-1 w-72 p-2 bg-black/90 text-white text-xs rounded-cms-sm opacity-0 invisible group-hover/tt:opacity-100 group-hover/tt:visible transition-all z-50 pointer-events-none whitespace-normal break-all">
+							Will be saved to: src/content/{collectionDefinition.name}/{page.slug || 'your-slug'}.{collectionDefinition.fileExtension}
+						</span>
+					</span>
+				</div>
+				<label class="flex items-center gap-1 px-3 py-2 bg-white/10 border border-white/20 rounded-cms-sm focus-within:border-white/40 focus-within:ring-1 focus-within:ring-white/10">
+					<span class="text-white/40 text-sm shrink-0">/</span>
+					<input
+						type="text"
+						value={page.slug}
+						onInput={(e) => {
+							onSlugManualEdit()
+							const slug = (e.target as HTMLInputElement).value
+							markdownEditorState.value = {
+								...markdownEditorState.value,
+								currentPage: markdownEditorState.value.currentPage
+									? { ...markdownEditorState.value.currentPage, slug }
+									: null,
+							}
+						}}
+						placeholder="url-friendly-slug"
+						class="flex-1 bg-transparent text-sm text-white placeholder-white/40 focus:outline-none"
+						data-cms-ui
+					/>
 				</label>
-				<input
-					type="text"
-					value={page.slug}
-					onInput={(e) => {
-						onSlugManualEdit()
-						const slug = (e.target as HTMLInputElement).value
-						markdownEditorState.value = {
-							...markdownEditorState.value,
-							currentPage: markdownEditorState.value.currentPage
-								? { ...markdownEditorState.value.currentPage, slug }
-								: null,
-						}
-					}}
-					placeholder="url-friendly-slug"
-					class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white placeholder-white/40 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10"
-					data-cms-ui
-				/>
-				<p class="mt-1 text-xs text-white/40">
-					Will be saved to: src/content/{collectionDefinition.name}/
-					{page.slug || 'your-slug'}.{collectionDefinition.fileExtension}
-				</p>
 			</div>
 
 			{/* Schema fields */}
@@ -289,7 +348,14 @@ function SlugField({ page }: { page: MarkdownPageEntry }) {
 			<label class="block text-xs font-medium text-white/70 mb-1.5">
 				URL Slug
 			</label>
-			<div class="flex gap-2">
+			<label
+				class={cn(
+					'flex items-center gap-1 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white focus-within:border-white/40',
+					isDirty ? 'border-white/30' : 'border-white/20',
+					isRenaming && 'opacity-60',
+				)}
+			>
+				<span class="text-white/40 text-sm shrink-0">/</span>
 				<input
 					type="text"
 					value={localSlug}
@@ -301,13 +367,11 @@ function SlugField({ page }: { page: MarkdownPageEntry }) {
 							;(e.target as HTMLInputElement).blur()
 						}
 					}}
-					class={`flex-1 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white focus:outline-none focus:border-white/40 ${
-						isDirty ? 'border-cms-primary' : 'border-white/20'
-					}`}
+					class="flex-1 bg-transparent focus:outline-none"
 					disabled={isRenaming}
 					data-cms-ui
 				/>
-			</div>
+			</label>
 		</div>
 	)
 }
@@ -323,14 +387,22 @@ export function EditModeFrontmatter({
 	collectionDefinition,
 	fields,
 }: EditModeFrontmatterProps) {
-	const displayFields = fields ?? collectionDefinition?.fields ?? []
+	const allFields = fields ?? collectionDefinition?.fields ?? []
+	const urlFieldNames = new Set(allFields.filter((f) => f.type === 'url' || /link|href|url/i.test(f.name)).map((f) => f.name))
+	const isOpenInNewTabSibling = (name: string) => {
+		if (!name.endsWith('OpenInNewTab')) return false
+		const base = name.slice(0, -'OpenInNewTab'.length)
+		return urlFieldNames.has(base)
+	}
+	const displayFields = allFields.filter((f) => f.name !== 'draft' && !isOpenInNewTabSibling(f.name))
 	// Collect schema field names for filtering extra keys
 	const schemaFieldNames = new Set(
 		collectionDefinition?.fields.map((f) => f.name) ?? [],
 	)
-	// Frontmatter keys not covered by the schema (user-added fields)
+	// Frontmatter keys not covered by the schema (user-added fields). Draft and the
+	// `*OpenInNewTab` siblings are rendered separately, so exclude them here.
 	const extraKeys = Object.keys(page.frontmatter).filter(
-		(key) => !schemaFieldNames.has(key),
+		(key) => !schemaFieldNames.has(key) && key !== 'draft' && !isOpenInNewTabSibling(key),
 	)
 	const groups = groupFields(displayFields)
 
@@ -409,19 +481,29 @@ export function SchemaFrontmatterField({
 	switch (field.type) {
 		case 'text':
 		case 'url':
-		case 'email':
+		case 'email': {
+			const isLinkLike = field.type === 'url'
+				|| /link|href|url/i.test(field.name)
+			const linkTooltip = isLinkLike
+				? 'Use https://... for external links, or /path for internal pages.'
+				: undefined
 			return (
-				<TextField
-					label={label}
-					value={(value as string) ?? ''}
-					placeholder={hints?.placeholder ?? getPlaceholder(field)}
-					maxLength={hints?.maxLength as number | undefined}
-					minLength={hints?.minLength as number | undefined}
-					onChange={(v) => onChange(v)}
-					inputType={field.type === 'text' ? undefined : field.type}
-					required={field.required}
-				/>
+				<>
+					<TextField
+						label={label}
+						value={(value as string) ?? ''}
+						placeholder={hints?.placeholder ?? getPlaceholder(field)}
+						maxLength={hints?.maxLength as number | undefined}
+						minLength={hints?.minLength as number | undefined}
+						onChange={(v) => onChange(v)}
+						inputType={field.type === 'text' ? undefined : field.type}
+						required={field.required}
+						tooltip={linkTooltip}
+					/>
+					{field.type === 'url' && <OpenInNewTabToggle field={field} />}
+				</>
 			)
+		}
 
 		case 'image': {
 			const astroContext = buildAstroUploadContext(field, collection, entrySlug)
@@ -429,14 +511,12 @@ export function SchemaFrontmatterField({
 				<ImageField
 					label={label}
 					value={(value as string) ?? ''}
-					placeholder={getPlaceholder(field)}
 					onChange={(v) => onChange(v)}
 					onBrowse={() => {
 						openMediaLibraryWithCallback((url: string) => {
 							onChange(url)
 						}, astroContext)
 					}}
-					required={field.required}
 				/>
 			)
 		}
@@ -822,7 +902,7 @@ function ObjectFields({ label, value, onChange, schemaFields, extraKeys }: Objec
 							}
 						}}
 						placeholder="New field name..."
-						class="flex-1 px-2 py-1 text-xs bg-white/5 border border-white/10 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-white/30"
+						class="flex-1 px-2 py-1 text-xs bg-white/5 border border-white/10 rounded-cms-sm text-white placeholder-white/30 focus:outline-none focus:border-white/40"
 						data-cms-ui
 					/>
 					<button

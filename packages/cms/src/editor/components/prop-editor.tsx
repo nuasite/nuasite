@@ -68,7 +68,7 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 			<select
 				value={value}
 				onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
-				class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+				class="w-full px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-sm"
 			>
 				{!prop.required && <option value="">— None —</option>}
 				{unionOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
@@ -84,7 +84,7 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 					value={value}
 					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 					placeholder={prop.defaultValue || 'Select an image...'}
-					class="flex-1 px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+					class="flex-1 px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-sm"
 				/>
 				<button
 					type="button"
@@ -93,7 +93,7 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 							onChange(url)
 						})
 					}}
-					class="px-3 py-2.5 bg-white/10 border border-white/20 text-white/70 hover:text-white hover:bg-white/15 rounded-cms-md transition-colors shrink-0"
+					class="px-3 py-2.5 bg-white/10 border border-white/20 text-white/70 hover:text-white hover:bg-white/15 rounded-cms-sm transition-colors shrink-0"
 					title="Browse media"
 				>
 					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -115,14 +115,14 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 					type="color"
 					value={value || '#000000'}
 					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
-					class="w-10 h-10 rounded-cms-md border border-white/20 bg-transparent cursor-pointer"
+					class="w-10 h-10 rounded-cms-sm border border-white/20 bg-transparent cursor-pointer"
 				/>
 				<input
 					type="text"
 					value={value}
 					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 					placeholder={prop.defaultValue || '#000000'}
-					class="flex-1 px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md font-mono"
+					class="flex-1 px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-sm font-mono"
 				/>
 			</div>
 		)
@@ -135,7 +135,7 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 				onInput={(e) => onChange((e.target as HTMLTextAreaElement).value)}
 				placeholder={prop.defaultValue || `Enter ${prop.name}...`}
 				rows={3}
-				class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md resize-y"
+				class="w-full px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-sm resize-y"
 			/>
 		)
 	}
@@ -146,14 +146,14 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 			value={value}
 			onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 			placeholder={prop.defaultValue || `Enter ${prop.name}...`}
-			class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+			class="w-full px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-sm"
 		/>
 	)
 }
 
 export function PropEditor({ prop, value, onChange }: PropEditorProps) {
 	return (
-		<div class="mb-4">
+		<div class="mb-2">
 			<label class="block text-[13px] font-medium text-white mb-1.5">
 				{prop.name}
 				{prop.required && <span class="text-cms-error ml-1">*</span>}
@@ -164,9 +164,6 @@ export function PropEditor({ prop, value, onChange }: PropEditorProps) {
 				</div>
 			)}
 			{renderPropInput(prop, value, onChange)}
-			<div class="text-[10px] text-white/40 mt-1.5 font-mono">
-				{prop.type}
-			</div>
 		</div>
 	)
 }
@@ -232,7 +229,7 @@ function ReferenceSelect({ collection, value, required, onChange }: {
 		const slug = slugify(newName.trim())
 		return (
 			<form
-				class="p-3 bg-white/5 border border-white/15 rounded-cms-md space-y-3"
+				class="p-3 bg-white/5 border border-white/15 rounded-cms-sm space-y-3"
 				onSubmit={(e) => {
 					e.preventDefault()
 					handleCreate()
@@ -256,7 +253,7 @@ function ReferenceSelect({ collection, value, required, onChange }: {
 					onInput={(e) => setNewName((e.target as HTMLInputElement).value)}
 					placeholder="Enter name..."
 					required
-					class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+					class="w-full px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-sm"
 					autoFocus
 				/>
 				<div class="text-[11px] text-white/40 font-mono">
@@ -279,13 +276,13 @@ function ReferenceSelect({ collection, value, required, onChange }: {
 					<button
 						type="button"
 						onClick={resetCreateForm}
-						class="px-3 py-1.5 text-[12px] text-white/60 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-cms-md transition-colors"
+						class="px-3 py-1.5 text-[12px] text-white/60 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-cms-sm transition-colors"
 					>
 						Cancel
 					</button>
 					<button
 						type="submit"
-						class="px-3 py-1.5 text-[12px] bg-cms-primary text-cms-primary-text hover:bg-cms-primary-hover rounded-cms-md transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+						class="px-3 py-1.5 text-[12px] bg-cms-primary text-cms-primary-text hover:bg-cms-primary-hover rounded-cms-sm transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 					>
 						Create
 					</button>
@@ -301,7 +298,7 @@ function ReferenceSelect({ collection, value, required, onChange }: {
 				value={value}
 				onInput={(e) => onChange((e.target as HTMLInputElement).value)}
 				placeholder={`Enter ${collection} entry ID...`}
-				class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+				class="w-full px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-sm"
 			/>
 		)
 	}
@@ -319,14 +316,14 @@ function ReferenceSelect({ collection, value, required, onChange }: {
 				onFocus={() => setIsOpen(true)}
 				onBlur={() => setTimeout(closeDropdown, 150)}
 				placeholder={`Select ${collection} entry...`}
-				class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+				class="w-full px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-sm"
 			/>
 			<DropdownPanel
 				triggerRef={inputRef}
 				isOpen={isOpen}
 				onClose={closeDropdown}
 				maxHeight={192}
-				className="border border-white/20 rounded-cms-md"
+				className="border border-white/20 rounded-cms-sm"
 			>
 				{!required && (
 					<button

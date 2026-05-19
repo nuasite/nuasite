@@ -45,10 +45,21 @@ export function isPageDark(): boolean {
 }
 
 /**
- * Get an outline color that contrasts with the page background.
+ * Get an outline color that contrasts with the user's `siteTheme` config:
+ *  - 'light' — host is light → dark outline
+ *  - 'dark'  — host is dark → light outline
+ *  - 'auto'  (default) — detect via `prefers-color-scheme` then fall back to the page background
  */
 export function getOutlineColor(): string {
-	return isPageDark() ? '#FFFFFF' : '#1A1A1A'
+	const cfg = typeof window !== 'undefined' ? window.NuaCmsConfig : undefined
+	const theme = cfg?.siteTheme ?? 'auto'
+	if (theme === 'light') return 'rgba(26, 26, 26, 0.7)'
+	if (theme === 'dark') return 'rgba(255, 255, 255, 0.85)'
+	// auto: trust the OS hint when present, otherwise sample the page
+	const prefersDark = typeof window !== 'undefined'
+		&& window.matchMedia?.('(prefers-color-scheme: dark)').matches
+	const hostIsDark = prefersDark || isPageDark()
+	return hostIsDark ? '#FFFFFF' : '#1A1A1A'
 }
 
 /**

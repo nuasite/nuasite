@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'preact/hooks'
 import { saveBatchChanges } from '../api'
 import { isApplyingUndoRedo, recordChange } from '../history'
+import { cn } from '../lib/cn'
 import {
 	clearPendingSeoChanges,
 	closeSeoEditor,
@@ -16,7 +17,7 @@ import {
 } from '../signals'
 import type { ChangePayload, PageSeoData, PendingSeoChange } from '../types'
 import { ColorField, ComboBoxField, ImageField } from './fields'
-import { CancelButton, CloseButton, ModalBackdrop } from './modal-shell'
+import { CancelButton, CloseButton, ModalBackdrop, Section } from './modal-shell'
 import { Spinner } from './spinner'
 
 const OG_TYPE_OPTIONS = [
@@ -55,10 +56,11 @@ interface SeoFieldProps {
 	value: string | undefined
 	placeholder?: string
 	multiline?: boolean
+	tooltip?: string
 	onChange: (id: string, value: string, originalValue: string) => void
 }
 
-function SeoField({ label, id, value, placeholder, multiline, onChange }: SeoFieldProps) {
+function SeoField({ label, id, value, placeholder, multiline, tooltip, onChange }: SeoFieldProps) {
 	const pendingChange = id ? getPendingSeoChange(id) : undefined
 	const currentValue = pendingChange?.newValue ?? value ?? ''
 	const isDirty = pendingChange?.isDirty ?? false
@@ -75,7 +77,19 @@ function SeoField({ label, id, value, placeholder, multiline, onChange }: SeoFie
 	return (
 		<div class="space-y-1.5">
 			<div class="flex items-center justify-between">
-				<label class="text-sm font-medium text-white/80">{label}</label>
+				<div class="flex items-center gap-1.5">
+					<label class="text-sm font-medium text-white/80">{label}</label>
+					{tooltip && (
+						<span class="relative group/tooltip inline-flex" data-cms-ui>
+							<svg class="w-3.5 h-3.5 text-white/40 hover:text-white/70 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							<span class="absolute left-0 top-full mt-1 w-64 p-2 bg-black/90 text-white text-xs rounded-cms-sm opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all z-10 pointer-events-none">
+								{tooltip}
+							</span>
+						</span>
+					)}
+				</div>
 				{isDirty && <span class="text-xs text-cms-primary font-medium">Modified</span>}
 			</div>
 			<InputComponent
@@ -84,11 +98,12 @@ function SeoField({ label, id, value, placeholder, multiline, onChange }: SeoFie
 				placeholder={placeholder ?? `Enter ${label.toLowerCase()}...`}
 				onInput={handleChange}
 				disabled={!id}
-				class={`w-full px-4 py-2.5 bg-white/10 border rounded-cms-md text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors ${
-					isDirty
-						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
-						: 'border-white/20 focus:border-white/40 focus:ring-white/10'
-				} ${!id ? 'opacity-50 cursor-not-allowed' : ''} ${multiline ? 'min-h-20 resize-y' : ''}`}
+				class={cn(
+					'w-full p-2.5 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors focus:border-white/40 focus:ring-white/10',
+					isDirty ? 'border-white/30' : 'border-white/20',
+					!id && 'opacity-50 cursor-not-allowed',
+					multiline && 'min-h-20 resize-y',
+				)}
 				data-cms-ui
 			/>
 		</div>
@@ -107,19 +122,13 @@ function useSeoMeta(tag: { id?: string; content: string } | undefined) {
 	}
 }
 
-interface SeoSectionProps {
-	title: string
-	children: preact.ComponentChildren
-}
-
-function SeoSection({ title, children }: SeoSectionProps) {
+function SeoSection({ title, children }: { title: string; children: preact.ComponentChildren }) {
 	return (
-		<div class="space-y-4">
-			<h3 class="text-sm font-semibold text-white/60 uppercase tracking-wider">{title}</h3>
+		<Section title={title}>
 			<div class="space-y-4">
 				{children}
 			</div>
-		</div>
+		</Section>
 	)
 }
 
@@ -260,7 +269,7 @@ export function SeoEditor() {
 	return (
 		<ModalBackdrop onClose={handleClose} maxWidth="max-w-2xl" extraClass="max-h-[85vh] flex flex-col">
 			{/* Header */}
-			<div class="flex items-center justify-between p-5 border-b border-white/10">
+			<div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
 				<div class="flex items-center gap-3">
 					<h2 class="text-lg font-semibold text-white">SEO Settings</h2>
 					{dirtyCount > 0 && (
@@ -327,6 +336,7 @@ export function SeoEditor() {
 										id={seoData.canonical.id}
 										value={seoData.canonical.href}
 										placeholder="https://example.com/page"
+										tooltip="The preferred URL for this page. Tells search engines which version to index when the same content is reachable from multiple URLs (e.g. with/without query parameters)."
 										onChange={handleFieldChange}
 									/>
 								)}
@@ -376,7 +386,6 @@ export function SeoEditor() {
 												<ImageField
 													label={label}
 													value={currentValue}
-													placeholder="/favicon.svg"
 													onChange={(v) => {
 														if (faviconId) handleFieldChange(faviconId, v, originalValue)
 													}}
@@ -419,7 +428,6 @@ export function SeoEditor() {
 										<ImageField
 											label="OG Image"
 											value={ogImage.current}
-											placeholder="/images/og-image.jpg"
 											onChange={(v) => {
 												if (ogImage.id) handleFieldChange(ogImage.id, v, ogImage.original)
 											}}
@@ -502,7 +510,6 @@ export function SeoEditor() {
 										<ImageField
 											label="Twitter Image"
 											value={twitterImage.current}
-											placeholder="/images/twitter-image.jpg"
 											onChange={(v) => {
 												if (twitterImage.id) handleFieldChange(twitterImage.id, v, twitterImage.original)
 											}}
@@ -555,11 +562,12 @@ export function SeoEditor() {
 						type="button"
 						onClick={handleSaveAll}
 						disabled={dirtyCount === 0 || isSaving}
-						class={`px-5 py-2 text-sm font-medium rounded-cms-pill transition-colors flex items-center gap-2 ${
+						class={cn(
+							'px-5 py-2 text-sm font-medium rounded-cms-pill transition-colors flex items-center gap-2',
 							dirtyCount > 0 && !isSaving
 								? 'bg-cms-primary text-cms-primary-text hover:bg-cms-primary-hover'
-								: 'bg-white/10 text-white/40 cursor-not-allowed'
-						}`}
+								: 'bg-white/10 text-white/40 cursor-not-allowed',
+						)}
 						data-cms-ui
 					>
 						{isSaving && <Spinner />}

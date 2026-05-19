@@ -1,18 +1,33 @@
 import type { ComponentChildren } from 'preact'
+import { createPortal } from 'preact/compat'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { getDropdownPosition } from '../constants'
 import { useClickOutsideEscape } from '../hooks/useClickOutsideEscape'
 import { useSearchFilter } from '../hooks/useSearchFilter'
 import { cn } from '../lib/cn'
+import { uploadMedia } from '../markdown-api'
+import { config, showToast } from '../signals'
 
 // ============================================================================
 // Field Label
 // ============================================================================
 
-export function FieldLabel({ label, isDirty, onReset }: { label: string; isDirty?: boolean; onReset?: () => void }) {
+export function FieldLabel({ label, isDirty, onReset, tooltip }: { label: string; isDirty?: boolean; onReset?: () => void; tooltip?: string }) {
 	return (
 		<div class="flex items-center justify-between">
-			<label class="text-xs font-medium text-white/70">{label}</label>
+			<div class="flex items-center gap-1.5">
+				<label class="text-xs font-medium text-white/70">{label}</label>
+				{tooltip && (
+					<span class="relative group/tt inline-flex" data-cms-ui>
+						<svg class="w-3.5 h-3.5 text-white/40 hover:text-white/70 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<span class="absolute left-0 top-full mt-1 w-64 p-2 bg-black/90 text-white text-xs rounded-cms-sm opacity-0 invisible group-hover/tt:opacity-100 group-hover/tt:visible transition-all z-50 pointer-events-none whitespace-normal">
+							{tooltip}
+						</span>
+					</span>
+				)}
+			</div>
 			{isDirty && (
 				<div class="flex items-center gap-1.5">
 					<span class="text-xs text-cms-primary font-medium">Modified</span>
@@ -50,14 +65,15 @@ export interface TextFieldProps {
 	onReset?: () => void
 	inputType?: string
 	required?: boolean
+	tooltip?: string
 }
 
 export function TextField(
-	{ label, value, placeholder, maxLength, minLength, onChange, isDirty, onReset, inputType = 'text', required }: TextFieldProps,
+	{ label, value, placeholder, maxLength, minLength, onChange, isDirty, onReset, inputType = 'text', required, tooltip }: TextFieldProps,
 ) {
 	return (
 		<div class="space-y-1.5">
-			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
+			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} tooltip={tooltip} />
 			<input
 				type={inputType}
 				value={value ?? ''}
@@ -69,7 +85,7 @@ export function TextField(
 				class={cn(
 					'w-full px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
 					isDirty
-						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
+						? 'border-white/30 focus:border-white/40 focus:ring-white/10'
 						: 'border-white/20 focus:border-white/40 focus:ring-white/10',
 				)}
 				data-cms-ui
@@ -79,67 +95,170 @@ export function TextField(
 }
 
 // ============================================================================
-// Image Field (text input + Browse button)
+// Image Field — drop-zone preview (click/drag to upload) + "Choose from library" link
 // ============================================================================
 
 export interface ImageFieldProps {
 	label: string
 	value: string | undefined
-	placeholder?: string
 	onChange: (value: string) => void
 	onBrowse: () => void
 	isDirty?: boolean
 	onReset?: () => void
-	required?: boolean
 }
 
-export function ImageField({ label, value, placeholder, onChange, onBrowse, isDirty, onReset, required }: ImageFieldProps) {
+export function ImageField({ label, value, onChange, onBrowse, isDirty, onReset }: ImageFieldProps) {
 	const hasImage = !!value && value.length > 0
+	const fileInputRef = useRef<HTMLInputElement>(null)
+	const [isUploading, setIsUploading] = useState(false)
+	const [isDragOver, setIsDragOver] = useState(false)
+	// Track the src that failed so the fallback resets automatically when `value` changes
+	const [failedSrc, setFailedSrc] = useState<string | null>(null)
+	const showFallback = hasImage && failedSrc === value
+
+	const handleUploadClick = useCallback(() => {
+		fileInputRef.current?.click()
+	}, [])
+
+	const uploadFile = useCallback(async (file: File) => {
+		const cfg = config.value
+		if (!cfg) {
+			showToast('CMS not configured', 'error')
+			return
+		}
+		setIsUploading(true)
+		try {
+			const result = await uploadMedia(cfg, file)
+			if (result.success && result.url) {
+				onChange(result.url)
+				showToast('File uploaded', 'success')
+			} else {
+				showToast(result.error || 'Upload failed', 'error')
+			}
+		} catch {
+			showToast('Upload failed', 'error')
+		} finally {
+			setIsUploading(false)
+		}
+	}, [onChange])
+
+	const handleFileChange = useCallback(async (e: Event) => {
+		const target = e.target as HTMLInputElement
+		const file = target.files?.[0]
+		if (file) await uploadFile(file)
+		target.value = ''
+	}, [uploadFile])
+
+	const handleDragOver = useCallback((e: DragEvent) => {
+		e.preventDefault()
+		if (e.dataTransfer?.types.includes('Files')) setIsDragOver(true)
+	}, [])
+
+	const handleDragLeave = useCallback((e: DragEvent) => {
+		// Only clear on actually leaving the drop-zone, not crossing child boundaries
+		if ((e.currentTarget as Node).contains(e.relatedTarget as Node | null)) return
+		setIsDragOver(false)
+	}, [])
+
+	const handleDrop = useCallback(async (e: DragEvent) => {
+		e.preventDefault()
+		setIsDragOver(false)
+		const file = e.dataTransfer?.files?.[0]
+		if (file && file.type.startsWith('image/')) await uploadFile(file)
+	}, [uploadFile])
 
 	return (
-		<div class="space-y-1.5 min-w-0">
+		<div class="space-y-2 min-w-0">
 			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
-			{hasImage && (
+			<input
+				ref={fileInputRef}
+				type="file"
+				accept="image/*"
+				class="hidden"
+				onChange={handleFileChange}
+				data-cms-ui
+			/>
+			<div class="w-full max-w-sm space-y-2">
 				<div
-					class="relative w-full rounded-cms-sm overflow-hidden bg-white/5 border border-white/10 cursor-pointer group"
-					onClick={onBrowse}
-					data-cms-ui
-				>
-					<img
-						src={value}
-						alt={label}
-						class="w-full h-auto max-h-48"
-						onError={(e) => {
-							;(e.target as HTMLImageElement).style.display = 'none'
-						}}
-					/>
-					<div class="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-						<span class="text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">Change</span>
-					</div>
-				</div>
-			)}
-			<div class="flex gap-2 min-w-0">
-				<input
-					type="text"
-					value={value ?? ''}
-					placeholder={placeholder}
-					required={required}
-					onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+					role="button"
+					tabIndex={isUploading ? -1 : 0}
+					aria-label={hasImage ? 'Replace image — click to upload or drop a file' : 'Upload image — click or drop a file'}
+					aria-busy={isUploading}
+					onClick={isUploading ? undefined : handleUploadClick}
+					onKeyDown={(e) => {
+						if (isUploading) return
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault()
+							handleUploadClick()
+						}
+					}}
+					onDragOver={handleDragOver}
+					onDragEnter={handleDragOver}
+					onDragLeave={handleDragLeave}
+					onDrop={handleDrop}
 					class={cn(
-						'flex-1 min-w-0 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
-						isDirty
-							? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
-							: 'border-white/20 focus:border-white/40 focus:ring-white/10',
+						'relative w-full rounded-cms-sm overflow-hidden bg-white/5 border group transition-colors focus:outline-none focus:ring-1 focus:ring-white/30',
+						isUploading ? 'cursor-wait' : 'cursor-pointer',
+						isDragOver ? 'border-cms-primary bg-cms-primary/10' : 'border-white/10 hover:border-white/20',
 					)}
 					data-cms-ui
-				/>
+				>
+					{hasImage && !showFallback
+						? (
+							<>
+								<img
+									src={value}
+									alt={label}
+									class="w-full h-32 object-contain"
+									onError={() => setFailedSrc(value ?? null)}
+								/>
+								<div class="absolute inset-x-0 bottom-0 px-2 py-1.5 bg-linear-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+									<span class="block text-white text-[11px] font-medium truncate" title={value}>
+										{value}
+									</span>
+								</div>
+								<button
+									type="button"
+									onClick={(e) => {
+										e.stopPropagation()
+										onChange('')
+									}}
+									class="absolute top-1.5 right-1.5 w-6 h-6 flex items-center justify-center bg-black/60 hover:bg-red-500/80 text-white rounded-cms-xs opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all cursor-pointer z-20"
+									title="Remove image from this field"
+									data-cms-ui
+								>
+									<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+									</svg>
+								</button>
+							</>
+						)
+						: (
+							<div class="w-full h-32 flex flex-col items-center justify-center gap-1 text-white/25 group-hover:text-white/40 transition-colors">
+								<svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+									/>
+								</svg>
+								{showFallback && <span class="text-[11px] font-medium" title={value}>Image failed to load</span>}
+							</div>
+						)}
+					{/* Hover overlay — decorative hint (pointer-events-none, click goes to the parent role=button) */}
+					<div class="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors pointer-events-none">
+						<span class="text-white/90 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+							{isUploading ? 'Uploading…' : isDragOver ? 'Drop to upload' : hasImage ? 'Replace image' : 'Click or drop file'}
+						</span>
+					</div>
+				</div>
 				<button
 					type="button"
 					onClick={onBrowse}
-					class="shrink-0 px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-cms-sm text-sm text-white transition-colors cursor-pointer"
+					class="block text-xs text-white/50 hover:text-white underline decoration-white/20 hover:decoration-white underline-offset-2 transition-colors cursor-pointer"
 					data-cms-ui
 				>
-					Browse
+					Choose from library
 				</button>
 			</div>
 		</div>
@@ -186,7 +305,7 @@ export function ColorField({ label, value, placeholder, onChange, isDirty, onRes
 					class={cn(
 						'flex-1 px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
 						isDirty
-							? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
+							? 'border-white/30 focus:border-white/40 focus:ring-white/10'
 							: 'border-white/20 focus:border-white/40 focus:ring-white/10',
 					)}
 					data-cms-ui
@@ -212,7 +331,7 @@ export interface SelectFieldProps {
 
 export function SelectField({ label, value, options, onChange, isDirty, onReset, allowEmpty = true }: SelectFieldProps) {
 	return (
-		<div class="space-y-1.5">
+		<div class="space-y-2">
 			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
 			<select
 				value={value ?? ''}
@@ -220,7 +339,7 @@ export function SelectField({ label, value, options, onChange, isDirty, onReset,
 				class={cn(
 					'w-full px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white focus:outline-none focus:ring-1 transition-colors cursor-pointer',
 					isDirty
-						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
+						? 'border-white/30 focus:border-white/40 focus:ring-white/10'
 						: 'border-white/20 focus:border-white/40 focus:ring-white/10',
 				)}
 				data-cms-ui
@@ -267,9 +386,12 @@ export function ToggleField({ label, value, onChange, isDirty, onReset }: Toggle
 			>
 				<span
 					class={cn(
-						'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm pointer-events-none',
-						isOn && 'translate-x-4',
+						'absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm pointer-events-none',
+						isOn ? 'translate-x-4 bg-[#404040]' : 'translate-x-0 bg-white',
 					)}
+					style={{
+						transition: 'transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 200ms ease-out',
+					}}
 				/>
 			</button>
 		</div>
@@ -294,29 +416,63 @@ export interface NumberFieldProps {
 }
 
 export function NumberField({ label, value, placeholder, min, max, step, onChange, isDirty, onReset, required }: NumberFieldProps) {
+	const stepValue = step ?? 1
+	const adjust = (delta: number) => {
+		const current = typeof value === 'number' ? value : 0
+		let next = current + delta * stepValue
+		if (typeof min === 'number' && next < min) next = min
+		if (typeof max === 'number' && next > max) next = max
+		onChange(next)
+	}
 	return (
 		<div class="space-y-1.5">
 			<FieldLabel label={label} isDirty={isDirty} onReset={onReset} />
-			<input
-				type="number"
-				value={value ?? ''}
-				placeholder={placeholder}
-				min={min}
-				max={max}
-				step={step}
-				required={required}
-				onInput={(e) => {
-					const val = (e.target as HTMLInputElement).value
-					onChange(val === '' ? undefined : Number(val))
-				}}
-				class={cn(
-					'w-full px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
-					isDirty
-						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
-						: 'border-white/20 focus:border-white/40 focus:ring-white/10',
-				)}
-				data-cms-ui
-			/>
+			<div class="relative">
+				<input
+					type="number"
+					value={value ?? ''}
+					placeholder={placeholder}
+					min={min}
+					max={max}
+					step={step}
+					required={required}
+					onInput={(e) => {
+						const val = (e.target as HTMLInputElement).value
+						onChange(val === '' ? undefined : Number(val))
+					}}
+					class={cn(
+						'w-full pl-3 pr-12 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
+						isDirty
+							? 'border-white/30 focus:border-white/40 focus:ring-white/10'
+							: 'border-white/20 focus:border-white/40 focus:ring-white/10',
+					)}
+					data-cms-ui
+				/>
+				<div class="absolute right-1.5 top-1/4 -translate-y-1/2 flex gap-[3px]">
+					<button
+						type="button"
+						onClick={() => adjust(-1)}
+						class="w-5 h-5 flex items-center justify-center bg-cms-primary hover:bg-cms-primary-hover text-cms-dark rounded-cms-xs transition-colors cursor-pointer"
+						title="Decrease"
+						data-cms-ui
+					>
+						<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14" />
+						</svg>
+					</button>
+					<button
+						type="button"
+						onClick={() => adjust(1)}
+						class="w-5 h-5 flex items-center justify-center bg-cms-primary hover:bg-cms-primary-hover text-cms-dark rounded-cms-xs transition-colors cursor-pointer"
+						title="Increase"
+						data-cms-ui
+					>
+						<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
+						</svg>
+					</button>
+				</div>
+			</div>
 		</div>
 	)
 }
@@ -360,6 +516,13 @@ export interface DropdownPanelProps {
  * Fixed-position dropdown container that escapes parent overflow clipping.
  * Handles outside-click and Escape-key dismissal.
  */
+function getCmsPortalTarget(): HTMLElement | null {
+	if (typeof document === 'undefined') return null
+	const host = document.getElementById('cms-app-host')
+	if (!host?.shadowRoot) return null
+	return host.shadowRoot.querySelector('.cms-root') as HTMLElement | null
+}
+
 export function DropdownPanel({ triggerRef, isOpen, onClose, maxHeight = 192, children, className, panelRef, exemptRefs }: DropdownPanelProps) {
 	const internalRef = useRef<HTMLDivElement>(null)
 	const ref = panelRef ?? internalRef
@@ -368,16 +531,34 @@ export function DropdownPanel({ triggerRef, isOpen, onClose, maxHeight = 192, ch
 
 	if (!isOpen) return null
 
-	return (
+	const dropdown = (
 		<div
 			ref={ref}
-			class={cn('overflow-y-auto bg-cms-dark shadow-lg', className)}
+			class={cn('flex flex-col bg-cms-dark shadow-lg', className)}
 			style={getDropdownPosition(triggerRef.current, maxHeight)}
 			data-cms-ui
 		>
-			{children}
+			<div class="flex justify-end p-1 shrink-0 border-b border-white/5">
+				<button
+					type="button"
+					onClick={onClose}
+					class="w-5 h-5 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 rounded-cms-xs transition-colors"
+					title="Close"
+					data-cms-ui
+				>
+					<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<div class="overflow-y-auto flex-1 min-h-0">
+				{children}
+			</div>
 		</div>
 	)
+
+	const portalTarget = getCmsPortalTarget()
+	return portalTarget ? createPortal(dropdown, portalTarget) : dropdown
 }
 
 // ============================================================================
@@ -465,7 +646,7 @@ export function ComboBoxField({ label, value, placeholder, options, onChange, is
 				class={cn(
 					'w-full px-3 py-2 bg-white/10 border rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 transition-colors',
 					isDirty
-						? 'border-cms-primary focus:border-cms-primary focus:ring-cms-primary/30'
+						? 'border-white/30 focus:border-white/40 focus:ring-white/10'
 						: 'border-white/20 focus:border-white/40 focus:ring-white/10',
 				)}
 				data-cms-ui
@@ -569,7 +750,7 @@ export function MultiSelectField({ label, selected, options, onChange, isDirty, 
 							<button
 								type="button"
 								onClick={() => toggleOption(val)}
-								class="text-cms-primary/60 hover:text-cms-primary transition-colors cursor-pointer"
+								class="text-cms-primary/60 hover:text-red-400 transition-colors cursor-pointer"
 								data-cms-ui
 							>
 								<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -634,7 +815,7 @@ export function MultiSelectField({ label, selected, options, onChange, isDirty, 
 									)}
 								>
 									{isSelected && (
-										<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<svg class="w-3 h-3 text-cms-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
 										</svg>
 									)}

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { slugify } from '../../shared'
 import { updateMarkdownPage } from '../api'
 import { STORAGE_KEYS, Z_INDEX } from '../constants'
+import { cn } from '../lib/cn'
 import { createMarkdownPage } from '../markdown-api'
 import { MDX_EXPR_PREFIX } from '../milkdown-mdx-plugin'
 import {
@@ -13,11 +14,13 @@ import {
 	markdownEditorState,
 	pendingCollectionEntries,
 	resetMarkdownEditorState,
+	showConfirmDialog,
 	showToast,
 	startRedirectCountdown,
 	updateMarkdownFrontmatter,
 } from '../signals'
 import { clearMarkdownDraft } from '../storage'
+import type { FieldDefinition } from '../types'
 import { CreateModeFrontmatter, EditModeFrontmatter } from './frontmatter-fields'
 import { FrontmatterSidebar, partitionFields } from './frontmatter-sidebar'
 import { MarkdownInlineEditor } from './markdown-inline-editor'
@@ -36,9 +39,16 @@ export function MarkdownEditorOverlay() {
 	const collectionDef = editorState.collectionDefinition
 
 	const activeCollectionDef = isCreateMode ? createOptions?.collectionDefinition : collectionDef
-	const { sidebar: sidebarFields, header: headerFields } = activeCollectionDef
-		? partitionFields(activeCollectionDef.fields)
-		: { sidebar: [], header: [] }
+	// Always surface a Draft toggle in the sidebar — even when the schema scanner
+	// didn't pick it up (e.g. inferred schemas where draft only appears on some entries).
+	// Push a proper FieldDefinition into the input list so partitionFields() handles
+	// placement (above the Date field) via its existing logic.
+	const fields: FieldDefinition[] = activeCollectionDef ? [...activeCollectionDef.fields] : []
+	const draftInPage = page && Object.hasOwn(page.frontmatter, 'draft')
+	if (draftInPage && !fields.some((f) => f.name === 'draft')) {
+		fields.push({ name: 'draft', type: 'boolean', required: false, position: 'sidebar' })
+	}
+	const { sidebar: sidebarFields, header: headerFields } = partitionFields(fields)
 	const hasSidebar = sidebarFields.length > 0
 	const isDataCollection = activeCollectionDef?.type === 'data'
 	// Derive MDX mode from the actual file extension when available
@@ -58,14 +68,19 @@ export function MarkdownEditorOverlay() {
 	const previewTargetRef = useRef<HTMLElement | null>(null)
 	const editorInstanceRef = useRef<Editor | null>(null)
 
-	// Lock page scroll while the modal overlay is visible (not during preview)
+	// Lock page scroll while the modal overlay is visible (not during preview).
+	// scrollbar-gutter: stable reserves space for the scrollbar so the page
+	// doesn't shift horizontally when overflow flips to hidden — no manual padding math.
 	useEffect(() => {
 		if (!page || isPreview) return
 		const html = document.documentElement
 		const prevOverflow = html.style.overflow
+		const prevGutter = html.style.scrollbarGutter
 		html.style.overflow = 'hidden'
+		html.style.scrollbarGutter = 'stable'
 		return () => {
 			html.style.overflow = prevOverflow
+			html.style.scrollbarGutter = prevGutter
 		}
 	}, [!!page, isPreview])
 
@@ -320,7 +335,18 @@ export function MarkdownEditorOverlay() {
 		}
 	}, [isPreview, restoreOriginalHTML, findMarkdownWrapper])
 
-	const handleCancel = useCallback(() => {
+	const handleCancel = useCallback(async () => {
+		const hasUnsavedChanges = currentMarkdownPage.value?.isDirty === true
+		if (hasUnsavedChanges) {
+			const confirmed = await showConfirmDialog({
+				title: 'Discard changes?',
+				message: 'You have unsaved changes. Discard them and close?',
+				confirmLabel: 'Discard',
+				cancelLabel: 'Keep editing',
+				variant: 'danger',
+			})
+			if (!confirmed) return
+		}
 		restoreOriginalHTML()
 		isMarkdownPreview.value = false
 		resetMarkdownEditorState()
@@ -390,15 +416,16 @@ export function MarkdownEditorOverlay() {
 	return (
 		<div
 			style={{ zIndex: Z_INDEX.MODAL }}
-			class="fixed inset-0 bg-black/40 flex items-center justify-center p-4 backdrop-blur-md"
+			class="fixed inset-0 bg-black/40 flex items-start justify-center p-4 pt-[5vh] backdrop-blur-md"
 			data-cms-ui
 			onMouseDown={stopPropagation}
 			onClick={stopPropagation}
 		>
 			<form
-				class={`bg-cms-dark rounded-cms-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 w-full max-h-[90vh] flex flex-col ${
-					hasSidebar ? 'max-w-6xl' : 'max-w-4xl'
-				}`}
+				class={cn(
+					'bg-cms-dark rounded-cms-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 w-full max-h-[90vh] flex flex-col overflow-hidden',
+					hasSidebar ? 'max-w-6xl' : 'max-w-4xl',
+				)}
 				data-cms-ui
 				onSubmit={(e) => {
 					e.preventDefault()
@@ -436,6 +463,11 @@ export function MarkdownEditorOverlay() {
 						<span class="text-base font-semibold text-white truncate">
 							{(page.frontmatter.title as string) || (page.frontmatter.name as string) || (isDataCollection ? 'Entry name' : 'Page title')}
 						</span>
+						{activeCollectionDef && (
+							<span class="shrink-0 px-2 py-0.5 text-xs font-medium text-white/70 bg-white/10 rounded-full border border-white/15">
+								{activeCollectionDef.label}
+							</span>
+						)}
 					</div>
 					<div class="flex items-center gap-2 shrink-0">
 						{!isDataCollection && (
@@ -467,7 +499,7 @@ export function MarkdownEditorOverlay() {
 										d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
 									/>
 								</svg>
-								Metadata
+								{showFrontmatter ? 'Hide' : 'Show'} Metadata
 								<svg
 									class={`w-3.5 h-3.5 transition-transform ${showFrontmatter ? 'rotate-180' : ''}`}
 									fill="none"
@@ -530,26 +562,54 @@ export function MarkdownEditorOverlay() {
 					{/* Main: frontmatter header + editor */}
 					<div class="flex-1 min-w-0 flex flex-col">
 						{/* Frontmatter Editor (header-positioned fields only) */}
-						{(showFrontmatter || isDataCollection) && (
-							<div class={`px-5 py-4 border-b border-white/10 bg-white/5 overflow-y-auto ${isDataCollection ? 'flex-1' : 'max-h-[40vh]'}`}>
-								{isCreateMode && createOptions
-									? (
-										<CreateModeFrontmatter
-											page={page}
-											collectionDefinition={createOptions.collectionDefinition}
-											fields={headerFields}
-											onSlugManualEdit={() => setSlugManuallyEdited(true)}
-										/>
-									)
-									: (
-										<EditModeFrontmatter
-											page={page}
-											collectionDefinition={collectionDef}
-											fields={headerFields}
-										/>
+						{isDataCollection
+							? (
+								<div class="px-5 py-4 border-b border-white/10 bg-white/5 overflow-y-auto flex-1">
+									{isCreateMode && createOptions
+										? (
+											<CreateModeFrontmatter
+												page={page}
+												collectionDefinition={createOptions.collectionDefinition}
+												fields={headerFields}
+												onSlugManualEdit={() => setSlugManuallyEdited(true)}
+											/>
+										)
+										: (
+											<EditModeFrontmatter
+												page={page}
+												collectionDefinition={collectionDef}
+												fields={headerFields}
+											/>
+										)}
+								</div>
+							)
+							: (
+								<div
+									class={cn(
+										'overflow-hidden transition-[max-height,opacity,border-bottom-width] duration-300 ease-out border-white/10',
+										showFrontmatter ? 'max-h-[40vh] opacity-100 border-b' : 'max-h-0 opacity-0 border-b-0',
 									)}
-							</div>
-						)}
+								>
+									<div class="px-5 py-4 bg-white/5 overflow-y-auto max-h-[40vh]" style={{ scrollbarGutter: 'stable' }}>
+										{isCreateMode && createOptions
+											? (
+												<CreateModeFrontmatter
+													page={page}
+													collectionDefinition={createOptions.collectionDefinition}
+													fields={headerFields}
+													onSlugManualEdit={() => setSlugManuallyEdited(true)}
+												/>
+											)
+											: (
+												<EditModeFrontmatter
+													page={page}
+													collectionDefinition={collectionDef}
+													fields={headerFields}
+												/>
+											)}
+									</div>
+								</div>
+							)}
 
 						{/* Editor — hidden for data collections (JSON/YAML have no body) */}
 						{!isDataCollection && (

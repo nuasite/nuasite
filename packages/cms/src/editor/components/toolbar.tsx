@@ -46,6 +46,9 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const isSaving = signals.isSaving.value
 	const showEditableHighlights = signals.showEditableHighlights.value
 	const isPreviewingMarkdown = signals.isMarkdownPreview.value
+	const isSideModalOpen = signals.isColorEditorOpen.value
+		|| signals.isAttributeEditorOpen.value
+		|| signals.isBgImageOverlayOpen.value
 	const currentPageCollection = signals.currentPageCollection.value
 	const [isMenuOpen, setIsMenuOpen] = useState(false)
 	const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
@@ -53,6 +56,9 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	const versionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	if (isPreviewingMarkdown) return null
+	// Right-anchored side panels (color editor, attribute editor, background-image overlay)
+	// would visually overlap the right-anchored toolbar pill — hide while any of them is open.
+	if (isSideModalOpen) return null
 
 	const stopPropagation = (e: Event) => e.stopPropagation()
 
@@ -201,7 +207,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 			class={cn(
 				'fixed bottom-4 sm:bottom-8 font-sans transition-all duration-300',
 				isToolbarOpen
-					? 'left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2'
+					? 'left-4 right-4 sm:right-8 sm:left-auto sm:-translate-x-1/2'
 					: 'right-4 sm:right-8',
 			)}
 			data-cms-ui
@@ -213,9 +219,9 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 				{isToolbarOpen && !showingOriginal && callbacks.onToggleHighlights && (
 					<ToolbarButton
 						onClick={() => callbacks.onToggleHighlights?.()}
-						class={'flex gap-2.5 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white py-2! pr-1.5!'}
+						class={'flex min-w-[157px] gap-2.5 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white py-2! pr-1.5!'}
 					>
-						Outlines
+						{showEditableHighlights ? 'Hide Outlines' : 'Show Outlines'}
 						<span
 							class={cn(
 								'inline-block w-6 h-6 rounded-full shrink-0 transition-colors',
@@ -331,7 +337,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 											}}
 										/>
 										{/* Menu popover */}
-										<div class="absolute bottom-full right-0 mb-4 min-w-[200px] bg-cms-dark rounded-cms-lg shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 overflow-hidden py-1">
+										<div class="absolute bottom-full right-0 mb-4 min-w-[200px] bg-cms-dark rounded-cms-lg shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 overflow-hidden">
 											{topLevelItems.map((item, index) => (
 												<button
 													key={`top-${index}`}
@@ -341,7 +347,8 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 														setIsMenuOpen(false)
 													}}
 													class={cn(
-														'w-full px-4 py-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3',
+														'w-full p-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3',
+														index === 0 && 'pt-3.5',
 														item.isActive
 															? 'bg-white/20 text-white'
 															: 'text-white/80 hover:bg-white/10 hover:text-white',
@@ -351,7 +358,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 													{item.label}
 												</button>
 											))}
-											{topLevelItems.length > 0 && menuSections.length > 0 && <div class="border-t border-white/10 my-1" />}
+											{topLevelItems.length > 0 && menuSections.length > 0 && <div class="border-t border-white/10" />}
 											{menuSections.map((section) => {
 												const isExpanded = expandedSections.has(section.label)
 												return (
@@ -369,7 +376,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 																	return next
 																})
 															}}
-															class="w-full px-4 py-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-white/80 hover:bg-white/10 hover:text-white"
+															class="w-full p-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-white/80 hover:bg-white/10 hover:text-white"
 														>
 															<span class="shrink-0 opacity-70">{section.icon}</span>
 															{section.label}
@@ -385,29 +392,38 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 																<path d="m6 9 6 6 6-6" />
 															</svg>
 														</button>
-														{isExpanded && section.items.map((item, index) => (
-															<button
-																key={index}
-																onClick={(e) => {
-																	e.stopPropagation()
-																	item.onClick()
-																	setIsMenuOpen(false)
-																}}
-																class={cn(
-																	'w-full pl-11 pr-4 py-2 text-sm text-left transition-colors cursor-pointer flex items-center gap-3',
-																	item.isActive
-																		? 'bg-white/20 text-white'
-																		: 'text-white/60 hover:bg-white/10 hover:text-white',
-																)}
-															>
-																<span class="shrink-0 opacity-70">{item.icon}</span>
-																{item.label}
-															</button>
-														))}
+														<div
+															class={cn(
+																'grid transition-[grid-template-rows] duration-200 ease-out',
+																isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+															)}
+														>
+															<div class="overflow-hidden">
+																{section.items.map((item, index) => (
+																	<button
+																		key={index}
+																		onClick={(e) => {
+																			e.stopPropagation()
+																			item.onClick()
+																			setIsMenuOpen(false)
+																		}}
+																		class={cn(
+																			'w-full pl-9 pr-4 py-2 text-sm text-left transition-colors cursor-pointer flex items-center gap-3',
+																			item.isActive
+																				? 'bg-white/20 text-white'
+																				: 'text-white/60 hover:bg-white/10 hover:text-white',
+																		)}
+																	>
+																		<span class="shrink-0 opacity-70">{item.icon}</span>
+																		{item.label}
+																	</button>
+																))}
+															</div>
+														</div>
 													</div>
 												)
 											})}
-											{destructiveItems.length > 0 && <div class="border-t border-white/10 my-1" />}
+											{destructiveItems.length > 0 && <div class="border-t border-white/10" />}
 											{destructiveItems.map((item, index) => (
 												<button
 													key={`destructive-${index}`}
@@ -416,7 +432,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 														item.onClick()
 														setIsMenuOpen(false)
 													}}
-													class="w-full px-4 py-2.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-red-400/80 hover:bg-red-500/10 hover:text-red-400"
+													class="w-full p-2.5 pb-3.5 text-sm font-medium text-left transition-colors cursor-pointer flex items-center gap-3 text-red-400/80 hover:bg-red-500/10 hover:text-red-400"
 												>
 													<span class="shrink-0 opacity-70">{item.icon}</span>
 													{item.label}

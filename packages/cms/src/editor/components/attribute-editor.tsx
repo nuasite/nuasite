@@ -329,7 +329,6 @@ function AttributeField({ attrName, currentAttr, originalAttr, pages, onUpdate, 
 				<ImageField
 					label={config.label}
 					value={currentValue || undefined}
-					placeholder={config.placeholder}
 					onChange={(v) => onUpdate(v)}
 					onBrowse={onOpenMediaLibrary}
 					isDirty={isDirty}

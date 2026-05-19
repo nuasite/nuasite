@@ -302,7 +302,7 @@ function InlineInput({ value, onChange, placeholder }: { value: string; onChange
 				if (el.value !== value) onChange(el.value)
 			}}
 			placeholder={placeholder}
-			class="w-full bg-white/5 border border-white/10 rounded-cms-sm px-2.5 py-1.5 text-[13px] text-white/80 placeholder:text-white/30 outline-none focus:border-white/25 transition-colors"
+			class="w-full bg-white/5 border border-white/10 rounded-cms-sm px-2.5 py-1.5 text-[13px] text-white/80 placeholder:text-white/30 outline-none focus:border-white/40 transition-colors"
 		/>
 	)
 }
@@ -317,7 +317,7 @@ const INLINE_INPUT_TYPES: Record<string, string> = {
 	tel: 'tel',
 }
 const inputClass =
-	'w-full bg-white/5 border border-white/10 rounded-cms-sm px-2.5 py-1.5 text-[13px] text-white/80 placeholder:text-white/30 outline-none focus:border-white/25 transition-colors'
+	'w-full bg-white/5 border border-white/10 rounded-cms-sm px-2.5 py-1.5 text-[13px] text-white/80 placeholder:text-white/30 outline-none focus:border-white/40 transition-colors'
 
 function InlinePropField(
 	{ name, value, propDef, onChange }: { name: string; value: string; propDef?: ComponentProp; onChange: (v: string) => void },
@@ -434,7 +434,7 @@ export function MdxBlockCard({ componentName, props, hasExpressions, slotContent
 			data-cms-ui
 		>
 			{/* Header */}
-			<div class="flex items-center justify-between px-4 py-2.5 bg-white/5 border-b border-white/10 rounded-t-cms-md">
+			<div class="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10 rounded-t-cms-md">
 				<div class="flex items-center gap-2">
 					<MdxComponentIcon />
 					<span class="text-[13px] font-semibold text-white">{componentName}</span>
@@ -461,7 +461,7 @@ export function MdxBlockCard({ componentName, props, hasExpressions, slotContent
 
 			{/* Slot content editor */}
 			{hasSlotContent && (
-				<div class="px-4 py-2.5 border-b border-white/10" data-mdx-action="children">
+				<div class="px-4 py-2 border-b border-white/10" data-mdx-action="children">
 					<MiniMilkdownEditor
 						value={slotContent || ''}
 						onChange={onSlotContentChange}

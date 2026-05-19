@@ -12,7 +12,9 @@ import {
 import { gfm, toggleStrikethroughCommand } from '@milkdown/preset-gfm'
 import { callCommand, insert, replaceAll } from '@milkdown/utils'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { lift } from 'prosemirror-commands'
 import { useLinkPopover } from '../hooks/useLinkPopover'
+import { cn } from '../lib/cn'
 import { uploadMedia } from '../markdown-api'
 import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-plugin'
 import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
@@ -176,10 +178,29 @@ export function MarkdownInlineEditor({
 		() => runCommand(toggleStrikethroughCommand.key),
 		[runCommand],
 	)
-	const handleQuote = useCallback(
-		() => runCommand(wrapInBlockquoteCommand.key),
-		[runCommand],
-	)
+	const handleQuote = useCallback(() => {
+		if (!editorInstanceRef.current) return
+		try {
+			const view = editorInstanceRef.current.ctx.get(editorViewCtx)
+			const { $from } = view.state.selection
+			let inBlockquote = false
+			for (let depth = $from.depth; depth > 0; depth--) {
+				if ($from.node(depth).type.name === 'blockquote') {
+					inBlockquote = true
+					break
+				}
+			}
+			if (inBlockquote) {
+				// Lift selection out of the blockquote (may need multiple lifts for nested wrappers)
+				lift(view.state, view.dispatch)
+				view.focus()
+			} else {
+				runCommand(wrapInBlockquoteCommand.key)
+			}
+		} catch {
+			runCommand(wrapInBlockquoteCommand.key)
+		}
+	}, [runCommand])
 
 	// Check if selection is inside a list of given type
 	const checkInList = useCallback(
@@ -422,6 +443,7 @@ export function MarkdownInlineEditor({
 						onClick={() => handleInsertHeading(1)}
 						title="Heading 1"
 						active={activeFormats.heading === 1}
+						compact
 					>
 						<span class="text-xs font-bold">H1</span>
 					</ToolbarButton>
@@ -429,6 +451,7 @@ export function MarkdownInlineEditor({
 						onClick={() => handleInsertHeading(2)}
 						title="Heading 2"
 						active={activeFormats.heading === 2}
+						compact
 					>
 						<span class="text-xs font-bold">H2</span>
 					</ToolbarButton>
@@ -436,6 +459,7 @@ export function MarkdownInlineEditor({
 						onClick={() => handleInsertHeading(3)}
 						title="Heading 3"
 						active={activeFormats.heading === 3}
+						compact
 					>
 						<span class="text-xs font-bold">H3</span>
 					</ToolbarButton>
@@ -443,6 +467,7 @@ export function MarkdownInlineEditor({
 						onClick={() => handleInsertHeading(4)}
 						title="Heading 4"
 						active={activeFormats.heading === 4}
+						compact
 					>
 						<span class="text-xs font-bold">H4</span>
 					</ToolbarButton>
@@ -583,17 +608,6 @@ export function MarkdownInlineEditor({
 				</div>
 			</div>
 
-			{/* Link edit popover — rendered outside the toolbar stacking context so it layers above the sidebar */}
-			{linkPopoverState && (
-				<LinkEditPopover
-					initialUrl={linkPopoverState.href}
-					suggestions={pageSuggestions}
-					onApply={applyLink}
-					onRemove={linkPopoverState.isEdit ? removeLink : undefined}
-					onClose={closeLinkPopover}
-				/>
-			)}
-
 			{/* Editor */}
 			<div
 				class={`flex-1 min-h-0 overflow-auto relative transition-colors ${isDragging ? 'bg-cms-primary/10' : ''}`}
@@ -602,6 +616,18 @@ export function MarkdownInlineEditor({
 				onDrop={handleDrop}
 				onPaste={handlePaste}
 			>
+				{/* Link edit popover — overlays the top of the editor so it doesn't push content */}
+				{linkPopoverState && (
+					<div class="absolute top-0 left-0 right-0 z-40">
+						<LinkEditPopover
+							initialUrl={linkPopoverState.href}
+							suggestions={pageSuggestions}
+							onApply={applyLink}
+							onRemove={linkPopoverState.isEdit ? removeLink : undefined}
+							onClose={closeLinkPopover}
+						/>
+					</div>
+				)}
 				<div
 					ref={editorRef}
 					class="milkdown-editor milkdown-dark prose prose-invert prose-sm max-w-none p-6 min-h-75 focus:outline-none"
@@ -666,6 +692,8 @@ interface ToolbarButtonProps {
 	title: string
 	children: preact.ComponentChildren
 	active?: boolean
+	/** Use tighter padding suitable for text-only labels like H1/H2 */
+	compact?: boolean
 }
 
 function ToolbarButton({
@@ -673,16 +701,19 @@ function ToolbarButton({
 	title,
 	children,
 	active,
+	compact,
 }: ToolbarButtonProps) {
 	return (
 		<button
 			type="button"
 			onClick={onClick}
-			class={`p-2 rounded-cms-sm transition-colors ${
+			class={cn(
+				'rounded-cms-sm transition-colors',
+				compact ? 'px-2 pt-0.5 pb-1' : 'p-2',
 				active
 					? 'bg-cms-primary text-cms-primary-text'
-					: 'hover:bg-white/10 text-white/70 hover:text-white'
-			}`}
+					: 'hover:bg-white/10 text-white/70 hover:text-white',
+			)}
 			title={title}
 			data-cms-ui
 		>

@@ -416,6 +416,10 @@ export const mediaLibraryState = signal<MediaLibraryState>(
 // Convenience computed signals for media library
 export const isMediaLibraryOpen = computed(() => mediaLibraryState.value.isOpen)
 
+// Background-image overlay panel open state (lifted from local useState so the
+// toolbar can hide itself when this right-side panel is showing).
+export const isBgImageOverlayOpen = signal(false)
+
 // ============================================================================
 // Create Page State Signals
 // ============================================================================
@@ -1205,33 +1209,59 @@ export async function openMarkdownEditorForEntry(
 	sourcePath: string,
 	collectionDefinition: CollectionDefinition,
 ): Promise<void> {
-	let frontmatter: Record<string, unknown> = {}
-	let content = ''
-
-	try {
-		const result = await getMarkdownContent(config.value.apiBase, sourcePath)
-		if (result) {
-			frontmatter = result.frontmatter as Record<string, unknown>
-			content = result.content
-		}
-	} catch (err) {
-		console.error('[CMS] Failed to fetch markdown content for entry:', err)
-	}
-
-	const recovered = await maybeRecoverDraft(sourcePath, frontmatter, content)
-
+	// Open the editor immediately with placeholder content so the modal
+	// transition feels seamless — content streams in once fetched.
 	markdownEditorState.value = {
 		isOpen: true,
 		currentPage: {
 			filePath: sourcePath,
 			slug,
-			frontmatter: recovered.frontmatter as import('./types').BlogFrontmatter,
-			content: recovered.content,
-			isDirty: recovered.isDirty,
+			frontmatter: {},
+			content: '',
+			isDirty: false,
 		},
 		activeElementId: null,
 		mode: 'edit',
 		collectionDefinition,
+	}
+
+	// Guard against late responses: if the user closed the modal or navigated
+	// to a different entry while the fetch was in-flight, drop the result.
+	const isStillTargeted = () => markdownEditorState.value.currentPage?.filePath === sourcePath
+
+	let frontmatter: Record<string, unknown>
+	let content: string
+
+	try {
+		const result = await getMarkdownContent(config.value.apiBase, sourcePath)
+		if (!isStillTargeted()) return
+		if (!result) {
+			resetMarkdownEditorState()
+			showToast(`Could not load entry: ${slug}`, 'error')
+			return
+		}
+		frontmatter = result.frontmatter
+		content = result.content
+	} catch (err) {
+		console.error('[CMS] Failed to fetch markdown content for entry:', err)
+		if (!isStillTargeted()) return
+		resetMarkdownEditorState()
+		showToast(`Could not load entry: ${slug}`, 'error')
+		return
+	}
+
+	const recovered = await maybeRecoverDraft(sourcePath, frontmatter, content)
+	if (!isStillTargeted()) return
+
+	markdownEditorState.value = {
+		...markdownEditorState.value,
+		currentPage: {
+			filePath: sourcePath,
+			slug,
+			frontmatter: recovered.frontmatter,
+			content: recovered.content,
+			isDirty: recovered.isDirty,
+		},
 	}
 }
 

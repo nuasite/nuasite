@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
 import { isApplyingUndoRedo, recordChange } from '../history'
 import { cn } from '../lib/cn'
@@ -80,14 +80,14 @@ const REPEAT_OPTIONS = [
  * Shows a floating badge on hover and opens a right-side settings panel on click.
  */
 export function BgImageOverlay({ visible, rect, element, cmsId }: BgImageOverlayProps) {
-	const [panelOpen, setPanelOpen] = useState(false)
+	const panelOpen = signals.isBgImageOverlayOpen.value
 	// Capture target when panel opens so it stays stable when hover moves away
 	const panelTargetRef = useRef<{ cmsId: string; element: HTMLElement } | null>(null)
 
 	// Close panel when hovering a different bg-image element
 	useEffect(() => {
 		if (cmsId && panelTargetRef.current && cmsId !== panelTargetRef.current.cmsId) {
-			setPanelOpen(false)
+			signals.isBgImageOverlayOpen.value = false
 			panelTargetRef.current = null
 		}
 	}, [cmsId])
@@ -99,7 +99,7 @@ export function BgImageOverlay({ visible, rect, element, cmsId }: BgImageOverlay
 		const handleClickOutside = (e: MouseEvent) => {
 			const target = e.target as HTMLElement
 			if (target.closest('[data-cms-ui]')) return
-			setPanelOpen(false)
+			signals.isBgImageOverlayOpen.value = false
 			panelTargetRef.current = null
 		}
 
@@ -117,16 +117,16 @@ export function BgImageOverlay({ visible, rect, element, cmsId }: BgImageOverlay
 		e.preventDefault()
 		e.stopPropagation()
 		if (panelOpen) {
-			setPanelOpen(false)
+			signals.isBgImageOverlayOpen.value = false
 			panelTargetRef.current = null
 		} else if (cmsId && element) {
-			setPanelOpen(true)
+			signals.isBgImageOverlayOpen.value = true
 			panelTargetRef.current = { cmsId, element }
 		}
 	}, [panelOpen, cmsId, element])
 
 	const handleClose = useCallback(() => {
-		setPanelOpen(false)
+		signals.isBgImageOverlayOpen.value = false
 		panelTargetRef.current = null
 	}, [])
 
@@ -243,7 +243,6 @@ export function BgImageOverlay({ visible, rect, element, cmsId }: BgImageOverlay
 								<ImageField
 									label="Image URL"
 									value={currentUrl || undefined}
-									placeholder="/assets/image.png"
 									onChange={handleImageUrlChange}
 									onBrowse={handleBrowse}
 									isDirty={isImageDirty}

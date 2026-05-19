@@ -9,4 +9,11 @@ export default defineConfig({
 	integrations: [
 		notes(),
 	],
+	nua: {
+		cms: {
+			cmsConfig: {
+				siteTheme: 'dark',
+			},
+		},
+	},
 })

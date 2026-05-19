@@ -236,7 +236,7 @@ export function MediaLibrary() {
 				data-cms-ui
 			>
 				{/* Header */}
-				<div class="flex items-center justify-between p-5 border-b border-white/10">
+				<div class="flex items-center justify-between px-5 py-4 border-b border-white/10">
 					<h2 class="text-lg font-semibold text-white">Media Library</h2>
 					<CloseButton onClick={handleClose} />
 				</div>
@@ -287,17 +287,17 @@ export function MediaLibrary() {
 							placeholder="Search files..."
 							value={searchQuery}
 							onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
-							class="flex-1 px-4 py-2.5 bg-white/10 border border-white/20 rounded-cms-md text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10"
+							class="flex-1 px-4 py-2 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10"
 							data-cms-ui
 						/>
 						<button
 							type="button"
 							onClick={() => setShowNewFolderInput((v) => !v)}
-							class="px-3 py-2.5 bg-white/10 text-white/70 rounded-cms-md text-sm hover:bg-white/15 hover:text-white transition-colors border border-white/20"
+							class="px-3 py-2.5 bg-white/10 text-white/70 rounded-cms-sm text-sm hover:bg-white/15 hover:text-white transition-colors border border-white/20"
 							title="New folder"
 							data-cms-ui
 						>
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<svg class="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
@@ -363,10 +363,10 @@ export function MediaLibrary() {
 									setNewFolderName('')
 								}
 							}}
-							class="flex-1 px-3 py-1.5 bg-white/10 border border-white/20 rounded-cms-md text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/40"
+							class="flex-1 px-3 py-1.5 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/40"
 							data-cms-ui
 						/>
-						<PrimaryButton onClick={handleCreateFolder} className="px-3 py-1.5 rounded-cms-md text-xs">
+						<PrimaryButton onClick={handleCreateFolder} className="px-3 py-1.5 rounded-cms-sm text-xs">
 							Create
 						</PrimaryButton>
 						<button
@@ -430,7 +430,7 @@ export function MediaLibrary() {
 										<button
 											type="button"
 											onClick={() => navigateToFolder(folder.path)}
-											class="w-full h-full rounded-cms-md overflow-hidden border-2 border-white/10 hover:border-white/30 focus:outline-none focus:border-white/30 transition-all bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-2"
+											class="w-full h-full rounded-cms-sm overflow-hidden border-2 border-white/10 hover:border-white/30 focus:outline-none focus:border-white/40 transition-all bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-2"
 											data-cms-ui
 										>
 											<svg
@@ -459,7 +459,7 @@ export function MediaLibrary() {
 										<button
 											type="button"
 											onClick={() => handleSelectImage(item)}
-											class="w-full h-full rounded-cms-md overflow-hidden border-2 border-white/10 hover:border-cms-primary focus:outline-none focus:border-cms-primary transition-all"
+											class="w-full h-full rounded-cms-sm overflow-hidden border-2 border-white/10 hover:border-cms-primary focus:outline-none focus:border-white/40 transition-all"
 											data-cms-ui
 										>
 											{item.contentType.startsWith('image/')

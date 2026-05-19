@@ -88,7 +88,7 @@ export function MdxComponentPicker({ onInsert }: MdxComponentPickerProps) {
 													onInput={(e) => setChildrenValue((e.target as HTMLTextAreaElement).value)}
 													placeholder="Enter content..."
 													rows={3}
-													class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md resize-y"
+													class="w-full px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md resize-y"
 												/>
 											</div>
 										)}
@@ -121,7 +121,7 @@ export function MdxComponentPicker({ onInsert }: MdxComponentPickerProps) {
 								value={searchQuery}
 								onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
 								placeholder="Search components..."
-								class="w-full px-4 py-2.5 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
+								class="w-full px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-md"
 							/>
 						</div>
 						<div class="p-5 overflow-y-auto flex-1">

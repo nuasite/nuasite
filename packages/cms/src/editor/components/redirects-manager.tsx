@@ -10,7 +10,7 @@ import {
 	showToast,
 } from '../signals'
 import type { RedirectRule } from '../types'
-import { ModalBackdrop, ModalHeader } from './modal-shell'
+import { ModalBackdrop, ModalHeader, Section } from './modal-shell'
 
 export function RedirectsManager() {
 	const visible = isRedirectsManagerOpen.value
@@ -24,27 +24,33 @@ export function RedirectsManager() {
 		<ModalBackdrop onClose={() => closeRedirectsManager()} maxWidth="max-w-2xl" extraClass="max-h-[80vh] flex flex-col">
 			<ModalHeader title="Redirects" onClose={() => closeRedirectsManager()} />
 
-			<div class="flex-1 overflow-y-auto p-5 space-y-3">
-				{state.isLoading && <div class="text-center py-8 text-white/50">Loading redirects...</div>}
+			<div class="flex-1 overflow-y-auto p-5">
+				<Section title="Redirects">
+					<div class="space-y-3">
+						{state.isLoading && <div class="text-center py-8 text-white/50">Loading redirects...</div>}
 
-				{!state.isLoading && state.rules.length === 0 && (
-					<div class="text-center py-8">
-						<p class="text-white/50 mb-2">No redirects configured</p>
-						<p class="text-white/30 text-sm">Redirects are stored in src/_redirects</p>
+						{!state.isLoading && state.rules.length === 0 && (
+							<div class="text-center py-8">
+								<p class="text-white/50 mb-2">No redirects configured</p>
+								<p class="text-white/30 text-sm">Redirects are stored in src/_redirects</p>
+							</div>
+						)}
+
+						{!state.isLoading && state.rules.map((rule) => (
+							<RedirectRow
+								key={rule.lineIndex}
+								rule={rule}
+								isEditing={state.editingIndex === rule.lineIndex}
+							/>
+						))}
 					</div>
-				)}
-
-				{!state.isLoading && state.rules.map((rule) => (
-					<RedirectRow
-						key={rule.lineIndex}
-						rule={rule}
-						isEditing={state.editingIndex === rule.lineIndex}
-					/>
-				))}
+				</Section>
 			</div>
 
-			<div class="shrink-0 p-5 border-t border-white/10 bg-white/5 rounded-b-cms-xl">
-				<AddRedirectForm />
+			<div class="shrink-0 p-5 pb-6 border-t border-white/10 bg-white/5 rounded-b-cms-xl">
+				<Section title="Add redirect">
+					<AddRedirectForm />
+				</Section>
 			</div>
 		</ModalBackdrop>
 	)
@@ -93,13 +99,13 @@ function RedirectRow({ rule, isEditing }: { rule: RedirectRule; isEditing: boole
 
 	if (isEditing) {
 		return (
-			<div class="flex flex-col gap-2 p-3 bg-white/5 rounded-cms-lg border border-white/10">
+			<div class="flex flex-col gap-2 p-3 bg-white/5 rounded-cms-sm border border-white/10">
 				<div class="flex gap-2">
 					<input
 						type="text"
 						value={source}
 						onInput={(e) => setSource((e.target as HTMLInputElement).value)}
-						class="flex-1 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-md text-white text-sm focus:outline-none focus:border-cms-primary/50"
+						class="flex-1 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-sm text-white text-sm focus:outline-none focus:border-white/40"
 						placeholder="/old-path"
 						data-cms-ui
 					/>
@@ -108,7 +114,7 @@ function RedirectRow({ rule, isEditing }: { rule: RedirectRule; isEditing: boole
 						type="text"
 						value={destination}
 						onInput={(e) => setDestination((e.target as HTMLInputElement).value)}
-						class="flex-1 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-md text-white text-sm focus:outline-none focus:border-cms-primary/50"
+						class="flex-1 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-sm text-white text-sm focus:outline-none focus:border-white/40"
 						placeholder="/new-path"
 						data-cms-ui
 					/>
@@ -116,7 +122,7 @@ function RedirectRow({ rule, isEditing }: { rule: RedirectRule; isEditing: boole
 						type="text"
 						value={statusCode}
 						onInput={(e) => setStatusCode((e.target as HTMLInputElement).value)}
-						class="w-16 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-md text-white text-sm text-center focus:outline-none focus:border-cms-primary/50"
+						class="w-16 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-sm text-white text-sm text-center focus:outline-none focus:border-white/40"
 						placeholder="307"
 						data-cms-ui
 					/>
@@ -125,7 +131,7 @@ function RedirectRow({ rule, isEditing }: { rule: RedirectRule; isEditing: boole
 					<button
 						type="button"
 						onClick={() => setRedirectsManagerEditing(null)}
-						class="px-3 py-1.5 text-xs text-white/60 hover:text-white hover:bg-white/10 rounded-cms-md transition-colors cursor-pointer"
+						class="px-3 py-1.5 text-xs text-white/60 hover:text-white hover:bg-white/10 rounded-cms-sm transition-colors cursor-pointer"
 						data-cms-ui
 					>
 						Cancel
@@ -134,7 +140,7 @@ function RedirectRow({ rule, isEditing }: { rule: RedirectRule; isEditing: boole
 						type="button"
 						onClick={handleSave}
 						disabled={isSaving}
-						class="px-3 py-1.5 text-xs font-medium bg-cms-primary text-cms-primary-text rounded-cms-md hover:bg-cms-primary-hover transition-colors cursor-pointer disabled:opacity-40"
+						class="px-3 py-1.5 text-xs font-medium bg-cms-primary text-cms-primary-text rounded-cms-sm hover:bg-cms-primary-hover transition-colors cursor-pointer disabled:opacity-40"
 						data-cms-ui
 					>
 						{isSaving ? 'Saving...' : 'Save'}
@@ -145,14 +151,14 @@ function RedirectRow({ rule, isEditing }: { rule: RedirectRule; isEditing: boole
 	}
 
 	return (
-		<div class="flex items-center gap-3 p-3 bg-white/5 rounded-cms-lg border border-white/10 group">
+		<div class="flex items-center gap-3 p-3 bg-white/5 rounded-cms-sm border border-white/10 group h-[34px]">
 			<div class="flex-1 min-w-0 flex items-center gap-2 text-sm">
 				<span class="text-white/80 truncate">{rule.source}</span>
 				<span class="text-white/30 shrink-0">→</span>
 				<span class="text-white/60 truncate">{rule.destination}</span>
 			</div>
 			<span class="text-xs text-white/30 tabular-nums shrink-0">{rule.statusCode}</span>
-			<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+			<div class="flex gap-1 shrink-0 -ml-3 max-w-0 overflow-hidden opacity-0 group-hover:ml-0 group-hover:max-w-[80px] group-hover:opacity-100 transition-all duration-200 ease-out">
 				<button
 					type="button"
 					onClick={() => setRedirectsManagerEditing(rule.lineIndex)}
@@ -226,7 +232,7 @@ function AddRedirectForm() {
 					value={source}
 					onInput={(e) => setSource((e.target as HTMLInputElement).value)}
 					placeholder="/old-path"
-					class="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-md text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-cms-primary/50"
+					class="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-sm text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-white/40"
 					data-cms-ui
 				/>
 			</div>
@@ -237,7 +243,7 @@ function AddRedirectForm() {
 					value={destination}
 					onInput={(e) => setDestination((e.target as HTMLInputElement).value)}
 					placeholder="/new-path"
-					class="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-md text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-cms-primary/50"
+					class="w-full px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-cms-sm text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-white/40"
 					data-cms-ui
 				/>
 			</div>
@@ -245,7 +251,7 @@ function AddRedirectForm() {
 				type="button"
 				onClick={handleAdd}
 				disabled={isAdding || !source.trim() || !destination.trim()}
-				class="px-4 py-1.5 text-sm font-medium bg-cms-primary text-cms-primary-text rounded-cms-md hover:bg-cms-primary-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+				class="px-4 py-1.5 text-sm font-medium bg-cms-primary text-cms-primary-text rounded-cms-sm hover:bg-cms-primary-hover transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
 				data-cms-ui
 			>
 				{isAdding ? 'Adding...' : 'Add'}

@@ -32,7 +32,7 @@ export function ModalHeader({ title, onBack, onClose }: {
 	onClose: () => void
 }) {
 	return (
-		<div class="flex items-center gap-3 p-5 border-b border-white/10">
+		<div class="flex items-center gap-3 px-5 py-4 border-b border-white/10">
 			{onBack && (
 				<button
 					type="button"
@@ -53,7 +53,20 @@ export function ModalHeader({ title, onBack, onClose }: {
 
 export function ModalFooter({ children }: { children: ComponentChildren }) {
 	return (
-		<div class="flex items-center justify-end gap-2 p-5 border-t border-white/10 bg-white/5 rounded-b-cms-xl">
+		<div class="flex items-center justify-end gap-2 py-3.5 px-4 border-t border-white/10 bg-white/5 rounded-b-cms-xl">
+			{children}
+		</div>
+	)
+}
+
+export function Section({ title, children, className }: {
+	title: string
+	children: ComponentChildren
+	className?: string
+}) {
+	return (
+		<div class={cn('space-y-4', className)}>
+			<h3 class="text-base font-semibold text-white/90">{title}</h3>
 			{children}
 		</div>
 	)
@@ -80,7 +93,7 @@ export function CancelButton({ onClick, label = 'Cancel', className }: { onClick
 			type="button"
 			onClick={onClick}
 			class={cn(
-				'px-4 py-2.5 text-sm text-white/80 font-medium rounded-cms-pill hover:bg-white/10 hover:text-white transition-colors cursor-pointer',
+				'py-2.5 px-3.5 text-sm text-white/80 font-medium rounded-cms-pill hover:bg-white/10 hover:text-white transition-colors cursor-pointer',
 				className,
 			)}
 			data-cms-ui
