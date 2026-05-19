@@ -58,6 +58,7 @@ import {
 } from './signals'
 import * as signals from './signals'
 import { hasAnyMarkdownDraft, hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, saveSettingsToStorage } from './storage'
+import { STRINGS } from './strings'
 import CMS_STYLES from './styles.css?inline'
 import { generateCSSVariables, resolveTheme } from './themes'
 
@@ -307,20 +308,20 @@ const CmsUI = () => {
 		try {
 			const result = await saveAllChanges(config, updateUI)
 			if (result.success) {
-				signals.showToast(`Saved ${result.updated} change(s) successfully!`, 'success')
+				signals.showToast(STRINGS.save.success(result.updated), 'success')
 			} else if (result.errors) {
 				const details = result.errors.map(e => e.error).join('; ')
-				signals.showToast(`Save failed: ${details}`, 'error')
+				signals.showToast(STRINGS.save.failed(details), 'error')
 			}
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Unknown error'
-			signals.showToast(`Save failed: ${message}`, 'error')
+			signals.showToast(STRINGS.save.failed(message), 'error')
 		}
 	}, [config, updateUI])
 
 	const handleDiscard = useCallback(() => {
 		discardAllChanges(updateUI)
-		signals.showToast('All changes discarded', 'info')
+		signals.showToast(STRINGS.save.discarded, 'info')
 	}, [updateUI])
 
 	const handleOpenCollection = useCallback((name: string) => {
@@ -334,7 +335,7 @@ const CmsUI = () => {
 
 	const handleEditContent = useCallback(async () => {
 		if (!await openMarkdownEditorForCurrentPage()) {
-			signals.showToast('No collection content found on this page', 'error')
+			signals.showToast(STRINGS.save.noCollectionContent, 'error')
 		}
 	}, [])
 

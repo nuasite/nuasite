@@ -20,6 +20,7 @@ import {
 	updateMarkdownFrontmatter,
 } from '../signals'
 import { clearMarkdownDraft } from '../storage'
+import { STRINGS } from '../strings'
 import type { FieldDefinition } from '../types'
 import { CreateModeFrontmatter, EditModeFrontmatter } from './frontmatter-fields'
 import { FrontmatterSidebar, partitionFields } from './frontmatter-sidebar'
@@ -339,10 +340,10 @@ export function MarkdownEditorOverlay() {
 		const hasUnsavedChanges = currentMarkdownPage.value?.isDirty === true
 		if (hasUnsavedChanges) {
 			const confirmed = await showConfirmDialog({
-				title: 'Discard changes?',
-				message: 'You have unsaved changes. Discard them and close?',
-				confirmLabel: 'Discard',
-				cancelLabel: 'Keep editing',
+				title: STRINGS.dialog.discardMarkdown.title,
+				message: STRINGS.dialog.discardMarkdown.message,
+				confirmLabel: STRINGS.dialog.discardMarkdown.confirm,
+				cancelLabel: STRINGS.dialog.discardMarkdown.cancel,
 				variant: 'danger',
 			})
 			if (!confirmed) return

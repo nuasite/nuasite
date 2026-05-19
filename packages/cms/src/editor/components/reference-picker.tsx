@@ -5,6 +5,7 @@ import { useSearchFilter } from '../hooks/useSearchFilter'
 import { getCollectionEntryOptions } from '../manifest'
 import { updateMarkdownPage } from '../markdown-api'
 import { closeReferencePicker, config, manifest, referencePickerState, showToast } from '../signals'
+import { STRINGS } from '../strings'
 import { Spinner } from './spinner'
 
 const PANEL_WIDTH = 320
@@ -46,12 +47,12 @@ export function ReferencePicker() {
 				frontmatter: { [state.fieldName]: value },
 			})
 			if (result.success) {
-				showToast('Reference updated', 'success')
+				showToast(STRINGS.reference.updated, 'success')
 			} else {
-				showToast(result.error || 'Failed to update reference', 'error')
+				showToast(result.error || STRINGS.reference.updateFailed, 'error')
 			}
 		} catch {
-			showToast('Failed to update reference', 'error')
+			showToast(STRINGS.reference.updateFailed, 'error')
 		}
 		closeReferencePicker()
 	}, [state.fieldName, state.ownerPath])

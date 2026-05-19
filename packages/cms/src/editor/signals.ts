@@ -4,6 +4,7 @@ import { fetchManifest, getMarkdownContent } from './api'
 import type { ToastMessage, ToastType } from './components/toast/types'
 import { getConfig } from './config'
 import { clearMarkdownDraft, loadMarkdownDraft, saveMarkdownDraft } from './storage'
+import { STRINGS } from './strings'
 import type {
 	AttributeEditorState,
 	BlockEditorState,
@@ -1318,10 +1319,10 @@ export function showConfirmDialog(
 	return new Promise((resolve) => {
 		confirmDialogState.value = {
 			isOpen: true,
-			title: options.title ?? 'Confirm',
+			title: options.title ?? STRINGS.dialog.defaults.title,
 			message: options.message,
-			confirmLabel: options.confirmLabel ?? 'Confirm',
-			cancelLabel: options.cancelLabel ?? 'Cancel',
+			confirmLabel: options.confirmLabel ?? STRINGS.dialog.defaults.confirm,
+			cancelLabel: options.cancelLabel ?? STRINGS.dialog.defaults.cancel,
 			variant: options.variant ?? 'info',
 			onConfirm: () => {
 				closeConfirmDialog()
