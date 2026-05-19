@@ -583,6 +583,57 @@ function detectReferenceFieldsBySlugMatch(collections: Record<string, Collection
 	}
 }
 
+/** Normalized names (lowercased, underscores/hyphens stripped) that mark a field as the publish toggle. */
+const PUBLISH_TOGGLE_NAMES = new Set(['draft', 'isdraft', 'published', 'ispublished', 'unpublished'])
+
+/** Normalized names that mark a field as the publish/release date anchor. */
+const PUBLISH_DATE_NAMES = new Set([
+	'date',
+	'pubdate',
+	'publishdate',
+	'publisheddate',
+	'publishedate',
+	'publishedat',
+	'datepublished',
+])
+
+function normalizeFieldName(name: string): string {
+	return name.toLowerCase().replace(/[_-]/g, '')
+}
+
+/**
+ * Tag fields with semantic roles so the editor UI can position them without
+ * matching on Astro-specific field names. Detection lives here — the layer
+ * that already knows it's parsing Astro content collections.
+ */
+function assignSemanticRoles(collections: Record<string, CollectionDefinition>): void {
+	for (const def of Object.values(collections)) {
+		let toggleAssigned = false
+		let dateAssigned = false
+		for (const field of def.fields) {
+			if (field.hidden || field.role) continue
+			const normalized = normalizeFieldName(field.name)
+			if (!toggleAssigned && field.type === 'boolean' && PUBLISH_TOGGLE_NAMES.has(normalized)) {
+				field.role = 'publish-toggle'
+				toggleAssigned = true
+			} else if (!dateAssigned && PUBLISH_DATE_NAMES.has(normalized)) {
+				field.role = 'publish-date'
+				dateAssigned = true
+			}
+		}
+		// Fallback: first date-typed field anchors the publish-date slot.
+		if (!dateAssigned) {
+			for (const field of def.fields) {
+				if (field.hidden || field.role) continue
+				if (field.type === 'date' || field.type === 'datetime') {
+					field.role = 'publish-date'
+					break
+				}
+			}
+		}
+	}
+}
+
 /** Suffixes that indicate a field is a derived href/url/slug companion */
 const HREF_SUFFIXES = ['href', 'url', 'link', 'slug', 'path'] as const
 
@@ -749,6 +800,7 @@ export async function scanCollections(contentDir: string = 'src/content'): Promi
 	applyParsedConfig(collections, parsed)
 	detectReferenceFields(collections, parsed)
 	detectDerivedHrefFields(collections)
+	assignSemanticRoles(collections)
 	applyCollectionOrderBy(collections, parsed)
 
 	return collections

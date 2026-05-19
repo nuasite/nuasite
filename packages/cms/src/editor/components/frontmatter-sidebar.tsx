@@ -2,65 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { cn } from '../lib/cn'
 import { updateMarkdownFrontmatter } from '../signals'
 import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
+import { groupFields, partitionFields } from './field-utils'
 import { formatFieldLabel, FrontmatterField, SchemaFrontmatterField } from './frontmatter-fields'
 
-// ============================================================================
-// Field Utilities
-// ============================================================================
-
-export function partitionFields(fields: FieldDefinition[]): { sidebar: FieldDefinition[]; header: FieldDefinition[] } {
-	const sidebar: FieldDefinition[] = []
-	const header: FieldDefinition[] = []
-	let draftField: FieldDefinition | null = null
-	for (const field of fields) {
-		if (field.hidden) continue
-		if (field.name === 'draft' && field.position !== 'header') {
-			draftField = field
-			continue
-		}
-		if (field.position === 'sidebar') {
-			sidebar.push(field)
-		} else {
-			header.push(field)
-		}
-	}
-	if (draftField) {
-		// Insert Draft above the Date field in sidebar; otherwise prepend.
-		const dateIdx = sidebar.findIndex((f) => f.name === 'date' || f.type === 'date')
-		if (dateIdx >= 0) {
-			sidebar.splice(dateIdx, 0, draftField)
-		} else {
-			sidebar.unshift(draftField)
-		}
-	}
-	return { sidebar, header }
-}
-
-export interface FieldGroup {
-	group: string | null
-	fields: FieldDefinition[]
-}
-
-export function groupFields(fields: FieldDefinition[]): FieldGroup[] {
-	const groups: FieldGroup[] = []
-	const groupMap = new Map<string | null, FieldDefinition[]>()
-	const order: (string | null)[] = []
-
-	for (const field of fields) {
-		const key = field.group ?? null
-		if (!groupMap.has(key)) {
-			groupMap.set(key, [])
-			order.push(key)
-		}
-		groupMap.get(key)!.push(field)
-	}
-
-	for (const key of order) {
-		groups.push({ group: key, fields: groupMap.get(key)! })
-	}
-
-	return groups
-}
+export { groupFields, partitionFields } from './field-utils'
 
 // ============================================================================
 // Group Header

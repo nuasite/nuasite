@@ -300,6 +300,10 @@ export interface FieldDefinition {
 	hints?: FieldHints
 	/** True when the field uses Astro's `image()` schema (entry-relative paths through astro:assets). */
 	astroImage?: boolean
+	/** Semantic role used by the editor UI to position special fields without name matching.
+	 *  - `publish-toggle`: boolean controlling whether the entry is published (e.g. `draft`, `isDraft`, `published`).
+	 *  - `publish-date`: the publish/release date field (e.g. `date`, `publishDate`, `publishedAt`). */
+	role?: 'publish-toggle' | 'publish-date'
 }
 
 /** Per-entry metadata for collection browsing */

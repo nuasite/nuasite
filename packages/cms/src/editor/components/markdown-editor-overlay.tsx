@@ -46,7 +46,7 @@ export function MarkdownEditorOverlay() {
 	const fields: FieldDefinition[] = activeCollectionDef ? [...activeCollectionDef.fields] : []
 	const draftInPage = page && Object.hasOwn(page.frontmatter, 'draft')
 	if (draftInPage && !fields.some((f) => f.name === 'draft')) {
-		fields.push({ name: 'draft', type: 'boolean', required: false, position: 'sidebar' })
+		fields.push({ name: 'draft', type: 'boolean', required: false, position: 'sidebar', role: 'publish-toggle' })
 	}
 	const { sidebar: sidebarFields, header: headerFields } = partitionFields(fields)
 	const hasSidebar = sidebarFields.length > 0
