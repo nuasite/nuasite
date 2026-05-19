@@ -8,18 +8,18 @@ export type { FragmentManifest, FragmentManifestEntry } from './manifest.ts'
 // is skipped). Stock Astro users normally don't need to touch this.
 export {
 	type AstroComponentFactory,
-	type FragmentEntry,
-	type RegisterParams,
-	type RenderPassResult,
-	FragmentPropsError,
-	FragmentRegistrationError,
 	computeFragmentHash,
 	disableRegistry,
 	enableRegistry,
+	type FragmentEntry,
+	FragmentPropsError,
+	FragmentRegistrationError,
 	getFragments,
 	getProjectRoot,
 	isRegistryEnabled,
 	registerFragment,
+	type RegisterParams,
+	type RenderPassResult,
 	runInRenderPass,
 	validateProps,
 } from './registry.ts'

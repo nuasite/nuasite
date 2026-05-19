@@ -1,12 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import {
-	disableRegistry,
-	enableRegistry,
-	FragmentRegistrationError,
-	getFragments,
-	registerFragment,
-	runInRenderPass,
-} from '../../src/registry.ts'
+import { disableRegistry, enableRegistry, FragmentRegistrationError, getFragments, registerFragment, runInRenderPass } from '../../src/registry.ts'
 
 const PROJECT_ROOT = '/var/project/'
 
@@ -40,9 +33,7 @@ describe('registerFragment with lazy component', () => {
 		registerFragment({ component: componentA, moduleId: 'src/foo.astro', props: { a: 1 } })
 		// Replaying with no component fn must not throw even though the
 		// hash already exists — moduleId+props identity is what matters.
-		expect(() =>
-			registerFragment({ moduleId: 'src/foo.astro', props: { a: 1 } }),
-		).not.toThrow()
+		expect(() => registerFragment({ moduleId: 'src/foo.astro', props: { a: 1 } })).not.toThrow()
 	})
 
 	it('still enforces collision when two real components disagree', () => {
@@ -50,15 +41,11 @@ describe('registerFragment with lazy component', () => {
 		const componentA = (() => {}) as any
 		const componentB = (() => {}) as any
 		registerFragment({ component: componentA, moduleId: 'src/foo.astro', props: { a: 1 } })
-		expect(() =>
-			registerFragment({ component: componentB, moduleId: 'src/foo.astro', props: { a: 1 } }),
-		).toThrow(/collision/)
+		expect(() => registerFragment({ component: componentB, moduleId: 'src/foo.astro', props: { a: 1 } })).toThrow(/collision/)
 	})
 
 	it('throws as before when the registry is not enabled', () => {
-		expect(() =>
-			registerFragment({ moduleId: 'src/foo.astro', props: { a: 1 } }),
-		).toThrow(FragmentRegistrationError)
+		expect(() => registerFragment({ moduleId: 'src/foo.astro', props: { a: 1 } })).toThrow(FragmentRegistrationError)
 	})
 })
 
