@@ -1,0 +1,13 @@
+---
+const posts = [
+	{ slug: 'hello-world', title: 'Hello world' },
+	{ slug: 'second-post', title: 'Second post' },
+	{ slug: 'third-post', title: 'Third post' },
+]
+---
+<section class="latest-posts">
+	<h2>Latest posts</h2>
+	<ul>
+		{posts.map(p => <li><a href={`/blog/${p.slug}`}>{p.title}</a></li>)}
+	</ul>
+</section>

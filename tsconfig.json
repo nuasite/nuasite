@@ -6,6 +6,9 @@
 			"path": "./packages/agent-summary"
 		},
 		{
+			"path": "./packages/astro-fragments"
+		},
+		{
 			"path": "./packages/llm-enhancements"
 		},
 		{

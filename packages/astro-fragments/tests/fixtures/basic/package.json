@@ -1,0 +1,10 @@
+{
+	"name": "fragments-fixture-basic",
+	"private": true,
+	"type": "module",
+	"version": "0.0.0",
+	"dependencies": {
+		"@nuasite/astro-fragments": "workspace:*",
+		"astro": "catalog:astro"
+	}
+}

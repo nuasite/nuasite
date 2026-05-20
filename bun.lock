@@ -20,7 +20,7 @@
     },
     "packages/agent-summary": {
       "name": "@nuasite/agent-summary",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "devDependencies": {
         "@types/bun": "catalog:build",
         "astro": "catalog:astro",
@@ -29,9 +29,23 @@
         "typescript": "catalog:build",
       },
     },
+    "packages/astro-fragments": {
+      "name": "@nuasite/astro-fragments",
+      "version": "0.22.4",
+      "dependencies": {
+        "node-html-parser": "catalog:parsers",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:build",
+      },
+      "peerDependencies": {
+        "astro": "catalog:astro",
+        "typescript": "catalog:build",
+      },
+    },
     "packages/checks": {
       "name": "@nuasite/checks",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "dependencies": {
         "node-html-parser": "catalog:parsers",
       },
@@ -45,7 +59,7 @@
     },
     "packages/cli": {
       "name": "@nuasite/cli",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "bin": {
         "nua": "src/index.ts",
       },
@@ -64,7 +78,7 @@
     },
     "packages/cms": {
       "name": "@nuasite/cms",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "dependencies": {
         "@astrojs/compiler": "catalog:astro",
         "@babel/parser": "catalog:parsers",
@@ -111,14 +125,14 @@
     },
     "packages/components": {
       "name": "@nuasite/components",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "peerDependencies": {
         "typescript": "catalog:build",
       },
     },
     "packages/core": {
       "name": "@nuasite/core",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "devDependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -132,7 +146,7 @@
     },
     "packages/llm-enhancements": {
       "name": "@nuasite/llm-enhancements",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "dependencies": {
         "node-html-parser": "catalog:parsers",
       },
@@ -151,7 +165,7 @@
     },
     "packages/notes": {
       "name": "@nuasite/notes",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "dependencies": {
         "preact": "catalog:editor",
       },
@@ -166,7 +180,7 @@
     },
     "packages/nua": {
       "name": "@nuasite/nua",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "dependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -188,7 +202,7 @@
     },
     "packages/playground": {
       "name": "playground",
-      "version": "0.33.0",
+      "version": "0.38.0",
       "dependencies": {
         "@nuasite/cms": "workspace:*",
         "@nuasite/nua": "workspace:*",
@@ -488,6 +502,8 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@nuasite/agent-summary": ["@nuasite/agent-summary@workspace:packages/agent-summary"],
+
+    "@nuasite/astro-fragments": ["@nuasite/astro-fragments@workspace:packages/astro-fragments"],
 
     "@nuasite/checks": ["@nuasite/checks@workspace:packages/checks"],
 
