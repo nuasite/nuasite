@@ -14,7 +14,7 @@ import {
 } from '../signals'
 import { STRINGS } from '../strings'
 import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
-import { ColorField, ComboBoxField, ImageField, MultiSelectField, NumberField, TextField, ToggleField } from './fields'
+import { ColorField, ComboBoxField, FileField, ImageField, MultiSelectField, NumberField, TextField, ToggleField } from './fields'
 import { groupFields } from './frontmatter-sidebar'
 
 function isArrayOfObjects(value: unknown[]): value is Record<string, unknown>[] {
@@ -235,6 +235,7 @@ export function CreateModeFrontmatter({
 	onSlugManualEdit,
 }: CreateModeFrontmatterProps) {
 	const allFields = fields ?? collectionDefinition.fields
+	const allFieldNames = new Set(allFields.map((f) => f.name))
 	const urlFieldNames = new Set(allFields.filter((f) => f.type === 'url' || /link|href|url/i.test(f.name)).map((f) => f.name))
 	const isOpenInNewTabSibling = (name: string) => {
 		if (!name.endsWith('OpenInNewTab')) return false
@@ -296,6 +297,7 @@ export function CreateModeFrontmatter({
 								onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
 								collection={collectionDefinition.name}
 								entrySlug={page.slug}
+								hasOpenInNewTabSibling={allFieldNames.has(`${field.name}OpenInNewTab`)}
 							/>
 						))}
 					</FieldGroupHeader>
@@ -389,6 +391,7 @@ export function EditModeFrontmatter({
 	fields,
 }: EditModeFrontmatterProps) {
 	const allFields = fields ?? collectionDefinition?.fields ?? []
+	const allFieldNames = new Set(allFields.map((f) => f.name))
 	const urlFieldNames = new Set(allFields.filter((f) => f.type === 'url' || /link|href|url/i.test(f.name)).map((f) => f.name))
 	const isOpenInNewTabSibling = (name: string) => {
 		if (!name.endsWith('OpenInNewTab')) return false
@@ -425,6 +428,7 @@ export function EditModeFrontmatter({
 											onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
 											collection={collectionDefinition.name}
 											entrySlug={page.slug}
+											hasOpenInNewTabSibling={allFieldNames.has(`${field.name}OpenInNewTab`)}
 										/>
 									))}
 								</FieldGroupHeader>
@@ -467,6 +471,8 @@ interface SchemaFrontmatterFieldProps {
 	/** Required when editing an `astroImage` field — routes uploads to the entry's directory. */
 	collection?: string
 	entrySlug?: string
+	/** True when the schema declares a `${field.name}OpenInNewTab` companion boolean — controls toggle visibility next to URL fields. */
+	hasOpenInNewTabSibling?: boolean
 }
 
 export function SchemaFrontmatterField({
@@ -475,6 +481,7 @@ export function SchemaFrontmatterField({
 	onChange,
 	collection,
 	entrySlug,
+	hasOpenInNewTabSibling,
 }: SchemaFrontmatterFieldProps) {
 	const label = field.required ? `${formatFieldLabel(field.name)} *` : formatFieldLabel(field.name)
 	const hints = field.hints
@@ -501,7 +508,7 @@ export function SchemaFrontmatterField({
 						required={field.required}
 						tooltip={linkTooltip}
 					/>
-					{field.type === 'url' && <OpenInNewTabToggle field={field} />}
+					{field.type === 'url' && hasOpenInNewTabSibling && <OpenInNewTabToggle field={field} />}
 				</>
 			)
 		}
@@ -517,6 +524,22 @@ export function SchemaFrontmatterField({
 						openMediaLibraryWithCallback((url: string) => {
 							onChange(url)
 						}, astroContext)
+					}}
+				/>
+			)
+		}
+
+		case 'file': {
+			return (
+				<FileField
+					label={label}
+					value={(value as string) ?? ''}
+					accept={hints?.accept as string | undefined}
+					onChange={(v) => onChange(v)}
+					onBrowse={() => {
+						openMediaLibraryWithCallback((url: string) => {
+							onChange(url)
+						})
 					}}
 				/>
 			)
@@ -553,6 +576,7 @@ export function SchemaFrontmatterField({
 		case 'date':
 		case 'datetime':
 		case 'time':
+		case 'month':
 			return (
 				<div class="flex flex-col gap-1" data-cms-ui>
 					<label class="text-xs text-white/60 font-medium">{label}</label>
@@ -581,6 +605,28 @@ export function SchemaFrontmatterField({
 					onChange={(v) => onChange(v ?? 0)}
 					required={field.required}
 				/>
+			)
+
+		case 'year':
+			return (
+				<div class="flex flex-col gap-1.5" data-cms-ui>
+					<label class="text-xs font-medium text-white/70">{label}</label>
+					<input
+						type="number"
+						value={typeof value === 'number' ? value : ''}
+						placeholder={hints?.placeholder ?? String(new Date().getFullYear())}
+						min={typeof hints?.min === 'number' ? hints.min : 1900}
+						max={typeof hints?.max === 'number' ? hints.max : 2100}
+						step={1}
+						required={field.required}
+						onInput={(e) => {
+							const raw = (e.target as HTMLInputElement).value
+							onChange(raw === '' ? undefined : Number(raw))
+						}}
+						class="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-cms-sm text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-colors"
+						data-cms-ui
+					/>
+				</div>
 			)
 
 		case 'boolean':
@@ -952,6 +998,8 @@ export function getPlaceholder(field: FieldDefinition): string {
 			return 'name@example.com'
 		case 'image':
 			return '/images/...'
+		case 'file':
+			return '/files/...'
 		case 'color':
 			return '#000000'
 		case 'date':
@@ -960,6 +1008,10 @@ export function getPlaceholder(field: FieldDefinition): string {
 			return 'YYYY-MM-DDTHH:MM'
 		case 'time':
 			return 'HH:MM'
+		case 'year':
+			return String(new Date().getFullYear())
+		case 'month':
+			return 'YYYY-MM'
 		default:
 			return `Enter ${formatFieldLabel(field.name).toLowerCase()}...`
 	}

@@ -44,6 +44,36 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 		expect(urlSub!.type).toBe('url')
 	})
 
+	test('plain object value infers sub-fields recursively', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['testimonials'])
+
+		await ctx.writeFile(
+			'src/content/testimonials/one.json',
+			JSON.stringify({
+				translations: {
+					cs: { quote: 'Skvělá školka', parentName: 'Petr' },
+					en: { quote: 'Great school', parentName: 'Peter' },
+				},
+			}),
+		)
+
+		const result = await scanCollections()
+		const def = result['testimonials']
+		expect(def).toBeDefined()
+
+		const translations = def!.fields.find((f: FieldDefinition) => f.name === 'translations')
+		expect(translations?.type).toBe('object')
+		expect(translations?.fields?.map(f => f.name).sort()).toEqual(['cs', 'en'])
+
+		const cs = translations!.fields!.find((f: FieldDefinition) => f.name === 'cs')
+		expect(cs?.type).toBe('object')
+		expect(cs?.fields?.map(f => ({ name: f.name, type: f.type })).sort((a, b) => a.name.localeCompare(b.name))).toEqual([
+			{ name: 'parentName', type: 'text' },
+			{ name: 'quote', type: 'text' },
+		])
+	})
+
 	test('array of strings does NOT get sub-fields', async () => {
 		const ctx = getCtx()
 		await setupContentCollections(ctx, ['posts'])

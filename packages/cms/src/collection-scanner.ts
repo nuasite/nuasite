@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { isMap, isPair, isScalar, parse as parseYaml, parseDocument } from 'yaml'
 import { getProjectRoot } from './config'
-import { parseContentConfig, type ParsedConfig } from './content-config-ast'
+import { parseContentConfig, type ParsedConfig, type ParsedField } from './content-config-ast'
 import { slugifyHref } from './shared'
 import type { CollectionDefinition, CollectionEntryInfo, FieldDefinition, FieldType } from './types'
 
@@ -289,6 +289,20 @@ function mergeFieldObservations(observations: FieldObservation[]): FieldDefiniti
 			}
 		}
 
+		// For plain object values, recurse into sub-fields so the editor can render them.
+		if (fieldType === 'object') {
+			const objectValues = nonNullValues.filter(
+				(v): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v),
+			)
+			if (objectValues.length > 0) {
+				const subFieldMap = new Map<string, FieldObservation>()
+				for (const item of objectValues) {
+					collectFieldObservations(subFieldMap, item, objectValues.length)
+				}
+				field.fields = mergeFieldObservations(Array.from(subFieldMap.values()))
+			}
+		}
+
 		fields.push(field)
 	}
 
@@ -456,15 +470,48 @@ function applyParsedConfig(
 		for (const pf of parsedColl.fields) {
 			const field = fieldsByName.get(pf.name)
 			if (!field) continue
-			if (pf.type) {
-				field.type = pf.type
-				if (pf.options) field.options = pf.options
-			}
-			if (pf.hints) field.hints = pf.hints
-			if (pf.astroImage) field.astroImage = true
-			field.required = pf.required
+			applyParsedFieldOverrides(field, pf)
 		}
 	}
+}
+
+/** Apply parsed schema overrides to an inferred field, recursing into nested object/array fields. */
+function applyParsedFieldOverrides(field: FieldDefinition, pf: ParsedField): void {
+	if (pf.type) {
+		field.type = pf.type
+		if (pf.options) field.options = pf.options
+	}
+	if (pf.itemType) field.itemType = pf.itemType
+	if (pf.hints) field.hints = pf.hints
+	if (pf.astroImage) field.astroImage = true
+	field.required = pf.required
+
+	if (pf.fields) {
+		const existingByName = new Map((field.fields ?? []).map(f => [f.name, f]))
+		field.fields = pf.fields.map((subPf) => {
+			const existing = existingByName.get(subPf.name)
+			if (existing) {
+				applyParsedFieldOverrides(existing, subPf)
+				return existing
+			}
+			return parsedFieldToFieldDefinition(subPf)
+		})
+	}
+}
+
+/** Build a FieldDefinition from a parsed schema field when no inferred counterpart exists. */
+function parsedFieldToFieldDefinition(pf: ParsedField): FieldDefinition {
+	const fd: FieldDefinition = {
+		name: pf.name,
+		type: pf.type ?? 'text',
+		required: pf.required,
+	}
+	if (pf.options) fd.options = pf.options
+	if (pf.itemType) fd.itemType = pf.itemType
+	if (pf.hints) fd.hints = pf.hints
+	if (pf.astroImage) fd.astroImage = true
+	if (pf.fields) fd.fields = pf.fields.map(parsedFieldToFieldDefinition)
+	return fd
 }
 
 /** Apply orderBy configuration: set the field name and direction on the definition, then re-sort entries. */
