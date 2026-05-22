@@ -57,7 +57,6 @@ export interface ImageHints {
 
 export interface FileHints {
 	accept?: string
-	placeholder?: string
 }
 
 // --- Internals ---

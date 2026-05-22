@@ -385,6 +385,10 @@ function analyzeBaseCall(node: t.CallExpression, field: ParsedField, bindings: B
 			return
 		}
 		// Array of anything else: analyze the inner expression and lift its type/fields.
+		// Note: nested arrays (`n.array(n.array(...))`) collapse here — `itemType` records
+		// only the outer element type, the inner element shape is lost. No editor flow
+		// currently renders nested arrays, so we don't carry a recursive `itemDefinition`
+		// yet; add one when editor support arrives.
 		const innerField: ParsedField = { name: '__item__', required: true }
 		analyzeFieldExpression(inner, innerField, bindings)
 		field.type = 'array'

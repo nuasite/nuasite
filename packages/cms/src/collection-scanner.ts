@@ -213,9 +213,14 @@ function inferFieldType(value: unknown, key: string): FieldType {
 }
 
 /**
- * Merge field observations from multiple files to determine final field definition
+ * Merge field observations from multiple files to determine final field definition.
+ * `depth` guards against pathological deeply-nested content blowing the stack —
+ * real-world YAML/JSON rarely exceeds 5 levels, so the cap is well above realistic use.
  */
-function mergeFieldObservations(observations: FieldObservation[]): FieldDefinition[] {
+const MAX_NESTED_FIELD_DEPTH = 16
+
+function mergeFieldObservations(observations: FieldObservation[], depth: number = 0): FieldDefinition[] {
+	if (depth >= MAX_NESTED_FIELD_DEPTH) return []
 	const fields: FieldDefinition[] = []
 
 	for (const obs of observations) {
@@ -283,7 +288,7 @@ function mergeFieldObservations(observations: FieldObservation[]): FieldDefiniti
 						for (const item of objectItems) {
 							collectFieldObservations(subFieldMap, item, objectItems.length)
 						}
-						field.fields = mergeFieldObservations(Array.from(subFieldMap.values()))
+						field.fields = mergeFieldObservations(Array.from(subFieldMap.values()), depth + 1)
 					}
 				}
 			}
@@ -299,7 +304,7 @@ function mergeFieldObservations(observations: FieldObservation[]): FieldDefiniti
 				for (const item of objectValues) {
 					collectFieldObservations(subFieldMap, item, objectValues.length)
 				}
-				field.fields = mergeFieldObservations(Array.from(subFieldMap.values()))
+				field.fields = mergeFieldObservations(Array.from(subFieldMap.values()), depth + 1)
 			}
 		}
 
@@ -475,7 +480,15 @@ function applyParsedConfig(
 	}
 }
 
-/** Apply parsed schema overrides to an inferred field, recursing into nested object/array fields. */
+/**
+ * Apply parsed schema overrides to an inferred field, recursing into nested object/array fields.
+ *
+ * Note on schema-vs-inferred merging at nested levels: schema-declared sub-fields replace
+ * the inferred list rather than merging. Inferred-only sub-fields are *not* lost — the
+ * editor's `ObjectFields` recovers them via its `extraKeys` calculation (field value keys
+ * minus schemaNames), routes them through `FrontmatterField` (value-based auto-detect),
+ * and offers a remove button. Merging here would defeat that.
+ */
 function applyParsedFieldOverrides(field: FieldDefinition, pf: ParsedField): void {
 	if (pf.type) {
 		field.type = pf.type
@@ -499,11 +512,18 @@ function applyParsedFieldOverrides(field: FieldDefinition, pf: ParsedField): voi
 	}
 }
 
-/** Build a FieldDefinition from a parsed schema field when no inferred counterpart exists. */
+/**
+ * Build a FieldDefinition from a parsed schema field when no inferred counterpart exists.
+ * Falls back to `'text'` when the parser couldn't pin a type — keeps the field visible
+ * and editable. Schema-declared-but-data-absent fields would otherwise vanish.
+ */
 function parsedFieldToFieldDefinition(pf: ParsedField): FieldDefinition {
 	const fd: FieldDefinition = {
 		name: pf.name,
-		type: pf.type ?? 'text',
+		// A parsed field with nested children but no explicit type is necessarily an object.
+		// Otherwise default to 'text' so users can still fill in schema-declared fields
+		// whose helper the parser didn't recognize.
+		type: pf.type ?? (pf.fields ? 'object' : 'text'),
 		required: pf.required,
 	}
 	if (pf.options) fd.options = pf.options
