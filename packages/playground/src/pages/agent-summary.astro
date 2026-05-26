@@ -102,18 +102,19 @@ const exampleJsonl = `{"kind":"page","route":"/","title":"Nua Playground","descr
 
 		<section class="space-y-8">
 			<SectionHeading
-				title="CLI auto-injection"
-				description="The nua CLI automatically injects agent-summary into your build pipeline."
-				id="cli-injection"
+				title="Adding it to your project"
+				description="Install the package and add the integration to your Astro config."
+				id="setup"
 			/>
 			<CodeBlock
-				filename="Terminal"
-				lang="bash"
-				code={`# If your astro.config already imports agent-summary, nua proxies directly:
-nua build    # → npx astro build
+				filename="astro.config.ts"
+				lang="ts"
+				code={`import { agentsSummary } from '@nuasite/agent-summary'
+import { defineConfig } from '@nuasite/nua/config'
 
-# Otherwise, nua injects the integration automatically:
-nua build    # → astro.build({ integrations: [agentsSummary()] })`}
+export default defineConfig({
+	integrations: [agentsSummary()],
+})`}
 			/>
 		</section>
 

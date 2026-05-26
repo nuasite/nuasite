@@ -16,26 +16,25 @@ bun packages/cli/src/index.ts build
 
 ## Architecture
 
-CLI wrapper around `astro build` with integrated `@nuasite/agent-summary` and enhanced error reporting via stack traces with source context.
+CLI wrapper that proxies `build`/`dev`/`preview` to `astro` and adds project-level commands (`init`, `clean`, `migrate`).
 
 ### How it Works
 
-1. Entry point (`src/index.ts`) parses `build|dev|preview|help` commands
-2. Detects `astro.config.*` and checks if it references the Nua integration
-3. If Nua config found, proxies to `npx astro` (preserves existing setup)
-4. Otherwise, runs Astro inline with `agentsSummary()` integration injected
-5. On build errors, formats stack traces with source context using Stacktracey
+1. Entry point (`src/index.ts`) parses commands
+2. `build`/`dev`/`preview` shell out to `npx astro <command>` so the user's Astro config (typically built via `@nuasite/nua`) is used
+3. `init`/`clean`/`migrate` rewrite the project's Astro config and `package.json`
 
 ### Key Files
 
 - `src/index.ts` — CLI entry point (shebang `#!/usr/bin/env bun`), command parsing and Astro invocation
-- `src/build.ts` — Error formatting helper with source context display
+- `src/init.ts` / `src/clean.ts` / `src/migrate.ts` — Project transformation commands
 
 ### CLI Arguments
 
-- `build` — Runs Astro build
-- `dev [--port N] [--host]` — Starts dev server
-- `preview [--port N] [--host]` — Starts preview server
+- `build` — Proxies to `astro build`
+- `dev` — Proxies to `astro dev`
+- `preview` — Proxies to `astro preview`
+- `init` / `clean` / `migrate` — Project transformations
 - `help` — Shows usage
 
 ## Key Entry Point

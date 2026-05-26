@@ -1,9 +1,9 @@
 # @nuasite/cli
 
 `@nuasite/cli` is the cli tool that powers [Astro](https://astro.build/) projects updated by
-[Nua Site](https://www.nuasite.com). It wraps `astro build`, automatically
-wires up the `@nuasite/agent-summary` integration, and prints readable stack
-traces when something goes wrong.
+[Nua Site](https://www.nuasite.com). It wraps `astro build`, `astro dev`, and
+`astro preview` with the Nua defaults and adds project-level commands
+(`init`, `clean`, `migrate`).
 
 ## Install
 
@@ -32,9 +32,8 @@ bunx nua build
 }
 ```
 
-`nua build` runs `astro build` with the default Nua configuration (currently the
-agent summary integration) and surfaces errors with inline source excerpts so
-you can diagnose failures quickly.
+`nua build` proxies to `astro build` using your project's Astro config (which
+should be set up via `@nuasite/nua`).
 
 ### `nua init`
 
@@ -85,33 +84,12 @@ depends on `@nuasite/*` tooling packages. Specifically it:
 After running, follow the printed next-steps: `bun install`, review the
 config, and remove any remaining `@nuasite` tooling imports from source files.
 
-## Programmatic usage
-
-You can also drive the builder yourself if you need to supply a custom inline
-config:
-
-```ts
-import { agentsSummary } from '@nuasite/agent-summary'
-import { build } from '@nuasite/build'
-
-await build({
-	root: new URL('../site', import.meta.url),
-	integrations: [agentsSummary()],
-})
-```
-
-The function accepts any `AstroInlineConfig`, so you can extend or override the
-defaults that the CLI uses.
-
 ## Development
 
-If you are iterating on `@nuasite/build` itself:
+If you are iterating on `@nuasite/cli` itself:
 
 ```bash
-cd packages/build
+cd packages/cli
 bun install
-bunx tsx src/cli.ts
+bun src/index.ts build
 ```
-
-This recompiles the linked Astro project with your local changes while keeping
-stack traces and integration behavior intact.
