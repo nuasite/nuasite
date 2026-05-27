@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { isMap, isPair, isScalar, parse as parseYaml, parseDocument } from 'yaml'
 import { getProjectRoot } from './config'
-import { parseContentConfig, type ParsedConfig } from './content-config-ast'
+import { parseContentConfig, type ParsedConfig, type ParsedField } from './content-config-ast'
 import { slugifyHref } from './shared'
 import type { CollectionDefinition, CollectionEntryInfo, FieldDefinition, FieldType } from './types'
 
@@ -213,9 +213,14 @@ function inferFieldType(value: unknown, key: string): FieldType {
 }
 
 /**
- * Merge field observations from multiple files to determine final field definition
+ * Merge field observations from multiple files to determine final field definition.
+ * `depth` guards against pathological deeply-nested content blowing the stack —
+ * real-world YAML/JSON rarely exceeds 5 levels, so the cap is well above realistic use.
  */
-function mergeFieldObservations(observations: FieldObservation[]): FieldDefinition[] {
+const MAX_NESTED_FIELD_DEPTH = 16
+
+function mergeFieldObservations(observations: FieldObservation[], depth: number = 0): FieldDefinition[] {
+	if (depth >= MAX_NESTED_FIELD_DEPTH) return []
 	const fields: FieldDefinition[] = []
 
 	for (const obs of observations) {
@@ -283,9 +288,23 @@ function mergeFieldObservations(observations: FieldObservation[]): FieldDefiniti
 						for (const item of objectItems) {
 							collectFieldObservations(subFieldMap, item, objectItems.length)
 						}
-						field.fields = mergeFieldObservations(Array.from(subFieldMap.values()))
+						field.fields = mergeFieldObservations(Array.from(subFieldMap.values()), depth + 1)
 					}
 				}
+			}
+		}
+
+		// For plain object values, recurse into sub-fields so the editor can render them.
+		if (fieldType === 'object') {
+			const objectValues = nonNullValues.filter(
+				(v): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v),
+			)
+			if (objectValues.length > 0) {
+				const subFieldMap = new Map<string, FieldObservation>()
+				for (const item of objectValues) {
+					collectFieldObservations(subFieldMap, item, objectValues.length)
+				}
+				field.fields = mergeFieldObservations(Array.from(subFieldMap.values()), depth + 1)
 			}
 		}
 
@@ -456,15 +475,63 @@ function applyParsedConfig(
 		for (const pf of parsedColl.fields) {
 			const field = fieldsByName.get(pf.name)
 			if (!field) continue
-			if (pf.type) {
-				field.type = pf.type
-				if (pf.options) field.options = pf.options
-			}
-			if (pf.hints) field.hints = pf.hints
-			if (pf.astroImage) field.astroImage = true
-			field.required = pf.required
+			applyParsedFieldOverrides(field, pf)
 		}
 	}
+}
+
+/**
+ * Apply parsed schema overrides to an inferred field, recursing into nested object/array fields.
+ *
+ * Note on schema-vs-inferred merging at nested levels: schema-declared sub-fields replace
+ * the inferred list rather than merging. Inferred-only sub-fields are *not* lost — the
+ * editor's `ObjectFields` recovers them via its `extraKeys` calculation (field value keys
+ * minus schemaNames), routes them through `FrontmatterField` (value-based auto-detect),
+ * and offers a remove button. Merging here would defeat that.
+ */
+function applyParsedFieldOverrides(field: FieldDefinition, pf: ParsedField): void {
+	if (pf.type) {
+		field.type = pf.type
+		if (pf.options) field.options = pf.options
+	}
+	if (pf.itemType) field.itemType = pf.itemType
+	if (pf.hints) field.hints = pf.hints
+	if (pf.astroImage) field.astroImage = true
+	field.required = pf.required
+
+	if (pf.fields) {
+		const existingByName = new Map((field.fields ?? []).map(f => [f.name, f]))
+		field.fields = pf.fields.map((subPf) => {
+			const existing = existingByName.get(subPf.name)
+			if (existing) {
+				applyParsedFieldOverrides(existing, subPf)
+				return existing
+			}
+			return parsedFieldToFieldDefinition(subPf)
+		})
+	}
+}
+
+/**
+ * Build a FieldDefinition from a parsed schema field when no inferred counterpart exists.
+ * Falls back to `'text'` when the parser couldn't pin a type — keeps the field visible
+ * and editable. Schema-declared-but-data-absent fields would otherwise vanish.
+ */
+function parsedFieldToFieldDefinition(pf: ParsedField): FieldDefinition {
+	const fd: FieldDefinition = {
+		name: pf.name,
+		// A parsed field with nested children but no explicit type is necessarily an object.
+		// Otherwise default to 'text' so users can still fill in schema-declared fields
+		// whose helper the parser didn't recognize.
+		type: pf.type ?? (pf.fields ? 'object' : 'text'),
+		required: pf.required,
+	}
+	if (pf.options) fd.options = pf.options
+	if (pf.itemType) fd.itemType = pf.itemType
+	if (pf.hints) fd.hints = pf.hints
+	if (pf.astroImage) fd.astroImage = true
+	if (pf.fields) fd.fields = pf.fields.map(parsedFieldToFieldDefinition)
+	return fd
 }
 
 /** Apply orderBy configuration: set the field name and direction on the definition, then re-sort entries. */

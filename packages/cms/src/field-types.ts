@@ -55,6 +55,10 @@ export interface ImageHints {
 	accept?: string
 }
 
+export interface FileHints {
+	accept?: string
+}
+
 // --- Internals ---
 
 type OrderByDirection = 'asc' | 'desc'
@@ -122,6 +126,8 @@ export const n = {
 	},
 	/** Image picker (opens media library). Accepts hints for the scanner; no Zod validation applied. */
 	image: (_hints?: ImageHints) => withOrderBy(z.string().describe('cms:image')),
+	/** File picker (opens media library for any file type — PDFs, docs, etc.). Accepts hints for the scanner; no Zod validation applied. */
+	file: (_hints?: FileHints) => withOrderBy(z.string().describe('cms:file')),
 	/** URL input */
 	url: (hints?: TextHints) => stringField('url', hints),
 	/** Email input */
@@ -130,6 +136,15 @@ export const n = {
 	tel: (hints?: TextHints) => stringField('tel', hints),
 	/** Color picker */
 	color: () => withOrderBy(z.string().describe('cms:color')),
+	/** Year picker (integer input). Defaults to 1900–2100 when no min/max given. */
+	year: (hints?: NumberHints) => {
+		let schema = z.number()
+		if (hints?.min != null) schema = schema.min(hints.min)
+		if (hints?.max != null) schema = schema.max(hints.max)
+		return withOrderBy(schema.describe('cms:year'))
+	},
+	/** Month picker (YYYY-MM). Accepts hints for the scanner; no Zod validation applied. */
+	month: (_hints?: DateHints) => withOrderBy(z.string().describe('cms:month')),
 	/** Date picker (handles YAML Date coercion → ISO date string). Accepts hints for the scanner; no Zod validation applied. */
 	date: (_hints?: DateHints) => withOrderBy(z.preprocess(toISODate, z.string()).describe('cms:date')),
 	/** Date + time picker (handles YAML Date coercion → ISO datetime string). Accepts hints for the scanner; no Zod validation applied. */

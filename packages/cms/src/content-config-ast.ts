@@ -20,6 +20,10 @@ export interface ParsedField {
 	reference?: ParsedReference
 	/** True when the field is `image()` from an Astro callback schema, which routes through `astro:assets`. */
 	astroImage?: boolean
+	/** Element type for `array` fields */
+	itemType?: FieldType
+	/** Nested fields for `object` fields, or per-item fields for `array` of objects */
+	fields?: ParsedField[]
 }
 
 export interface ParsedCollection {
@@ -33,6 +37,7 @@ const FIELD_HELPER_TYPES = new Set([
 	'text',
 	'number',
 	'image',
+	'file',
 	'url',
 	'email',
 	'tel',
@@ -40,6 +45,8 @@ const FIELD_HELPER_TYPES = new Set([
 	'date',
 	'datetime',
 	'time',
+	'year',
+	'month',
 	'textarea',
 ])
 
@@ -55,6 +62,26 @@ const VALID_HINT_KEYS = new Set([
 ])
 
 const WRAPPER_METHODS = new Set(['optional', 'nullable', 'nullish', 'default'])
+
+/** Map of top-level `const <name> = <expr>` bindings within a single config file. */
+type Bindings = Map<string, t.Node>
+
+/**
+ * Follow `Identifier` references through same-file `const` bindings until reaching
+ * a non-Identifier node. Cycle-safe via the visited set. Returns the original node
+ * unchanged when the identifier is unbound or already visited.
+ */
+function resolveExpression(node: t.Node, bindings: Bindings, visited: Set<string> = new Set()): t.Node {
+	let current: t.Node = node
+	while (current.type === 'Identifier') {
+		if (visited.has(current.name)) return current
+		visited.add(current.name)
+		const next = bindings.get(current.name)
+		if (!next) return current
+		current = next
+	}
+	return current
+}
 
 /** Cached parse result keyed by absolute path; invalidated by mtime. */
 const parseCache = new Map<string, { mtimeMs: number; parsed: ParsedConfig }>()
@@ -95,8 +122,11 @@ export function parseConfigSource(source: string, sourcePath?: string): ParsedCo
 	const ast = parseFrontmatter(source, sourcePath) as unknown as t.File | null
 	if (!ast) return result
 
-	// Collect `const X = defineCollection({...})` declarations and the
-	// `export const collections = { name: X, ... }` mapping, in any order.
+	// Single pass: collect every top-level `const X = <expr>` binding (so we can
+	// later resolve Identifier references like `cs: TestimonialTranslation`),
+	// while also picking out `defineCollection({...})` calls and the
+	// `export const collections = { name: X, ... }` mapping.
+	const bindings: Bindings = new Map()
 	const collectionDecls = new Map<string, t.ObjectExpression>()
 	const exportMap = new Map<string, string>() // varName → collectionName
 
@@ -111,6 +141,8 @@ export function parseConfigSource(source: string, sourcePath?: string): ParsedCo
 		for (const decl of varDecl.declarations) {
 			if (decl.id.type !== 'Identifier') continue
 			if (!decl.init) continue
+
+			bindings.set(decl.id.name, decl.init)
 
 			if (decl.id.name === 'collections' && decl.init.type === 'ObjectExpression') {
 				for (const prop of decl.init.properties) {
@@ -144,12 +176,12 @@ export function parseConfigSource(source: string, sourcePath?: string): ParsedCo
 		) as t.ObjectProperty | undefined
 		if (!schemaProperty) continue
 
-		const schemaObject = unwrapSchemaToObject(schemaProperty.value)
+		const schemaObject = unwrapSchemaToObject(schemaProperty.value, bindings)
 		if (!schemaObject) continue
 
 		result.set(collectionName, {
 			name: collectionName,
-			fields: parseSchemaFields(schemaObject),
+			fields: parseSchemaFields(schemaObject, bindings),
 		})
 	}
 
@@ -168,24 +200,27 @@ function propertyKeyName(key: t.Node): string | null {
 
 /**
  * Unwrap a `schema:` value down to the top-level (z|n).object({ ... }) ObjectExpression.
- * Handles direct calls and the Astro callback form `({ image }) => z.object({...})`.
+ * Handles direct calls, the Astro callback form `({ image }) => z.object({...})`,
+ * and same-file variable references like `schema: BlogSchema`.
  */
-function unwrapSchemaToObject(node: t.Node): t.ObjectExpression | null {
-	if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
-		const body = node.body
+function unwrapSchemaToObject(node: t.Node, bindings: Bindings): t.ObjectExpression | null {
+	const resolved = resolveExpression(node, bindings)
+
+	if (resolved.type === 'ArrowFunctionExpression' || resolved.type === 'FunctionExpression') {
+		const body = resolved.body
 		if (body.type === 'BlockStatement') {
 			for (const stmt of body.body) {
 				if (stmt.type === 'ReturnStatement' && stmt.argument) {
-					return unwrapSchemaToObject(stmt.argument)
+					return unwrapSchemaToObject(stmt.argument, bindings)
 				}
 			}
 			return null
 		}
-		return unwrapSchemaToObject(body)
+		return unwrapSchemaToObject(body, bindings)
 	}
 
-	if (node.type === 'CallExpression') {
-		const callee = node.callee
+	if (resolved.type === 'CallExpression') {
+		const callee = resolved.callee
 		if (
 			callee.type === 'MemberExpression'
 			&& callee.object.type === 'Identifier'
@@ -193,15 +228,17 @@ function unwrapSchemaToObject(node: t.Node): t.ObjectExpression | null {
 			&& callee.property.type === 'Identifier'
 			&& callee.property.name === 'object'
 		) {
-			const arg = node.arguments[0]
-			if (arg?.type === 'ObjectExpression') return arg
+			const arg = resolved.arguments[0]
+			if (!arg) return null
+			const resolvedArg = resolveExpression(arg, bindings)
+			if (resolvedArg.type === 'ObjectExpression') return resolvedArg
 		}
 	}
 
 	return null
 }
 
-function parseSchemaFields(schemaObject: t.ObjectExpression): ParsedField[] {
+function parseSchemaFields(schemaObject: t.ObjectExpression, bindings: Bindings): ParsedField[] {
 	const fields: ParsedField[] = []
 	for (const prop of schemaObject.properties) {
 		if (prop.type !== 'ObjectProperty') continue
@@ -209,7 +246,7 @@ function parseSchemaFields(schemaObject: t.ObjectExpression): ParsedField[] {
 		if (!name) continue
 
 		const field: ParsedField = { name, required: true }
-		analyzeFieldExpression(prop.value, field)
+		analyzeFieldExpression(prop.value, field, bindings)
 		fields.push(field)
 	}
 	return fields
@@ -219,14 +256,18 @@ function parseSchemaFields(schemaObject: t.ObjectExpression): ParsedField[] {
  * Walk a field's value expression. Each layer is either a wrapper method call
  * (`.optional()`, `.default()`, `.nullable()`, `.nullish()`, `.orderBy(...)`)
  * or the base call (`n.image()`, `image()`, `z.enum([...])`, `n.array(reference(...))`).
+ *
+ * Resolves same-file `Identifier` references against `bindings` at each layer so
+ * patterns like `cs: TestimonialTranslation` and `en: TestimonialTranslation.optional()`
+ * are followed back to their defining call.
  */
-function analyzeFieldExpression(node: t.Node, field: ParsedField): void {
-	let current: t.Node | null = node
+function analyzeFieldExpression(node: t.Node, field: ParsedField, bindings: Bindings): void {
+	let current: t.Node | null = resolveExpression(node, bindings)
 	while (current) {
 		if (current.type !== 'CallExpression') return
 
 		if (isBaseCall(current)) {
-			analyzeBaseCall(current, field)
+			analyzeBaseCall(current, field, bindings)
 			return
 		}
 
@@ -242,7 +283,7 @@ function analyzeFieldExpression(node: t.Node, field: ParsedField): void {
 			field.orderBy = { direction }
 		}
 
-		current = current.callee.object
+		current = resolveExpression(current.callee.object, bindings)
 	}
 }
 
@@ -262,7 +303,7 @@ function isBaseCall(node: t.CallExpression): boolean {
 	return false
 }
 
-function analyzeBaseCall(node: t.CallExpression, field: ParsedField): void {
+function analyzeBaseCall(node: t.CallExpression, field: ParsedField, bindings: Bindings): void {
 	const callee = node.callee
 
 	// Bare image() / reference() from the schema callback form
@@ -314,11 +355,26 @@ function analyzeBaseCall(node: t.CallExpression, field: ParsedField): void {
 		return
 	}
 
-	// (z|n).array(reference('foo'))  →  array of references
+	// (z|n).object({...})  →  nested object field
+	if ((ns === 'z' || ns === 'n') && fn === 'object') {
+		const arg = node.arguments[0]
+		if (!arg) return
+		const resolved = resolveExpression(arg, bindings)
+		if (resolved.type === 'ObjectExpression') {
+			field.type = 'object'
+			field.fields = parseSchemaFields(resolved, bindings)
+		}
+		return
+	}
+
+	// (z|n).array(<inner>)  →  array; inspect the element type
 	if ((ns === 'z' || ns === 'n') && fn === 'array') {
-		const inner = node.arguments[0]
+		const innerRaw = node.arguments[0]
+		if (!innerRaw) return
+		const inner = resolveExpression(innerRaw, bindings)
+		// Array of references: keep the existing flat shape so detectReferenceFields can wire it up.
 		if (
-			inner?.type === 'CallExpression'
+			inner.type === 'CallExpression'
 			&& inner.callee.type === 'Identifier'
 			&& inner.callee.name === 'reference'
 		) {
@@ -326,7 +382,18 @@ function analyzeBaseCall(node: t.CallExpression, field: ParsedField): void {
 			if (target?.type === 'StringLiteral') {
 				field.reference = { target: target.value, isArray: true }
 			}
+			return
 		}
+		// Array of anything else: analyze the inner expression and lift its type/fields.
+		// Note: nested arrays (`n.array(n.array(...))`) collapse here — `itemType` records
+		// only the outer element type, the inner element shape is lost. No editor flow
+		// currently renders nested arrays, so we don't carry a recursive `itemDefinition`
+		// yet; add one when editor support arrives.
+		const innerField: ParsedField = { name: '__item__', required: true }
+		analyzeFieldExpression(inner, innerField, bindings)
+		field.type = 'array'
+		if (innerField.type) field.itemType = innerField.type
+		if (innerField.fields) field.fields = innerField.fields
 		return
 	}
 }

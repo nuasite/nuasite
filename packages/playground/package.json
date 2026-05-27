@@ -15,6 +15,7 @@
 		"astro": "catalog:astro"
 	},
 	"devDependencies": {
+		"@nuasite/agent-summary": "workspace:*",
 		"@nuasite/notes": "workspace:*"
 	}
 }

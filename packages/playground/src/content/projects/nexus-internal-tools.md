@@ -19,4 +19,4 @@ The generated file lists each page with its URL, title, description, and content
 
 ### Integration
 
-Runs as a post-build step. Can also be triggered via the `nua build` CLI, which injects the agent summary automatically alongside the standard Astro build output.
+Runs as a post-build step. Add `agentsSummary()` to your Astro `integrations` array to enable it.

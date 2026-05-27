@@ -200,6 +200,7 @@ export function FrontmatterSidebar({ fields, page, collectionDefinition }: Front
 														onChange={(newValue) => updateMarkdownFrontmatter({ [field.name]: newValue })}
 														collection={collectionDefinition?.name}
 														entrySlug={page.slug}
+														hasOpenInNewTabSibling={schemaFieldNames.has(`${field.name}OpenInNewTab`)}
 													/>
 												)
 												: (

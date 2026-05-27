@@ -3,5 +3,5 @@
 	"compilerOptions": {
 		"outDir": "../dist/types"
 	},
-	"references": [{ "path": "../../agent-summary/src" }, { "path": "../../cms/src" }]
+	"references": [{ "path": "../../cms/src" }]
 }

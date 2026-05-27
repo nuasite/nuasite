@@ -1,3 +1,4 @@
+import { agentsSummary } from '@nuasite/agent-summary'
 import notes from '@nuasite/notes'
 import { defineConfig } from '@nuasite/nua/config'
 
@@ -8,6 +9,7 @@ export default defineConfig({
 	},
 	integrations: [
 		notes(),
+		agentsSummary(),
 	],
 	nua: {
 		cms: {

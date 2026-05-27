@@ -19,14 +19,11 @@
 		"nua": "src/index.ts"
 	},
 	"scripts": {
-		"build": "bun build --target=bun --outdir=dist --external lightningcss --external astro src/index.ts",
+		"build": "bun build --target=bun --outdir=dist --external lightningcss src/index.ts",
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"dependencies": {
-		"@nuasite/agent-summary": "workspace:*",
-		"@nuasite/cms": "workspace:*",
-		"astro": "catalog:astro",
-		"stacktracey": "catalog:parsers"
+		"@nuasite/cms": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/bun": "catalog:build"
