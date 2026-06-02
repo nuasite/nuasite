@@ -52,6 +52,7 @@ export interface CmsConfig {
 	theme?: CmsThemeConfig
 	themePreset?: CmsThemePreset
 	features?: CmsFeatures
+	listStyles?: Array<{ label: string; class: string }>
 	/** Maximum upload size in bytes for media uploads (injected by the integration). */
 	maxUploadSize?: number
 	/**

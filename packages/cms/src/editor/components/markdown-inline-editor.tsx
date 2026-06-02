@@ -20,6 +20,7 @@ import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-p
 import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
 import { config, mdxComponentPickerOpen, openMediaLibraryWithCallback, resetMarkdownEditorState, showToast, updateMarkdownContent } from '../signals'
 import { STRINGS } from '../strings'
+import { setBulletListStyleCommand, styledListPlugin } from '../styled-list-plugin'
 import { LinkEditPopover } from './link-edit-popover'
 import { MdxComponentIcon } from './mdx-block-view'
 import { MdxComponentPicker } from './mdx-component-picker'
@@ -48,6 +49,7 @@ export function MarkdownInlineEditor({
 	const [isReady, setIsReady] = useState(false)
 	const [isDragging, setIsDragging] = useState(false)
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+	const listStyles = (config.value.listStyles ?? []).filter(style => style.label && style.class)
 
 	// Track active formatting for toolbar highlighting
 	const [activeFormats, setActiveFormats] = useState<ActiveFormats>(defaultActiveFormats)
@@ -91,6 +93,7 @@ export function MarkdownInlineEditor({
 						})
 					})
 					.use(commonmark)
+					.use(styledListPlugin)
 					.use(gfm)
 					.use(listener)
 
@@ -234,6 +237,15 @@ export function MarkdownInlineEditor({
 			runCommand(wrapInOrderedListCommand.key)
 		}
 	}, [runCommand, checkInList])
+
+	const handleListStyle = useCallback((listStyle: string | null) => {
+		if (!editorInstanceRef.current) return
+		try {
+			editorInstanceRef.current.action(callCommand(setBulletListStyleCommand.key, listStyle))
+		} catch (error) {
+			console.error('Failed to set list style:', error)
+		}
+	}, [])
 
 	const handleInsertHeading = useCallback((level: number) => {
 		if (!editorInstanceRef.current) return
@@ -537,6 +549,21 @@ export function MarkdownInlineEditor({
 							</text>
 						</svg>
 					</ToolbarButton>
+					{listStyles.length > 0 && (
+						<select
+							class={cn(
+								'h-8 max-w-40 rounded-cms-sm border border-white/15 bg-cms-dark px-2 text-xs text-white/90 outline-none transition-colors',
+								'hover:bg-white/10 focus:border-cms-primary focus:ring-1 focus:ring-cms-primary',
+								!activeFormats.bulletList && 'opacity-60',
+							)}
+							title="List style"
+							value={activeFormats.listStyle ?? ''}
+							onChange={(event) => handleListStyle((event.currentTarget as HTMLSelectElement).value || null)}
+						>
+							<option value="">Default</option>
+							{listStyles.map(style => <option key={style.class} value={style.class}>{style.label}</option>)}
+						</select>
+					)}
 					<ToolbarButton
 						onClick={handleQuote}
 						title="Quote"
