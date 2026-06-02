@@ -579,7 +579,9 @@ export function SchemaFrontmatterField({
 			// date part, but preserve the original time component on change so editing the date
 			// doesn't silently drop the time.
 			const raw = value == null ? '' : String(value)
-			const timeSuffix = raw.match(/T\d{2}:\d{2}(:\d{2})?/)?.[0] ?? ''
+			// Preserve the full time component on change — including fractional seconds and any
+			// timezone designator (Z or ±HH:MM) — so editing only the date never drops them.
+			const timeSuffix = raw.match(/T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?/)?.[0] ?? ''
 			return (
 				<div class="flex flex-col gap-1" data-cms-ui>
 					<label class="text-xs text-white/60 font-medium">{label}</label>

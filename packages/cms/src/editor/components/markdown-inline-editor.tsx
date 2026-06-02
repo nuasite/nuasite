@@ -93,7 +93,15 @@ export function MarkdownInlineEditor({
 						})
 					})
 					.use(commonmark)
-					.use(styledListPlugin)
+
+				// Styled bullet lists are opt-in: only load the plugin (and its `-` bullet
+				// normalization) when the site configures list styles, so sites that don't use
+				// the feature keep their previous list serialization untouched.
+				if (listStyles.length > 0) {
+					builder.use(styledListPlugin)
+				}
+
+				builder
 					.use(gfm)
 					.use(listener)
 
