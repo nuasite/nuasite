@@ -35,6 +35,8 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		themePreset?: string
 		features?: CmsFeatures
 		listStyles?: Array<{ label: string; class: string }>
+		/** Open the entry editor's metadata (frontmatter) panel by default instead of collapsed. */
+		openMetadataByDefault?: boolean
 		/**
 		 * Describes the host site's color theme. The CMS draws editor chrome and outlines
 		 * in a contrasting color. 'auto' (default) detects via prefers-color-scheme and

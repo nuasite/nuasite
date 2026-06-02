@@ -60,7 +60,7 @@ export function MarkdownEditorOverlay() {
 		: activeCollectionDef?.fileExtension === 'mdx'
 
 	const [isSaving, setIsSaving] = useState(false)
-	const [showFrontmatter, setShowFrontmatter] = useState(isCreateMode || isDataCollection)
+	const [showFrontmatter, setShowFrontmatter] = useState(isCreateMode || isDataCollection || config.value.openMetadataByDefault === true)
 	// Track whether the user has manually edited the slug (disables auto-slug from title)
 	const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
 	// Preview mode state

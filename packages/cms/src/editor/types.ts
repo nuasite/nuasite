@@ -53,6 +53,8 @@ export interface CmsConfig {
 	themePreset?: CmsThemePreset
 	features?: CmsFeatures
 	listStyles?: Array<{ label: string; class: string }>
+	/** Open the entry editor's metadata (frontmatter) panel by default instead of collapsed. */
+	openMetadataByDefault?: boolean
 	/** Maximum upload size in bytes for media uploads (injected by the integration). */
 	maxUploadSize?: number
 	/**
