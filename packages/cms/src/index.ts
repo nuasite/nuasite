@@ -59,10 +59,12 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	 */
 	mdxComponentDirs?: string[]
 	/**
-	 * Per-collection field overrides for position and grouping.
+	 * Per-collection overrides for the CMS browser.
 	 * Highest priority — overrides scanner defaults and frontmatter comment directives.
 	 */
 	collections?: Record<string, {
+		/** Display label shown in the CMS (overrides the name-derived default, e.g. "Jsem Otazky" → "Otázky"). */
+		label?: string
 		fields?: Record<string, { position?: 'sidebar' | 'header'; group?: string }>
 	}>
 	/**
@@ -186,7 +188,9 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				if (options.collections) {
 					for (const [collectionName, overrides] of Object.entries(options.collections)) {
 						const def = collectionDefinitions[collectionName]
-						if (!def || !overrides.fields) continue
+						if (!def) continue
+						if (overrides.label) def.label = overrides.label
+						if (!overrides.fields) continue
 						for (const field of def.fields) {
 							const fieldOverride = overrides.fields[field.name]
 							if (!fieldOverride) continue

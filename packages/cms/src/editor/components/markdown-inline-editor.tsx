@@ -127,6 +127,21 @@ export function MarkdownInlineEditor({
 		}
 	}, [])
 
+	// Adopt content that streams in AFTER the editor mounted with a placeholder.
+	// The collections browser opens the modal immediately (empty), then fetches
+	// the entry body, so `initialContent` changes once content arrives. The
+	// Milkdown instance is created once, so re-seed it here — but only while the
+	// user hasn't edited the placeholder yet, so in-progress edits are never lost.
+	useEffect(() => {
+		if (!isReady) return
+		if (initialContent === initialContentRef.current) return
+		if (contentRef.current === initialContentRef.current) {
+			editorInstanceRef.current?.action(replaceAll(initialContent))
+			setContent(initialContent)
+		}
+		initialContentRef.current = initialContent
+	}, [initialContent, isReady])
+
 	const handleSave = useCallback(() => {
 		onSave(content)
 		resetMarkdownEditorState()

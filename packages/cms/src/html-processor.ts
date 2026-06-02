@@ -1,4 +1,6 @@
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
+import path from 'node:path'
+import { getProjectRoot } from './config'
 import { processSeoFromHtml } from './seo-processor'
 
 import { extractBackgroundImageClasses, extractColorClasses, extractTextStyleClasses } from './tailwind-colors'
@@ -283,6 +285,7 @@ export async function processHtml(
 	const components: Record<string, ComponentInstance> = {}
 	const sourceLocationMap = new Map<string, { file: string; line: number }>()
 	const markedComponentRoots = new Set<HTMLNode>()
+	const markdownRegionPaths = new Map<string, string>()
 	let collectionWrapperId: string | undefined
 	const componentCountPerParent = new Map<string, Map<string, number>>()
 
@@ -462,6 +465,7 @@ export async function processHtml(
 	// Collection wrapper detection pass: find the element that wraps markdown content
 	// This needs to run BEFORE image marking so we can skip images inside markdown
 	let markdownWrapperNode: HTMLNode | null = null
+	const markdownWrapperNodes = new Set<HTMLNode>()
 
 	// Three strategies in priority order:
 	// 0. Rehype marker: the rehype-cms-marker plugin marks the first rendered element
@@ -473,16 +477,24 @@ export async function processHtml(
 		let foundWrapper = false
 
 		// Strategy 0: Rehype marker — most reliable
-		const markerEl = root.querySelector('[data-cms-markdown-content]')
-		if (markerEl) {
+		const markerEls = root.querySelectorAll('[data-cms-markdown-content]')
+		for (const markerEl of markerEls) {
+			const markerPath = markerEl.getAttribute('data-cms-markdown-content') ?? ''
 			markerEl.removeAttribute('data-cms-markdown-content')
 			const parent = markerEl.parentNode as HTMLNode | null
 			if (parent && parent.tagName) {
 				const id = getNextId()
 				parent.setAttribute(attributeName, id)
 				parent.setAttribute('data-cms-markdown', 'true')
-				collectionWrapperId = id
-				markdownWrapperNode = parent
+				if (markerPath) {
+					const relPath = path.relative(getProjectRoot(), markerPath).split(path.sep).join('/').replace(/\\/g, '/')
+					markdownRegionPaths.set(id, relPath)
+				}
+				if (!collectionWrapperId) {
+					collectionWrapperId = id
+					markdownWrapperNode = parent
+				}
+				markdownWrapperNodes.add(parent)
 				foundWrapper = true
 			}
 		}
@@ -517,6 +529,7 @@ export async function processHtml(
 					node.setAttribute('data-cms-markdown', 'true')
 					collectionWrapperId = id
 					markdownWrapperNode = node
+					markdownWrapperNodes.add(node)
 					foundWrapper = true
 				}
 			}
@@ -584,6 +597,7 @@ export async function processHtml(
 					bestWrapper.setAttribute('data-cms-markdown', 'true')
 					collectionWrapperId = id
 					markdownWrapperNode = bestWrapper
+					markdownWrapperNodes.add(bestWrapper)
 					foundWrapper = true
 				}
 			}
@@ -635,6 +649,7 @@ export async function processHtml(
 						best.node.setAttribute('data-cms-markdown', 'true')
 						collectionWrapperId = id
 						markdownWrapperNode = best.node
+						markdownWrapperNodes.add(best.node)
 						foundWrapper = true
 					}
 				}
@@ -644,10 +659,10 @@ export async function processHtml(
 
 	// Helper function to check if a node is inside the markdown wrapper
 	const isInsideMarkdownWrapper = (node: HTMLNode): boolean => {
-		if (!markdownWrapperNode) return false
+		if (!markdownWrapperNode && markdownWrapperNodes.size === 0) return false
 		let current = node.parentNode as HTMLNode | null
 		while (current) {
-			if (current === markdownWrapperNode) return true
+			if (current === markdownWrapperNode || markdownWrapperNodes.has(current)) return true
 			current = current.parentNode as HTMLNode | null
 		}
 		return false
@@ -998,7 +1013,7 @@ export async function processHtml(
 				// Add collection info for the wrapper entry
 				collectionName: isCollectionWrapper ? collectionInfo?.name : undefined,
 				collectionSlug: isCollectionWrapper ? collectionInfo?.slug : undefined,
-				contentPath: isCollectionWrapper ? collectionInfo?.contentPath : undefined,
+				contentPath: markdownRegionPaths.get(id) ?? (isCollectionWrapper ? collectionInfo?.contentPath : undefined),
 				// Robustness fields
 				stableId,
 				// Image metadata for image entries

@@ -5,11 +5,11 @@
  * relying on heuristics.
  */
 export function rehypeCmsMarker() {
-	return (tree: any) => {
+	return (tree: any, file: any) => {
 		const firstElement = tree.children?.find((n: any) => n.type === 'element')
 		if (firstElement) {
 			firstElement.properties ??= {}
-			firstElement.properties['dataCmsMarkdownContent'] = ''
+			firstElement.properties['dataCmsMarkdownContent'] = file?.path ?? (Array.isArray(file?.history) ? file.history[0] : '') ?? ''
 		}
 	}
 }

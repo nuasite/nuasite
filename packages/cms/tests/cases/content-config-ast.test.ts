@@ -229,6 +229,21 @@ describe('parseConfigSource — supported forms', () => {
 		expect(fields.find(f => f.name === 'cover')?.astroImage).toBe(true)
 		expect(fields.find(f => f.name === 'thumbnail')?.astroImage).toBeUndefined()
 	})
+
+	test('captures glob loader pattern and base', () => {
+		const result = parseConfigSource(`
+			import { defineCollection } from 'astro:content'
+			import { glob } from 'astro/loaders'
+			const c = defineCollection({
+				loader: glob({ pattern: \`*/items/*.{md,mdx}\`, base: './src/content/foo' }),
+			})
+			export const collections = { c }
+		`)
+		expect(result.get('c')).toMatchObject({
+			loaderPattern: '*/items/*.{md,mdx}',
+			loaderBase: './src/content/foo',
+		})
+	})
 })
 
 // These tests pin down patterns the parser intentionally doesn't handle.
