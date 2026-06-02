@@ -46,6 +46,42 @@ export const collections = { ${exports} }
 // ─── orderBy parsing ──────────────────────────────────────────────
 
 withTempDir('collection-scanner: orderBy', (getCtx) => {
+	test('discovers config-declared nested glob collections sharing a parent directory', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['foo'])
+		await ctx.writeFile(
+			'src/content.config.ts',
+			`import { defineCollection } from 'astro:content'
+import { glob } from 'astro/loaders'
+const foo = defineCollection({
+  loader: glob({ pattern: '*/index.{md,mdx}', base: './src/content/foo' }),
+})
+const fooItems = defineCollection({
+  loader: glob({ pattern: '*/items/*.{md,mdx}', base: './src/content/foo' }),
+})
+export const collections = { foo, 'foo-items': fooItems }
+`,
+		)
+
+		await ctx.writeFile('src/content/foo/alpha/index.md', '---\ntitle: Alpha\n---\n')
+		await ctx.writeFile('src/content/foo/beta/index.md', '---\ntitle: Beta\n---\n')
+		await ctx.writeFile('src/content/foo/alpha/items/one.md', '---\ntitle: One\n---\n')
+		await ctx.writeFile('src/content/foo/beta/items/two.mdx', '---\ntitle: Two\n---\n')
+
+		const result = await scanCollections()
+		expect(Object.keys(result).sort()).toEqual(['foo', 'foo-items'])
+		expect(result['foo']!.entries!.map(e => e.slug).sort()).toEqual(['alpha', 'beta'])
+		expect(result['foo']!.entries!.map(e => e.sourcePath).sort()).toEqual([
+			'src/content/foo/alpha/index.md',
+			'src/content/foo/beta/index.md',
+		])
+		expect(result['foo-items']!.entries!.map(e => e.slug).sort()).toEqual(['alpha/items/one', 'beta/items/two'])
+		expect(result['foo-items']!.entries!.map(e => e.sourcePath).sort()).toEqual([
+			'src/content/foo/alpha/items/one.md',
+			'src/content/foo/beta/items/two.mdx',
+		])
+	})
+
 	test('detects .orderBy("asc") and sets direction', async () => {
 		const ctx = getCtx()
 		await setupContentCollections(ctx, ['team'])

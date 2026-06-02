@@ -573,7 +573,35 @@ export function SchemaFrontmatterField({
 				</div>
 			)
 
-		case 'date':
+		case 'date': {
+			// A `date` field's value is often a full datetime (e.g. "2026-04-14T08:35:00"),
+			// which an <input type="date"> can't display (it needs YYYY-MM-DD). Show only the
+			// date part, but preserve the original time component on change so editing the date
+			// doesn't silently drop the time.
+			const raw = value == null ? '' : String(value)
+			// Preserve the full time component on change — including fractional seconds and any
+			// timezone designator (Z or ±HH:MM) — so editing only the date never drops them.
+			const timeSuffix = raw.match(/T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?/)?.[0] ?? ''
+			return (
+				<div class="flex flex-col gap-1" data-cms-ui>
+					<label class="text-xs text-white/60 font-medium">{label}</label>
+					<input
+						type="date"
+						value={raw.slice(0, 10)}
+						min={hints?.min != null ? String(hints.min) : undefined}
+						max={hints?.max != null ? String(hints.max) : undefined}
+						required={field.required}
+						onInput={(e) => {
+							const d = (e.target as HTMLInputElement).value
+							onChange(d ? `${d}${timeSuffix}` : '')
+						}}
+						class="px-3 py-2 text-sm bg-white/10 border border-white/20 rounded-cms-sm text-white focus:outline-none focus:border-white/40"
+						data-cms-ui
+					/>
+				</div>
+			)
+		}
+
 		case 'datetime':
 		case 'time':
 		case 'month':

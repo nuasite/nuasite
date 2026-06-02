@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { isMap, isPair, isScalar, parse as parseYaml, parseDocument } from 'yaml'
@@ -330,7 +331,7 @@ function collectFieldObservations(
 	}
 }
 
-function buildCollectionDefinition(
+function assembleCollectionDefinition(
 	collectionName: string,
 	contentDir: string,
 	fieldMap: Map<string, FieldObservation>,
@@ -357,6 +358,84 @@ function buildCollectionDefinition(
 		entries: entryInfos,
 		...extra,
 	}
+}
+
+function getCollectionSourceBasePath(basePath: string, collectionName: string, contentDir: string): string {
+	const projectRoot = getProjectRoot()
+	const defaultContentDir = path.isAbsolute(contentDir) ? contentDir : path.join(projectRoot, contentDir)
+	const defaultCollectionPath = path.join(defaultContentDir, collectionName)
+	if (path.resolve(basePath) === path.resolve(defaultCollectionPath)) {
+		return path.join(contentDir, collectionName)
+	}
+
+	const relativeBase = path.relative(projectRoot, basePath)
+	if (relativeBase && !relativeBase.startsWith('..') && !path.isAbsolute(relativeBase)) {
+		return relativeBase
+	}
+	return basePath
+}
+
+async function buildCollectionDefinition(
+	basePath: string,
+	sources: Array<{ slug: string; relPath: string }>,
+	collectionName: string,
+	contentDir: string,
+): Promise<CollectionDefinition | null> {
+	if (sources.length === 0) return null
+
+	const sourceBasePath = getCollectionSourceBasePath(basePath, collectionName, contentDir)
+	const hasMd = sources.some(s => s.relPath.endsWith('.md'))
+	const fileExtension: 'md' | 'mdx' = hasMd ? 'md' : 'mdx'
+
+	const fieldMap = new Map<string, FieldObservation>()
+	const allDirectives: Record<string, { position?: 'sidebar' | 'header'; group?: string }> = {}
+	const entryInfos: CollectionEntryInfo[] = []
+	let hasDraft = false
+
+	const fileContents = await Promise.all(
+		sources.map(s => fs.readFile(path.join(basePath, s.relPath), 'utf-8')),
+	)
+
+	for (let i = 0; i < sources.length; i++) {
+		const source = sources[i]!
+		const content = fileContents[i]!
+		const frontmatter = parseFrontmatter(content)
+
+		const directives = parseFieldDirectives(content)
+		for (const [key, value] of Object.entries(directives)) {
+			if (!allDirectives[key]) {
+				allDirectives[key] = value
+			}
+		}
+
+		const entryInfo: CollectionEntryInfo = {
+			slug: source.slug,
+			sourcePath: path.join(sourceBasePath, source.relPath),
+		}
+		if (frontmatter) {
+			if (typeof frontmatter.title === 'string') {
+				entryInfo.title = frontmatter.title
+			}
+			if (typeof frontmatter.draft === 'boolean' && frontmatter.draft) {
+				entryInfo.draft = true
+			}
+			entryInfo.data = frontmatter
+		}
+		entryInfos.push(entryInfo)
+
+		if (!frontmatter) continue
+
+		if (frontmatter.draft === true) hasDraft = true
+		collectFieldObservations(fieldMap, frontmatter, sources.length)
+	}
+
+	const def = assembleCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, sources.length, {
+		path: sourceBasePath,
+		supportsDraft: hasDraft,
+		fileExtension,
+	})
+	assignFieldMetadata(def.fields, allDirectives)
+	return def
 }
 
 /**
@@ -397,58 +476,86 @@ async function scanCollection(collectionPath: string, collectionName: string, co
 		}
 
 		if (sources.length === 0) return null
+		return await buildCollectionDefinition(collectionPath, sources, collectionName, contentDir)
+	} catch {
+		return null
+	}
+}
 
-		const hasMd = sources.some(s => s.relPath.endsWith('.md'))
-		const fileExtension: 'md' | 'mdx' = hasMd ? 'md' : 'mdx'
-
-		const fieldMap = new Map<string, FieldObservation>()
-		const allDirectives: Record<string, { position?: 'sidebar' | 'header'; group?: string }> = {}
-		const entryInfos: CollectionEntryInfo[] = []
-		let hasDraft = false
-
-		const fileContents = await Promise.all(
-			sources.map(s => fs.readFile(path.join(collectionPath, s.relPath), 'utf-8')),
-		)
-
-		for (let i = 0; i < sources.length; i++) {
-			const source = sources[i]!
-			const content = fileContents[i]!
-			const frontmatter = parseFrontmatter(content)
-
-			const directives = parseFieldDirectives(content)
-			for (const [key, value] of Object.entries(directives)) {
-				if (!allDirectives[key]) {
-					allDirectives[key] = value
-				}
+/** Convert a glob pattern (supports `*`, `**`, `?`, `{a,b}`) to an anchored RegExp. */
+function globToRegExp(glob: string): RegExp {
+	let re = ''
+	for (let i = 0; i < glob.length; i++) {
+		const c = glob[i]!
+		if (c === '*') {
+			if (glob[i + 1] === '*') {
+				re += '.*'
+				i++
+				if (glob[i + 1] === '/') i++
+			} else {
+				re += '[^/]*'
 			}
-
-			const entryInfo: CollectionEntryInfo = {
-				slug: source.slug,
-				sourcePath: path.join(contentDir, collectionName, source.relPath),
+		} else if (c === '?') {
+			re += '[^/]'
+		} else if (c === '{') {
+			const end = glob.indexOf('}', i)
+			if (end === -1) {
+				re += '\\{'
+			} else {
+				const opts = glob.slice(i + 1, end).split(',').map(s => s.replace(/[.+^${}()|[\]\\]/g, '\\$&'))
+				re += `(?:${opts.join('|')})`
+				i = end
 			}
-			if (frontmatter) {
-				if (typeof frontmatter.title === 'string') {
-					entryInfo.title = frontmatter.title
-				}
-				if (typeof frontmatter.draft === 'boolean' && frontmatter.draft) {
-					entryInfo.draft = true
-				}
-				entryInfo.data = frontmatter
-			}
-			entryInfos.push(entryInfo)
-
-			if (!frontmatter) continue
-
-			if (frontmatter.draft === true) hasDraft = true
-			collectFieldObservations(fieldMap, frontmatter, sources.length)
+		} else if ('.+^$()|[]\\'.includes(c)) {
+			re += `\\${c}`
+		} else {
+			re += c
 		}
+	}
+	return new RegExp(`^${re}$`)
+}
 
-		const def = buildCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, sources.length, {
-			supportsDraft: hasDraft,
-			fileExtension,
-		})
-		assignFieldMetadata(def.fields, allDirectives)
-		return def
+/** Recursively list files under `dir`, returning forward-slash paths relative to `dir`. */
+async function walkFiles(dir: string, prefix = ''): Promise<string[]> {
+	let dirEntries: Dirent[]
+	try {
+		dirEntries = await fs.readdir(dir, { withFileTypes: true })
+	} catch {
+		return []
+	}
+	const out: string[] = []
+	for (const entry of dirEntries) {
+		if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue
+		const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+		if (entry.isDirectory()) {
+			out.push(...await walkFiles(path.join(dir, entry.name), rel))
+		} else if (entry.isFile()) {
+			out.push(rel)
+		}
+	}
+	return out
+}
+
+/**
+ * Scan a collection declared in content config via a glob loader (base + pattern),
+ * which may share a base directory with another collection (nested layout).
+ * Runtime-agnostic: walks the filesystem and matches the glob (no Bun.Glob dependency).
+ */
+async function scanGlobCollection(
+	collectionName: string,
+	baseRel: string,
+	pattern: string,
+	contentDir: string,
+): Promise<CollectionDefinition | null> {
+	try {
+		const absBase = path.join(getProjectRoot(), baseRel)
+		const matcher = globToRegExp(pattern)
+		const sources = (await walkFiles(absBase))
+			.filter(rel => (rel.endsWith('.md') || rel.endsWith('.mdx')) && matcher.test(rel))
+			.map(rel => ({ slug: rel.replace(/\.(md|mdx)$/, ''), relPath: rel }))
+
+		if (sources.length === 0) return null
+		return await buildCollectionDefinition(absBase, sources, collectionName, contentDir)
 	} catch {
 		return null
 	}
@@ -820,7 +927,7 @@ async function scanDataCollection(collectionPath: string, collectionName: string
 			collectFieldObservations(fieldMap, data, sources.length)
 		}
 
-		return buildCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, sources.length, {
+		return assembleCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, sources.length, {
 			type: 'data',
 			fileExtension: ext,
 		})
@@ -859,6 +966,20 @@ export async function scanCollections(contentDir: string = 'src/content'): Promi
 
 	// Post-scan: apply schema-driven field config, detect references, derived fields, and ordering
 	const parsed = await parseContentConfig()
+	for (const [collectionName, parsedCollection] of parsed) {
+		if (collections[collectionName]) continue
+		if (!parsedCollection.loaderBase || !parsedCollection.loaderPattern) continue
+		const definition = await scanGlobCollection(collectionName, parsedCollection.loaderBase, parsedCollection.loaderPattern, contentDir)
+		if (!definition) continue
+		// Nest under the collection that owns the shared base directory (e.g. jsem-otazky -> jsem),
+		// so the CMS browser can group it under its parent page instead of listing it flat.
+		const baseName = parsedCollection.loaderBase.replace(/[/\\]+$/, '').split(/[/\\]/).pop()
+		if (baseName && baseName !== collectionName && collections[baseName]) {
+			definition.parentCollection = baseName
+		}
+		collections[collectionName] = definition
+	}
+
 	applyParsedConfig(collections, parsed)
 	detectReferenceFields(collections, parsed)
 	detectDerivedHrefFields(collections)

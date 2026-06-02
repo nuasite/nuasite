@@ -28,7 +28,7 @@ export interface ToolbarProps {
 	collectionDefinitions?: Record<string, CollectionDefinition>
 }
 
-type MenuItem = { label: string; icon: ComponentChildren; onClick: () => void; isActive?: boolean }
+type MenuItem = { label: string; icon: ComponentChildren; onClick: () => void; isActive?: boolean; indented?: boolean }
 type MenuSection = { label: string; icon: ComponentChildren; items: MenuItem[] }
 
 const GridIcon = () => (
@@ -98,9 +98,23 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	if (collectionDefinitions) {
 		const entries = Object.entries(collectionDefinitions)
 		if (entries.length > 0) {
-			const contentItems: MenuItem[] = entries.map(([name, def]) => ({
+			// Group nested (child) collections under their parent, child entries indented.
+			const ordered: Array<[string, CollectionDefinition, boolean]> = []
+			for (const [name, def] of entries.filter(([, d]) => !d.parentCollection)) {
+				ordered.push([name, def, false])
+				for (const [childName, childDef] of entries.filter(([, d]) => d.parentCollection === name)) {
+					ordered.push([childName, childDef, true])
+				}
+			}
+			// Orphaned children whose parent isn't present stay top-level so nothing is hidden.
+			for (const [name, def] of entries.filter(([, d]) => d.parentCollection && !collectionDefinitions[d.parentCollection])) {
+				ordered.push([name, def, false])
+			}
+
+			const contentItems: MenuItem[] = ordered.map(([name, def, indented]) => ({
 				label: def.label,
 				icon: <GridIcon />,
+				indented,
 				onClick: () => callbacks.onOpenCollection?.(name),
 			}))
 
@@ -410,6 +424,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 																		}}
 																		class={cn(
 																			'w-full pl-9 pr-4 py-2 text-sm text-left transition-colors cursor-pointer flex items-center gap-3',
+																			item.indented && 'pl-16 text-xs text-white/45',
 																			item.isActive
 																				? 'bg-white/20 text-white'
 																				: 'text-white/60 hover:bg-white/10 hover:text-white',

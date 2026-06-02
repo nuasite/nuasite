@@ -345,6 +345,12 @@ export interface CollectionDefinition {
 	orderBy?: string
 	/** Sort direction for orderBy field */
 	orderDirection?: 'asc' | 'desc'
+	/**
+	 * Name of the collection this one is nested under in the CMS browser, when it shares a base
+	 * directory with another collection (e.g. a nested `*​/otazky/*` collection grouped under the
+	 * `*​/index.md` collection at the same base). Purely presentational grouping.
+	 */
+	parentCollection?: string
 }
 
 /** Manifest metadata for versioning and conflict detection */

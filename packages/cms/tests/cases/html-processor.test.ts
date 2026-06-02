@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import path from 'node:path'
 import { cleanText } from '../../src/html-processor'
 import {
 	cmsDescribe,
@@ -269,6 +270,66 @@ cmsDescribe('collection wrapper', { generateManifest: true }, (ctx) => {
 		expect(wrapperEntry?.contentPath).toBe('src/content/services/3d-tisk.md')
 		expect(wrapperEntry?.collectionName).toBe('services')
 		expect(wrapperEntry?.collectionSlug).toBe('3d-tisk')
+	})
+
+	test('includes distinct contentPath values for multiple rehype-marked markdown wrappers', async () => {
+		const firstContentPath = path.join(process.cwd(), 'src/content/faq/shipping.md')
+		const secondContentPath = path.join(process.cwd(), 'src/content/faq/returns.md')
+		const input = `
+			<section>
+				<div class="prose">
+					<p data-cms-markdown-content="${firstContentPath}">Shipping answer</p>
+				</div>
+				<div class="prose">
+					<p data-cms-markdown-content="${secondContentPath}">Returns answer</p>
+				</div>
+			</section>
+		`
+		const result = await ctx.process(input, {
+			collectionInfo: {
+				name: 'faq',
+				slug: 'shipping',
+				contentPath: 'src/content/faq/shipping.md',
+			},
+		})
+
+		const markdownEntries = Object.values(result.entries).filter(entry => entry.contentPath)
+		expect(markdownEntries.map(entry => entry.contentPath).sort()).toEqual([
+			'src/content/faq/returns.md',
+			'src/content/faq/shipping.md',
+		])
+		expect(result.collectionWrapperId).toBeDefined()
+		expect(result.entries[result.collectionWrapperId!]?.contentPath).toBe('src/content/faq/shipping.md')
+		expect(result.entries[result.collectionWrapperId!]?.collectionName).toBe('faq')
+		expect(result.entries[result.collectionWrapperId!]?.collectionSlug).toBe('shipping')
+		expect(result.html.match(/data-cms-markdown="true"/g)?.length).toBe(2)
+		expect(result.html).not.toContain('data-cms-markdown-content')
+	})
+
+	test('uses rehype marker path for a single plain markdown wrapper', async () => {
+		const contentPath = path.join(process.cwd(), 'src/content/blog/plain.md')
+		const input = `
+			<article>
+				<div class="prose">
+					<p data-cms-markdown-content="${contentPath}">Plain markdown content</p>
+				</div>
+			</article>
+		`
+		const result = await ctx.process(input, {
+			collectionInfo: {
+				name: 'blog',
+				slug: 'plain',
+				contentPath: 'src/content/blog/plain.md',
+			},
+		})
+
+		expect(result.collectionWrapperId).toBeDefined()
+		const wrapperEntry = result.entries[result.collectionWrapperId!]
+		expect(wrapperEntry?.contentPath).toBe('src/content/blog/plain.md')
+		expect(wrapperEntry?.collectionName).toBe('blog')
+		expect(wrapperEntry?.collectionSlug).toBe('plain')
+		expect(result.html.match(/data-cms-markdown="true"/g)?.length).toBe(1)
+		expect(result.html).not.toContain('data-cms-markdown-content')
 	})
 
 	test('adds data-cms-markdown attribute to collection wrapper', async () => {

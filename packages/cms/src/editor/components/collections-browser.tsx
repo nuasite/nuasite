@@ -1,6 +1,7 @@
 import { signal } from '@preact/signals'
 import { useMemo, useState } from 'preact/hooks'
 import { useSearchFilter } from '../hooks/useSearchFilter'
+import { cn } from '../lib/cn'
 import { deleteMarkdownPage } from '../markdown-api'
 import {
 	closeCollectionsBrowser,
@@ -241,20 +242,35 @@ export function CollectionsBrowser() {
 		)
 	}
 
-	// Collection list
+	// Collection list — group nested (child) collections under their parent
+	const ordered: Array<{ col: typeof collections[number]; nested: boolean }> = []
+	for (const col of collections.filter(c => !c.parentCollection)) {
+		ordered.push({ col, nested: false })
+		for (const child of collections.filter(c => c.parentCollection === col.name)) {
+			ordered.push({ col: child, nested: true })
+		}
+	}
+	// Append any orphaned children whose parent isn't present, so nothing is hidden.
+	for (const col of collections.filter(c => c.parentCollection && !collections.some(p => p.name === c.parentCollection))) {
+		ordered.push({ col, nested: false })
+	}
+
 	return (
 		<ModalBackdrop onClose={handleClose} extraClass="flex flex-col max-h-[80vh]">
 			<ModalHeader title="Collections" onClose={handleClose} />
 			<div class="p-5 space-y-2 overflow-y-auto flex-1 min-h-0">
-				{collections.map((col) => (
+				{ordered.map(({ col, nested }) => (
 					<button
 						key={col.name}
 						type="button"
 						onClick={() => selectBrowserCollection(col.name)}
-						class="group w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left cursor-pointer"
+						class={cn(
+							'group w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left cursor-pointer',
+							nested && 'ml-8 w-[calc(100%-2rem)] border-l-2 border-l-cms-primary/40',
+						)}
 						data-cms-ui
 					>
-						<div class="shrink-0 w-10 h-10 bg-cms-primary/20 rounded-cms-sm flex items-center justify-center">
+						<div class={cn('shrink-0 bg-cms-primary/20 rounded-cms-sm flex items-center justify-center', nested ? 'w-8 h-8' : 'w-10 h-10')}>
 							<CollectionIcon />
 						</div>
 						<div class="flex-1 min-w-0">

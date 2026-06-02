@@ -1,7 +1,9 @@
+import type { Dirent } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import yaml from 'yaml'
 import { getProjectRoot } from '../config'
+import { parseContentConfig } from '../content-config-ast'
 import type { ComponentDefinition } from '../types'
 import { acquireFileLock, isNodeError, relativeImportPath, resolveAndValidatePath, slugify } from '../utils'
 
@@ -149,7 +151,10 @@ export async function handleCreateMarkdown(
 		return { success: false, error: `Invalid file extension "${ext}". Allowed: ${allowedExtensions.join(', ')}` }
 	}
 	const isData = ext === 'json' || ext === 'yaml' || ext === 'yml'
-	const filePath = `src/content/${collection}/${normalizedSlug}.${ext}`
+	const layout = isData ? 'flat' : await detectCollectionMarkdownLayout(collection)
+	const filePath = layout === 'index'
+		? `src/content/${collection}/${normalizedSlug}/index.${ext}`
+		: `src/content/${collection}/${normalizedSlug}.${ext}`
 	const fullPath = resolveAndValidatePath(filePath)
 
 	let fileContent: string
@@ -273,6 +278,75 @@ export async function handleRenameMarkdown(
 
 function isDataFile(filePath: string): boolean {
 	return filePath.endsWith('.json') || filePath.endsWith('.yaml') || filePath.endsWith('.yml')
+}
+
+type MarkdownCollectionLayout = 'flat' | 'index'
+
+async function detectCollectionMarkdownLayout(collection: string): Promise<MarkdownCollectionLayout> {
+	const existingLayout = await inferLayoutFromExistingEntries(collection)
+	if (existingLayout) return existingLayout
+
+	const configLayout = await inferLayoutFromContentConfig(collection)
+	if (configLayout) return configLayout
+
+	return 'flat'
+}
+
+async function inferLayoutFromExistingEntries(collection: string): Promise<MarkdownCollectionLayout | null> {
+	const collectionPath = path.join(getProjectRoot(), 'src', 'content', collection)
+
+	let dirEntries: Dirent[]
+	try {
+		dirEntries = await fs.readdir(collectionPath, { withFileTypes: true })
+	} catch {
+		return null
+	}
+
+	let flatCount = 0
+	let indexCount = 0
+	const flatSlugs = new Set<string>()
+
+	for (const entry of dirEntries) {
+		if (!entry.isFile()) continue
+		const match = entry.name.match(/^(.+)\.(md|mdx)$/)
+		if (!match) continue
+		flatCount++
+		flatSlugs.add(match[1]!)
+	}
+
+	const subdirs = dirEntries.filter(entry => entry.isDirectory() && !entry.name.startsWith('_') && !entry.name.startsWith('.'))
+	const indexLookups = await Promise.all(subdirs.map(async dir => {
+		if (flatSlugs.has(dir.name)) return false
+		for (const ext of ['md', 'mdx'] as const) {
+			try {
+				await fs.access(path.join(collectionPath, dir.name, `index.${ext}`))
+				return true
+			} catch {
+				// try next extension
+			}
+		}
+		return false
+	}))
+	indexCount = indexLookups.filter(Boolean).length
+
+	if (indexCount > flatCount) return 'index'
+	if (flatCount > 0) return 'flat'
+	return null
+}
+
+async function inferLayoutFromContentConfig(collection: string): Promise<MarkdownCollectionLayout | null> {
+	try {
+		const parsed = await parseContentConfig()
+		const pattern = parsed.get(collection)?.loaderPattern
+		if (!pattern) return null
+		return isIndexStyleGlobPattern(pattern) ? 'index' : 'flat'
+	} catch {
+		return null
+	}
+}
+
+function isIndexStyleGlobPattern(pattern: string): boolean {
+	return pattern.includes('index.{') || pattern.includes('*/index') || pattern.includes('**/index')
 }
 
 function parseFrontmatter(raw: string): { frontmatter: Record<string, unknown>; content: string } {

@@ -20,6 +20,7 @@ import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-p
 import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
 import { config, mdxComponentPickerOpen, openMediaLibraryWithCallback, resetMarkdownEditorState, showToast, updateMarkdownContent } from '../signals'
 import { STRINGS } from '../strings'
+import { setBulletListStyleCommand, styledListPlugin } from '../styled-list-plugin'
 import { LinkEditPopover } from './link-edit-popover'
 import { MdxComponentIcon } from './mdx-block-view'
 import { MdxComponentPicker } from './mdx-component-picker'
@@ -48,6 +49,7 @@ export function MarkdownInlineEditor({
 	const [isReady, setIsReady] = useState(false)
 	const [isDragging, setIsDragging] = useState(false)
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+	const listStyles = (config.value.listStyles ?? []).filter(style => style.label && style.class)
 
 	// Track active formatting for toolbar highlighting
 	const [activeFormats, setActiveFormats] = useState<ActiveFormats>(defaultActiveFormats)
@@ -91,6 +93,15 @@ export function MarkdownInlineEditor({
 						})
 					})
 					.use(commonmark)
+
+				// Styled bullet lists are opt-in: only load the plugin (and its `-` bullet
+				// normalization) when the site configures list styles, so sites that don't use
+				// the feature keep their previous list serialization untouched.
+				if (listStyles.length > 0) {
+					builder.use(styledListPlugin)
+				}
+
+				builder
 					.use(gfm)
 					.use(listener)
 
@@ -123,6 +134,21 @@ export function MarkdownInlineEditor({
 			editorInstanceRef.current = null
 		}
 	}, [])
+
+	// Adopt content that streams in AFTER the editor mounted with a placeholder.
+	// The collections browser opens the modal immediately (empty), then fetches
+	// the entry body, so `initialContent` changes once content arrives. The
+	// Milkdown instance is created once, so re-seed it here — but only while the
+	// user hasn't edited the placeholder yet, so in-progress edits are never lost.
+	useEffect(() => {
+		if (!isReady) return
+		if (initialContent === initialContentRef.current) return
+		if (contentRef.current === initialContentRef.current) {
+			editorInstanceRef.current?.action(replaceAll(initialContent))
+			setContent(initialContent)
+		}
+		initialContentRef.current = initialContent
+	}, [initialContent, isReady])
 
 	const handleSave = useCallback(() => {
 		onSave(content)
@@ -234,6 +260,15 @@ export function MarkdownInlineEditor({
 			runCommand(wrapInOrderedListCommand.key)
 		}
 	}, [runCommand, checkInList])
+
+	const handleListStyle = useCallback((listStyle: string | null) => {
+		if (!editorInstanceRef.current) return
+		try {
+			editorInstanceRef.current.action(callCommand(setBulletListStyleCommand.key, listStyle))
+		} catch (error) {
+			console.error('Failed to set list style:', error)
+		}
+	}, [])
 
 	const handleInsertHeading = useCallback((level: number) => {
 		if (!editorInstanceRef.current) return
@@ -537,6 +572,21 @@ export function MarkdownInlineEditor({
 							</text>
 						</svg>
 					</ToolbarButton>
+					{listStyles.length > 0 && (
+						<select
+							class={cn(
+								'h-8 max-w-40 rounded-cms-sm border border-white/15 bg-cms-dark px-2 text-xs text-white/90 outline-none transition-colors',
+								'hover:bg-white/10 focus:border-cms-primary focus:ring-1 focus:ring-cms-primary',
+								!activeFormats.bulletList && 'opacity-60',
+							)}
+							title="List style"
+							value={activeFormats.listStyle ?? ''}
+							onChange={(event) => handleListStyle((event.currentTarget as HTMLSelectElement).value || null)}
+						>
+							<option value="">Default</option>
+							{listStyles.map(style => <option key={style.class} value={style.class}>{style.label}</option>)}
+						</select>
+					)}
 					<ToolbarButton
 						onClick={handleQuote}
 						title="Quote"

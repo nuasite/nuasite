@@ -29,6 +29,8 @@ export interface ParsedField {
 export interface ParsedCollection {
 	name: string
 	fields: ParsedField[]
+	loaderPattern?: string
+	loaderBase?: string
 }
 
 export type ParsedConfig = Map<string, ParsedCollection>
@@ -129,6 +131,7 @@ export function parseConfigSource(source: string, sourcePath?: string): ParsedCo
 	const bindings: Bindings = new Map()
 	const collectionDecls = new Map<string, t.ObjectExpression>()
 	const exportMap = new Map<string, string>() // varName → collectionName
+	const inlineCollections = new Map<string, t.ObjectExpression>() // collectionName → defineCollection arg (inline form)
 
 	for (const stmt of ast.program.body) {
 		const varDecl = stmt.type === 'ExportNamedDeclaration' && stmt.declaration?.type === 'VariableDeclaration'
@@ -151,6 +154,12 @@ export function parseConfigSource(source: string, sourcePath?: string): ParsedCo
 					if (!key) continue
 					if (prop.value.type === 'Identifier') {
 						exportMap.set(prop.value.name, key)
+					} else if (prop.value.type === 'CallExpression' && isDefineCollectionCallee(prop.value.callee)) {
+						// Inline form: `collections = { name: defineCollection({...}) }`
+						const inlineArg = prop.value.arguments[0]
+						if (inlineArg?.type === 'ObjectExpression') {
+							inlineCollections.set(key, inlineArg)
+						}
 					}
 				}
 				continue
@@ -165,23 +174,57 @@ export function parseConfigSource(source: string, sourcePath?: string): ParsedCo
 		}
 	}
 
+	// Unify both styles: inline `name: defineCollection({...})` and the
+	// `const x = defineCollection({...}); collections = { name: x }` reference form.
+	const collectionObjects = new Map<string, t.ObjectExpression>(inlineCollections)
 	for (const [varName, collectionName] of exportMap) {
 		const decl = collectionDecls.get(varName)
-		if (!decl) continue
+		if (decl) collectionObjects.set(collectionName, decl)
+	}
+
+	for (const [collectionName, decl] of collectionObjects) {
+		const loaderProperty = decl.properties.find(
+			p =>
+				p.type === 'ObjectProperty'
+				&& propertyKeyName(p.key) === 'loader',
+		) as t.ObjectProperty | undefined
+		const loaderOptions = loaderProperty ? extractGlobLoaderOptions(loaderProperty.value, bindings) : {}
+		const loaderPattern = loaderOptions.pattern
+		const loaderBase = loaderOptions.base
 
 		const schemaProperty = decl.properties.find(
 			p =>
 				p.type === 'ObjectProperty'
 				&& propertyKeyName(p.key) === 'schema',
 		) as t.ObjectProperty | undefined
-		if (!schemaProperty) continue
+		if (!schemaProperty) {
+			if (!loaderPattern) continue
+			result.set(collectionName, {
+				name: collectionName,
+				fields: [],
+				loaderPattern,
+				loaderBase,
+			})
+			continue
+		}
 
 		const schemaObject = unwrapSchemaToObject(schemaProperty.value, bindings)
-		if (!schemaObject) continue
+		if (!schemaObject) {
+			if (!loaderPattern) continue
+			result.set(collectionName, {
+				name: collectionName,
+				fields: [],
+				loaderPattern,
+				loaderBase,
+			})
+			continue
+		}
 
 		result.set(collectionName, {
 			name: collectionName,
 			fields: parseSchemaFields(schemaObject, bindings),
+			loaderPattern,
+			loaderBase,
 		})
 	}
 
@@ -196,6 +239,41 @@ function propertyKeyName(key: t.Node): string | null {
 	if (key.type === 'Identifier') return key.name
 	if (key.type === 'StringLiteral') return key.value
 	return null
+}
+
+function extractGlobLoaderOptions(node: t.Node, bindings: Bindings): { pattern?: string; base?: string } {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type !== 'CallExpression') return {}
+	if (!isGlobCallee(resolved.callee)) return {}
+
+	const arg = resolved.arguments[0]
+	if (!arg) return {}
+	const options = resolveExpression(arg, bindings)
+	if (options.type !== 'ObjectExpression') return {}
+
+	const result: { pattern?: string; base?: string } = {}
+	for (const prop of options.properties) {
+		if (prop.type !== 'ObjectProperty') continue
+		const key = propertyKeyName(prop.key)
+		if (key !== 'pattern' && key !== 'base') continue
+		const value = extractStaticString(prop.value, bindings)
+		if (value !== undefined) result[key] = value
+	}
+
+	return result
+}
+
+function extractStaticString(node: t.Node, bindings: Bindings): string | undefined {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type === 'StringLiteral') return resolved.value
+	if (resolved.type === 'TemplateLiteral' && resolved.expressions.length === 0) {
+		return resolved.quasis[0]?.value.cooked ?? resolved.quasis[0]?.value.raw
+	}
+	return undefined
+}
+
+function isGlobCallee(callee: t.Node): boolean {
+	return callee.type === 'Identifier' && callee.name === 'glob'
 }
 
 /**
