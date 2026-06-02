@@ -29,6 +29,7 @@ export interface ParsedField {
 export interface ParsedCollection {
 	name: string
 	fields: ParsedField[]
+	loaderPattern?: string
 }
 
 export type ParsedConfig = Map<string, ParsedCollection>
@@ -169,19 +170,43 @@ export function parseConfigSource(source: string, sourcePath?: string): ParsedCo
 		const decl = collectionDecls.get(varName)
 		if (!decl) continue
 
+		const loaderProperty = decl.properties.find(
+			p =>
+				p.type === 'ObjectProperty'
+				&& propertyKeyName(p.key) === 'loader',
+		) as t.ObjectProperty | undefined
+		const loaderPattern = loaderProperty ? extractGlobLoaderPattern(loaderProperty.value, bindings) : undefined
+
 		const schemaProperty = decl.properties.find(
 			p =>
 				p.type === 'ObjectProperty'
 				&& propertyKeyName(p.key) === 'schema',
 		) as t.ObjectProperty | undefined
-		if (!schemaProperty) continue
+		if (!schemaProperty) {
+			if (!loaderPattern) continue
+			result.set(collectionName, {
+				name: collectionName,
+				fields: [],
+				loaderPattern,
+			})
+			continue
+		}
 
 		const schemaObject = unwrapSchemaToObject(schemaProperty.value, bindings)
-		if (!schemaObject) continue
+		if (!schemaObject) {
+			if (!loaderPattern) continue
+			result.set(collectionName, {
+				name: collectionName,
+				fields: [],
+				loaderPattern,
+			})
+			continue
+		}
 
 		result.set(collectionName, {
 			name: collectionName,
 			fields: parseSchemaFields(schemaObject, bindings),
+			loaderPattern,
 		})
 	}
 
@@ -196,6 +221,32 @@ function propertyKeyName(key: t.Node): string | null {
 	if (key.type === 'Identifier') return key.name
 	if (key.type === 'StringLiteral') return key.value
 	return null
+}
+
+function extractGlobLoaderPattern(node: t.Node, bindings: Bindings): string | undefined {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type !== 'CallExpression') return undefined
+	if (!isGlobCallee(resolved.callee)) return undefined
+
+	const arg = resolved.arguments[0]
+	if (!arg) return undefined
+	const options = resolveExpression(arg, bindings)
+	if (options.type !== 'ObjectExpression') return undefined
+
+	for (const prop of options.properties) {
+		if (prop.type !== 'ObjectProperty' || propertyKeyName(prop.key) !== 'pattern') continue
+		const pattern = resolveExpression(prop.value, bindings)
+		if (pattern.type === 'StringLiteral') return pattern.value
+		if (pattern.type === 'TemplateLiteral' && pattern.expressions.length === 0) {
+			return pattern.quasis[0]?.value.cooked ?? pattern.quasis[0]?.value.raw
+		}
+	}
+
+	return undefined
+}
+
+function isGlobCallee(callee: t.Node): boolean {
+	return callee.type === 'Identifier' && callee.name === 'glob'
 }
 
 /**
