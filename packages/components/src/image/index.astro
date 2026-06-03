@@ -51,7 +51,13 @@ const buildUrl = (width: number) => {
 }
 
 const effectiveWidths = widths.length ? widths : [1400]
-const shouldTransform = Boolean(src) && isDomainAllowed
+// The /cdn-cgi/image endpoint only exists in environments that proxy through
+// Cloudflare (production) or the pletivo runtime, which serves the transform
+// endpoint itself. Under plain `astro dev` nothing serves those URLs, so fall
+// back to the raw <img>. pletivo sets `globalThis.__PLETIVO__` when active.
+const isPletivoRuntime = Boolean((globalThis as Record<string, unknown>).__PLETIVO__)
+const transformEndpointAvailable = !import.meta.env.DEV || isPletivoRuntime
+const shouldTransform = Boolean(src) && isDomainAllowed && transformEndpointAvailable
 const srcset = shouldTransform ? effectiveWidths.map((width) => `${buildUrl(width)} ${width}w`).join(', ') : undefined
 const fallbackSrc = shouldTransform ? buildUrl(effectiveWidths[effectiveWidths.length - 1]!) : src
 ---
