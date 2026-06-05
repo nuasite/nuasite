@@ -18,6 +18,9 @@
 			"path": "./packages/cms-core"
 		},
 		{
+			"path": "./packages/cms-sidecar"
+		},
+		{
 			"path": "./packages/cms-types"
 		},
 		{

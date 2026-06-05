@@ -1,0 +1,15 @@
+---
+/**
+ * Hero banner.
+ */
+interface Props {
+	title: string
+	subtitle?: string
+}
+const { title, subtitle } = Astro.props
+---
+
+<section class="hero">
+	<h1>{title}</h1>
+	{subtitle && <p>{subtitle}</p>}
+</section>

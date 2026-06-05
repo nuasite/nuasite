@@ -1,0 +1,7 @@
+{
+	"name": "Bob",
+	"role": "Designer",
+	"links": [
+		{ "label": "Website", "url": "https://bob.dev" }
+	]
+}

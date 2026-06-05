@@ -65,6 +65,7 @@
       "dependencies": {
         "@astrojs/compiler": "catalog:astro",
         "@babel/parser": "catalog:parsers",
+        "@nuasite/cms-core": "workspace:*",
         "@nuasite/cms-types": "workspace:*",
         "node-html-parser": "catalog:parsers",
         "yaml": "catalog:parsers",
@@ -120,8 +121,33 @@
         "@types/bun": "catalog:build",
       },
       "peerDependencies": {
+        "@aws-sdk/client-s3": "^3.0.0",
         "typescript": "catalog:build",
       },
+      "optionalPeers": [
+        "@aws-sdk/client-s3",
+      ],
+    },
+    "packages/cms-sidecar": {
+      "name": "@nuasite/cms-sidecar",
+      "version": "0.42.1",
+      "bin": {
+        "cms-sidecar": "src/cli.ts",
+      },
+      "dependencies": {
+        "@nuasite/cms-core": "workspace:*",
+        "@nuasite/cms-types": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:build",
+      },
+      "peerDependencies": {
+        "@aws-sdk/client-s3": "^3.0.0",
+        "typescript": "catalog:build",
+      },
+      "optionalPeers": [
+        "@aws-sdk/client-s3",
+      ],
     },
     "packages/cms-types": {
       "name": "@nuasite/cms-types",
@@ -521,6 +547,8 @@
     "@nuasite/cms": ["@nuasite/cms@workspace:packages/cms"],
 
     "@nuasite/cms-core": ["@nuasite/cms-core@workspace:packages/cms-core"],
+
+    "@nuasite/cms-sidecar": ["@nuasite/cms-sidecar@workspace:packages/cms-sidecar"],
 
     "@nuasite/cms-types": ["@nuasite/cms-types@workspace:packages/cms-types"],
 

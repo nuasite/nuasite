@@ -1,0 +1,14 @@
+{
+	"extends": "../../../tsconfig.settings.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"emitDeclarationOnly": false,
+		"composite": false
+	},
+	"exclude": ["fixtures"],
+	"references": [
+		{ "path": "../src" },
+		{ "path": "../../cms-core/src" },
+		{ "path": "../../cms-types/src" }
+	]
+}

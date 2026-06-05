@@ -1,0 +1,57 @@
+{
+	"name": "@nuasite/cms-sidecar",
+	"description": "Thin standalone Bun HTTP server exposing @nuasite/cms-core over /cms/v1 — runs next to the dev server, decoupled from the site's version.",
+	"files": [
+		"dist/**",
+		"src/**",
+		"README.md",
+		"package.json"
+	],
+	"homepage": "https://github.com/nuasite/nuasite/blob/main/packages/cms-sidecar/README.md",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nuasite/nuasite.git",
+		"directory": "packages/cms-sidecar"
+	},
+	"license": "Apache-2.0",
+	"version": "0.42.1",
+	"module": "src/index.ts",
+	"types": "src/index.ts",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts",
+			"default": "./src/index.ts"
+		}
+	},
+	"bin": {
+		"cms-sidecar": "src/cli.ts"
+	},
+	"dependencies": {
+		"@nuasite/cms-core": "workspace:*",
+		"@nuasite/cms-types": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/bun": "catalog:build"
+	},
+	"peerDependencies": {
+		"typescript": "catalog:build",
+		"@aws-sdk/client-s3": "^3.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@aws-sdk/client-s3": {
+			"optional": true
+		}
+	},
+	"scripts": {
+		"build": "bun build --target=bun --outdir=dist src/cli.ts",
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
+	},
+	"keywords": [
+		"cms",
+		"nuasite",
+		"headless",
+		"sidecar"
+	]
+}

@@ -1,0 +1,8 @@
+{
+	"name": "Alice",
+	"role": "Engineer",
+	"links": [
+		{ "label": "GitHub", "url": "https://github.com/alice" },
+		{ "label": "Twitter", "url": "https://twitter.com/alice" }
+	]
+}
