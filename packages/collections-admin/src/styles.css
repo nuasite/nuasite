@@ -1,0 +1,371 @@
+/**
+ * Self-contained styles for the collections-admin SPA.
+ *
+ * Scoped under `.nua-cadmin` so the lib does not depend on the host's Tailwind
+ * config (webmaster) or any global CSS — F7 can reuse it verbatim in local dev.
+ * Kept deliberately minimal: this is a de-risk milestone, not a design showcase.
+ */
+
+.nua-cadmin {
+	--nua-cadmin-fg: #1f2937;
+	--nua-cadmin-muted: #6b7280;
+	--nua-cadmin-border: #e5e7eb;
+	--nua-cadmin-bg: #ffffff;
+	--nua-cadmin-bg-subtle: #f9fafb;
+	--nua-cadmin-accent: #2563eb;
+	--nua-cadmin-danger: #b91c1c;
+	--nua-cadmin-danger-bg: #fef2f2;
+
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	color: var(--nua-cadmin-fg);
+	background: var(--nua-cadmin-bg);
+	font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	font-size: 13px;
+	line-height: 1.5;
+	box-sizing: border-box;
+}
+
+.nua-cadmin *,
+.nua-cadmin *::before,
+.nua-cadmin *::after {
+	box-sizing: border-box;
+}
+
+/* --- Header / breadcrumb bar --- */
+
+.nua-cadmin-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--nua-cadmin-border);
+	background: var(--nua-cadmin-bg-subtle);
+	flex-shrink: 0;
+}
+
+.nua-cadmin-back {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 6px;
+	background: var(--nua-cadmin-bg);
+	color: var(--nua-cadmin-fg);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.nua-cadmin-back:hover {
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-title {
+	font-size: 13px;
+	font-weight: 600;
+	margin: 0;
+}
+
+.nua-cadmin-crumb {
+	color: var(--nua-cadmin-muted);
+	font-size: 12px;
+}
+
+.nua-cadmin-spacer {
+	flex: 1;
+}
+
+.nua-cadmin-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--nua-cadmin-muted);
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.nua-cadmin-close:hover {
+	background: var(--nua-cadmin-border);
+	color: var(--nua-cadmin-fg);
+}
+
+/* --- Scroll body --- */
+
+.nua-cadmin-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 12px 14px;
+}
+
+/* --- States --- */
+
+.nua-cadmin-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 40px 16px;
+	text-align: center;
+	color: var(--nua-cadmin-muted);
+}
+
+.nua-cadmin-spinner {
+	width: 22px;
+	height: 22px;
+	border: 2px solid var(--nua-cadmin-border);
+	border-top-color: var(--nua-cadmin-accent);
+	border-radius: 50%;
+	animation: nua-cadmin-spin 0.7s linear infinite;
+}
+
+@keyframes nua-cadmin-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.nua-cadmin-error {
+	margin: 0;
+	padding: 12px 14px;
+	border: 1px solid #fecaca;
+	border-radius: 8px;
+	background: var(--nua-cadmin-danger-bg);
+	color: var(--nua-cadmin-danger);
+}
+
+.nua-cadmin-error-title {
+	font-weight: 600;
+	margin-bottom: 2px;
+}
+
+.nua-cadmin-retry {
+	margin-top: 8px;
+	padding: 4px 10px;
+	border: 1px solid #fecaca;
+	border-radius: 6px;
+	background: var(--nua-cadmin-bg);
+	color: var(--nua-cadmin-danger);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+/* --- Collection list --- */
+
+.nua-cadmin-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.nua-cadmin-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	width: 100%;
+	padding: 10px 12px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 8px;
+	background: var(--nua-cadmin-bg);
+	text-align: left;
+	cursor: pointer;
+}
+
+.nua-cadmin-card:hover {
+	border-color: var(--nua-cadmin-accent);
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-card-main {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.nua-cadmin-card-label {
+	font-weight: 600;
+}
+
+.nua-cadmin-card-sub {
+	color: var(--nua-cadmin-muted);
+	font-size: 12px;
+}
+
+.nua-cadmin-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 7px;
+	border-radius: 999px;
+	background: var(--nua-cadmin-bg-subtle);
+	border: 1px solid var(--nua-cadmin-border);
+	color: var(--nua-cadmin-muted);
+	font-size: 11px;
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.nua-cadmin-badge-draft {
+	background: #fffbeb;
+	border-color: #fde68a;
+	color: #92400e;
+}
+
+/* --- Entries table --- */
+
+.nua-cadmin-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+
+.nua-cadmin-table th {
+	text-align: left;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--nua-cadmin-border);
+	color: var(--nua-cadmin-muted);
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.nua-cadmin-table td {
+	padding: 7px 8px;
+	border-bottom: 1px solid var(--nua-cadmin-border);
+	vertical-align: top;
+}
+
+.nua-cadmin-row {
+	cursor: pointer;
+}
+
+.nua-cadmin-row:hover td {
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-cell-mono {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+	color: var(--nua-cadmin-muted);
+}
+
+.nua-cadmin-load-more {
+	margin-top: 12px;
+	padding: 6px 12px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 6px;
+	background: var(--nua-cadmin-bg);
+	color: var(--nua-cadmin-fg);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.nua-cadmin-load-more:hover {
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-load-more:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+/* --- Entry detail --- */
+
+.nua-cadmin-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-bottom: 18px;
+}
+
+.nua-cadmin-field {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.nua-cadmin-field-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--nua-cadmin-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+.nua-cadmin-field-type {
+	font-weight: 400;
+	text-transform: none;
+	letter-spacing: 0;
+	color: var(--nua-cadmin-muted);
+	opacity: 0.7;
+}
+
+.nua-cadmin-field-value {
+	padding: 7px 10px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 6px;
+	background: var(--nua-cadmin-bg-subtle);
+	white-space: pre-wrap;
+	word-break: break-word;
+	min-height: 32px;
+}
+
+.nua-cadmin-field-empty {
+	color: var(--nua-cadmin-muted);
+	font-style: italic;
+}
+
+.nua-cadmin-field-structured {
+	margin: 0;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+}
+
+.nua-cadmin-bool-on {
+	color: #166534;
+	font-weight: 600;
+}
+
+.nua-cadmin-bool-off {
+	color: var(--nua-cadmin-muted);
+}
+
+.nua-cadmin-section-title {
+	font-size: 12px;
+	font-weight: 600;
+	margin: 0 0 6px;
+}
+
+.nua-cadmin-body-content {
+	margin: 0;
+	padding: 12px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 8px;
+	background: var(--nua-cadmin-bg-subtle);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow-x: auto;
+}
+
+.nua-cadmin-img {
+	max-width: 220px;
+	max-height: 160px;
+	border-radius: 6px;
+	border: 1px solid var(--nua-cadmin-border);
+	display: block;
+}

@@ -24,6 +24,9 @@
 			"path": "./packages/cms-types"
 		},
 		{
+			"path": "./packages/collections-admin"
+		},
+		{
 			"path": "./packages/components"
 		},
 		{

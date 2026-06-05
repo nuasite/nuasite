@@ -1,0 +1,11 @@
+{
+	"extends": "../tsconfig.settings.json",
+	"compilerOptions": {
+		"outDir": "../dist/types",
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"types": []
+	},
+	"references": [
+		{ "path": "../../cms-types/src" }
+	]
+}
