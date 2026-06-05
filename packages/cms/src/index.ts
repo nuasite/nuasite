@@ -11,8 +11,10 @@ import { ComponentRegistry } from './component-registry'
 import { resetProjectRoot } from './config'
 import { createDevMiddleware } from './dev-middleware'
 import { getErrorCollector, resetErrorCollector } from './error-collector'
+import { ADMIN_ROUTE, createLocalAdminMiddleware } from './local-admin'
 import { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
+import { type CmsMode, resolveCmsMode } from './mode'
 import { rehypeCmsMarker } from './rehype-cms-marker'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
 import { createPublicStaticFileChecker } from './utils'
@@ -54,6 +56,22 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		 */
 		siteTheme?: 'auto' | 'light' | 'dark'
 	}
+	/**
+	 * Run mode (cms-headless F7). Controls whether the plugin serves a local
+	 * full-page collections admin:
+	 *
+	 * - `local` (default for `pletivo dev` on a developer machine): lazily spawn an
+	 *   in-process cms-sidecar over the project's `node:fs` and serve the
+	 *   `@nuasite/collections-admin` SPA at `/_nua/admin`. The inline widget runs
+	 *   in-page as usual.
+	 * - `hosted` (inside the agent sandbox): a no-op for spawning/serving — the
+	 *   sidecar is a managed sandbox service and the admin is the webmaster tab.
+	 *   The plugin stays marker + CDN-inject only.
+	 *
+	 * Auto-detected from the environment when omitted (a sandbox env signal ⇒
+	 * `hosted`; otherwise `local`). An explicit value always wins.
+	 */
+	mode?: CmsMode
 	/**
 	 * Proxy /_nua/cms requests to this target URL during dev.
 	 * Example: 'http://localhost:8787'
@@ -99,6 +117,13 @@ const DEFAULT_MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 const VIRTUAL_CMS_PATH = '/@nuasite/cms-editor.js'
 
 /**
+ * Virtual module id of the local `/_nua/admin` SPA entry (cms-headless F7). The
+ * HTML shell loads it as `<script type="module">`; the Vite plugin resolves it to
+ * `src/admin/entry.tsx` so the dev server transforms it (TSX → JS, real React).
+ */
+const VIRTUAL_ADMIN_ENTRY = '/@nuasite/cms-admin-entry.js'
+
+/**
  * Public CDN editor script. Same URL hosting injects (see webmaster
  * `packages/worker-hosting` `editorSrc`), so dev-preview and hosting load the
  * identical inline editor and a CDN push updates both without touching the site.
@@ -127,6 +152,13 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		seo = { trackSeo: true, markTitle: true, parseJsonLd: true },
 		maxUploadSize = DEFAULT_MAX_UPLOAD_SIZE,
 	} = options
+
+	// Run mode (cms-headless F7): `local` serves a full-page collections admin at
+	// /_nua/admin over an in-process sidecar; `hosted` (inside the agent sandbox)
+	// is a no-op for that — the managed sandbox sidecar + the webmaster tab own it.
+	// An explicit `options.mode` wins; otherwise auto-detect from the environment.
+	const mode = resolveCmsMode(options.mode)
+	const serveLocalAdmin = mode === 'local'
 
 	// When no proxy, enable local CMS API with default media adapter
 	const enableCmsApi = !proxy
@@ -236,6 +268,20 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 				const vitePlugins: any[] = [...(createVitePlugin(pluginContext) as any)]
 				const cmsDir = dirname(fileURLToPath(import.meta.url))
+
+				// Local-mode (cms-headless F7): resolve the /_nua/admin SPA entry virtual
+				// module to src/admin/entry.tsx so Vite transforms it (TSX → JS, real
+				// React) and HMR works. The HTML shell loads this id as a module script.
+				if (serveLocalAdmin) {
+					vitePlugins.push({
+						name: 'nuasite-cms-admin-entry',
+						resolveId(id: string) {
+							if (id === VIRTUAL_ADMIN_ENTRY) {
+								return join(cmsDir, 'admin/entry.tsx')
+							}
+						},
+					})
+				}
 
 				// Detect pre-built editor bundle (present when installed from npm)
 				const editorBundlePath = join(cmsDir, '../dist/editor.js')
@@ -359,6 +405,22 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				if (enableCmsApi) {
 					logger.info('CMS API enabled at /_nua/cms/')
 				}
+
+				// Local-mode full-page collections admin (cms-headless F7). Registered
+				// only in `local` mode — in `hosted` (sandbox) this is a strict no-op:
+				// the managed sandbox sidecar (F2) + the webmaster tab (F3) own it.
+				// The in-process sidecar + SPA are built lazily on the first /_nua/admin
+				// hit, so dev startup stays fast. Media defaults to local public/uploads.
+				if (serveLocalAdmin) {
+					createLocalAdminMiddleware(server, {
+						contentDir,
+						componentDirs,
+						mediaAdapter: media ?? createLocalStorageAdapter(),
+						maxUploadSize,
+						entryModuleId: VIRTUAL_ADMIN_ENTRY,
+					})
+					logger.info(`CMS collections admin available at ${ADMIN_ROUTE}`)
+				}
 			},
 
 			'astro:build:done': async ({ dir, logger }) => {
@@ -412,6 +474,7 @@ export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
 export { n } from './field-types'
 export type { DateHints, ImageHints, NumberHints, TextareaHints, TextHints } from './field-types'
 export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, MediaStorageAdapter, MediaTypeFilter } from './media/types'
+export { type CmsMode, detectHostedFromEnv, resolveCmsMode } from './mode'
 export type { Color, Date, DateTime, Email, Image, Reference, Textarea, Time, Url } from './prop-types'
 
 export { scanCollections } from './collection-scanner'
