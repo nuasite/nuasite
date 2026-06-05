@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { createLocalStorageAdapter } from '@nuasite/cms-core'
 import { processBuildOutput } from './build-processor'
 import { scanCollections } from './collection-scanner'
 import { ComponentRegistry } from './component-registry'
@@ -11,7 +12,6 @@ import { resetProjectRoot } from './config'
 import { createDevMiddleware } from './dev-middleware'
 import { getErrorCollector, resetErrorCollector } from './error-collector'
 import { ManifestWriter } from './manifest-writer'
-import { createLocalStorageAdapter } from './media/local'
 import type { MediaStorageAdapter } from './media/types'
 import { rehypeCmsMarker } from './rehype-cms-marker'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
@@ -393,12 +393,14 @@ async function mergeRedirects(dir: URL, logger: { info: (msg: string) => void })
 
 // Shared structural contract from @nuasite/cms-types — surfaced through the cms public API
 // so consumers of @nuasite/cms get the field-type list + guard from one place.
+export {
+	createContemberStorageAdapter as contemberMedia,
+	createLocalStorageAdapter as localMedia,
+	createS3StorageAdapter as s3Media,
+} from '@nuasite/cms-core'
 export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
 export { n } from './field-types'
 export type { DateHints, ImageHints, NumberHints, TextareaHints, TextHints } from './field-types'
-export { createContemberStorageAdapter as contemberMedia } from './media/contember'
-export { createLocalStorageAdapter as localMedia } from './media/local'
-export { createS3StorageAdapter as s3Media } from './media/s3'
 export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, MediaStorageAdapter, MediaTypeFilter } from './media/types'
 export type { Color, Date, DateTime, Email, Image, Reference, Textarea, Time, Url } from './prop-types'
 

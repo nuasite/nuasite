@@ -1,17 +1,16 @@
+import type { CmsCore, CmsFileSystem } from '@nuasite/cms-core'
+import { listProjectImages } from '@nuasite/cms-core'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { scanCollections } from '../collection-scanner'
 import { getProjectRoot } from '../config'
 import { expectedDeletions } from '../dev-middleware'
 import type { ManifestWriter } from '../manifest-writer'
-import { listProjectImages } from '../media/project-images'
 import type { MediaStorageAdapter } from '../media/types'
 import { handleAddArrayItem, handleRemoveArrayItem } from './array-ops'
 import { tryAstroImageUpload } from './astro-image-upload'
 import { handleInsertComponent, handleRemoveComponent } from './component-ops'
-import { handleCreateMarkdown, handleDeleteMarkdown, handleGetMarkdownContent, handleRenameMarkdown, handleUpdateMarkdown } from './markdown-ops'
-import { handleCheckSlugExists, handleCreatePage, handleDeletePage, handleDuplicatePage, handleGetLayouts } from './page-ops'
-import { handleAddRedirect, handleDeleteRedirect, handleGetRedirects, handleUpdateRedirect } from './redirect-ops'
+import { handleCheckSlugExists } from './page-ops'
 import { BodyTooLargeError, parseJsonBody, parseMultipartFile, readBody, sendError, sendJson } from './request-utils'
 import { handleUpdate } from './source-writer'
 
@@ -20,6 +19,10 @@ export interface RouteContext {
 	res: ServerResponse
 	route: string
 	manifestWriter: ManifestWriter
+	/** The framework-agnostic brain. Structural routes delegate here. */
+	core: CmsCore
+	/** Raw FileSystem port (for the few helpers that scan the project directly). */
+	fs: CmsFileSystem
 	contentDir: string
 	mediaAdapter?: MediaStorageAdapter
 	maxUploadSize: number
@@ -39,6 +42,37 @@ function getQuery(ctx: RouteContext): URLSearchParams {
 	return new URL(ctx.req.url!, `http://${ctx.req.headers.host}`).searchParams
 }
 
+/**
+ * Derive `{ collection, slug }` from a root-relative content-entry `filePath`.
+ *
+ * The dev API is addressed by `filePath` (e.g. `src/content/blog/hello.md`),
+ * while cms-core is addressed by `{ collection, slug }`. The collection is the
+ * first path segment under `contentDir`; the slug is the remainder with the
+ * extension stripped (and a trailing `/index` collapsed for index-layout
+ * entries). cms-core's path resolution is the exact inverse: a flat `<slug>.<ext>`
+ * resolves first, an index `<slug>/index.{md,mdx}` after — so the derived pair
+ * resolves back to the same file.
+ */
+function filePathToEntry(contentDir: string, filePath: string): { collection: string; slug: string } | null {
+	const normalized = filePath.replace(/^\/+/, '')
+	const prefix = `${contentDir.replace(/\/+$/, '')}/`
+	if (!normalized.startsWith(prefix)) return null
+
+	const rel = normalized.slice(prefix.length)
+	const firstSlash = rel.indexOf('/')
+	if (firstSlash < 0) return null
+
+	const collection = rel.slice(0, firstSlash)
+	const entryPath = rel.slice(firstSlash + 1)
+	if (!collection || !entryPath) return null
+
+	const withoutExt = entryPath.replace(/\.(md|mdx|json|yaml|yml)$/, '')
+	const slug = withoutExt.replace(/\/index$/, '')
+	if (!slug) return null
+
+	return { collection, slug }
+}
+
 // -- Route helper factories --
 
 /** POST route: parse JSON body → handler(body, manifestWriter) → sendJson */
@@ -49,19 +83,19 @@ function post<T>(route: string, handler: (body: T, mw: ManifestWriter) => Promis
 	}]
 }
 
-/** POST route: parse JSON body → handler(body) → sendJson with success-based status */
-function postWithStatus<T>(route: string, handler: (body: T) => Promise<{ success: boolean }>): [string, RouteHandler] {
-	return [`POST:${route}`, async ({ req, res }) => {
+/** POST route through cms-core: parse JSON body → handler(body, core) → sendJson with success-based status */
+function postCore<T>(route: string, handler: (body: T, core: CmsCore) => Promise<{ success: boolean }>): [string, RouteHandler] {
+	return [`POST:${route}`, async ({ req, res, core }) => {
 		const body = await parseJsonBody<T>(req)
-		const result = await handler(body)
+		const result = await handler(body, core)
 		sendJson(res, result, result.success ? 200 : 400)
 	}]
 }
 
-/** GET route: handler() → sendJson */
-function get(route: string, handler: () => Promise<unknown>): [string, RouteHandler] {
-	return [`GET:${route}`, async ({ res }) => {
-		sendJson(res, await handler())
+/** GET route through cms-core: handler(core) → sendJson */
+function getCore(route: string, handler: (core: CmsCore) => Promise<unknown>): [string, RouteHandler] {
+	return [`GET:${route}`, async ({ res, core }) => {
+		sendJson(res, await handler(core))
 	}]
 }
 
@@ -82,54 +116,150 @@ const ALLOWED_UPLOAD_TYPES = new Set([
 	'application/pdf',
 ])
 
+/** Frontmatter shape the create route enriches with title/date for markdown entries. */
+interface CreateMarkdownBody {
+	collection: string
+	title: string
+	slug: string
+	frontmatter?: Record<string, unknown>
+	content?: string
+	fileExtension?: string
+}
+
+interface UpdateMarkdownBody {
+	filePath: string
+	frontmatter?: Record<string, unknown>
+	content?: string
+}
+
+interface DeleteMarkdownBody {
+	filePath: string
+}
+
+interface RenameMarkdownBody {
+	filePath: string
+	newSlug: string
+}
+
+interface DuplicatePageBody {
+	sourcePagePath: string
+	slug: string
+	title?: string
+	layoutPath?: string
+	createRedirect?: boolean
+}
+
+interface DeletePageBody {
+	pagePath: string
+	createRedirect?: boolean
+	redirectTo?: string
+}
+
+const DATA_EXTENSIONS = new Set(['json', 'yaml', 'yml'])
+
 /** O(1) route lookup map: "METHOD:route" → handler */
 const routeMap = new Map<string, RouteHandler>([
-	// Source editing
+	// Source editing — manifest-coupled, stays in @nuasite/cms
 	post('update', (body: Parameters<typeof handleUpdate>[0], mw) => handleUpdate(body, mw)),
 	post('insert-component', (body: Parameters<typeof handleInsertComponent>[0], mw) => handleInsertComponent(body, mw)),
 	post('remove-component', (body: Parameters<typeof handleRemoveComponent>[0], mw) => handleRemoveComponent(body, mw)),
 	post('add-array-item', (body: Parameters<typeof handleAddArrayItem>[0], mw) => handleAddArrayItem(body, mw)),
 	post('remove-array-item', (body: Parameters<typeof handleRemoveArrayItem>[0], mw) => handleRemoveArrayItem(body, mw)),
 
-	// Markdown CRUD
-	custom('GET', 'markdown/content', async ({ req, res }) => {
+	// Markdown / entry CRUD — structural, delegated to cms-core
+	custom('GET', 'markdown/content', async ({ req, res, core, contentDir }) => {
 		const filePath = getQuery({ req } as RouteContext).get('filePath')
 		if (!filePath) {
 			sendError(res, 'filePath query parameter required')
 			return
 		}
-		const result = await handleGetMarkdownContent(filePath)
+		const entry = filePathToEntry(contentDir, filePath)
+		const result = entry ? await core.getEntry(entry.collection, entry.slug) : null
 		if (!result) {
 			sendError(res, 'File not found', 404)
 			return
 		}
-		sendJson(res, result)
+		sendJson(res, { content: result.content, frontmatter: result.frontmatter, filePath })
 	}),
-	custom('POST', 'markdown/update', async ({ req, res, manifestWriter }) => {
-		const body = await parseJsonBody<Parameters<typeof handleUpdateMarkdown>[0]>(req)
-		const result = await handleUpdateMarkdown(body, manifestWriter.getComponentDefinitions())
-		sendJson(res, result)
+	custom('POST', 'markdown/update', async ({ req, res, core, contentDir }) => {
+		const body = await parseJsonBody<UpdateMarkdownBody>(req)
+		const entry = filePathToEntry(contentDir, body.filePath)
+		if (!entry) {
+			sendJson(res, { success: false, error: `Invalid content path: ${body.filePath}` })
+			return
+		}
+		// cms-core's updateEntry resolves component definitions internally for MDX imports.
+		const result = await core.updateEntry({
+			collection: entry.collection,
+			slug: entry.slug,
+			frontmatter: body.frontmatter,
+			body: body.content,
+		})
+		sendJson(res, { success: result.success, ...(result.error ? { error: result.error } : {}) })
 	}),
-	post('markdown/rename', (body: Parameters<typeof handleRenameMarkdown>[0]) => handleRenameMarkdown(body)),
-	custom('POST', 'markdown/create', async ({ req, res, manifestWriter, contentDir }) => {
-		const body = await parseJsonBody<Parameters<typeof handleCreateMarkdown>[0]>(req)
-		const result = await handleCreateMarkdown(body)
+	custom('POST', 'markdown/rename', async ({ req, res, core, contentDir }) => {
+		const body = await parseJsonBody<RenameMarkdownBody>(req)
+		const entry = filePathToEntry(contentDir, body.filePath)
+		if (!entry) {
+			sendJson(res, { success: false, error: `Invalid content path: ${body.filePath}` })
+			return
+		}
+		const result = await core.renameEntry(entry.collection, entry.slug, body.newSlug)
+		if (!result.success) {
+			sendJson(res, { success: false, error: result.error })
+			return
+		}
+		const newSlug = result.sourcePath ? lastSlug(result.sourcePath) : undefined
+		sendJson(res, { success: true, newFilePath: result.sourcePath, newSlug })
+	}),
+	custom('POST', 'markdown/create', async ({ req, res, core, manifestWriter, contentDir }) => {
+		const body = await parseJsonBody<CreateMarkdownBody>(req)
+		const ext = body.fileExtension ?? 'md'
+		const isData = DATA_EXTENSIONS.has(ext)
+		// Markdown entries get title + an ISO date injected; data entries take frontmatter verbatim.
+		const frontmatter = isData
+			? { ...(body.frontmatter ?? {}) }
+			: { title: body.title, date: new Date().toISOString().split('T')[0]!, ...(body.frontmatter ?? {}) }
+
+		const result = await core.createEntry({
+			collection: body.collection,
+			slug: body.slug || body.title,
+			frontmatter,
+			body: body.content,
+			fileExtension: body.fileExtension,
+		})
+
 		if (result.success) {
 			manifestWriter.setCollectionDefinitions(await scanCollections(contentDir))
 		}
-		sendJson(res, result, result.success ? 200 : 400)
+		const slug = result.sourcePath ? lastSlug(result.sourcePath) : undefined
+		sendJson(
+			res,
+			{
+				success: result.success,
+				...(result.sourcePath ? { filePath: result.sourcePath } : {}),
+				...(slug ? { slug } : {}),
+				...(result.error ? { error: result.error } : {}),
+			},
+			result.success ? 200 : 400,
+		)
 	}),
-	custom('POST', 'markdown/delete', async ({ req, res, manifestWriter, contentDir }) => {
-		const body = await parseJsonBody<Parameters<typeof handleDeleteMarkdown>[0]>(req)
-		const fullPath = path.resolve(getProjectRoot(), body.filePath?.replace(/^\//, '') ?? '')
+	custom('POST', 'markdown/delete', async ({ req, res, core, manifestWriter, contentDir }) => {
+		const body = await parseJsonBody<DeleteMarkdownBody>(req)
+		const entry = filePathToEntry(contentDir, body.filePath)
+		if (!entry) {
+			sendJson(res, { success: false, error: `Invalid content path: ${body.filePath}` }, 400)
+			return
+		}
+		const fullPath = path.resolve(getProjectRoot(), body.filePath.replace(/^\//, ''))
 		expectedDeletions.add(fullPath)
-		const result = await handleDeleteMarkdown(body)
+		const result = await core.deleteEntry(entry.collection, entry.slug)
 		if (result.success) {
 			manifestWriter.setCollectionDefinitions(await scanCollections(contentDir))
 		} else {
 			expectedDeletions.delete(fullPath)
 		}
-		sendJson(res, result, result.success ? 200 : 400)
+		sendJson(res, { success: result.success, ...(result.error ? { error: result.error } : {}) }, result.success ? 200 : 400)
 	}),
 
 	// Media
@@ -143,7 +273,7 @@ const routeMap = new Map<string, RouteHandler>([
 	}),
 	custom('GET', 'media/project-images', async (ctx) => {
 		const excludeDir = ctx.mediaAdapter?.staticFiles?.dir
-		const items = await listProjectImages({ excludeDir })
+		const items = await listProjectImages(ctx.fs, { excludeDir })
 		sendJson(ctx.res, { items })
 	}),
 	custom('POST', 'media/upload', async (ctx) => {
@@ -225,24 +355,24 @@ const routeMap = new Map<string, RouteHandler>([
 		sendJson(ctx.res, result, result.success ? 200 : 400)
 	}),
 
-	// Page operations
-	postWithStatus('page/create', (body: Parameters<typeof handleCreatePage>[0]) => handleCreatePage(body)),
-	custom('POST', 'page/duplicate', async ({ req, res }) => {
-		const body = await parseJsonBody<Parameters<typeof handleDuplicatePage>[0]>(req)
-		const result = await handleDuplicatePage(body)
+	// Page operations — structural, delegated to cms-core
+	postCore('page/create', (body: Parameters<CmsCore['createPage']>[0], core) => core.createPage(body)),
+	custom('POST', 'page/duplicate', async ({ req, res, core }) => {
+		const body = await parseJsonBody<DuplicatePageBody>(req)
+		const result = await core.duplicatePage(body)
 		if (result.success && body.createRedirect) {
-			await handleAddRedirect({ source: body.sourcePagePath, destination: result.url!, statusCode: 307 })
+			await core.addRedirect({ source: body.sourcePagePath, destination: result.url!, statusCode: 307 })
 		}
 		sendJson(res, result, result.success ? 200 : 400)
 	}),
-	custom('POST', 'page/delete', async ({ req, res }) => {
-		const body = await parseJsonBody<Parameters<typeof handleDeletePage>[0]>(req)
-		const result = await handleDeletePage(body)
+	custom('POST', 'page/delete', async ({ req, res, core }) => {
+		const body = await parseJsonBody<DeletePageBody>(req)
+		const result = await core.deletePage(body)
 		if (result.success && result.filePath) {
 			expectedDeletions.add(path.resolve(getProjectRoot(), result.filePath))
 		}
 		if (result.success && body.createRedirect && body.redirectTo) {
-			await handleAddRedirect({ source: body.pagePath, destination: body.redirectTo, statusCode: 307 })
+			await core.addRedirect({ source: body.pagePath, destination: body.redirectTo, statusCode: 307 })
 		}
 		sendJson(res, result, result.success ? 200 : 400)
 	}),
@@ -254,17 +384,31 @@ const routeMap = new Map<string, RouteHandler>([
 		}
 		sendJson(ctx.res, await handleCheckSlugExists(slug))
 	}),
-	get('page/layouts', async () => ({ layouts: await handleGetLayouts() })),
+	getCore('page/layouts', async (core) => ({ layouts: await core.getLayouts() })),
 
-	// Redirects
-	get('redirects', () => handleGetRedirects()),
-	postWithStatus('redirects/add', (body: Parameters<typeof handleAddRedirect>[0]) => handleAddRedirect(body)),
-	postWithStatus('redirects/update', (body: Parameters<typeof handleUpdateRedirect>[0]) => handleUpdateRedirect(body)),
-	postWithStatus('redirects/delete', (body: Parameters<typeof handleDeleteRedirect>[0]) => handleDeleteRedirect(body)),
+	// Redirects — structural, delegated to cms-core
+	getCore('redirects', (core) => core.listRedirects()),
+	postCore('redirects/add', (body: Parameters<CmsCore['addRedirect']>[0], core) => core.addRedirect(body)),
+	postCore('redirects/update', (body: Parameters<CmsCore['updateRedirect']>[0], core) => core.updateRedirect(body)),
+	postCore('redirects/delete', (body: Parameters<CmsCore['deleteRedirect']>[0], core) => core.deleteRedirect(body)),
 
 	// Deployment
 	get('deployment/status', async () => ({ currentDeployment: null, pendingCount: 0, deploymentEnabled: false })),
 ])
+
+/** GET route returning a fixed/static payload (no cms-core needed). */
+function get(route: string, handler: () => Promise<unknown>): [string, RouteHandler] {
+	return [`GET:${route}`, async ({ res }) => {
+		sendJson(res, await handler())
+	}]
+}
+
+/** Last path segment of a root-relative source path, with the extension and a trailing `/index` stripped. */
+function lastSlug(sourcePath: string): string {
+	const withoutExt = sourcePath.replace(/\.(md|mdx|json|yaml|yml)$/, '').replace(/\/index$/, '')
+	const slash = withoutExt.lastIndexOf('/')
+	return slash >= 0 ? withoutExt.slice(slash + 1) : withoutExt
+}
 
 export async function handleCmsApiRoute(ctx: RouteContext): Promise<void> {
 	const { req, res, route } = ctx

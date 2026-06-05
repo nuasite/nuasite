@@ -21,6 +21,7 @@
 		}
 	},
 	"references": [
+		{ "path": "../../cms-core/src" },
 		{ "path": "../../cms-types/src" }
 	]
 }

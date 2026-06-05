@@ -1,10 +1,13 @@
+import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
 import { expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { handleCreateMarkdown } from '../../src/handlers/markdown-ops'
 import { withTempDir } from '../utils'
 
-withTempDir('handleCreateMarkdown collection layout', (getCtx) => {
+// Entry creation (incl. flat-vs-index layout detection) lives in @nuasite/cms-core now.
+// These cases exercise that layout detection through cms-core, which @nuasite/cms's
+// dev API delegates to for the `markdown/create` route.
+withTempDir('createEntry collection layout', (getCtx) => {
 	test('creates markdown entries as <slug>/index.md for index-style glob collections', async () => {
 		const ctx = getCtx()
 		await ctx.mkdir('src/content/aktualne')
@@ -22,17 +25,17 @@ withTempDir('handleCreateMarkdown collection layout', (getCtx) => {
 			`,
 		)
 
-		const result = await handleCreateMarkdown({
+		const core = createCmsCore(createNodeFs(ctx.tempDir))
+		const result = await core.createEntry({
 			collection: 'aktualne',
-			title: 'Nová aktualita',
 			slug: 'nova-aktualita',
-			content: 'Body',
+			frontmatter: { title: 'Nová aktualita' },
+			body: 'Body',
 		})
 
 		expect(result).toMatchObject({
 			success: true,
-			filePath: 'src/content/aktualne/nova-aktualita/index.md',
-			slug: 'nova-aktualita',
+			sourcePath: 'src/content/aktualne/nova-aktualita/index.md',
 		})
 		await expect(fs.stat(path.join(ctx.tempDir, 'src/content/aktualne/nova-aktualita/index.md'))).resolves.toBeDefined()
 	})
@@ -54,17 +57,17 @@ withTempDir('handleCreateMarkdown collection layout', (getCtx) => {
 			`,
 		)
 
-		const result = await handleCreateMarkdown({
+		const core = createCmsCore(createNodeFs(ctx.tempDir))
+		const result = await core.createEntry({
 			collection: 'blog',
-			title: 'Flat Post',
 			slug: 'flat-post',
-			content: 'Body',
+			frontmatter: { title: 'Flat Post' },
+			body: 'Body',
 		})
 
 		expect(result).toMatchObject({
 			success: true,
-			filePath: 'src/content/blog/flat-post.md',
-			slug: 'flat-post',
+			sourcePath: 'src/content/blog/flat-post.md',
 		})
 		await expect(fs.stat(path.join(ctx.tempDir, 'src/content/blog/flat-post.md'))).resolves.toBeDefined()
 	})

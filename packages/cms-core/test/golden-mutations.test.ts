@@ -1,33 +1,17 @@
-// The structural handlers are imported via relative source paths — the same way
-// `@nuasite/cms`'s own tests reach them — so this golden parity test exercises
-// the existing handlers verbatim without changing the `@nuasite/cms` public API.
+// Self-contained golden-file mutation tests for cms-core.
+//
+// F0.2 proved byte parity by running these operations against the legacy
+// `@nuasite/cms` handlers and comparing the resulting file trees. Those handlers
+// have since been deleted (F0.3 — `@nuasite/cms` now delegates its dev API to
+// cms-core), so the proven byte output is committed here as golden literals.
+// Each test runs cms-core against a fresh fixture copy and asserts the exact bytes
+// written — keeping mutation coverage without importing deleted code.
 import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
 import { afterEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ComponentRegistry } from '../../cms/src/component-registry'
-import { resetProjectRoot, setProjectRoot } from '../../cms/src/config'
-import {
-	handleCreateMarkdown as legacyCreateMarkdown,
-	handleDeleteMarkdown as legacyDeleteMarkdown,
-	handleGetMarkdownContent as legacyGetMarkdownContent,
-	handleRenameMarkdown as legacyRenameMarkdown,
-	handleUpdateMarkdown as legacyUpdateMarkdown,
-} from '../../cms/src/handlers/markdown-ops'
-import {
-	handleCreatePage as legacyCreatePage,
-	handleDeletePage as legacyDeletePage,
-	handleDuplicatePage as legacyDuplicatePage,
-	handleGetLayouts as legacyGetLayouts,
-} from '../../cms/src/handlers/page-ops'
-import {
-	handleAddRedirect as legacyAddRedirect,
-	handleDeleteRedirect as legacyDeleteRedirect,
-	handleGetRedirects as legacyGetRedirects,
-	handleUpdateRedirect as legacyUpdateRedirect,
-} from '../../cms/src/handlers/redirect-ops'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURE_ROOT = path.join(__dirname, 'fixtures', 'sample-project')
@@ -35,411 +19,252 @@ const FIXTURE_ROOT = path.join(__dirname, 'fixtures', 'sample-project')
 /** Mirror of the legacy ComponentRegistry default. */
 const COMPONENT_DIRS = ['src/components']
 
-async function copyFixture(suffix: string): Promise<string> {
-	const dir = await fs.mkdtemp(path.join(os.tmpdir(), `cms-core-golden-${suffix}-`))
-	await fs.cp(FIXTURE_ROOT, dir, { recursive: true })
-	return dir
-}
-
-/** Read every file under `root` into a `{ relPath -> bytes }` map (forward-slash keys). */
-async function snapshot(root: string): Promise<Map<string, string>> {
-	const out = new Map<string, string>()
-	async function walk(abs: string): Promise<void> {
-		const entries = await fs.readdir(abs, { withFileTypes: true })
-		for (const entry of entries) {
-			const full = path.join(abs, entry.name)
-			if (entry.isDirectory()) {
-				await walk(full)
-			} else if (entry.isFile()) {
-				const rel = path.relative(root, full).split(path.sep).join('/')
-				out.set(rel, await fs.readFile(full, 'utf-8'))
-			}
-		}
+const cleanups: string[] = []
+afterEach(async () => {
+	for (const dir of cleanups.splice(0)) {
+		await fs.rm(dir, { recursive: true, force: true })
 	}
-	await walk(root)
-	return out
+})
+
+async function freshCore(): Promise<{ core: ReturnType<typeof createCmsCore>; root: string }> {
+	const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cms-core-golden-'))
+	await fs.cp(FIXTURE_ROOT, root, { recursive: true })
+	cleanups.push(root)
+	return { core: createCmsCore(createNodeFs(root), { componentDirs: COMPONENT_DIRS }), root }
 }
 
-/**
- * Run `legacyFn` against a fixture copy via the project-root override, and
- * `coreFn` against an independent fixture copy via the node:fs adapter. Returns
- * both file snapshots plus the two operation results, so a test can assert byte
- * parity and side-effect parity.
- */
-async function runBoth<L, C>(
-	legacyFn: () => Promise<L>,
-	coreFn: (core: ReturnType<typeof createCmsCore>) => Promise<C>,
-): Promise<{ legacy: L; core: C; legacySnap: Map<string, string>; coreSnap: Map<string, string>; legacyRoot: string; coreRoot: string }> {
-	const legacyRoot = await copyFixture('legacy')
-	const coreRoot = await copyFixture('core')
+async function readFile(root: string, rel: string): Promise<string> {
+	return fs.readFile(path.join(root, rel), 'utf-8')
+}
 
-	setProjectRoot(legacyRoot)
-	let legacy: L
+async function fileExists(root: string, rel: string): Promise<boolean> {
 	try {
-		legacy = await legacyFn()
-	} finally {
-		resetProjectRoot()
-	}
-
-	const core = createCmsCore(createNodeFs(coreRoot), { componentDirs: COMPONENT_DIRS })
-	const coreResult = await coreFn(core)
-
-	return {
-		legacy,
-		core: coreResult,
-		legacySnap: await snapshot(legacyRoot),
-		coreSnap: await snapshot(coreRoot),
-		legacyRoot,
-		coreRoot,
+		await fs.access(path.join(root, rel))
+		return true
+	} catch {
+		return false
 	}
 }
 
-/** Assert the two trees are byte-identical (same set of files, identical bytes). */
-function expectIdenticalTrees(a: Map<string, string>, b: Map<string, string>): void {
-	expect([...a.keys()].sort()).toEqual([...b.keys()].sort())
-	for (const [rel, bytes] of a) {
-		expect(b.get(rel)).toBe(bytes)
-	}
-}
-
-describe('cms-core mutations — byte parity with @nuasite/cms handlers', () => {
-	const cleanups: string[] = []
-	afterEach(async () => {
-		for (const dir of cleanups.splice(0)) {
-			await fs.rm(dir, { recursive: true, force: true })
-		}
-	})
-
-	async function both<L, C>(
-		legacyFn: () => Promise<L>,
-		coreFn: (core: ReturnType<typeof createCmsCore>) => Promise<C>,
-	) {
-		const res = await runBoth(legacyFn, coreFn)
-		cleanups.push(res.legacyRoot, res.coreRoot)
-		return res
-	}
-
+describe('cms-core mutations — committed golden output (proven byte-parity with the former @nuasite/cms handlers)', () => {
 	// ---- createEntry ----
-	test('createEntry (markdown) is byte-identical', async () => {
-		const fixedFrontmatter = { title: 'New Post', date: '2024-06-01', draft: false, tags: ['alpha', 'beta'] }
-		const { legacySnap, coreSnap } = await both(
-			() =>
-				legacyCreateMarkdown({
-					collection: 'blog',
-					title: 'New Post',
-					slug: 'new-post',
-					frontmatter: { date: '2024-06-01', draft: false, tags: ['alpha', 'beta'] },
-					content: '# New Post\n\nBody here.',
-				}),
-			(core) =>
-				core.createEntry({
-					collection: 'blog',
-					slug: 'new-post',
-					frontmatter: fixedFrontmatter,
-					body: '# New Post\n\nBody here.',
-				}),
+	test('createEntry (markdown) writes the golden frontmatter + body', async () => {
+		const { core, root } = await freshCore()
+		const res = await core.createEntry({
+			collection: 'blog',
+			slug: 'new-post',
+			frontmatter: { title: 'New Post', date: '2024-06-01', draft: false, tags: ['alpha', 'beta'] },
+			body: '# New Post\n\nBody here.',
+		})
+		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/new-post.md' })
+		expect(await readFile(root, 'src/content/blog/new-post.md')).toBe(
+			"---\ntitle: New Post\ndate: '2024-06-01'\ndraft: false\ntags:\n  - alpha\n  - beta\n---\n# New Post\n\nBody here.",
 		)
-		const created = coreSnap.get('src/content/blog/new-post.md')
-		expect(created).toContain('title: New Post')
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
-	test('createEntry (data/json) is byte-identical', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() =>
-				legacyCreateMarkdown({
-					collection: 'team',
-					title: 'Carol',
-					slug: 'carol',
-					frontmatter: { name: 'Carol', role: 'Designer' },
-					fileExtension: 'json',
-				}),
-			(core) =>
-				core.createEntry({
-					collection: 'team',
-					slug: 'carol',
-					frontmatter: { name: 'Carol', role: 'Designer' },
-					fileExtension: 'json',
-				}),
-		)
-		expect(coreSnap.get('src/content/team/carol.json')).toBeDefined()
-		expectIdenticalTrees(legacySnap, coreSnap)
+	test('createEntry (data/json) writes the golden JSON', async () => {
+		const { core, root } = await freshCore()
+		const res = await core.createEntry({
+			collection: 'team',
+			slug: 'carol',
+			frontmatter: { name: 'Carol', role: 'Designer' },
+			fileExtension: 'json',
+		})
+		expect(res).toEqual({ success: true, sourcePath: 'src/content/team/carol.json' })
+		expect(await readFile(root, 'src/content/team/carol.json')).toBe('{\n  "name": "Carol",\n  "role": "Designer"\n}\n')
 	})
 
 	// ---- updateEntry ----
-	test('updateEntry (frontmatter + body) is byte-identical', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() =>
-				legacyUpdateMarkdown(
-					{
-						filePath: 'src/content/blog/hello-world.md',
-						frontmatter: { title: 'Hello (edited)', tags: ['intro', 'news', 'update'] },
-						content: '# Hello World\n\nEdited body.',
-					},
-					{},
-				),
-			(core) =>
-				core.updateEntry({
-					collection: 'blog',
-					slug: 'hello-world',
-					frontmatter: { title: 'Hello (edited)', tags: ['intro', 'news', 'update'] },
-					body: '# Hello World\n\nEdited body.',
-				}),
+	test('updateEntry (frontmatter + body) merges and writes the golden output', async () => {
+		const { core, root } = await freshCore()
+		const res = await core.updateEntry({
+			collection: 'blog',
+			slug: 'hello-world',
+			frontmatter: { title: 'Hello (edited)', tags: ['intro', 'news', 'update'] },
+			body: '# Hello World\n\nEdited body.',
+		})
+		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/hello-world.md' })
+		expect(await readFile(root, 'src/content/blog/hello-world.md')).toBe(
+			"---\ntitle: Hello (edited)\ndate: '2024-01-15'\ndraft: false\ncover: ./hello.jpg\ntags:\n  - intro\n  - news\n  - update\nauthor: jane-doe\n---\n# Hello World\n\nEdited body.",
 		)
-		expect(coreSnap.get('src/content/blog/hello-world.md')).toContain('Hello (edited)')
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
-	test('updateEntry (data/yaml merge) is byte-identical', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() =>
-				legacyUpdateMarkdown(
-					{ filePath: 'src/content/settings/site.yaml', frontmatter: { tagline: 'We ship things' } },
-					{},
-				),
-			(core) => core.updateEntry({ collection: 'settings', slug: 'site', frontmatter: { tagline: 'We ship things' } }),
+	test('updateEntry (data/yaml) merges and writes the golden output', async () => {
+		const { core, root } = await freshCore()
+		const res = await core.updateEntry({ collection: 'settings', slug: 'site', frontmatter: { tagline: 'We ship things' } })
+		expect(res).toEqual({ success: true, sourcePath: 'src/content/settings/site.yaml' })
+		expect(await readFile(root, 'src/content/settings/site.yaml')).toBe(
+			'name: Acme Site\ntagline: We ship things\ncontactEmail: hello@acme.test\nsocial:\n  twitter: acme\n  github: acme-org\n',
 		)
-		expect(coreSnap.get('src/content/settings/site.yaml')).toContain('We ship things')
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
 	// ---- updateEntry on MDX with a component (proves internal componentDefinitions resolution) ----
-	test('updateEntry (.mdx with component) injects the same import as the manifest-fed legacy path', async () => {
-		// Both copies get an identical MDX entry that references <Hero>. The legacy
-		// path is fed the componentDefinitions from a scan of src/components; the
-		// core path resolves them internally. The injected import must match byte-for-byte.
-		const legacyRoot = await copyFixture('legacy-mdx')
-		const coreRoot = await copyFixture('core-mdx')
-		cleanups.push(legacyRoot, coreRoot)
-
+	test('updateEntry (.mdx with component) injects the component import resolved internally', async () => {
+		const { core, root } = await freshCore()
 		const mdxRel = 'src/content/blog/with-hero.mdx'
-		const mdxBody = '# Post\n\n<Hero title="Hi" />'
-		const initial = '---\ntitle: With Hero\n---\n# placeholder\n'
-		await fs.writeFile(path.join(legacyRoot, mdxRel), initial)
-		await fs.writeFile(path.join(coreRoot, mdxRel), initial)
+		await fs.writeFile(path.join(root, mdxRel), '---\ntitle: With Hero\n---\n# placeholder\n')
 
-		// Legacy: scan components (as the dev server does), feed the manifest's defs.
-		setProjectRoot(legacyRoot)
-		try {
-			const registry = new ComponentRegistry(COMPONENT_DIRS)
-			await registry.scan()
-			const legacyDefs = registry.getComponents()
-			await legacyUpdateMarkdown({ filePath: mdxRel, content: mdxBody }, legacyDefs)
-		} finally {
-			resetProjectRoot()
-		}
+		const res = await core.updateEntry({ collection: 'blog', slug: 'with-hero', body: '# Post\n\n<Hero title="Hi" />' })
+		expect(res.success).toBe(true)
 
-		// Core: resolve componentDefinitions internally.
-		const core = createCmsCore(createNodeFs(coreRoot), { componentDirs: COMPONENT_DIRS })
-		await core.updateEntry({ collection: 'blog', slug: 'with-hero', body: mdxBody })
-
-		const legacyOut = await fs.readFile(path.join(legacyRoot, mdxRel), 'utf-8')
-		const coreOut = await fs.readFile(path.join(coreRoot, mdxRel), 'utf-8')
-
-		expect(legacyOut).toContain("import Hero from '../../components/Hero.astro'")
-		expect(coreOut).toBe(legacyOut)
+		const out = await readFile(root, mdxRel)
+		// cms-core resolves <Hero> from src/components internally (no manifest needed).
+		expect(out).toContain("import Hero from '../../components/Hero.astro'")
+		expect(out).toContain('<Hero title="Hi" />')
 	})
 
 	// ---- deleteEntry ----
-	test('deleteEntry removes the same file (byte parity)', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() => legacyDeleteMarkdown({ filePath: 'src/content/blog/draft-post.md' }),
-			(core) => core.deleteEntry('blog', 'draft-post'),
-		)
-		expect(coreSnap.has('src/content/blog/draft-post.md')).toBe(false)
-		expectIdenticalTrees(legacySnap, coreSnap)
+	test('deleteEntry removes the resolved file', async () => {
+		const { core, root } = await freshCore()
+		expect(await fileExists(root, 'src/content/blog/draft-post.md')).toBe(true)
+		const res = await core.deleteEntry('blog', 'draft-post')
+		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/draft-post.md' })
+		expect(await fileExists(root, 'src/content/blog/draft-post.md')).toBe(false)
 	})
 
 	// ---- renameEntry ----
-	test('renameEntry removes old + creates new (byte parity)', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() => legacyRenameMarkdown({ filePath: 'src/content/blog/hello-world.md', newSlug: 'hello-renamed' }),
-			(core) => core.renameEntry('blog', 'hello-world', 'hello-renamed'),
-		)
-		expect(coreSnap.has('src/content/blog/hello-world.md')).toBe(false)
-		expect(coreSnap.has('src/content/blog/hello-renamed.md')).toBe(true)
-		expectIdenticalTrees(legacySnap, coreSnap)
+	test('renameEntry removes the old file and creates the new one with identical bytes', async () => {
+		const { core, root } = await freshCore()
+		const before = await readFile(root, 'src/content/blog/hello-world.md')
+		const res = await core.renameEntry('blog', 'hello-world', 'hello-renamed')
+		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/hello-renamed.md' })
+		expect(await fileExists(root, 'src/content/blog/hello-world.md')).toBe(false)
+		expect(await readFile(root, 'src/content/blog/hello-renamed.md')).toBe(before)
 	})
 
 	// ---- addArrayItem / removeArrayItem (entry frontmatter) ----
-	// The legacy headless path edits frontmatter arrays via a whole-frontmatter
-	// updateEntry; cms-core's addArrayItem/removeArrayItem splice the array and
-	// write back through the same frontmatter representation. Parity is asserted
-	// against the equivalent whole-frontmatter legacy update.
-	test('addArrayItem (markdown frontmatter) matches a whole-frontmatter legacy update', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() =>
-				legacyUpdateMarkdown(
-					{ filePath: 'src/content/blog/hello-world.md', frontmatter: { tags: ['intro', 'news', 'release'] } },
-					{},
-				),
-			(core) => core.addArrayItem({ collection: 'blog', slug: 'hello-world', field: 'tags', value: 'release' }),
+	test('addArrayItem (markdown frontmatter) appends and writes the golden output', async () => {
+		const { core, root } = await freshCore()
+		const res = await core.addArrayItem({ collection: 'blog', slug: 'hello-world', field: 'tags', value: 'release' })
+		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/hello-world.md' })
+		expect(await readFile(root, 'src/content/blog/hello-world.md')).toBe(
+			"---\ntitle: Hello World\ndate: '2024-01-15'\ndraft: false\ncover: ./hello.jpg\ntags:\n  - intro\n  - news\n  - release\nauthor: jane-doe\n---\n# Hello World\n\nThis is the first post.\n",
 		)
-		expect(coreSnap.get('src/content/blog/hello-world.md')).toContain('release')
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
-	test('addArrayItem at an explicit index matches the equivalent whole-frontmatter legacy update', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() =>
-				legacyUpdateMarkdown(
-					{ filePath: 'src/content/blog/hello-world.md', frontmatter: { tags: ['intro', 'middle', 'news'] } },
-					{},
-				),
-			(core) => core.addArrayItem({ collection: 'blog', slug: 'hello-world', field: 'tags', value: 'middle', index: 1 }),
+	test('addArrayItem at an explicit index inserts and writes the golden output', async () => {
+		const { core, root } = await freshCore()
+		await core.addArrayItem({ collection: 'blog', slug: 'hello-world', field: 'tags', value: 'middle', index: 1 })
+		expect(await readFile(root, 'src/content/blog/hello-world.md')).toBe(
+			"---\ntitle: Hello World\ndate: '2024-01-15'\ndraft: false\ncover: ./hello.jpg\ntags:\n  - intro\n  - middle\n  - news\nauthor: jane-doe\n---\n# Hello World\n\nThis is the first post.\n",
 		)
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
-	test('removeArrayItem (markdown frontmatter) matches a whole-frontmatter legacy update', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() =>
-				legacyUpdateMarkdown(
-					{ filePath: 'src/content/blog/hello-world.md', frontmatter: { tags: ['news'] } },
-					{},
-				),
-			(core) => core.removeArrayItem({ collection: 'blog', slug: 'hello-world', field: 'tags', index: 0 }),
+	test('removeArrayItem (markdown frontmatter) removes and writes the golden output', async () => {
+		const { core, root } = await freshCore()
+		await core.removeArrayItem({ collection: 'blog', slug: 'hello-world', field: 'tags', index: 0 })
+		expect(await readFile(root, 'src/content/blog/hello-world.md')).toBe(
+			"---\ntitle: Hello World\ndate: '2024-01-15'\ndraft: false\ncover: ./hello.jpg\ntags:\n  - news\nauthor: jane-doe\n---\n# Hello World\n\nThis is the first post.\n",
 		)
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
-	test('addArrayItem (data/json frontmatter) matches a whole-frontmatter legacy update', async () => {
-		const newLinks = [
-			{ label: 'GitHub', url: 'https://github.com/alice' },
-			{ label: 'Twitter', url: 'https://twitter.com/alice' },
-			{ label: 'Blog', url: 'https://alice.example' },
-		]
-		const { legacySnap, coreSnap } = await both(
-			() => legacyUpdateMarkdown({ filePath: 'src/content/team/alice.json', frontmatter: { links: newLinks } }, {}),
-			(core) =>
-				core.addArrayItem({
-					collection: 'team',
-					slug: 'alice',
-					field: 'links',
-					value: { label: 'Blog', url: 'https://alice.example' },
-				}),
+	test('addArrayItem (data/json frontmatter) appends and writes the golden output', async () => {
+		const { core, root } = await freshCore()
+		await core.addArrayItem({
+			collection: 'team',
+			slug: 'alice',
+			field: 'links',
+			value: { label: 'Blog', url: 'https://alice.example' },
+		})
+		expect(await readFile(root, 'src/content/team/alice.json')).toBe(
+			'{\n  "name": "Alice",\n  "role": "Engineer",\n  "links": [\n    {\n      "label": "GitHub",\n      "url": "https://github.com/alice"\n    },\n    {\n      "label": "Twitter",\n      "url": "https://twitter.com/alice"\n    },\n    {\n      "label": "Blog",\n      "url": "https://alice.example"\n    }\n  ]\n}\n',
 		)
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
 	// ---- createPage ----
-	test('createPage is byte-identical', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() => legacyCreatePage({ title: 'Contact', slug: 'contact' }),
-			(core) => core.createPage({ title: 'Contact', slug: 'contact' }),
+	test('createPage writes the golden Astro page (default layout)', async () => {
+		const { core, root } = await freshCore()
+		const res = await core.createPage({ title: 'Contact', slug: 'contact' })
+		expect(res).toEqual({ success: true, filePath: 'src/pages/contact.astro', slug: 'contact', url: '/contact' })
+		expect(await readFile(root, 'src/pages/contact.astro')).toBe(
+			'---\nimport Base from \'../layouts/Base.astro\'\n---\n\n<Base title="Contact" description="">\n\t<main>\n\t\t<h1>Contact</h1>\n\t</main>\n</Base>\n',
 		)
-		expect(coreSnap.get('src/pages/contact.astro')).toContain('Contact')
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
-	test('createPage with explicit layout is byte-identical', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() => legacyCreatePage({ title: 'Services', slug: 'services', layoutPath: 'src/layouts/Base.astro' }),
-			(core) => core.createPage({ title: 'Services', slug: 'services', layoutPath: 'src/layouts/Base.astro' }),
+	test('createPage with explicit layout writes the golden Astro page', async () => {
+		const { core, root } = await freshCore()
+		const res = await core.createPage({ title: 'Services', slug: 'services', layoutPath: 'src/layouts/Base.astro' })
+		expect(res).toEqual({ success: true, filePath: 'src/pages/services.astro', slug: 'services', url: '/services' })
+		expect(await readFile(root, 'src/pages/services.astro')).toBe(
+			'---\nimport Base from \'../layouts/Base.astro\'\n---\n\n<Base title="Services" description="">\n\t<main>\n\t\t<h1>Services</h1>\n\t</main>\n</Base>\n',
 		)
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
 	// ---- duplicatePage ----
-	test('duplicatePage is byte-identical', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() => legacyDuplicatePage({ sourcePagePath: '/about', slug: 'about-copy', title: 'About Copy' }),
-			(core) => core.duplicatePage({ sourcePagePath: '/about', slug: 'about-copy', title: 'About Copy' }),
+	test('duplicatePage copies the source page and rewrites the title (golden output)', async () => {
+		const { core, root } = await freshCore()
+		const res = await core.duplicatePage({ sourcePagePath: '/about', slug: 'about-copy', title: 'About Copy' })
+		expect(res).toEqual({ success: true, filePath: 'src/pages/about-copy.astro', slug: 'about-copy', url: '/about-copy' })
+		expect(await readFile(root, 'src/pages/about-copy.astro')).toBe(
+			'---\nimport Base from \'../layouts/Base.astro\'\n---\n\n<Base title="About Copy" description="Learn more about us">\n\t<main>\n\t\t<h1>About Copy</h1>\n\t\t<p>We build things.</p>\n\t</main>\n</Base>\n',
 		)
-		expect(coreSnap.get('src/pages/about-copy.astro')).toContain('About Copy')
-		expectIdenticalTrees(legacySnap, coreSnap)
 	})
 
 	// ---- deletePage ----
-	test('deletePage removes the same file (byte parity)', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() => legacyDeletePage({ pagePath: '/about' }),
-			(core) => core.deletePage({ pagePath: '/about' }),
-		)
-		expect(coreSnap.has('src/pages/about.astro')).toBe(false)
-		expectIdenticalTrees(legacySnap, coreSnap)
+	test('deletePage removes the resolved page file', async () => {
+		const { core, root } = await freshCore()
+		expect(await fileExists(root, 'src/pages/about.astro')).toBe(true)
+		const res = await core.deletePage({ pagePath: '/about' })
+		expect(res).toEqual({ success: true, filePath: 'src/pages/about.astro', url: '/about' })
+		expect(await fileExists(root, 'src/pages/about.astro')).toBe(false)
 	})
 
 	// ---- redirects ----
-	test('addRedirect is byte-identical', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() => legacyAddRedirect({ source: '/promo', destination: '/about', statusCode: 302 }),
-			(core) => core.addRedirect({ source: '/promo', destination: '/about', statusCode: 302 }),
-		)
-		expect(coreSnap.get('src/_redirects')).toContain('/promo /about 302')
-		expectIdenticalTrees(legacySnap, coreSnap)
+	test('addRedirect appends the golden redirect line (explicit status)', async () => {
+		const { core, root } = await freshCore()
+		const res = await core.addRedirect({ source: '/promo', destination: '/about', statusCode: 302 })
+		expect(res).toEqual({ success: true })
+		expect(await readFile(root, 'src/_redirects')).toBe('# Existing redirects\n/old-home /\n/legacy /about 301\n\n/promo /about 302\n')
 	})
 
-	test('addRedirect with default status is byte-identical', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() => legacyAddRedirect({ source: '/x', destination: '/about' }),
-			(core) => core.addRedirect({ source: '/x', destination: '/about' }),
-		)
-		expectIdenticalTrees(legacySnap, coreSnap)
+	test('addRedirect appends the golden redirect line (default status omits the code)', async () => {
+		const { core, root } = await freshCore()
+		await core.addRedirect({ source: '/x', destination: '/about' })
+		expect(await readFile(root, 'src/_redirects')).toBe('# Existing redirects\n/old-home /\n/legacy /about 301\n\n/x /about\n')
 	})
 
-	test('updateRedirect is byte-identical', async () => {
-		// The first rule in the fixture _redirects is `/old-home /` (after the comment line).
-		const { legacySnap, coreSnap } = await both(
-			() =>
-				legacyGetRedirects().then((r) =>
-					legacyUpdateRedirect({ lineIndex: r.rules[0]!.lineIndex, source: '/old-home', destination: '/home', statusCode: 301 })
-				),
-			(core) =>
-				core.listRedirects().then((r) =>
-					core.updateRedirect({ lineIndex: r.rules[0]!.lineIndex, source: '/old-home', destination: '/home', statusCode: 301 })
-				),
-		)
-		expect(coreSnap.get('src/_redirects')).toContain('/old-home /home 301')
-		expectIdenticalTrees(legacySnap, coreSnap)
+	test('updateRedirect rewrites the rule at the given line index (golden output)', async () => {
+		const { core, root } = await freshCore()
+		const { rules } = await core.listRedirects()
+		await core.updateRedirect({ lineIndex: rules[0]!.lineIndex, source: '/old-home', destination: '/home', statusCode: 301 })
+		expect(await readFile(root, 'src/_redirects')).toBe('# Existing redirects\n/old-home /home 301\n/legacy /about 301\n')
 	})
 
-	test('deleteRedirect is byte-identical', async () => {
-		const { legacySnap, coreSnap } = await both(
-			() => legacyGetRedirects().then((r) => legacyDeleteRedirect({ lineIndex: r.rules[0]!.lineIndex })),
-			(core) => core.listRedirects().then((r) => core.deleteRedirect({ lineIndex: r.rules[0]!.lineIndex })),
-		)
-		expect(coreSnap.get('src/_redirects')).not.toContain('/old-home')
-		expectIdenticalTrees(legacySnap, coreSnap)
+	test('deleteRedirect removes the rule at the given line index (golden output)', async () => {
+		const { core, root } = await freshCore()
+		const { rules } = await core.listRedirects()
+		await core.deleteRedirect({ lineIndex: rules[0]!.lineIndex })
+		expect(await readFile(root, 'src/_redirects')).toBe('# Existing redirects\n/legacy /about 301\n')
 	})
 
 	// ---- getLayouts / listRedirects / getEntry read parity ----
-	test('getLayouts matches the legacy scan', async () => {
-		setProjectRoot(FIXTURE_ROOT)
-		let legacy
-		try {
-			legacy = await legacyGetLayouts()
-		} finally {
-			resetProjectRoot()
-		}
+	test('getLayouts returns the golden layout list', async () => {
 		const core = createCmsCore(createNodeFs(FIXTURE_ROOT), { componentDirs: COMPONENT_DIRS })
-		expect(await core.getLayouts()).toEqual(legacy)
+		expect(await core.getLayouts()).toEqual([{ name: 'Base', path: 'src/layouts/Base.astro' }])
 	})
 
-	test('listRedirects matches the legacy parse', async () => {
-		setProjectRoot(FIXTURE_ROOT)
-		let legacy
-		try {
-			legacy = await legacyGetRedirects()
-		} finally {
-			resetProjectRoot()
-		}
+	test('listRedirects returns the golden parsed rules', async () => {
 		const core = createCmsCore(createNodeFs(FIXTURE_ROOT), { componentDirs: COMPONENT_DIRS })
-		expect(await core.listRedirects()).toEqual(legacy)
+		expect(await core.listRedirects()).toEqual({
+			rules: [
+				{ source: '/old-home', destination: '/', statusCode: 307, lineIndex: 1 },
+				{ source: '/legacy', destination: '/about', statusCode: 301, lineIndex: 2 },
+			],
+		})
 	})
 
-	test('getEntry matches the legacy markdown read', async () => {
-		setProjectRoot(FIXTURE_ROOT)
-		let legacy
-		try {
-			legacy = await legacyGetMarkdownContent('src/content/blog/hello-world.md')
-		} finally {
-			resetProjectRoot()
-		}
+	test('getEntry returns the golden parsed frontmatter + body', async () => {
 		const core = createCmsCore(createNodeFs(FIXTURE_ROOT), { componentDirs: COMPONENT_DIRS })
 		const entry = await core.getEntry('blog', 'hello-world')
-		expect(entry?.content).toBe(legacy!.content)
-		expect(entry?.frontmatter).toEqual(legacy!.frontmatter)
-		expect(entry?.sourcePath).toBe(legacy!.filePath)
+		expect(entry?.content).toBe('# Hello World\n\nThis is the first post.\n')
+		expect(entry?.frontmatter).toEqual({
+			title: 'Hello World',
+			date: '2024-01-15',
+			draft: false,
+			cover: './hello.jpg',
+			tags: ['intro', 'news'],
+			author: 'jane-doe',
+		})
+		expect(entry?.sourcePath).toBe('src/content/blog/hello-world.md')
 	})
 })

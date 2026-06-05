@@ -1,5 +1,5 @@
+import { ensureMdxImports } from '@nuasite/cms-core'
 import { expect, test } from 'bun:test'
-import { ensureMdxImports } from '../../src/handlers/markdown-ops'
 import type { ComponentDefinition } from '../../src/types'
 import { withTempDir } from '../utils'
 

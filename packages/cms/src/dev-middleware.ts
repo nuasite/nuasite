@@ -1,3 +1,4 @@
+import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
@@ -118,7 +119,15 @@ export function createDevMiddleware(
 
 	// CMS API endpoints (local dev server backend)
 	if (options.enableCmsApi) {
-		const projectRoot = getProjectRoot()
+		// One cms-core instance per project root. Structural routes (entry/page/redirect
+		// CRUD, media) delegate to this brain over a node:fs adapter; the media adapter
+		// and component dirs mirror the selection @nuasite/cms makes for the dev server.
+		const cmsFs = createNodeFs(getProjectRoot())
+		const core = createCmsCore(cmsFs, {
+			contentDir: config.contentDir,
+			media: options.mediaAdapter,
+			componentDirs: config.componentDirs,
+		})
 
 		server.middlewares.use((req, res, next) => {
 			const url = req.url || ''
@@ -136,6 +145,8 @@ export function createDevMiddleware(
 				res,
 				route,
 				manifestWriter,
+				core,
+				fs: cmsFs,
 				contentDir: config.contentDir,
 				mediaAdapter: options.mediaAdapter,
 				maxUploadSize: options.maxUploadSize,
