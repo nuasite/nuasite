@@ -1,5 +1,5 @@
 import type { AstroIntegration } from 'astro'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,8 +20,18 @@ import { createVitePlugin } from './vite-plugin'
 
 export interface NuaCmsOptions extends CmsMarkerOptions {
 	/**
-	 * URL to the CMS editor script.
-	 * If not set, the built-in editor bundle is served from the dev server.
+	 * URL to the CMS editor (inline visual-editing widget) script.
+	 *
+	 * Resolution order in dev:
+	 * 1. this `src`, if set;
+	 * 2. the `NUA_CMS_EDITOR_SRC` environment variable (lets the host runtime point
+	 *    dev-preview at a specific CDN/local editor without a config change);
+	 * 3. the public CDN editor (`DEFAULT_CDN_EDITOR_SRC`) when a pre-built editor
+	 *    bundle ships with the package (the npm-installed case — e.g. a generated
+	 *    site's dev-preview), so the inline editor updates via a CDN push,
+	 *    independent of the site's `@nuasite/cms` version (matching hosting);
+	 * 4. the bundled editor served from the dev server, used only in the monorepo
+	 *    (no pre-built bundle) so editor source changes hot-reload.
 	 */
 	src?: string
 	/**
@@ -87,6 +97,13 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 const DEFAULT_MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 const VIRTUAL_CMS_PATH = '/@nuasite/cms-editor.js'
+
+/**
+ * Public CDN editor script. Same URL hosting injects (see webmaster
+ * `packages/worker-hosting` `editorSrc`), so dev-preview and hosting load the
+ * identical inline editor and a CDN push updates both without touching the site.
+ */
+const DEFAULT_CDN_EDITOR_SRC = 'https://cdn.nuasite.com/script/latest/cms-editor.js'
 
 export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 	const {
@@ -218,15 +235,27 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				}
 
 				const vitePlugins: any[] = [...(createVitePlugin(pluginContext) as any)]
-				const cmsDir = !src ? dirname(fileURLToPath(import.meta.url)) : undefined
+				const cmsDir = dirname(fileURLToPath(import.meta.url))
 
 				// Detect pre-built editor bundle (present when installed from npm)
-				const editorBundlePath = cmsDir ? join(cmsDir, '../dist/editor.js') : undefined
-				const hasPrebuiltBundle = editorBundlePath ? existsSync(editorBundlePath) : false
+				const editorBundlePath = join(cmsDir, '../dist/editor.js')
+				const hasPrebuiltBundle = existsSync(editorBundlePath)
+
+				// Resolve which editor script dev-preview injects:
+				// 1. explicit `src`; 2. `NUA_CMS_EDITOR_SRC` env; 3. the public CDN editor
+				// when shipping a pre-built bundle (npm-installed site) — so dev-preview
+				// loads the same CDN editor as hosting and a CDN push updates it without a
+				// site rebuild; 4. the bundled source (monorepo only) for editor HMR.
+				const envSrc = process.env.NUA_CMS_EDITOR_SRC
+				const resolvedEditorSrc = src ?? envSrc ?? (hasPrebuiltBundle ? DEFAULT_CDN_EDITOR_SRC : VIRTUAL_CMS_PATH)
+
+				// Local virtual-module serving is only needed when injecting the bundled
+				// editor (the monorepo source path) — not for an external/CDN URL.
+				const servesBundledEditor = resolvedEditorSrc === VIRTUAL_CMS_PATH
 
 				// --- CMS Editor setup (dev only) ---
 				if (command === 'dev') {
-					const editorSrc = src ?? VIRTUAL_CMS_PATH
+					const editorSrc = resolvedEditorSrc
 
 					const configScript = `window.NuaCmsConfig = ${JSON.stringify(resolvedCmsConfig)};`
 
@@ -248,52 +277,32 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					`,
 					)
 
-					if (!src) {
-						if (hasPrebuiltBundle) {
-							// Pre-built bundle exists (npm install case):
-							// Serve it via a virtual module — no JSX pragma, Tailwind, or aliases needed.
-							// Read on every load() so rebuilds during dev pick up without restarting
-							// the host (Astro, pletivo, etc).
-							vitePlugins.push({
-								name: 'nuasite-cms-editor',
-								resolveId(id: string) {
-									if (id === VIRTUAL_CMS_PATH) {
-										return VIRTUAL_CMS_PATH
-									}
-								},
-								load(id: string) {
-									if (id === VIRTUAL_CMS_PATH) {
-										return readFileSync(editorBundlePath!, 'utf-8')
-									}
-								},
-							})
-						} else {
-							// No pre-built bundle (monorepo dev case):
-							// Serve source files directly — Vite transforms TSX, resolves imports, HMR works.
-							vitePlugins.push({
-								name: 'nuasite-cms-editor',
-								resolveId(id: string) {
-									if (id === VIRTUAL_CMS_PATH) {
-										return join(cmsDir!, 'editor/index.tsx')
-									}
-								},
-							})
+					if (servesBundledEditor) {
+						// Monorepo dev (no pre-built bundle): serve the editor source files
+						// directly so Vite transforms TSX, resolves imports, and HMR works.
+						vitePlugins.push({
+							name: 'nuasite-cms-editor',
+							resolveId(id: string) {
+								if (id === VIRTUAL_CMS_PATH) {
+									return join(cmsDir, 'editor/index.tsx')
+								}
+							},
+						})
 
-							// Prepend @jsxImportSource pragma for editor .tsx files
-							// so Vite's esbuild uses Preact's h function
-							vitePlugins.push({
-								name: 'nuasite-cms-preact-jsx',
-								transform(code: string, id: string) {
-									if (id.includes('/src/editor/') && id.endsWith('.tsx') && !code.includes('@jsxImportSource')) {
-										return `/** @jsxImportSource preact */\n${code}`
-									}
-								},
-							})
+						// Prepend @jsxImportSource pragma for editor .tsx files
+						// so Vite's esbuild uses Preact's h function
+						vitePlugins.push({
+							name: 'nuasite-cms-preact-jsx',
+							transform(code: string, id: string) {
+								if (id.includes('/src/editor/') && id.endsWith('.tsx') && !code.includes('@jsxImportSource')) {
+									return `/** @jsxImportSource preact */\n${code}`
+								}
+							},
+						})
 
-							// Add Tailwind CSS Vite plugin for editor styles
-							const tailwindcss = (await import('@tailwindcss/vite')).default
-							vitePlugins.push(tailwindcss())
-						}
+						// Add Tailwind CSS Vite plugin for editor styles
+						const tailwindcss = (await import('@tailwindcss/vite')).default
+						vitePlugins.push(tailwindcss())
 					}
 				}
 
@@ -306,8 +315,9 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					}
 				}
 
-				// Only add react->preact aliases when serving source files (not pre-built bundle)
-				const needsAliases = !src && !hasPrebuiltBundle
+				// Only add react->preact aliases when serving the editor source files
+				// (monorepo dev) — an external/CDN editor URL needs no module rewriting.
+				const needsAliases = servesBundledEditor
 
 				updateConfig({
 					markdown: {
