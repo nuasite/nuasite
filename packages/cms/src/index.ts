@@ -391,6 +391,9 @@ async function mergeRedirects(dir: URL, logger: { info: (msg: string) => void })
 	logger.info(`Merged ${lineCount} CMS redirect(s) into _redirects`)
 }
 
+// Shared structural contract from @nuasite/cms-types — surfaced through the cms public API
+// so consumers of @nuasite/cms get the field-type list + guard from one place.
+export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
 export { n } from './field-types'
 export type { DateHints, ImageHints, NumberHints, TextareaHints, TextHints } from './field-types'
 export { createContemberStorageAdapter as contemberMedia } from './media/contember'

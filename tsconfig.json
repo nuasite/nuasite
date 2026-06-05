@@ -15,6 +15,12 @@
 			"path": "./packages/cms"
 		},
 		{
+			"path": "./packages/cms-core"
+		},
+		{
+			"path": "./packages/cms-types"
+		},
+		{
 			"path": "./packages/components"
 		},
 		{

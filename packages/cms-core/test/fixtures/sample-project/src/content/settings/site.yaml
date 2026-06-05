@@ -1,0 +1,6 @@
+name: Acme Site
+tagline: We build things
+contactEmail: hello@acme.test
+social:
+  twitter: acme
+  github: acme-org

@@ -26,6 +26,7 @@
 		}
 	},
 	"dependencies": {
+		"@nuasite/cms-types": "workspace:*",
 		"@astrojs/compiler": "catalog:astro",
 		"@babel/parser": "catalog:parsers",
 		"node-html-parser": "catalog:parsers",
