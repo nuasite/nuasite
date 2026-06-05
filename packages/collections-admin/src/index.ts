@@ -6,6 +6,10 @@
  */
 
 export { CollectionsAdminApp, type CollectionsAdminAppProps } from './app'
+// Re-export the field-type contract values so consumers can drive field UIs off
+// the same source of truth — and so `@nuasite/cms-types` is a genuine runtime
+// dependency (not type-only), matching the shared-contract intent.
+export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
 export {
 	type CmsApiError,
 	type CmsCapabilities,
