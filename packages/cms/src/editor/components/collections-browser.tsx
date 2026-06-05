@@ -22,7 +22,10 @@ const confirmDeleteSlug = signal<string | null>(null)
 const EMPTY_ENTRIES: never[] = []
 
 export function CollectionsBrowser() {
-	const visible = isCollectionsBrowserOpen.value
+	// Collection management (browse/list/open entries) can be owned by the host
+	// app; when disabled, the in-preview browser is hidden entirely.
+	const collectionManagementEnabled = config.value.features?.collectionManagement !== false
+	const visible = collectionManagementEnabled && isCollectionsBrowserOpen.value
 	const selected = selectedBrowserCollection.value
 
 	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}

@@ -1470,8 +1470,10 @@ export function setConfig(newConfig: CmsConfig): void {
 
 export function setFeatures(features: CmsConfig['features']): void {
 	const current = config.value.features
-	if (current?.selectElement === features?.selectElement) return
-	config.value = { ...config.value, features: { ...current, ...features } }
+	const next = { ...current, ...features }
+	// Bail out when nothing actually changes, to avoid re-triggering effects.
+	if (current?.selectElement === next.selectElement && current?.collectionManagement === next.collectionManagement) return
+	config.value = { ...config.value, features: next }
 }
 
 // ============================================================================

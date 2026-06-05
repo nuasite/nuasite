@@ -95,6 +95,11 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		})
 	}
 
+	// When collection management is disabled (e.g. it lives in the host app's
+	// Collections tab), hide the in-preview collection browser entry points.
+	// Inline editing of the current page's content ("Edit Content") is kept.
+	const collectionManagementEnabled = signals.config.value.features?.collectionManagement !== false
+
 	if (collectionDefinitions) {
 		const entries = Object.entries(collectionDefinitions)
 		if (entries.length > 0) {
@@ -111,12 +116,14 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 				ordered.push([name, def, false])
 			}
 
-			const contentItems: MenuItem[] = ordered.map(([name, def, indented]) => ({
-				label: def.label,
-				icon: <GridIcon />,
-				indented,
-				onClick: () => callbacks.onOpenCollection?.(name),
-			}))
+			const contentItems: MenuItem[] = collectionManagementEnabled
+				? ordered.map(([name, def, indented]) => ({
+					label: def.label,
+					icon: <GridIcon />,
+					indented,
+					onClick: () => callbacks.onOpenCollection?.(name),
+				}))
+				: []
 
 			if (currentPageCollection && callbacks.onEditContent) {
 				contentItems.unshift({
@@ -134,11 +141,13 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 				})
 			}
 
-			menuSections.push({
-				label: 'Content',
-				icon: <GridIcon />,
-				items: contentItems,
-			})
+			if (contentItems.length > 0) {
+				menuSections.push({
+					label: 'Content',
+					icon: <GridIcon />,
+					items: contentItems,
+				})
+			}
 		}
 	}
 

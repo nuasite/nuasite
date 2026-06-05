@@ -527,6 +527,13 @@ export type CmsPostMessage =
 
 export interface CmsFeatures {
 	selectElement?: boolean
+	/**
+	 * Controls the in-preview collection browser/management UI (browse collections,
+	 * list/open entries). Defaults to enabled. When `false`, the widget hides this
+	 * UI because collection editing is owned elsewhere (e.g. the webmaster
+	 * Collections tab); inline text/image/color editing stays unaffected.
+	 */
+	collectionManagement?: boolean
 }
 
 // ============================================================================
