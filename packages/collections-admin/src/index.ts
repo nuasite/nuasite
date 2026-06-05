@@ -1,8 +1,9 @@
 /**
- * `@nuasite/collections-admin` — read-only collections SPA over the cms-sidecar
- * `/cms/v1` HTTP contract (cms-headless F3.1). Host-agnostic: mount
- * `<CollectionsAdminApp apiBase={…} />` and it drives its own internal view-state
- * navigation. Self-contained styles ship at `./styles.css` (imported by the app).
+ * `@nuasite/collections-admin` — collections SPA over the cms-sidecar `/cms/v1`
+ * HTTP contract (cms-headless F3.1 read-only + F3.2 editing). Host-agnostic:
+ * mount `<CollectionsAdminApp apiBase={…} />` and it drives its own internal
+ * view-state navigation (list → entries → editor/create), debounced optimistic
+ * save and `409` conflict resolution. Self-contained styles ship at `./styles.css`.
  */
 
 export { CollectionsAdminApp, type CollectionsAdminAppProps } from './app'
@@ -15,10 +16,17 @@ export {
 	type CmsCapabilities,
 	type CmsClient,
 	CmsClientError,
+	type CmsConflict,
 	type CmsEntriesListResult,
 	type CmsErrorCode,
 	type CmsPageEntry,
 	type CmsProjectModel,
 	createClient,
+	type CreateEntryInput,
 	type GetEntriesOptions,
+	isMediaUnavailable,
+	type MediaContext,
+	type UpdateEntryInput,
+	type UpdateEntryResult,
 } from './client'
+export type { EntryDraft } from './form-model'

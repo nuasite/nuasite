@@ -1,20 +1,21 @@
 /**
- * collections-admin SPA — read-only milestone (cms-headless F3.1).
+ * collections-admin SPA (cms-headless F3.1 read-only + F3.2 editing).
  *
  * Host-agnostic: driven only by an `apiBase` prop, with internal view-state
- * navigation (list → entries → detail) via React state — never the host router.
- * That keeps the same component usable as a webmaster tab today and at
+ * navigation (list → entries → editor/create) via React state — never the host
+ * router. That keeps the same component usable as a webmaster tab today and at
  * `/_nua/admin` for local dev later (F7).
  *
- * Read-only: browse collections, list entries (sparse projection + cursor
- * pagination), and view a single entry's frontmatter + markdown body. Mutations
- * (editor/media/conflict) arrive in F3.2.
+ * Browse collections, list entries (sparse projection + cursor pagination), and
+ * edit an entry: a field→widget form built from `FieldDefinition[]` with debounced
+ * optimistic save and `409` conflict resolution, plus create/delete/rename flows.
  */
 
-import type { CollectionDefinition, CollectionEntry, CollectionEntryInfo, FieldDefinition } from '@nuasite/cms-types'
+import type { CollectionDefinition, CollectionEntryInfo } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type CmsClient, CmsClientError, createClient } from './client'
-import { FieldRow } from './field-view'
+import { EntryCreate } from './entry-create'
+import { EntryEditor } from './entry-editor'
 import './styles.css'
 
 // ============================================================================
@@ -25,6 +26,7 @@ type View =
 	| { view: 'list' }
 	| { view: 'entries'; collection: string }
 	| { view: 'detail'; collection: string; slug: string }
+	| { view: 'create'; collection: string }
 
 // ============================================================================
 // Shared async-load hook
@@ -134,7 +136,12 @@ function CollectionList({ client, onOpen }: { client: CmsClient; onOpen: (collec
 const ENTRIES_PAGE_SIZE = 50
 const ENTRIES_FIELDS = 'slug,title,draft,pathname'
 
-function EntriesTable({ client, collection, onOpen }: { client: CmsClient; collection: string; onOpen: (slug: string) => void }) {
+function EntriesTable({ client, collection, onOpen, onCreate }: {
+	client: CmsClient
+	collection: string
+	onOpen: (slug: string) => void
+	onCreate: () => void
+}) {
 	const [rows, setRows] = useState<CollectionEntryInfo[]>([])
 	const [cursor, setCursor] = useState<string | undefined>(undefined)
 	const [hasMore, setHasMore] = useState(false)
@@ -176,10 +183,25 @@ function EntriesTable({ client, collection, onOpen }: { client: CmsClient; colle
 
 	if (loading) return <Spinner label="Loading entries…" />
 	if (error) return <ErrorState error={error} onRetry={() => void loadPage(undefined, false)} />
-	if (rows.length === 0) return <EmptyState label="This collection has no entries." />
+
+	const toolbar = (
+		<div className="nua-cadmin-entries-toolbar">
+			<button type="button" className="nua-cadmin-btn nua-cadmin-btn-primary" onClick={onCreate}>+ New entry</button>
+		</div>
+	)
+
+	if (rows.length === 0) {
+		return (
+			<div>
+				{toolbar}
+				<EmptyState label="This collection has no entries." />
+			</div>
+		)
+	}
 
 	return (
 		<div>
+			{toolbar}
 			<table className="nua-cadmin-table">
 				<thead>
 					<tr>
@@ -212,57 +234,6 @@ function EntriesTable({ client, collection, onOpen }: { client: CmsClient; colle
 }
 
 // ============================================================================
-// Entry detail
-// ============================================================================
-
-/**
- * Order the collection's fields for display: `publish-toggle`/`publish-date`
- * roles and `sidebar`/`header` positioned fields first, then the rest in schema
- * order. Hidden fields are dropped.
- */
-function orderFields(fields: FieldDefinition[]): FieldDefinition[] {
-	const visible = fields.filter((f) => !f.hidden)
-	const pinned = visible.filter((f) => f.role !== undefined || f.position !== undefined)
-	const rest = visible.filter((f) => f.role === undefined && f.position === undefined)
-	return [...pinned, ...rest]
-}
-
-function EntryDetail({ client, collections, collection, slug }: {
-	client: CmsClient
-	collections: CollectionDefinition[]
-	collection: string
-	slug: string
-}) {
-	const { data, error, loading, reload } = useAsync<CollectionEntry>(() => client.getEntry(collection, slug), [client, collection, slug])
-
-	const def = useMemo(() => collections.find((c) => c.name === collection), [collections, collection])
-
-	if (loading) return <Spinner label="Loading entry…" />
-	if (error) return <ErrorState error={error} onRetry={reload} />
-	if (!data) return <EmptyState label="Entry not found." />
-
-	const fieldDefs = def ? orderFields(def.fields) : []
-	const renderedNames = new Set(fieldDefs.map((f) => f.name))
-	// Frontmatter keys present on the entry but absent from the inferred schema.
-	const extraKeys = Object.keys(data.frontmatter).filter((k) => !renderedNames.has(k))
-
-	return (
-		<div>
-			<div className="nua-cadmin-fields">
-				{fieldDefs.length === 0 && extraKeys.length === 0 ? <EmptyState label="No frontmatter fields." /> : null}
-				{fieldDefs.map((field) => <FieldRow key={field.name} field={field} raw={data.frontmatter[field.name]?.value} />)}
-				{extraKeys.map((key) => <FieldRow key={key} field={{ name: key, type: 'text', required: false }} raw={data.frontmatter[key]?.value} />)}
-			</div>
-
-			<h3 className="nua-cadmin-section-title">Body</h3>
-			{data.body.trim() === ''
-				? <EmptyState label="This entry has no markdown body." />
-				: <pre className="nua-cadmin-body-content">{data.body}</pre>}
-		</div>
-	)
-}
-
-// ============================================================================
 // Root
 // ============================================================================
 
@@ -280,25 +251,28 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 	const client = useMemo(() => createClient(apiBase), [apiBase])
 	const [state, setState] = useState<View>({ view: 'list' })
 
-	// The collection definitions are needed by the detail view to drive field
-	// rendering; load them once at the root and pass down.
+	// The collection definitions drive the editor's field rendering; load them once
+	// at the root and pass the active one down.
 	const collectionsState = useAsync(() => client.getCollections(), [client])
 	const collections = collectionsState.data ?? []
 
 	const goList = useCallback(() => setState({ view: 'list' }), [])
 	const goEntries = useCallback((collection: string) => setState({ view: 'entries', collection }), [])
 	const goDetail = useCallback((collection: string, slug: string) => setState({ view: 'detail', collection, slug }), [])
+	const goCreate = useCallback((collection: string) => setState({ view: 'create', collection }), [])
 
 	const activeCollection = state.view !== 'list'
 		? collections.find((c) => c.name === state.collection)
 		: undefined
 	const collectionLabel = activeCollection ? (activeCollection.label || activeCollection.name) : (state.view !== 'list' ? state.collection : '')
 
+	const isEntryView = state.view === 'detail' || state.view === 'create'
+
 	return (
 		<div className="nua-cadmin">
 			<div className="nua-cadmin-header">
 				{state.view === 'entries' ? <button type="button" className="nua-cadmin-back" onClick={goList}>← Collections</button> : null}
-				{state.view === 'detail'
+				{isEntryView
 					? <button type="button" className="nua-cadmin-back" onClick={() => goEntries(state.collection)}>← {collectionLabel}</button>
 					: null}
 
@@ -312,6 +286,14 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 						</h2>
 					)
 					: null}
+				{state.view === 'create'
+					? (
+						<h2 className="nua-cadmin-title">
+							{collectionLabel}
+							<span className="nua-cadmin-crumb">/ new entry</span>
+						</h2>
+					)
+					: null}
 
 				<span className="nua-cadmin-spacer" />
 				{onClose ? <button type="button" className="nua-cadmin-close" aria-label="Close" onClick={onClose}>×</button> : null}
@@ -320,9 +302,40 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 			<div className="nua-cadmin-body">
 				{state.view === 'list' ? <CollectionList client={client} onOpen={goEntries} /> : null}
 				{state.view === 'entries'
-					? <EntriesTable client={client} collection={state.collection} onOpen={(slug) => goDetail(state.collection, slug)} />
+					? (
+						<EntriesTable
+							client={client}
+							collection={state.collection}
+							onOpen={(slug) => goDetail(state.collection, slug)}
+							onCreate={() => goCreate(state.collection)}
+						/>
+					)
 					: null}
-				{state.view === 'detail' ? <EntryDetail client={client} collections={collections} collection={state.collection} slug={state.slug} /> : null}
+				{state.view === 'detail'
+					? (
+						<EntryEditor
+							// Remount the editor when the slug changes so its draft/baseHash reset cleanly.
+							key={`${state.collection}/${state.slug}`}
+							client={client}
+							definition={activeCollection}
+							collection={state.collection}
+							slug={state.slug}
+							onDeleted={() => goEntries(state.collection)}
+							onRenamed={(newSlug) => goDetail(state.collection, newSlug)}
+						/>
+					)
+					: null}
+				{state.view === 'create'
+					? (
+						<EntryCreate
+							client={client}
+							definition={activeCollection}
+							collection={state.collection}
+							onCreated={(slug) => goDetail(state.collection, slug)}
+							onCancel={() => goEntries(state.collection)}
+						/>
+					)
+					: null}
 			</div>
 		</div>
 	)

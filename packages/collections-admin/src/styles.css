@@ -16,6 +16,7 @@
 	--nua-cadmin-danger: #b91c1c;
 	--nua-cadmin-danger-bg: #fef2f2;
 
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
@@ -368,4 +369,384 @@
 	border-radius: 6px;
 	border: 1px solid var(--nua-cadmin-border);
 	display: block;
+}
+
+/* --- Editor: form controls --- */
+
+.nua-cadmin-input,
+.nua-cadmin-textarea,
+.nua-cadmin-body-editor,
+select.nua-cadmin-input {
+	width: 100%;
+	padding: 7px 10px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 6px;
+	background: var(--nua-cadmin-bg);
+	color: var(--nua-cadmin-fg);
+	font-family: inherit;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.nua-cadmin-input:focus,
+.nua-cadmin-textarea:focus,
+.nua-cadmin-body-editor:focus,
+select.nua-cadmin-input:focus {
+	outline: none;
+	border-color: var(--nua-cadmin-accent);
+	box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.nua-cadmin-textarea,
+.nua-cadmin-body-editor {
+	resize: vertical;
+	min-height: 64px;
+}
+
+.nua-cadmin-body-editor {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 12px;
+}
+
+.nua-cadmin-field-loading {
+	padding: 6px 0;
+	color: var(--nua-cadmin-muted);
+	font-style: italic;
+}
+
+/* --- Boolean toggle --- */
+
+.nua-cadmin-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px;
+	padding-right: 10px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 999px;
+	background: var(--nua-cadmin-bg);
+	cursor: pointer;
+	color: var(--nua-cadmin-muted);
+	font-size: 12px;
+}
+
+.nua-cadmin-toggle-knob {
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	background: var(--nua-cadmin-border);
+	transition: background 0.15s, transform 0.15s;
+}
+
+.nua-cadmin-toggle-on {
+	border-color: var(--nua-cadmin-accent);
+	color: var(--nua-cadmin-accent);
+}
+
+.nua-cadmin-toggle-on .nua-cadmin-toggle-knob {
+	background: var(--nua-cadmin-accent);
+	transform: translateX(2px);
+}
+
+.nua-cadmin-toggle-publish {
+	font-weight: 600;
+}
+
+/* --- Array repeater --- */
+
+.nua-cadmin-array {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.nua-cadmin-array-item {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+}
+
+.nua-cadmin-array-item-body {
+	flex: 1;
+	min-width: 0;
+}
+
+.nua-cadmin-icon-btn {
+	flex-shrink: 0;
+	width: 28px;
+	height: 28px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 6px;
+	background: var(--nua-cadmin-bg);
+	color: var(--nua-cadmin-muted);
+	cursor: pointer;
+	font-size: 15px;
+	line-height: 1;
+}
+
+.nua-cadmin-icon-btn:hover {
+	border-color: var(--nua-cadmin-danger);
+	color: var(--nua-cadmin-danger);
+}
+
+.nua-cadmin-add-btn {
+	align-self: flex-start;
+	padding: 5px 10px;
+	border: 1px dashed var(--nua-cadmin-border);
+	border-radius: 6px;
+	background: var(--nua-cadmin-bg);
+	color: var(--nua-cadmin-accent);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.nua-cadmin-add-btn:hover:not(:disabled) {
+	border-color: var(--nua-cadmin-accent);
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-add-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* --- Nested object group --- */
+
+.nua-cadmin-object {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 8px 10px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 8px;
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-object-field {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+/* --- Media picker --- */
+
+.nua-cadmin-media {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.nua-cadmin-media-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.nua-cadmin-media-hint {
+	color: var(--nua-cadmin-muted);
+	font-size: 12px;
+	font-style: italic;
+}
+
+.nua-cadmin-media-error {
+	color: var(--nua-cadmin-danger);
+	font-size: 12px;
+}
+
+.nua-cadmin-file-input {
+	display: none;
+}
+
+/* --- Editor layout --- */
+
+.nua-cadmin-editor {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.nua-cadmin-editor-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.nua-cadmin-entries-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	margin-bottom: 10px;
+}
+
+.nua-cadmin-editor-header-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--nua-cadmin-border);
+}
+
+.nua-cadmin-editor-grid {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 18px;
+}
+
+@media (min-width: 720px) {
+	.nua-cadmin-editor-grid:has(.nua-cadmin-editor-sidebar) {
+		grid-template-columns: minmax(0, 1fr) 240px;
+	}
+}
+
+.nua-cadmin-editor-main,
+.nua-cadmin-editor-sidebar {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.nua-cadmin-editor-sidebar {
+	padding: 12px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 8px;
+	background: var(--nua-cadmin-bg-subtle);
+	align-self: start;
+}
+
+.nua-cadmin-field-publish-toggle,
+.nua-cadmin-field-publish-date {
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--nua-cadmin-border);
+}
+
+.nua-cadmin-group-title {
+	margin: 8px 0 2px;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--nua-cadmin-muted);
+}
+
+/* --- Buttons --- */
+
+.nua-cadmin-btn {
+	padding: 6px 12px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 6px;
+	background: var(--nua-cadmin-bg);
+	color: var(--nua-cadmin-fg);
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.nua-cadmin-btn:hover:not(:disabled) {
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.nua-cadmin-btn-primary {
+	border-color: var(--nua-cadmin-accent);
+	background: var(--nua-cadmin-accent);
+	color: #ffffff;
+}
+
+.nua-cadmin-btn-primary:hover:not(:disabled) {
+	background: #1d4ed8;
+}
+
+.nua-cadmin-btn-danger {
+	border-color: #fecaca;
+	color: var(--nua-cadmin-danger);
+}
+
+.nua-cadmin-btn-danger:hover:not(:disabled) {
+	background: var(--nua-cadmin-danger-bg);
+}
+
+.nua-cadmin-btn-ghost {
+	border-color: transparent;
+	background: transparent;
+	color: var(--nua-cadmin-muted);
+}
+
+.nua-cadmin-btn-ghost:hover:not(:disabled) {
+	background: var(--nua-cadmin-bg-subtle);
+	color: var(--nua-cadmin-fg);
+}
+
+/* --- Save status badge --- */
+
+.nua-cadmin-status {
+	display: inline-flex;
+	align-items: center;
+	padding: 3px 9px;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.nua-cadmin-status-saving {
+	background: var(--nua-cadmin-bg-subtle);
+	color: var(--nua-cadmin-muted);
+}
+
+.nua-cadmin-status-saved {
+	background: #ecfdf5;
+	color: #166534;
+}
+
+.nua-cadmin-status-conflict {
+	background: #fffbeb;
+	color: #92400e;
+}
+
+.nua-cadmin-status-error {
+	background: var(--nua-cadmin-danger-bg);
+	color: var(--nua-cadmin-danger);
+}
+
+/* --- Conflict dialog --- */
+
+.nua-cadmin-dialog-backdrop {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	background: rgba(17, 24, 39, 0.4);
+	z-index: 10;
+}
+
+.nua-cadmin-dialog {
+	width: 100%;
+	max-width: 420px;
+	padding: 18px;
+	border-radius: 10px;
+	background: var(--nua-cadmin-bg);
+	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.nua-cadmin-dialog-title {
+	font-size: 14px;
+	font-weight: 700;
+	margin-bottom: 8px;
+}
+
+.nua-cadmin-dialog-body {
+	color: var(--nua-cadmin-muted);
+	margin-bottom: 16px;
+}
+
+.nua-cadmin-dialog-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: flex-end;
 }
