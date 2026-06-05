@@ -35,7 +35,13 @@
 		"@types/bun": "catalog:build"
 	},
 	"peerDependencies": {
-		"typescript": "catalog:build"
+		"typescript": "catalog:build",
+		"@aws-sdk/client-s3": "^3.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@aws-sdk/client-s3": {
+			"optional": true
+		}
 	},
 	"scripts": {
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"

@@ -1,4 +1,5 @@
 export { scanCollections } from './collection-scanner'
+export { scanComponentDefinitions } from './component-registry'
 export {
 	type ParseCache,
 	parseConfigSource,
@@ -13,3 +14,28 @@ export type { CmsCore, CmsCoreOptions } from './core'
 export { globToRegExp } from './fs/glob'
 export { createNodeFs } from './fs/node-fs'
 export type { CmsFileSystem } from './fs/types'
+export {
+	type AddArrayItemInput,
+	type CreateEntryInput,
+	ensureMdxImports,
+	type EntryOpsDeps,
+	type GetEntryResult,
+	parseFrontmatter,
+	type RemoveArrayItemInput,
+	serializeFrontmatter,
+	type UpdateEntryInput,
+} from './handlers/entry-ops'
+export {
+	type ContemberStorageOptions,
+	createContemberStorageAdapter,
+	createLocalStorageAdapter,
+	createS3StorageAdapter,
+	getFileExtension,
+	listProjectImages,
+	type ListProjectImagesOptions,
+	type LocalStorageOptions,
+	MIME_BY_EXT,
+	mimeFromExt,
+	type S3StorageOptions,
+} from './media/index'
+export { escapeHtml, relativeImportPath, slugify, slugifyHref } from './shared'
