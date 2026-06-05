@@ -26,7 +26,6 @@
 	"references": [
 		{ "path": "../../cms-core/src" },
 		{ "path": "../../cms-types/src" },
-		{ "path": "../../collections-admin/src" },
 		{ "path": "../../cms-sidecar/src" },
 	]
 }

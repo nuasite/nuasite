@@ -4,7 +4,9 @@ import { resetProjectRoot, setProjectRoot } from '../../src/config'
 import {
 	ADMIN_API_BASE,
 	ADMIN_API_PREFIX,
+	ADMIN_PEERS_MISSING_MESSAGE,
 	ADMIN_ROUTE,
+	type AdminPeerLoader,
 	type AdminViteServerLike,
 	createLocalAdminMiddleware,
 	type LocalAdminOptions,
@@ -182,5 +184,94 @@ describe('local-admin middleware (cms-headless F7)', () => {
 		const response = await fetch(`${baseUrl}/about`)
 		expect(response.status).toBe(404)
 		expect(await response.text()).toBe('not handled')
+	})
+})
+
+/**
+ * cms-headless F6: `@nuasite/cms-sidecar` + `@nuasite/collections-admin` are optional
+ * peers, loaded lazily via dynamic `import()`. When a slim generated site does not
+ * install them, local mode must degrade gracefully (a clear 501 placeholder) instead
+ * of crashing `pletivo dev` or breaking the marker pipeline. The injected
+ * `AdminPeerLoader` simulates "peers absent" without uninstalling them.
+ */
+describe('local-admin degrades gracefully when the optional peers are absent (cms-headless F6)', () => {
+	/** A loader standing in for "neither optional peer is installed". */
+	const absentPeerLoader: AdminPeerLoader = {
+		async loadCreateSidecar() {
+			return null
+		},
+		async isCollectionsAdminInstalled() {
+			return false
+		},
+	}
+
+	const optionsWithLoader = (loader: AdminPeerLoader): LocalAdminOptions => ({
+		contentDir: 'src/content',
+		componentDirs: ['src/components'],
+		maxUploadSize: 10 * 1024 * 1024,
+		entryModuleId: '/@nuasite/cms-admin-entry.js',
+		peerLoader: loader,
+	})
+
+	let httpServer: Server | undefined
+	afterEach(async () => {
+		if (httpServer) {
+			await new Promise<void>((resolve) => httpServer!.close(() => resolve()))
+			httpServer = undefined
+		}
+	})
+
+	test('still registers exactly two middlewares — the plugin/marker pipeline is unaffected', () => {
+		const { server, middlewares } = createMockViteServer()
+		createLocalAdminMiddleware(server, optionsWithLoader(absentPeerLoader))
+		expect(middlewares.length).toBe(2)
+	})
+
+	test('/_nua/admin serves a 501 placeholder with a clear install message (no crash)', async () => {
+		const { server, middlewares } = createMockViteServer()
+		createLocalAdminMiddleware(server, optionsWithLoader(absentPeerLoader))
+
+		const served = serveMiddlewares(middlewares)
+		httpServer = served.server
+		const baseUrl = await served.baseUrl
+
+		const response = await fetch(`${baseUrl}${ADMIN_ROUTE}`)
+		expect(response.status).toBe(501)
+		expect(response.headers.get('content-type')).toContain('text/plain')
+		expect(await response.text()).toBe(ADMIN_PEERS_MISSING_MESSAGE)
+	})
+
+	test('the admin API mount returns a 501 JSON error instead of throwing', async () => {
+		const { server, middlewares } = createMockViteServer()
+		createLocalAdminMiddleware(server, optionsWithLoader(absentPeerLoader))
+
+		const served = serveMiddlewares(middlewares)
+		httpServer = served.server
+		const baseUrl = await served.baseUrl
+
+		const response = await fetch(`${baseUrl}${ADMIN_API_PREFIX}/cms/v1/collections`)
+		expect(response.status).toBe(501)
+		const body: unknown = await response.json()
+		expect(isRecord(body) && body.code === 'unsupported').toBe(true)
+		expect(isRecord(body) && body.error === ADMIN_PEERS_MISSING_MESSAGE).toBe(true)
+	})
+
+	test('the optional peers are never loaded until the first /_nua/admin (or API) hit', () => {
+		// Registration alone must not touch the loader — the peers load lazily, so a
+		// `pletivo dev` that never opens the admin never imports them.
+		let loaderTouched = false
+		const trackingLoader: AdminPeerLoader = {
+			async loadCreateSidecar() {
+				loaderTouched = true
+				return null
+			},
+			async isCollectionsAdminInstalled() {
+				loaderTouched = true
+				return false
+			},
+		}
+		const { server } = createMockViteServer()
+		createLocalAdminMiddleware(server, optionsWithLoader(trackingLoader))
+		expect(loaderTouched).toBe(false)
 	})
 })

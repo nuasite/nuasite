@@ -25,7 +25,13 @@
  */
 
 import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
-import { type CmsSidecarServer, createServer } from '@nuasite/cms-sidecar'
+// `@nuasite/cms-sidecar` is an OPTIONAL peer (cms-headless F6 slim): a generated
+// site that depends on `@nuasite/cms` must not pull the sidecar (+ collections-admin
+// + React) into its resolved tree. The TYPES are imported `import type` (erased at
+// build, so no runtime dependency edge), and the VALUES are loaded lazily via a
+// dynamic `import()` only when local mode actually serves `/_nua/admin`. Hosted
+// (sandbox) mode never registers this middleware, so it never imports the peer.
+import type { CmsSidecarServer, createServer as CreateSidecarServer } from '@nuasite/cms-sidecar'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { getProjectRoot } from './config'
 import { readBody } from './handlers/request-utils'
@@ -50,6 +56,13 @@ export interface LocalAdminOptions {
 	maxUploadSize: number
 	/** Virtual-module id of the SPA entry the HTML shell loads (transformed by Vite). */
 	entryModuleId: string
+	/**
+	 * Loader for the optional peers (cms-headless F6). Defaults to the real
+	 * dynamic-`import()` loader; injectable so a test can simulate the peers being
+	 * absent. The peers are loaded lazily on first `/_nua/admin` hit, never on
+	 * `pletivo dev` startup.
+	 */
+	peerLoader?: AdminPeerLoader
 }
 
 /** URL the collections-admin SPA is served at. */
@@ -60,6 +73,54 @@ export const ADMIN_API_PREFIX = '/_nua/cms-admin-api'
 
 /** `apiBase` passed to the SPA — the sidecar serves its routes under `/cms/v1`. */
 export const ADMIN_API_BASE = `${ADMIN_API_PREFIX}/cms/v1`
+
+/**
+ * Message shown when local mode tries to open `/_nua/admin` but the optional
+ * peers (`@nuasite/cms-sidecar` + `@nuasite/collections-admin`) are not installed.
+ * The marker pipeline + inline editing keep working — only the full-page admin is
+ * unavailable until the peers are added (or the site is run via pletivo).
+ */
+export const ADMIN_PEERS_MISSING_MESSAGE =
+	'Local CMS admin requires @nuasite/cms-sidecar and @nuasite/collections-admin — install them (or run via pletivo) to enable /_nua/admin.'
+
+/**
+ * Loader seam for the two optional peers (cms-headless F6). The default
+ * implementation loads them lazily via dynamic `import()` — the only dynamic
+ * imports in this package (user-approved) — keeping them out of a slim generated
+ * site's resolved tree. Injectable so a test can simulate the peers being absent
+ * without uninstalling them from the workspace.
+ */
+export interface AdminPeerLoader {
+	/** Resolve `@nuasite/cms-sidecar`'s `createServer`, or `null` if the peer is absent. */
+	loadCreateSidecar(): Promise<typeof CreateSidecarServer | null>
+	/** Whether `@nuasite/collections-admin` (the SPA the shell mounts) is installed. */
+	isCollectionsAdminInstalled(): Promise<boolean>
+}
+
+/**
+ * Default peer loader: lazily `import()` the optional peers on first use. The
+ * module ids are bound to `const`s so they are NOT static-import string literals —
+ * a slim site that doesn't install the peers never resolves them, and the import
+ * only runs in local mode on the first `/_nua/admin` (or admin-api) hit. Both
+ * rejections (peer absent) degrade to `null` / `false` rather than throwing.
+ */
+export const defaultAdminPeerLoader: AdminPeerLoader = {
+	async loadCreateSidecar() {
+		const moduleId = '@nuasite/cms-sidecar'
+		const loaded = await import(moduleId).then(
+			(mod: { createServer: typeof CreateSidecarServer }) => mod,
+			() => null,
+		)
+		return loaded === null ? null : loaded.createServer
+	},
+	async isCollectionsAdminInstalled() {
+		const moduleId = '@nuasite/collections-admin'
+		return import(moduleId).then(
+			() => true,
+			() => false,
+		)
+	},
+}
 
 /**
  * Build the HTML shell for the admin SPA. It loads the virtual entry module
@@ -93,11 +154,17 @@ function adminShellHtml(entryModuleId: string, apiBase: string): string {
  * Lazily create the in-process cms-sidecar over the project's `node:fs`. The core
  * is built once on first use and reused; the media adapter mirrors the dev
  * server's selection (local `public/uploads` by default in this mode).
+ *
+ * Returns `null` when the optional `@nuasite/cms-sidecar` peer is not installed —
+ * callers serve the {@link ADMIN_PEERS_MISSING_MESSAGE} placeholder rather than
+ * crashing. The dynamic `import()` of the peer happens here, on first use only.
  */
-function makeLazySidecar(options: LocalAdminOptions): () => CmsSidecarServer {
+function makeLazySidecar(options: LocalAdminOptions, peerLoader: AdminPeerLoader): () => Promise<CmsSidecarServer | null> {
 	let server: CmsSidecarServer | null = null
-	return () => {
+	return async () => {
 		if (server) return server
+		const createServer = await peerLoader.loadCreateSidecar()
+		if (createServer === null) return null
 		const root = getProjectRoot()
 		const fs = createNodeFs(root)
 		const core = createCmsCore(fs, {
@@ -161,7 +228,8 @@ async function writeWebResponse(res: ServerResponse, response: Response): Promis
  * registers this middleware (verified by the no-op test).
  */
 export function createLocalAdminMiddleware(server: AdminViteServerLike, options: LocalAdminOptions): void {
-	const getSidecar = makeLazySidecar(options)
+	const peerLoader = options.peerLoader ?? defaultAdminPeerLoader
+	const getSidecar = makeLazySidecar(options, peerLoader)
 	const shell = adminShellHtml(options.entryModuleId, ADMIN_API_BASE)
 
 	// 1. In-process sidecar API. Strip the local mount prefix and forward the rest
@@ -176,7 +244,14 @@ export function createLocalAdminMiddleware(server: AdminViteServerLike, options:
 
 		readBody(req, options.maxUploadSize)
 			.then(async (body) => {
-				const sidecar = getSidecar()
+				const sidecar = await getSidecar()
+				if (sidecar === null) {
+					// Optional peer not installed — degrade gracefully (cms-headless F6).
+					res.statusCode = 501
+					res.setHeader('content-type', 'application/json; charset=utf-8')
+					res.end(JSON.stringify({ error: ADMIN_PEERS_MISSING_MESSAGE, code: 'unsupported' }))
+					return
+				}
 				const request = toWebRequest(req, forwardedPath, body)
 				const response = await sidecar.fetch(request)
 				await writeWebResponse(res, response)
@@ -205,7 +280,16 @@ export function createLocalAdminMiddleware(server: AdminViteServerLike, options:
 		}
 
 		const serve = async () => {
-			const sidecar = getSidecar()
+			const sidecar = await getSidecar()
+			// Optional peers not installed — serve a clear placeholder rather than a
+			// blank/erroring SPA (cms-headless F6). Both halves of the pair are needed:
+			// the sidecar (API brain) and collections-admin (the SPA the shell mounts).
+			if (sidecar === null || !(await peerLoader.isCollectionsAdminInstalled())) {
+				res.statusCode = 501
+				res.setHeader('content-type', 'text/plain; charset=utf-8')
+				res.end(ADMIN_PEERS_MISSING_MESSAGE)
+				return
+			}
 			const health = await sidecar.fetch(new Request('http://localhost/health'))
 			if (!health.ok) {
 				res.statusCode = 503

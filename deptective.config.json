@@ -16,7 +16,7 @@
 			]
 		},
 		"@nuasite/cms": {
-			"excludePatterns": ["**/*.d.ts", "**/generated/**", "src/editor/**"],
+			"excludePatterns": ["**/*.d.ts", "**/generated/**", "src/editor/**", "src/admin/**"],
 			"testPatterns": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/test/**", "src/index.ts"]
 		},
 		"playground": {

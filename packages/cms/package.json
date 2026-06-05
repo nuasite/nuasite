@@ -28,14 +28,14 @@
 	"dependencies": {
 		"@nuasite/cms-core": "workspace:*",
 		"@nuasite/cms-types": "workspace:*",
-		"@nuasite/cms-sidecar": "workspace:*",
-		"@nuasite/collections-admin": "workspace:*",
 		"@astrojs/compiler": "catalog:astro",
 		"@babel/parser": "catalog:parsers",
 		"node-html-parser": "catalog:parsers",
 		"yaml": "catalog:parsers"
 	},
 	"devDependencies": {
+		"@nuasite/cms-sidecar": "workspace:*",
+		"@nuasite/collections-admin": "workspace:*",
 		"@babel/types": "^7.29.0",
 		"@types/react": "^19.2.7",
 		"@types/react-dom": "^19.2.3",
@@ -72,11 +72,19 @@
 		"typescript": "catalog:build",
 		"vite": "catalog:build",
 		"@aws-sdk/client-s3": "^3.0.0",
+		"@nuasite/cms-sidecar": "workspace:*",
+		"@nuasite/collections-admin": "workspace:*",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0"
 	},
 	"peerDependenciesMeta": {
 		"@aws-sdk/client-s3": {
+			"optional": true
+		},
+		"@nuasite/cms-sidecar": {
+			"optional": true
+		},
+		"@nuasite/collections-admin": {
 			"optional": true
 		},
 		"react": {
