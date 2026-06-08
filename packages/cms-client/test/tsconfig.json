@@ -5,11 +5,10 @@
 		"emitDeclarationOnly": false,
 		"composite": false,
 		"lib": ["ESNext", "DOM", "DOM.Iterable"],
-		"types": ["@types/bun", "react", "react-dom"]
+		"types": ["@types/bun"]
 	},
 	"references": [
 		{ "path": "../src" },
-		{ "path": "../../cms-client/src" },
 		{ "path": "../../cms-types/src" }
 	]
 }

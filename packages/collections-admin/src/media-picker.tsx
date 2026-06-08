@@ -10,8 +10,8 @@
  * keeping the manual URL field fully usable — the editor is never blocked on media.
  */
 
+import { type CmsClient, isMediaUnavailable } from '@nuasite/cms-client'
 import { useEffect, useRef, useState } from 'react'
-import { type CmsClient, isMediaUnavailable } from './client'
 
 interface MediaPickerProps {
 	client: CmsClient

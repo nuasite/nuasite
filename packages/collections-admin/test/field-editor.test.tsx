@@ -1,8 +1,8 @@
+import type { CmsClient } from '@nuasite/cms-client'
 import type { FieldDefinition } from '@nuasite/cms-types'
 import { describe, expect, test } from 'bun:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import type { CmsClient } from '../src/client'
 import { type EditorContext, FieldEditor } from '../src/field-editor'
 
 // A no-op client; the widgets we render to static markup never hit effects

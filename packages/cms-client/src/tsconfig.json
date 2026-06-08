@@ -6,7 +6,6 @@
 		"types": []
 	},
 	"references": [
-		{ "path": "../../cms-client/src" },
 		{ "path": "../../cms-types/src" }
 	]
 }

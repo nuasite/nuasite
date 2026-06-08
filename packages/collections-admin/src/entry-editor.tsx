@@ -18,12 +18,18 @@
  * + `serverHash`; "use ours" re-PATCHes with `baseHash = serverHash` (force-over).
  */
 
+import {
+	type CmsClient,
+	CmsClientError,
+	type CmsConflict,
+	draftFromEntry,
+	draftFromServerFrontmatter,
+	type EntryDraft,
+	setDraftField,
+} from '@nuasite/cms-client'
 import type { CollectionDefinition, FieldDefinition } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CmsClient, CmsConflict } from './client'
-import { CmsClientError } from './client'
 import { type EditorContext, FieldEditor } from './field-editor'
-import { draftFromEntry, draftFromServerFrontmatter, type EntryDraft, setDraftField } from './form-model'
 
 const SAVE_DEBOUNCE_MS = 700
 

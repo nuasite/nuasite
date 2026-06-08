@@ -11,9 +11,9 @@
  * optimistic save and `409` conflict resolution, plus create/delete/rename flows.
  */
 
+import { type CmsClient, CmsClientError, createClient } from '@nuasite/cms-client'
 import type { CollectionDefinition, CollectionEntryInfo } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { type CmsClient, CmsClientError, createClient } from './client'
 import { EntryCreate } from './entry-create'
 import { EntryEditor } from './entry-editor'
 import './styles.css'

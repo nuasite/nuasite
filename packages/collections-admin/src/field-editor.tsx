@@ -8,10 +8,9 @@
  * widgets reach the sidecar through the injected `EditorContext`.
  */
 
+import { blankValue, type CmsClient, coerceInput, valueToArray, valueToBoolean, valueToInput, valueToObject } from '@nuasite/cms-client'
 import type { FieldDefinition, FieldType } from '@nuasite/cms-types'
 import { useCallback, useEffect, useState } from 'react'
-import type { CmsClient } from './client'
-import { blankValue, coerceInput, valueToArray, valueToBoolean, valueToInput, valueToObject } from './form-model'
 import { MediaPicker } from './media-picker'
 
 /** Cross-cutting services a widget may need (media uploads, reference lookups). */

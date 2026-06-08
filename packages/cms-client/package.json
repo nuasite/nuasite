@@ -1,17 +1,17 @@
 {
-	"name": "@nuasite/collections-admin",
-	"description": "Host-agnostic React SPA for browsing and editing Nua CMS collections over the cms-sidecar HTTP contract.",
+	"name": "@nuasite/cms-client",
+	"description": "Headless TypeScript SDK for the Nua CMS — typed client over the cms-sidecar /cms/v1 contract plus the pure entry-draft form model (zero React).",
 	"files": [
 		"dist/**",
 		"src/**",
 		"README.md",
 		"package.json"
 	],
-	"homepage": "https://github.com/nuasite/nuasite/blob/main/packages/collections-admin/README.md",
+	"homepage": "https://github.com/nuasite/nuasite/blob/main/packages/cms-client/README.md",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/nuasite/nuasite.git",
-		"directory": "packages/collections-admin"
+		"directory": "packages/cms-client"
 	},
 	"license": "Apache-2.0",
 	"version": "0.43.0-beta.3",
@@ -23,22 +23,15 @@
 			"types": "./src/index.ts",
 			"import": "./src/index.ts",
 			"default": "./src/index.ts"
-		},
-		"./styles.css": "./src/styles.css"
+		}
 	},
 	"dependencies": {
-		"@nuasite/cms-client": "workspace:*",
 		"@nuasite/cms-types": "workspace:*"
 	},
 	"devDependencies": {
-		"@types/react": "^19.2.7",
-		"@types/react-dom": "^19.2.3",
-		"react": "^19.2.1",
-		"react-dom": "^19.2.1"
+		"@types/bun": "catalog:build"
 	},
 	"peerDependencies": {
-		"react": "^19.0.0",
-		"react-dom": "^19.0.0",
 		"typescript": "catalog:build"
 	},
 	"scripts": {
@@ -47,7 +40,8 @@
 	"keywords": [
 		"cms",
 		"nuasite",
-		"react",
-		"admin"
+		"client",
+		"sdk",
+		"headless"
 	]
 }

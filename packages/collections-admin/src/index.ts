@@ -11,6 +11,8 @@ export { CollectionsAdminApp, type CollectionsAdminAppProps } from './app'
 // the same source of truth — and so `@nuasite/cms-types` is a genuine runtime
 // dependency (not type-only), matching the shared-contract intent.
 export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
+// The headless SDK (client + form model) now lives in `@nuasite/cms-client`; the
+// default UI surfaces it verbatim so a single import covers UI + client.
 export {
 	type CmsApiError,
 	type CmsCapabilities,
@@ -23,10 +25,10 @@ export {
 	type CmsProjectModel,
 	createClient,
 	type CreateEntryInput,
+	type EntryDraft,
 	type GetEntriesOptions,
 	isMediaUnavailable,
 	type MediaContext,
 	type UpdateEntryInput,
 	type UpdateEntryResult,
-} from './client'
-export type { EntryDraft } from './form-model'
+} from '@nuasite/cms-client'
