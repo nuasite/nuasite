@@ -28,6 +28,7 @@
 	},
 	"dependencies": {
 		"@nuasite/cms-client": "workspace:*",
+		"@nuasite/cms-mdx-editor": "workspace:*",
 		"@nuasite/cms-types": "workspace:*"
 	},
 	"devDependencies": {

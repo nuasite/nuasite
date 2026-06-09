@@ -27,7 +27,8 @@ import {
 	type EntryDraft,
 	setDraftField,
 } from '@nuasite/cms-client'
-import type { CollectionDefinition, FieldDefinition } from '@nuasite/cms-types'
+import { MdxBodyEditor } from '@nuasite/cms-mdx-editor'
+import type { CollectionDefinition, ComponentDefinition, FieldDefinition } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorContext, FieldEditor } from './field-editor'
 
@@ -147,9 +148,13 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 	onRenamed: (newSlug: string) => void
 }) {
 	const fields = useMemo(() => definition?.fields ?? [], [definition])
+	const isMdx = definition?.fileExtension === 'mdx'
 	const [draft, setDraft] = useState<EntryDraft | null>(null)
 	const [loadError, setLoadError] = useState<Error | null>(null)
 	const [status, setStatus] = useState<SaveStatus>({ kind: 'idle' })
+	// Component definitions for the MDX block picker/labels. Only needed for mdx
+	// bodies; degrades to an empty list against an older sidecar (no /components).
+	const [components, setComponents] = useState<ComponentDefinition[]>([])
 
 	// `baseHash` is the optimistic-concurrency token. It starts undefined (GET
 	// exposes no hash) and is adopted from each successful `MutationResult.sourceHash`.
@@ -159,6 +164,8 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	const ctx: EditorContext = useMemo(() => ({ client, collection, slug }), [client, collection, slug])
+	// Upload context for the MDX editor's media library (files entry-relative uploads).
+	const mediaContext = useMemo(() => ({ collection, entry: slug }), [collection, slug])
 
 	// Load the entry → build the native draft.
 	useEffect(() => {
@@ -180,6 +187,17 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 			if (timerRef.current) clearTimeout(timerRef.current)
 		}
 	}, [client, collection, slug, fields])
+
+	// Load component definitions for the MDX editor (once per client; mdx only).
+	useEffect(() => {
+		if (!isMdx) return
+		let active = true
+		client.getComponents().then(
+			defs => { if (active) setComponents(defs) },
+			() => { if (active) setComponents([]) },
+		)
+		return () => { active = false }
+	}, [client, isMdx])
 
 	// Persist the current draft. `force` re-uses the server hash to win a conflict.
 	const persist = useCallback(
@@ -328,9 +346,11 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 							<div className="nua-cadmin-field">
 								<div className="nua-cadmin-field-label">
 									<span>Body</span>
-									<span className="nua-cadmin-field-type">markdown</span>
+									<span className="nua-cadmin-field-type">{isMdx ? 'mdx' : 'markdown'}</span>
 								</div>
-								<textarea className="nua-cadmin-body-editor" value={draft.body} rows={16} onChange={e => onBody(e.target.value)} />
+								{isMdx
+									? <MdxBodyEditor value={draft.body} onChange={onBody} components={components} media={client} mediaContext={mediaContext} />
+									: <textarea className="nua-cadmin-body-editor" value={draft.body} rows={16} onChange={e => onBody(e.target.value)} />}
 							</div>
 						)
 						: null}

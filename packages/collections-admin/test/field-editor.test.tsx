@@ -11,6 +11,7 @@ import { type EditorContext, FieldEditor } from '../src/field-editor'
 const noopClient: CmsClient = {
 	getProject: () => Promise.reject(new Error('unused')),
 	getCollections: () => Promise.reject(new Error('unused')),
+	getComponents: () => Promise.reject(new Error('unused')),
 	getEntries: () => Promise.reject(new Error('unused')),
 	getEntry: () => Promise.reject(new Error('unused')),
 	updateEntry: () => Promise.reject(new Error('unused')),
@@ -22,6 +23,7 @@ const noopClient: CmsClient = {
 	listMedia: () => Promise.reject(new Error('unused')),
 	uploadMedia: () => Promise.reject(new Error('unused')),
 	deleteMedia: () => Promise.reject(new Error('unused')),
+	createFolder: () => Promise.reject(new Error('unused')),
 }
 
 const ctx: EditorContext = { client: noopClient, collection: 'blog', slug: 'hello' }
