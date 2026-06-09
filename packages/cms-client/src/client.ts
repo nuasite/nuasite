@@ -16,6 +16,7 @@ import type {
 	CollectionDefinition,
 	CollectionEntry,
 	CollectionEntryInfo,
+	ComponentDefinition,
 	MediaListResult,
 	MediaUploadResult,
 	MutationResult,
@@ -208,6 +209,9 @@ export interface CmsClient {
 	getEntries(collection: string, options?: GetEntriesOptions): Promise<CmsEntriesListResult>
 	getEntry(collection: string, slug: string): Promise<CollectionEntry>
 
+	/** Astro component definitions for the MDX body editor (block picker + prop labels). */
+	getComponents(): Promise<ComponentDefinition[]>
+
 	// --- Mutations ---
 
 	/**
@@ -227,6 +231,8 @@ export interface CmsClient {
 	listMedia(options?: { folder?: string; cursor?: string; limit?: number }): Promise<MediaListResult>
 	uploadMedia(file: File, context?: MediaContext): Promise<MediaUploadResult>
 	deleteMedia(id: string): Promise<{ success: boolean; error?: string }>
+	/** Create an empty media subfolder (sidecar `POST /media` JSON). 501 if the adapter has none. */
+	createFolder(folder: string): Promise<{ success: boolean; error?: string }>
 }
 
 /**
@@ -326,6 +332,9 @@ export function createClient(apiBase: string): CmsClient {
 		getCollections() {
 			return request<CollectionDefinition[]>('/collections')
 		},
+		getComponents() {
+			return request<ComponentDefinition[]>('/components')
+		},
 		getEntries(collection, options = {}) {
 			const params = new URLSearchParams()
 			if (options.fields !== undefined) params.set('fields', options.fields)
@@ -400,6 +409,10 @@ export function createClient(apiBase: string): CmsClient {
 		},
 		deleteMedia(id) {
 			return mutate<{ success: boolean; error?: string }>(`/media/${encodeURIComponent(id)}`, 'DELETE')
+		},
+		createFolder(folder) {
+			// A JSON body to `POST /media` is the create-folder branch (multipart = upload).
+			return mutate<{ success: boolean; error?: string }>('/media', 'POST', { folder })
 		},
 	}
 }

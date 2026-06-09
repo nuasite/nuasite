@@ -1,5 +1,5 @@
 import type { CmsCore, CmsFileSystem } from '@nuasite/cms-core'
-import type { CollectionDefinition, CollectionEntry, CollectionEntryInfo, MutationResult } from '@nuasite/cms-types'
+import type { CollectionDefinition, CollectionEntry, CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
 import { hashContent, hashSource, KeyedMutex } from './concurrency'
 import {
 	type AddArrayItemBody,
@@ -34,6 +34,7 @@ export const SIDECAR_FEATURES: readonly string[] = [
 	'pages.layouts',
 	'redirects.crud',
 	'media',
+	'components',
 ]
 
 const API_PREFIX = '/cms/v1'
@@ -264,6 +265,13 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		return map[name] ?? null
 	}
 
+	// Astro component definitions used by the headless MDX body editor (block picker
+	// + block-card prop labels). Same scan that feeds updateEntry's MDX import injection.
+	async function scanComponentsList(): Promise<ComponentDefinition[]> {
+		const map = await core.scanComponents()
+		return Object.values(map).sort((a, b) => a.name.localeCompare(b.name))
+	}
+
 	// --- Entry detail (assembles the CollectionEntry wire shape) ---
 	async function entryDetail(collection: string, slug: string): Promise<Response> {
 		const result = await core.getEntry(collection, slug)
@@ -357,6 +365,10 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 					const model: ProjectModel = { collections, pages, capabilities }
 					return json(model)
 				}
+				break
+
+			case 'components':
+				if (method === 'GET') return json(await scanComponentsList())
 				break
 
 			case 'collections':

@@ -189,6 +189,15 @@ describe('createClient — media + graceful degradation', () => {
 		expect(calls[0]?.method).toBe('DELETE')
 	})
 
+	test('createFolder POSTs a JSON body to /media (the create-folder branch)', async () => {
+		const { client, calls } = withFetch([() => jsonResponse({ success: true })])
+		const res = await client.createFolder('photos/2026')
+		expect(res.success).toBe(true)
+		expect(calls[0]?.method).toBe('POST')
+		expect(calls[0]?.url).toBe(`${API_BASE}/media`)
+		expect(calls[0]?.body).toEqual({ folder: 'photos/2026' })
+	})
+
 	test('isMediaUnavailable detects 501 / unsupported', async () => {
 		const { client } = withFetch([() => jsonResponse({ error: 'no media', code: 'unsupported' }, 501)])
 		let caught: unknown

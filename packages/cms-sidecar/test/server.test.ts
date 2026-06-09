@@ -1,5 +1,5 @@
 import { createCmsCore, createLocalStorageAdapter, createNodeFs } from '@nuasite/cms-core'
-import type { CollectionDefinition, CollectionEntry, CollectionEntryInfo, GetRedirectsResponse } from '@nuasite/cms-types'
+import type { CollectionDefinition, CollectionEntry, CollectionEntryInfo, ComponentDefinition, GetRedirectsResponse } from '@nuasite/cms-types'
 import { afterEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
@@ -85,6 +85,18 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		const blog = defs.find(d => d.name === 'blog')
 		expect(blog).toBeDefined()
 		expect(blog?.fileExtension).toBe('md')
+	})
+
+	test('GET /components → ComponentDefinition[] (block picker source)', async () => {
+		const { server } = await freshServer()
+		const res = await call(server, 'GET', '/components')
+		expect(res.status).toBe(200)
+		const components = await jsonOf<ComponentDefinition[]>(res)
+		const hero = components.find(c => c.name === 'Hero')
+		expect(hero).toBeDefined()
+		const title = hero?.props.find(p => p.name === 'title')
+		expect(title?.required).toBe(true)
+		expect(hero?.props.find(p => p.name === 'subtitle')?.required).toBe(false)
 	})
 
 	test('GET …/entries (default) is sparse: light header, NO body', async () => {
