@@ -30,8 +30,6 @@
 		"@milkdown/plugin-listener": "catalog:editor",
 		"@milkdown/preset-commonmark": "catalog:editor",
 		"@milkdown/preset-gfm": "catalog:editor",
-		"@milkdown/prose": "catalog:editor",
-		"@milkdown/transformer": "catalog:editor",
 		"@milkdown/utils": "catalog:editor",
 		"@nuasite/cms-types": "workspace:*",
 		"remark-mdx": "catalog:editor",
@@ -39,6 +37,8 @@
 		"unified": "catalog:editor"
 	},
 	"devDependencies": {
+		"@milkdown/prose": "catalog:editor",
+		"@milkdown/transformer": "catalog:editor",
 		"@types/react": "^19.2.7",
 		"@types/react-dom": "^19.2.3",
 		"react": "^19.2.1",
