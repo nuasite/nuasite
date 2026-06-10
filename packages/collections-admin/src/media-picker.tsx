@@ -71,12 +71,26 @@ export function MediaPicker({ client, value, collection, entry, field, accept, o
 		}
 	}
 
-	const looksLikeUrl = value !== '' && /^(https?:\/\/|\/)/.test(value)
 	const canUpload = state.kind === 'ready' || state.kind === 'error'
+
+	// Preview source: absolute URLs (and host-served root-relative / data URLs) load
+	// directly; an entry-relative path (e.g. an Astro `image()` value like
+	// `../../src/assets/x.webp`) is resolved + streamed by the sidecar, which needs
+	// the owning entry's slug. Only render an `<img>` when the value looks like an
+	// image, so `file` fields (PDFs, etc.) don't show a broken thumbnail.
+	const isAbsolute = value !== '' && /^(https?:\/\/|data:|\/)/.test(value)
+	const previewSrc = value === ''
+		? ''
+		: isAbsolute
+		? value
+		: entry !== undefined
+		? client.mediaFileUrl(collection, entry, value)
+		: ''
+	const showPreview = previewSrc !== '' && (value.startsWith('data:image/') || /\.(png|jpe?g|gif|webp|avif|svg|ico|bmp)(\?|#|$)/i.test(value))
 
 	return (
 		<div className="nua-cadmin-media">
-			{looksLikeUrl ? <img className="nua-cadmin-img" src={value} alt="" /> : null}
+			{showPreview ? <img className="nua-cadmin-img" src={previewSrc} alt="" /> : null}
 			<div className="nua-cadmin-media-row">
 				<input
 					type="text"

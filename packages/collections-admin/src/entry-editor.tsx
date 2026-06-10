@@ -41,53 +41,215 @@ type SaveStatus =
 	| { kind: 'conflict'; conflict: CmsConflict }
 	| { kind: 'error'; message: string }
 
-interface PartitionedFields {
+// ============================================================================
+// Layout resolution — sidebar + ordered sections (tabs / stacked)
+// ============================================================================
+
+interface RenderSection {
+	title?: string
+	fields: FieldDefinition[]
+	collapsed?: boolean
+}
+
+interface RenderLayout {
 	header: FieldDefinition[]
 	sidebar: FieldDefinition[]
-	main: FieldDefinition[]
+	sections: RenderSection[]
+	display: 'sections' | 'tabs'
+}
+
+/** Above this many main sections, default to tabs instead of a long stack. */
+const AUTO_TAB_THRESHOLD = 4
+
+const fieldLabel = (f: FieldDefinition): string => f.label ?? f.name
+/** Prettify a raw field name for a section title (e.g. `pricing_tiers` → `Pricing tiers`). */
+const prettify = (name: string): string => {
+	const spaced = name.replace(/[_-]+/g, ' ').trim()
+	return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+const roleRank = (f: FieldDefinition): number => (f.role === 'publish-toggle' ? 0 : f.role === 'publish-date' ? 1 : 2)
+
+/** Stable sort by explicit `order` (unset → keeps schema order). */
+function sortByOrder(fields: FieldDefinition[]): FieldDefinition[] {
+	return fields
+		.map((f, i) => [f, i] as const)
+		.sort((a, b) => (a[0].order ?? 0) - (b[0].order ?? 0) || a[1] - b[1])
+		.map(([f]) => f)
 }
 
 /**
- * Split visible fields into layout columns. Sidebar leads with `role`-tagged
- * publish fields (toggle then date), then other sidebar-positioned fields.
+ * Default sections when no `cms.sections` are declared: scalar fields group by
+ * `group` (consecutive same-group fields share a section; ungrouped → an untitled
+ * section), and each nested `object`/`array` field becomes its own collapsible
+ * section — so a big schema reads as discrete blocks rather than one long column.
  */
-function partitionFields(fields: FieldDefinition[]): PartitionedFields {
-	const visible = fields.filter(f => !f.hidden)
-	const header = visible.filter(f => f.position === 'header')
-	// A `role`-tagged field lives in the sidebar even without an explicit position.
-	const sidebarPositioned = visible.filter(f => f.position === 'sidebar' || (f.role !== undefined && f.position !== 'header'))
-	const main = visible.filter(f => f.position === undefined && f.role === undefined)
-
-	const roleRank = (f: FieldDefinition): number => (f.role === 'publish-toggle' ? 0 : f.role === 'publish-date' ? 1 : 2)
-	const sidebar = sidebarPositioned.slice().sort((a, b) => roleRank(a) - roleRank(b))
-	return { header, sidebar, main }
+function deriveDefaultSections(main: FieldDefinition[]): RenderSection[] {
+	// Scalars are consolidated (ungrouped → one section, else one per `group`, in
+	// first-appearance order); each nested object/array becomes its own collapsible
+	// section, appended after the scalars — so the tab/section list stays clean
+	// instead of interleaving repeated "General" buckets.
+	const scalarSections: RenderSection[] = []
+	const byGroup = new Map<string, RenderSection>()
+	const structural: RenderSection[] = []
+	for (const f of main) {
+		if (f.type === 'object' || f.type === 'array') {
+			structural.push({ title: f.label ?? prettify(f.name), fields: [f], collapsed: true })
+		} else {
+			const key = f.group ?? ''
+			let section = byGroup.get(key)
+			if (!section) {
+				section = { title: f.group, fields: [] }
+				byGroup.set(key, section)
+				scalarSections.push(section)
+			}
+			section.fields.push(f)
+		}
+	}
+	return [...scalarSections, ...structural]
 }
 
-/** Render a column of fields, emitting a section header whenever `group` changes. */
-function FieldColumn({ fields, draft, onField, ctx }: {
+/** Build the editor's render plan from the collection's declarative layout (if any) + heuristics. */
+function resolveLayout(definition: CollectionDefinition | undefined, fields: FieldDefinition[]): RenderLayout {
+	const visible = sortByOrder(fields.filter(f => !f.hidden))
+	const header = visible.filter(f => f.position === 'header')
+	const byName = new Map(visible.map(f => [f.name, f]))
+	const layout = definition?.layout
+
+	const sidebar: FieldDefinition[] = []
+	const inSidebar = new Set<string>()
+	for (const name of layout?.sidebar ?? []) {
+		const f = byName.get(name)
+		if (f && f.position !== 'header' && !inSidebar.has(name)) {
+			sidebar.push(f)
+			inSidebar.add(name)
+		}
+	}
+	for (const f of visible) {
+		if (f.position === 'header' || inSidebar.has(f.name)) continue
+		if (f.position === 'sidebar' || f.role) {
+			sidebar.push(f)
+			inSidebar.add(f.name)
+		}
+	}
+	sidebar.sort((a, b) => roleRank(a) - roleRank(b))
+
+	const main = visible.filter(f => f.position !== 'header' && !inSidebar.has(f.name))
+
+	let sections: RenderSection[]
+	if (layout?.sections && layout.sections.length > 0) {
+		const used = new Set<string>()
+		sections = layout.sections
+			.map(s => {
+				const secFields = s.fields.map(n => byName.get(n)).filter((f): f is FieldDefinition => f !== undefined && main.includes(f))
+				for (const f of secFields) used.add(f.name)
+				return { title: s.title, fields: secFields, collapsed: s.collapsed }
+			})
+			.filter(s => s.fields.length > 0)
+		const leftover = main.filter(f => !used.has(f.name))
+		if (leftover.length > 0) sections.push({ title: 'Other', fields: leftover })
+	} else {
+		sections = deriveDefaultSections(main)
+	}
+
+	const display = layout?.display ?? (sections.length > AUTO_TAB_THRESHOLD ? 'tabs' : 'sections')
+	return { header, sidebar, sections, display }
+}
+
+// ============================================================================
+// Field + section rendering
+// ============================================================================
+
+/** A single field row: label (+ type + help) and its editor widget. */
+function FieldRow({ field, draft, onField, ctx }: {
+	field: FieldDefinition
+	draft: EntryDraft
+	onField: (name: string, value: unknown) => void
+	ctx: EditorContext
+}) {
+	return (
+		<div className={`nua-cadmin-field${field.width === 'half' ? ' nua-cadmin-field-half' : ''}${field.role ? ` nua-cadmin-field-${field.role}` : ''}`}>
+			<div className="nua-cadmin-field-label">
+				<span>{fieldLabel(field)}</span>
+				<span className="nua-cadmin-field-type">{field.type}{field.required ? ' · required' : ''}</span>
+			</div>
+			{field.help ? <div className="nua-cadmin-field-help">{field.help}</div> : null}
+			<FieldEditor
+				field={field}
+				value={draft.frontmatter[field.name]}
+				onChange={value =>
+					onField(field.name, value)}
+				ctx={ctx}
+			/>
+		</div>
+	)
+}
+
+/** Width-aware grid of field rows (`width: 'half'` lets two share a row). */
+function FieldGrid({ fields, draft, onField, ctx }: {
 	fields: FieldDefinition[]
 	draft: EntryDraft
 	onField: (name: string, value: unknown) => void
 	ctx: EditorContext
 }) {
-	let lastGroup: string | undefined
-	const rows: React.ReactNode[] = []
-	for (const field of fields) {
-		if (field.group && field.group !== lastGroup) {
-			rows.push(<h4 key={`group-${field.group}`} className="nua-cadmin-group-title">{field.group}</h4>)
-			lastGroup = field.group
-		}
-		rows.push(
-			<div key={field.name} className={`nua-cadmin-field${field.role ? ` nua-cadmin-field-${field.role}` : ''}`}>
-				<div className="nua-cadmin-field-label">
-					<span>{field.name}</span>
-					<span className="nua-cadmin-field-type">{field.type}{field.required ? ' · required' : ''}</span>
+	return (
+		<div className="nua-cadmin-field-grid">
+			{fields.map(field => <FieldRow key={field.name} field={field} draft={draft} onField={onField} ctx={ctx} />)}
+		</div>
+	)
+}
+
+/** Render the main column's sections, either stacked (collapsible) or as tabs. */
+function SectionsView({ sections, display, draft, onField, ctx }: {
+	sections: RenderSection[]
+	display: 'sections' | 'tabs'
+	draft: EntryDraft
+	onField: (name: string, value: unknown) => void
+	ctx: EditorContext
+}) {
+	const [activeTab, setActiveTab] = useState(0)
+
+	if (display === 'tabs') {
+		const active = sections[Math.min(activeTab, sections.length - 1)]
+		return (
+			<div className="nua-cadmin-tabs">
+				<div className="nua-cadmin-tabbar" role="tablist">
+					{sections.map((s, i) => (
+						<button
+							key={s.title ?? `section-${i}`}
+							type="button"
+							role="tab"
+							aria-selected={i === activeTab}
+							className={`nua-cadmin-tab${i === activeTab ? ' is-active' : ''}`}
+							onClick={() => setActiveTab(i)}
+						>
+							{s.title ?? 'General'}
+						</button>
+					))}
 				</div>
-				<FieldEditor field={field} value={draft.frontmatter[field.name]} onChange={value => onField(field.name, value)} ctx={ctx} />
-			</div>,
+				{active ? <FieldGrid fields={active.fields} draft={draft} onField={onField} ctx={ctx} /> : null}
+			</div>
 		)
 	}
-	return <>{rows}</>
+
+	return (
+		<>
+			{sections.map((s, i) => {
+				// Untitled section → render fields directly (no collapsible chrome).
+				if (s.title === undefined) {
+					return <FieldGrid key={`section-${i}`} fields={s.fields} draft={draft} onField={onField} ctx={ctx} />
+				}
+				return (
+					<details key={s.title} className="nua-cadmin-section" open={!s.collapsed}>
+						<summary className="nua-cadmin-section-summary">{s.title}</summary>
+						<div className="nua-cadmin-section-body">
+							<FieldGrid fields={s.fields} draft={draft} onField={onField} ctx={ctx} />
+						</div>
+					</details>
+				)
+			})}
+		</>
+	)
 }
 
 // ============================================================================
@@ -193,10 +355,16 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 		if (!isMdx) return
 		let active = true
 		client.getComponents().then(
-			defs => { if (active) setComponents(defs) },
-			() => { if (active) setComponents([]) },
+			defs => {
+				if (active) setComponents(defs)
+			},
+			() => {
+				if (active) setComponents([])
+			},
 		)
-		return () => { active = false }
+		return () => {
+			active = false
+		}
 	}, [client, isMdx])
 
 	// Persist the current draft. `force` re-uses the server hash to win a conflict.
@@ -319,7 +487,7 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 		)
 	}
 
-	const { header, sidebar, main } = partitionFields(fields)
+	const { header, sidebar, sections, display } = resolveLayout(definition, fields)
 
 	return (
 		<div className="nua-cadmin-editor">
@@ -333,14 +501,14 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 			{header.length > 0
 				? (
 					<div className="nua-cadmin-editor-header-fields">
-						<FieldColumn fields={header} draft={draft} onField={onField} ctx={ctx} />
+						<FieldGrid fields={header} draft={draft} onField={onField} ctx={ctx} />
 					</div>
 				)
 				: null}
 
 			<div className="nua-cadmin-editor-grid">
 				<div className="nua-cadmin-editor-main">
-					<FieldColumn fields={main} draft={draft} onField={onField} ctx={ctx} />
+					<SectionsView sections={sections} display={display} draft={draft} onField={onField} ctx={ctx} />
 					{definition?.type !== 'data'
 						? (
 							<div className="nua-cadmin-field">
@@ -358,7 +526,7 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 				{sidebar.length > 0
 					? (
 						<div className="nua-cadmin-editor-sidebar">
-							<FieldColumn fields={sidebar} draft={draft} onField={onField} ctx={ctx} />
+							<FieldGrid fields={sidebar} draft={draft} onField={onField} ctx={ctx} />
 						</div>
 					)
 					: null}

@@ -18,7 +18,7 @@
 
 	position: relative;
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
 	height: 100%;
 	min-height: 0;
 	color: var(--nua-cadmin-fg);
@@ -33,6 +33,115 @@
 .nua-cadmin *::before,
 .nua-cadmin *::after {
 	box-sizing: border-box;
+}
+
+/* --- Sidebar: content-type menu --- */
+
+.nua-cadmin-sidebar {
+	display: flex;
+	flex-direction: column;
+	width: 240px;
+	flex-shrink: 0;
+	min-height: 0;
+	border-right: 1px solid var(--nua-cadmin-border);
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-sidebar-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 12px 14px;
+	flex-shrink: 0;
+	border-bottom: 1px solid var(--nua-cadmin-border);
+}
+
+.nua-cadmin-brand {
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+}
+
+.nua-cadmin-nav {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 8px;
+	overflow-y: auto;
+	min-height: 0;
+}
+
+.nua-cadmin-nav-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 10px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--nua-cadmin-fg);
+	text-align: left;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.nua-cadmin-nav-item:hover {
+	background: var(--nua-cadmin-border);
+}
+
+.nua-cadmin-nav-item.is-active {
+	background: var(--nua-cadmin-accent);
+	color: #ffffff;
+}
+
+.nua-cadmin-nav-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.nua-cadmin-nav-count {
+	flex-shrink: 0;
+	padding: 0 7px;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 999px;
+	background: var(--nua-cadmin-bg);
+	color: var(--nua-cadmin-muted);
+	font-size: 11px;
+}
+
+.nua-cadmin-nav-item.is-active .nua-cadmin-nav-count {
+	border-color: transparent;
+	background: rgba(255, 255, 255, 0.2);
+	color: #ffffff;
+}
+
+.nua-cadmin-nav-state {
+	padding: 10px;
+	color: var(--nua-cadmin-muted);
+	font-size: 12px;
+}
+
+.nua-cadmin-nav-error {
+	width: 100%;
+	border: none;
+	background: transparent;
+	text-align: left;
+	color: var(--nua-cadmin-danger);
+	cursor: pointer;
+}
+
+/* --- Main pane --- */
+
+.nua-cadmin-main {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-width: 0;
+	min-height: 0;
 }
 
 /* --- Header / breadcrumb bar --- */
@@ -403,6 +512,13 @@ select.nua-cadmin-input:focus {
 	min-height: 64px;
 }
 
+/* Autosizing textareas drive their own height from content (JS), so no manual
+   resize handle and no inner scrollbar. */
+.nua-cadmin-textarea-autosize {
+	resize: none;
+	overflow-y: hidden;
+}
+
 .nua-cadmin-body-editor {
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 	font-size: 12px;
@@ -626,6 +742,109 @@ select.nua-cadmin-input:focus {
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	color: var(--nua-cadmin-muted);
+}
+
+/* --- Field grid (width-aware: `width: 'half'` shares a row) --- */
+
+.nua-cadmin-field-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px 12px;
+}
+
+.nua-cadmin-field-grid > .nua-cadmin-field {
+	grid-column: 1 / -1;
+}
+
+.nua-cadmin-field-grid > .nua-cadmin-field-half {
+	grid-column: span 1;
+}
+
+/* The sidebar is narrow — always a single column there. */
+.nua-cadmin-editor-sidebar .nua-cadmin-field-grid {
+	grid-template-columns: 1fr;
+}
+
+@media (max-width: 640px) {
+	.nua-cadmin-field-grid > .nua-cadmin-field-half {
+		grid-column: 1 / -1;
+	}
+}
+
+.nua-cadmin-field-help {
+	font-size: 11px;
+	color: var(--nua-cadmin-muted);
+}
+
+/* --- Collapsible sections (stacked display) --- */
+
+.nua-cadmin-section {
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 8px;
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-section-summary {
+	padding: 9px 12px;
+	font-weight: 600;
+	cursor: pointer;
+	list-style: none;
+	user-select: none;
+}
+
+.nua-cadmin-section-summary::-webkit-details-marker {
+	display: none;
+}
+
+.nua-cadmin-section-summary::before {
+	content: "▸";
+	display: inline-block;
+	margin-right: 8px;
+	color: var(--nua-cadmin-muted);
+	transition: transform 0.15s;
+}
+
+.nua-cadmin-section[open] > .nua-cadmin-section-summary::before {
+	transform: rotate(90deg);
+}
+
+.nua-cadmin-section-body {
+	padding: 2px 12px 12px;
+}
+
+/* --- Tabs (tabbed display) --- */
+
+.nua-cadmin-tabs {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.nua-cadmin-tabbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+	border-bottom: 1px solid var(--nua-cadmin-border);
+}
+
+.nua-cadmin-tab {
+	padding: 7px 12px;
+	border: none;
+	border-bottom: 2px solid transparent;
+	background: transparent;
+	color: var(--nua-cadmin-muted);
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.nua-cadmin-tab:hover {
+	color: var(--nua-cadmin-fg);
+}
+
+.nua-cadmin-tab.is-active {
+	color: var(--nua-cadmin-accent);
+	border-bottom-color: var(--nua-cadmin-accent);
 }
 
 /* --- Buttons --- */

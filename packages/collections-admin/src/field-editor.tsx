@@ -9,9 +9,13 @@
  */
 
 import { blankValue, type CmsClient, coerceInput, valueToArray, valueToBoolean, valueToInput, valueToObject } from '@nuasite/cms-client'
-import type { FieldDefinition, FieldType } from '@nuasite/cms-types'
-import { useCallback, useEffect, useState } from 'react'
+import { MdxBodyEditor } from '@nuasite/cms-mdx-editor'
+import type { ComponentDefinition, FieldDefinition, FieldType } from '@nuasite/cms-types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MediaPicker } from './media-picker'
+
+/** Markdown fields use the rich editor with no component blocks (plain prose + media). */
+const NO_COMPONENTS: ComponentDefinition[] = []
 
 /** Cross-cutting services a widget may need (media uploads, reference lookups). */
 export interface EditorContext {
@@ -62,15 +66,58 @@ function TextWidget({ field, value, onChange }: { field: FieldDefinition; value:
 	)
 }
 
-function TextareaWidget({ field, value, onChange }: { field: FieldDefinition; value: unknown; onChange: (v: unknown) => void }) {
+/** Textarea that grows with its content (no inner scrollbar), with a `rows` floor. */
+function AutosizeTextarea(
+	{ value, rows, placeholder, maxLength, onChange }: {
+		value: string
+		rows: number
+		placeholder?: string
+		maxLength?: number
+		onChange: (v: string) => void
+	},
+) {
+	const ref = useRef<HTMLTextAreaElement>(null)
+	useEffect(() => {
+		const el = ref.current
+		if (!el) return
+		el.style.height = 'auto'
+		el.style.height = `${el.scrollHeight}px`
+	}, [value])
 	return (
 		<textarea
-			className="nua-cadmin-textarea"
+			ref={ref}
+			className="nua-cadmin-textarea nua-cadmin-textarea-autosize"
+			value={value}
+			rows={rows}
+			placeholder={placeholder}
+			maxLength={maxLength}
+			onChange={e => onChange(e.target.value)}
+		/>
+	)
+}
+
+function TextareaWidget({ field, value, onChange }: { field: FieldDefinition; value: unknown; onChange: (v: unknown) => void }) {
+	return (
+		<AutosizeTextarea
 			value={valueToInput(value)}
 			rows={field.hints?.rows ?? 4}
 			placeholder={field.hints?.placeholder}
 			maxLength={field.hints?.maxLength}
-			onChange={e => onChange(e.target.value)}
+			onChange={onChange}
+		/>
+	)
+}
+
+/** Markdown field — the rich MDX/markdown WYSIWYG editor, reused for frontmatter markdown values. */
+function MarkdownWidget({ value, onChange, ctx }: { value: unknown; onChange: (v: unknown) => void; ctx: EditorContext }) {
+	const mediaContext = useMemo(() => ({ collection: ctx.collection, entry: ctx.slug }), [ctx.collection, ctx.slug])
+	return (
+		<MdxBodyEditor
+			value={valueToInput(value)}
+			onChange={onChange}
+			components={NO_COMPONENTS}
+			media={ctx.client}
+			mediaContext={mediaContext}
 		/>
 	)
 }
@@ -304,6 +351,8 @@ export function FieldEditor({ field, value, onChange, ctx }: FieldEditorProps) {
 			return <TextWidget field={field} value={value} onChange={onChange} />
 		case 'textarea':
 			return <TextareaWidget field={field} value={value} onChange={onChange} />
+		case 'markdown':
+			return <MarkdownWidget value={value} onChange={onChange} ctx={ctx} />
 		case 'number':
 			return <NumberWidget field={field} value={value} onChange={onChange} />
 		case 'year':
