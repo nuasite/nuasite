@@ -345,9 +345,17 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 						<div style={grid}>
 							{showFolders
 								? folders.map(folder => (
-									<button key={folder.path} type="button" style={tile} onClick={() => navigateToFolder(folder.path)} title={folder.name}>
+									<button
+										key={folder.path}
+										type="button"
+										style={tile}
+										onClick={() => navigateToFolder(folder.path)}
+										title={folder.name}
+									>
 										<span style={{ fontSize: 30 }}>📁</span>
-										<span style={{ fontSize: 12, color: '#52525b', maxWidth: '90%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</span>
+										<span style={{ fontSize: 12, color: '#52525b', maxWidth: '90%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+											{folder.name}
+										</span>
 									</button>
 								))
 								: null}

@@ -17,9 +17,9 @@ import type { ComponentDefinition } from '@nuasite/cms-types'
 import { useEffect, useRef, useState } from 'react'
 import { ComponentPicker } from './component-picker'
 import { FormatToolbar } from './format-toolbar'
-import type { MediaContext, MediaSource } from './media-source'
 import { insertMdxComponentCommand, mdxComponentNode, mdxEsmNode, remarkMdxPlugin } from './mdx-plugin'
 import { type ComponentResolver, createMdxComponentView } from './mdx-view'
+import type { MediaContext, MediaSource } from './media-source'
 
 export interface MdxBodyEditorProps {
 	value: string
@@ -123,7 +123,9 @@ export function MdxBodyEditor({ value, onChange, components, media, mediaContext
 		settingExternal.current = true
 		editorRef.current.action(replaceAll(value))
 		latest.current = value
-		queueMicrotask(() => { settingExternal.current = false })
+		queueMicrotask(() => {
+			settingExternal.current = false
+		})
 	}, [value])
 
 	const insert = (componentName: string, props: Record<string, string>, children?: string) => {

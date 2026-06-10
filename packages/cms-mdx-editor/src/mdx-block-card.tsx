@@ -9,9 +9,9 @@
  */
 import type { ComponentDefinition, ComponentProp } from '@nuasite/cms-types'
 import { useMemo, useState } from 'react'
+import { MDX_EXPR_PREFIX } from './mdx-plugin'
 import { MediaLibrary } from './media-library'
 import type { MediaContext, MediaSource } from './media-source'
-import { MDX_EXPR_PREFIX } from './mdx-plugin'
 import { SlotEditor } from './slot-editor'
 
 export interface MdxBlockCardProps {
@@ -59,11 +59,37 @@ const header: React.CSSProperties = {
 const nameStyle: React.CSSProperties = { fontWeight: 600, fontFamily: 'ui-monospace, monospace', color: '#3f3f46' }
 const body: React.CSSProperties = { padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 8 }
 const rowLabel: React.CSSProperties = { fontSize: 11, color: '#71717a', marginBottom: 2 }
-const inputStyle: React.CSSProperties = { width: '100%', boxSizing: 'border-box', border: '1px solid #d4d4d8', borderRadius: 4, padding: '4px 6px', font: 'inherit', background: '#fff' }
+const inputStyle: React.CSSProperties = {
+	width: '100%',
+	boxSizing: 'border-box',
+	border: '1px solid #d4d4d8',
+	borderRadius: 4,
+	padding: '4px 6px',
+	font: 'inherit',
+	background: '#fff',
+}
 const roInput: React.CSSProperties = { ...inputStyle, background: '#f4f4f5', color: '#71717a' }
 const exprBadge: React.CSSProperties = { fontSize: 10, color: '#a16207', background: '#fef9c3', borderRadius: 3, padding: '0 4px', marginLeft: 6 }
-const removeBtn: React.CSSProperties = { border: 'none', background: 'transparent', color: '#a1a1aa', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 2 }
-const browseBtn: React.CSSProperties = { border: '1px solid #d4d4d8', background: '#fff', borderRadius: 4, padding: '4px 8px', font: 'inherit', fontSize: 12, cursor: 'pointer', color: '#3f3f46', whiteSpace: 'nowrap' }
+const removeBtn: React.CSSProperties = {
+	border: 'none',
+	background: 'transparent',
+	color: '#a1a1aa',
+	cursor: 'pointer',
+	fontSize: 16,
+	lineHeight: 1,
+	padding: 2,
+}
+const browseBtn: React.CSSProperties = {
+	border: '1px solid #d4d4d8',
+	background: '#fff',
+	borderRadius: 4,
+	padding: '4px 8px',
+	font: 'inherit',
+	fontSize: 12,
+	cursor: 'pointer',
+	color: '#3f3f46',
+	whiteSpace: 'nowrap',
+}
 
 // ---- typed prop field ----
 
@@ -88,7 +114,9 @@ function PropField({ name, value, propType, editable, hasMedia, onChange, onBrow
 	if (propType === 'image') {
 		return (
 			<div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-				{looksLikeUrl(value) ? <img src={value} alt="" style={{ maxHeight: 96, maxWidth: '100%', objectFit: 'contain', borderRadius: 4, alignSelf: 'flex-start' }} /> : null}
+				{looksLikeUrl(value)
+					? <img src={value} alt="" style={{ maxHeight: 96, maxWidth: '100%', objectFit: 'contain', borderRadius: 4, alignSelf: 'flex-start' }} />
+					: null}
 				<div style={{ display: 'flex', gap: 6 }}>
 					<input
 						style={editable ? inputStyle : roInput}
@@ -106,8 +134,30 @@ function PropField({ name, value, propType, editable, hasMedia, onChange, onBrow
 	if (propType === 'color') {
 		return (
 			<div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-				<input type="color" value={value || '#000000'} disabled={!editable} onChange={e => onChange(e.target.value)} style={{ width: 30, height: 28, padding: 0, border: '1px solid #d4d4d8', borderRadius: 4, background: 'transparent', cursor: editable ? 'pointer' : 'default' }} />
-				<input style={editable ? inputStyle : roInput} value={value} readOnly={!editable} placeholder="#000000" onChange={editable ? e => onChange(e.target.value) : undefined} />
+				<input
+					type="color"
+					value={value || '#000000'}
+					disabled={!editable}
+					onChange={e => onChange(e.target.value)}
+					style={{
+						width: 30,
+						height: 28,
+						padding: 0,
+						border: '1px solid #d4d4d8',
+						borderRadius: 4,
+						background: 'transparent',
+						cursor: editable ? 'pointer' : 'default',
+					}}
+				/>
+				<input
+					style={editable ? inputStyle : roInput}
+					value={value}
+					readOnly={!editable}
+					placeholder="#000000"
+					onChange={editable
+						? e => onChange(e.target.value)
+						: undefined}
+				/>
 			</div>
 		)
 	}
@@ -186,7 +236,7 @@ export function MdxBlockCard({
 						<div key={name} style={{ display: 'block' }} data-mdx-action="props">
 							<div style={rowLabel}>
 								{name}
-								{def?.required ? <span style={{ color: '#dc2626' }}> *</span> : null}
+								{def?.required ? <span style={{ color: '#dc2626' }}>*</span> : null}
 								{isExpr ? <span style={exprBadge}>expression</span> : null}
 							</div>
 							{isExpr

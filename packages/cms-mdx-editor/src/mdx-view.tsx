@@ -12,8 +12,8 @@ import type { ComponentDefinition } from '@nuasite/cms-types'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MdxBlockCard } from './mdx-block-card'
-import type { MediaContext, MediaSource } from './media-source'
 import { mdxComponentNode } from './mdx-plugin'
+import type { MediaContext, MediaSource } from './media-source'
 
 export type ComponentResolver = (name: string) => ComponentDefinition | undefined
 

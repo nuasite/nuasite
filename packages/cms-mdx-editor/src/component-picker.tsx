@@ -43,7 +43,14 @@ const modal: React.CSSProperties = {
 	fontSize: 13,
 }
 const searchStyle: React.CSSProperties = { border: 'none', borderBottom: '1px solid #ececed', padding: '10px 12px', font: 'inherit', outline: 'none' }
-const itemStyle: React.CSSProperties = { textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 12px', cursor: 'pointer', borderRadius: 0 }
+const itemStyle: React.CSSProperties = {
+	textAlign: 'left',
+	border: 'none',
+	background: 'transparent',
+	padding: '8px 12px',
+	cursor: 'pointer',
+	borderRadius: 0,
+}
 
 export function ComponentPicker({ open, components, onInsert, onClose }: ComponentPickerProps) {
 	const [query, setQuery] = useState('')

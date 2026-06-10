@@ -21,8 +21,8 @@ import { callCommand } from '@milkdown/utils'
 import { useEffect, useState } from 'react'
 import { LinkPopover } from './link-popover'
 import { MediaLibrary } from './media-library'
-import { type ActiveFormats, defaultActiveFormats, isInListType, removeLinkMark, setupFormatTracking, toggleHeading } from './milkdown-utils'
 import type { MediaContext, MediaSource } from './media-source'
+import { type ActiveFormats, defaultActiveFormats, isInListType, removeLinkMark, setupFormatTracking, toggleHeading } from './milkdown-utils'
 
 /** Track active formats on the editor, re-attaching when the instance changes. */
 export function useFormatTracking(editor: Editor | null): ActiveFormats {
@@ -140,8 +140,22 @@ export function FormatToolbar({ editor, media, mediaContext, field, onInsertComp
 		<div>
 			<div style={bar}>
 				<Btn active={formats.bold} title="Bold" onClick={() => editor?.action(callCommand(toggleStrongCommand.key))} style={{ fontWeight: 700 }}>B</Btn>
-				<Btn active={formats.italic} title="Italic" onClick={() => editor?.action(callCommand(toggleEmphasisCommand.key))} style={{ fontStyle: 'italic' }}>I</Btn>
-				<Btn active={formats.strikethrough} title="Strikethrough" onClick={() => editor?.action(callCommand(toggleStrikethroughCommand.key))} style={{ textDecoration: 'line-through' }}>S</Btn>
+				<Btn
+					active={formats.italic}
+					title="Italic"
+					onClick={() => editor?.action(callCommand(toggleEmphasisCommand.key))}
+					style={{ fontStyle: 'italic' }}
+				>
+					I
+				</Btn>
+				<Btn
+					active={formats.strikethrough}
+					title="Strikethrough"
+					onClick={() => editor?.action(callCommand(toggleStrikethroughCommand.key))}
+					style={{ textDecoration: 'line-through' }}
+				>
+					S
+				</Btn>
 				<span style={sep} />
 				<Btn active={formats.heading === 2} title="Heading 2" onClick={() => editor && doHeading(editor, 2)}>H2</Btn>
 				<Btn active={formats.heading === 3} title="Heading 3" onClick={() => editor && doHeading(editor, 3)}>H3</Btn>
@@ -157,7 +171,9 @@ export function FormatToolbar({ editor, media, mediaContext, field, onInsertComp
 					? (
 						<>
 							<span style={{ flex: 1 }} />
-							<Btn title="Insert component block" onClick={() => !disabled && onInsertComponent()} style={{ border: '1px solid #d4d4d8', color: '#3f3f46' }}>+ Component</Btn>
+							<Btn title="Insert component block" onClick={() => !disabled && onInsertComponent()} style={{ border: '1px solid #d4d4d8', color: '#3f3f46' }}>
+								+ Component
+							</Btn>
 						</>
 					)
 					: null}

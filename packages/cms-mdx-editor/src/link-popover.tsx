@@ -25,8 +25,26 @@ const wrap: React.CSSProperties = {
 	boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
 	marginTop: 6,
 }
-const input: React.CSSProperties = { flex: 1, border: '1px solid #d4d4d8', borderRadius: 4, padding: '4px 8px', font: 'inherit', outline: 'none', minWidth: 0 }
-const btn: React.CSSProperties = { border: '1px solid #d4d4d8', background: '#fff', borderRadius: 4, padding: '4px 8px', font: 'inherit', fontSize: 12, cursor: 'pointer', color: '#3f3f46', whiteSpace: 'nowrap' }
+const input: React.CSSProperties = {
+	flex: 1,
+	border: '1px solid #d4d4d8',
+	borderRadius: 4,
+	padding: '4px 8px',
+	font: 'inherit',
+	outline: 'none',
+	minWidth: 0,
+}
+const btn: React.CSSProperties = {
+	border: '1px solid #d4d4d8',
+	background: '#fff',
+	borderRadius: 4,
+	padding: '4px 8px',
+	font: 'inherit',
+	fontSize: 12,
+	cursor: 'pointer',
+	color: '#3f3f46',
+	whiteSpace: 'nowrap',
+}
 
 export function LinkPopover({ initialUrl, isEdit, onApply, onRemove, onClose }: LinkPopoverProps) {
 	const [url, setUrl] = useState(initialUrl)
@@ -52,7 +70,12 @@ export function LinkPopover({ initialUrl, isEdit, onApply, onRemove, onClose }: 
 					if (e.key === 'Escape') onClose()
 				}}
 			/>
-			<button type="button" style={{ ...btn, background: '#2563eb', borderColor: '#2563eb', color: '#fff' }} onMouseDown={e => e.preventDefault()} onClick={apply}>
+			<button
+				type="button"
+				style={{ ...btn, background: '#2563eb', borderColor: '#2563eb', color: '#fff' }}
+				onMouseDown={e => e.preventDefault()}
+				onClick={apply}
+			>
 				{isEdit ? 'Update' : 'Add'}
 			</button>
 			{isEdit && onRemove
