@@ -1,0 +1,15 @@
+{
+	"extends": "../tsconfig.settings.json",
+	"exclude": [
+		"spa"
+	],
+	"compilerOptions": {
+		"outDir": "../dist/types",
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"types": ["@types/bun"]
+	},
+	"references": [
+		{ "path": "../../cms-core/src" },
+		{ "path": "../../cms-sidecar/src" }
+	]
+}

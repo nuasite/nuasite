@@ -19,6 +19,9 @@
 			"excludePatterns": ["**/*.d.ts", "**/generated/**", "src/editor/**", "src/admin/**"],
 			"testPatterns": ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/test/**", "src/index.ts"]
 		},
+		"@nuasite/cms-studio": {
+			"excludePatterns": ["**/*.d.ts", "src/spa/**", "vite.config.ts"]
+		},
 		"playground": {
 			"allowedUnusedDependencies": ["@nuasite/nua"]
 		}

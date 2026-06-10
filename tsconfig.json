@@ -27,6 +27,9 @@
 			"path": "./packages/cms-sidecar"
 		},
 		{
+			"path": "./packages/cms-studio"
+		},
+		{
 			"path": "./packages/cms-types"
 		},
 		{

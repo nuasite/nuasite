@@ -1,0 +1,64 @@
+{
+	"name": "@nuasite/cms-studio",
+	"description": "Standalone, batteries-included Nua CMS: a single `bunx` process that serves the cms-sidecar /cms/v1 API plus a prebuilt collections admin UI for the project it is launched in.",
+	"files": [
+		"dist/**",
+		"src/**",
+		"README.md",
+		"package.json"
+	],
+	"homepage": "https://github.com/nuasite/nuasite/blob/main/packages/cms-studio/README.md",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nuasite/nuasite.git",
+		"directory": "packages/cms-studio"
+	},
+	"license": "Apache-2.0",
+	"version": "0.43.0-beta.4",
+	"module": "src/index.ts",
+	"types": "src/index.ts",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts",
+			"default": "./src/index.ts"
+		}
+	},
+	"bin": {
+		"cms-studio": "src/cli.ts"
+	},
+	"dependencies": {
+		"@nuasite/cms-core": "workspace:*",
+		"@nuasite/cms-sidecar": "workspace:*"
+	},
+	"devDependencies": {
+		"@nuasite/collections-admin": "workspace:*",
+		"@types/bun": "catalog:build",
+		"@types/react": "^19.2.7",
+		"@types/react-dom": "^19.2.3",
+		"react": "^19.2.1",
+		"react-dom": "^19.2.1",
+		"vite": "catalog:build"
+	},
+	"peerDependencies": {
+		"typescript": "catalog:build",
+		"@aws-sdk/client-s3": "^3.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@aws-sdk/client-s3": {
+			"optional": true
+		}
+	},
+	"scripts": {
+		"build": "vite build",
+		"prepack": "bun run build && bun run ../../scripts/workspace-deps/resolve-deps.ts"
+	},
+	"keywords": [
+		"cms",
+		"nuasite",
+		"headless",
+		"studio",
+		"standalone"
+	]
+}

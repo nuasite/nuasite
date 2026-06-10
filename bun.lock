@@ -155,6 +155,34 @@
         "@aws-sdk/client-s3",
       ],
     },
+    "packages/cms-mdx-editor": {
+      "name": "@nuasite/cms-mdx-editor",
+      "version": "0.43.0-beta.4",
+      "dependencies": {
+        "@milkdown/core": "catalog:editor",
+        "@milkdown/plugin-listener": "catalog:editor",
+        "@milkdown/preset-commonmark": "catalog:editor",
+        "@milkdown/preset-gfm": "catalog:editor",
+        "@milkdown/utils": "catalog:editor",
+        "@nuasite/cms-types": "workspace:*",
+        "remark-mdx": "catalog:editor",
+        "remark-parse": "catalog:editor",
+        "unified": "catalog:editor",
+      },
+      "devDependencies": {
+        "@milkdown/prose": "catalog:editor",
+        "@milkdown/transformer": "catalog:editor",
+        "@types/react": "^19.2.7",
+        "@types/react-dom": "^19.2.3",
+        "react": "^19.2.1",
+        "react-dom": "^19.2.1",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "typescript": "catalog:build",
+      },
+    },
     "packages/cms-sidecar": {
       "name": "@nuasite/cms-sidecar",
       "version": "0.43.0-beta.4",
@@ -167,6 +195,33 @@
       },
       "devDependencies": {
         "@types/bun": "catalog:build",
+      },
+      "peerDependencies": {
+        "@aws-sdk/client-s3": "^3.0.0",
+        "typescript": "catalog:build",
+      },
+      "optionalPeers": [
+        "@aws-sdk/client-s3",
+      ],
+    },
+    "packages/cms-studio": {
+      "name": "@nuasite/cms-studio",
+      "version": "0.43.0-beta.4",
+      "bin": {
+        "cms-studio": "src/cli.ts",
+      },
+      "dependencies": {
+        "@nuasite/cms-core": "workspace:*",
+        "@nuasite/cms-sidecar": "workspace:*",
+      },
+      "devDependencies": {
+        "@nuasite/collections-admin": "workspace:*",
+        "@types/bun": "catalog:build",
+        "@types/react": "^19.2.7",
+        "@types/react-dom": "^19.2.3",
+        "react": "^19.2.1",
+        "react-dom": "^19.2.1",
+        "vite": "catalog:build",
       },
       "peerDependencies": {
         "@aws-sdk/client-s3": "^3.0.0",
@@ -191,6 +246,7 @@
       "version": "0.43.0-beta.4",
       "dependencies": {
         "@nuasite/cms-client": "workspace:*",
+        "@nuasite/cms-mdx-editor": "workspace:*",
         "@nuasite/cms-types": "workspace:*",
       },
       "devDependencies": {
@@ -342,7 +398,9 @@
       "prosemirror-transform": "^1.12.0",
       "prosemirror-view": "^1.41.8",
       "remark-mdx": "^3.1.0",
+      "remark-parse": "^11.0.0",
       "tailwind-merge": "^3.5.0",
+      "unified": "^11.0.5",
     },
     "parsers": {
       "@babel/parser": "^7.29.2",
@@ -596,7 +654,11 @@
 
     "@nuasite/cms-core": ["@nuasite/cms-core@workspace:packages/cms-core"],
 
+    "@nuasite/cms-mdx-editor": ["@nuasite/cms-mdx-editor@workspace:packages/cms-mdx-editor"],
+
     "@nuasite/cms-sidecar": ["@nuasite/cms-sidecar@workspace:packages/cms-sidecar"],
+
+    "@nuasite/cms-studio": ["@nuasite/cms-studio@workspace:packages/cms-studio"],
 
     "@nuasite/cms-types": ["@nuasite/cms-types@workspace:packages/cms-types"],
 
