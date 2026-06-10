@@ -14,7 +14,7 @@
 		"directory": "packages/cms-mdx-editor"
 	},
 	"license": "Apache-2.0",
-	"version": "0.43.0-beta.7",
+	"version": "0.43.0-beta.8",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
 	"type": "module",
