@@ -230,6 +230,13 @@ export interface CmsClient {
 
 	listMedia(options?: { folder?: string; cursor?: string; limit?: number }): Promise<MediaListResult>
 	uploadMedia(file: File, context?: MediaContext): Promise<MediaUploadResult>
+	/**
+	 * Build a GET URL for an asset referenced by an entry — an `image`/`file` value
+	 * such as `../../src/assets/x.webp` that the sidecar resolves relative to the
+	 * entry source and streams. Suitable for `<img src>` (no auth header needed for
+	 * the same-origin local studio; the BFF must allow the route for hosted use).
+	 */
+	mediaFileUrl(collection: string, entry: string, path: string): string
 	deleteMedia(id: string): Promise<{ success: boolean; error?: string }>
 	/** Create an empty media subfolder (sidecar `POST /media` JSON). 501 if the adapter has none. */
 	createFolder(folder: string): Promise<{ success: boolean; error?: string }>
@@ -406,6 +413,9 @@ export function createClient(apiBase: string): CmsClient {
 			if (!response.ok) throw await toError(response)
 			const result: MediaUploadResult = await response.json()
 			return result
+		},
+		mediaFileUrl(collection, entry, path) {
+			return `${base}${entryPath(collection, entry)}/asset?path=${encodeURIComponent(path)}`
 		},
 		deleteMedia(id) {
 			return mutate<{ success: boolean; error?: string }>(`/media/${encodeURIComponent(id)}`, 'DELETE')

@@ -78,6 +78,10 @@ export function createNodeFs(root: string): CmsFileSystem {
 			return fs.readFile(resolve(filePath), 'utf-8')
 		},
 
+		async readBytes(filePath) {
+			return fs.readFile(resolve(filePath))
+		},
+
 		async writeFile(filePath, content) {
 			const fullPath = resolve(filePath)
 			await fs.mkdir(path.dirname(fullPath), { recursive: true })

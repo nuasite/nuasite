@@ -308,6 +308,27 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(res.status).toBe(404)
 		expect((await jsonOf<ApiError>(res)).code).toBe('not_found')
 	})
+
+	test('GET …/entries/:slug/asset → streams the entry-relative asset bytes', async () => {
+		const { server, root } = await freshServer()
+		const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+		await fs.mkdir(path.join(root, 'src', 'assets'), { recursive: true })
+		await fs.writeFile(path.join(root, 'src', 'assets', 'cover.png'), bytes)
+		const rel = encodeURIComponent('../../assets/cover.png')
+		const res = await call(server, 'GET', `/collections/blog/entries/hello-world/asset?path=${rel}`)
+		expect(res.status).toBe(200)
+		expect(res.headers.get('content-type')).toBe('image/png')
+		expect(Buffer.from(await res.arrayBuffer())).toEqual(bytes)
+	})
+
+	test('asset route → 400 without a path, 404 for a missing file or unknown entry', async () => {
+		const { server } = await freshServer()
+		const missing = encodeURIComponent('../../assets/nope.png')
+		const present = encodeURIComponent('../../assets/cover.png')
+		expect((await call(server, 'GET', '/collections/blog/entries/hello-world/asset')).status).toBe(400)
+		expect((await call(server, 'GET', `/collections/blog/entries/hello-world/asset?path=${missing}`)).status).toBe(404)
+		expect((await call(server, 'GET', `/collections/blog/entries/ghost/asset?path=${present}`)).status).toBe(404)
+	})
 })
 
 describe('cms-sidecar optimistic concurrency (baseHash / sourceHash)', () => {

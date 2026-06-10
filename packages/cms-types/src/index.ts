@@ -18,6 +18,7 @@
 export const FIELD_TYPES = [
 	'text',
 	'textarea',
+	'markdown',
 	'date',
 	'datetime',
 	'time',
@@ -79,6 +80,14 @@ export interface FieldDefinition {
 	position?: 'sidebar' | 'header'
 	/** Group name for visual grouping with section headers */
 	group?: string
+	/** Human label shown instead of the raw field name. */
+	label?: string
+	/** Helper text shown under the field's label. */
+	help?: string
+	/** Column span in the editor's field grid. `half` lets two fields share a row. */
+	width?: 'full' | 'half'
+	/** Explicit ordering weight within a column/section (lower comes first). */
+	order?: number
 	/** Referenced collection name for 'reference' type fields */
 	collection?: string
 	/** Hide from the editor UI (e.g. derived/computed fields) */
@@ -93,6 +102,30 @@ export interface FieldDefinition {
 	 *  - `publish-toggle`: boolean controlling whether the entry is published (e.g. `draft`, `isDraft`, `published`).
 	 *  - `publish-date`: the publish/release date field (e.g. `date`, `publishDate`, `publishedAt`). */
 	role?: 'publish-toggle' | 'publish-date'
+}
+
+/** One named section of an entry form, grouping a set of fields by name. */
+export interface CollectionLayoutSection {
+	/** Section heading (also the tab label when `display: 'tabs'`). */
+	title: string
+	/** Field names placed in this section, in order. */
+	fields: string[]
+	/** Render the section collapsed by default (ignored for tabs). */
+	collapsed?: boolean
+}
+
+/**
+ * Declarative form layout for a collection's entry editor, authored via
+ * `defineCmsCollection({ cms: { … } })`. When absent the editor derives a layout
+ * from per-field metadata + heuristics.
+ */
+export interface CollectionLayout {
+	/** Stack the sections (`sections`, default) or show them as tabs (`tabs`). */
+	display?: 'sections' | 'tabs'
+	/** Field names pinned to the editor's side column. */
+	sidebar?: string[]
+	/** Ordered main-column sections. Fields not listed fall into a trailing default section. */
+	sections?: CollectionLayoutSection[]
 }
 
 /** Per-entry metadata for collection browsing */
@@ -137,6 +170,8 @@ export interface CollectionDefinition {
 	 * `*​/index.md` collection at the same base). Purely presentational grouping.
 	 */
 	parentCollection?: string
+	/** Declarative entry-form layout (sections/tabs/sidebar), from `defineCmsCollection`. */
+	layout?: CollectionLayout
 }
 
 /** Represents a content collection entry (markdown file) */

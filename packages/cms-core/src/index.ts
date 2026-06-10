@@ -18,6 +18,7 @@ export {
 	type AddArrayItemInput,
 	type CreateEntryInput,
 	ensureMdxImports,
+	type EntryAsset,
 	type EntryOpsDeps,
 	type GetEntryResult,
 	parseFrontmatter,

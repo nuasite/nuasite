@@ -9,6 +9,8 @@
 export interface CmsFileSystem {
 	/** Read a UTF-8 text file. Rejects when the file does not exist. */
 	readFile(path: string): Promise<string>
+	/** Read a file's raw bytes (for binary assets like images). Rejects when the file does not exist. */
+	readBytes(path: string): Promise<Uint8Array>
 	/** Write a UTF-8 text file atomically (write temp + rename). Creates parent dirs. */
 	writeFile(path: string, content: string): Promise<void>
 	/** Rename/move a file. Creates the destination's parent dir. */

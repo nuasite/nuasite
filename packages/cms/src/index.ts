@@ -471,8 +471,9 @@ export {
 	createS3StorageAdapter as s3Media,
 } from '@nuasite/cms-core'
 export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
-export { n } from './field-types'
-export type { DateHints, ImageHints, NumberHints, TextareaHints, TextHints } from './field-types'
+export type { CollectionLayout, CollectionLayoutSection } from '@nuasite/cms-types'
+export { defineCmsCollection, n } from './field-types'
+export type { DateHints, FileHints, ImageHints, LayoutHints, NumberHints, TextareaHints, TextHints } from './field-types'
 export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, MediaStorageAdapter, MediaTypeFilter } from './media/types'
 export { type CmsMode, detectHostedFromEnv, resolveCmsMode } from './mode'
 export type { Color, Date, DateTime, Email, Image, Reference, Textarea, Time, Url } from './prop-types'

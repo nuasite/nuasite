@@ -1,6 +1,6 @@
 import { parse as parseBabel } from '@babel/parser'
 import type * as t from '@babel/types'
-import { type FieldHints, type FieldType, isFieldType } from '@nuasite/cms-types'
+import { type CollectionLayout, type CollectionLayoutSection, type FieldHints, type FieldType, isFieldType } from '@nuasite/cms-types'
 import type { CmsFileSystem } from './fs/types'
 
 export interface ParsedReference {
@@ -22,6 +22,19 @@ export interface ParsedField {
 	itemType?: FieldType
 	/** Nested fields for `object` fields, or per-item fields for `array` of objects */
 	fields?: ParsedField[]
+	/** Layout hints read from the field's `n.*({ … })` options (label/help/group/sidebar/width/order/hidden). */
+	layout?: ParsedFieldLayout
+}
+
+/** Per-field layout hints parsed from a marker's options object. */
+export interface ParsedFieldLayout {
+	label?: string
+	help?: string
+	group?: string
+	sidebar?: boolean
+	width?: 'full' | 'half'
+	order?: number
+	hidden?: boolean
 }
 
 export interface ParsedCollection {
@@ -29,6 +42,8 @@ export interface ParsedCollection {
 	fields: ParsedField[]
 	loaderPattern?: string
 	loaderBase?: string
+	/** Declarative form layout from a `defineCmsCollection({ cms: { … } })` block. */
+	layout?: CollectionLayout
 }
 
 export type ParsedConfig = Map<string, ParsedCollection>
@@ -51,6 +66,7 @@ const FIELD_HELPER_TYPES = new Set([
 	'year',
 	'month',
 	'textarea',
+	'markdown',
 ])
 
 const VALID_HINT_KEYS = new Set([
@@ -205,6 +221,13 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 		const loaderPattern = loaderOptions.pattern
 		const loaderBase = loaderOptions.base
 
+		const cmsProperty = decl.properties.find(
+			p =>
+				p.type === 'ObjectProperty'
+				&& propertyKeyName(p.key) === 'cms',
+		)
+		const layout = cmsProperty?.type === 'ObjectProperty' ? parseCmsLayout(cmsProperty.value, bindings) : undefined
+
 		const schemaProperty = decl.properties.find(
 			p =>
 				p.type === 'ObjectProperty'
@@ -217,6 +240,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				fields: [],
 				loaderPattern,
 				loaderBase,
+				layout,
 			})
 			continue
 		}
@@ -229,6 +253,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				fields: [],
 				loaderPattern,
 				loaderBase,
+				layout,
 			})
 			continue
 		}
@@ -238,14 +263,73 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 			fields: parseSchemaFields(schemaObject, bindings),
 			loaderPattern,
 			loaderBase,
+			layout,
 		})
 	}
 
 	return result
 }
 
+/**
+ * Parse a `cms: { display, sidebar, sections }` layout block (the
+ * `defineCmsCollection` form) from its ObjectExpression. Unknown/malformed keys
+ * are skipped; returns undefined when nothing usable is found.
+ */
+function parseCmsLayout(node: t.Node, bindings: Bindings): CollectionLayout | undefined {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type !== 'ObjectExpression') return undefined
+
+	const layout: CollectionLayout = {}
+	for (const prop of resolved.properties) {
+		if (prop.type !== 'ObjectProperty') continue
+		const key = propertyKeyName(prop.key)
+		const value = resolveExpression(prop.value, bindings)
+		if (key === 'display') {
+			if (value.type === 'StringLiteral' && (value.value === 'tabs' || value.value === 'sections')) layout.display = value.value
+		} else if (key === 'sidebar') {
+			if (value.type === 'ArrayExpression') layout.sidebar = stringArray(value)
+		} else if (key === 'sections') {
+			if (value.type === 'ArrayExpression') {
+				const sections = value.elements
+					.map(el => (el && el.type !== 'SpreadElement' ? parseLayoutSection(resolveExpression(el, bindings)) : null))
+					.filter((s): s is NonNullable<typeof s> => s !== null)
+				if (sections.length > 0) layout.sections = sections
+			}
+		}
+	}
+	return Object.keys(layout).length > 0 ? layout : undefined
+}
+
+/** Parse one `{ title, fields, collapsed }` section object. Requires a title + ≥1 field. */
+function parseLayoutSection(node: t.Node): CollectionLayoutSection | null {
+	if (node.type !== 'ObjectExpression') return null
+	let title: string | undefined
+	let fields: string[] = []
+	let collapsed = false
+	for (const prop of node.properties) {
+		if (prop.type !== 'ObjectProperty') continue
+		const key = propertyKeyName(prop.key)
+		if (key === 'title' && prop.value.type === 'StringLiteral') title = prop.value.value
+		else if (key === 'fields' && prop.value.type === 'ArrayExpression') fields = stringArray(prop.value)
+		else if (key === 'collapsed' && prop.value.type === 'BooleanLiteral') collapsed = prop.value.value
+	}
+	if (title === undefined || fields.length === 0) return null
+	return collapsed ? { title, fields, collapsed } : { title, fields }
+}
+
+/** Collect string-literal elements from an array expression. */
+function stringArray(node: t.ArrayExpression): string[] {
+	const out: string[] = []
+	for (const el of node.elements) {
+		if (el?.type === 'StringLiteral') out.push(el.value)
+	}
+	return out
+}
+
 function isDefineCollectionCallee(callee: t.Node): boolean {
-	return callee.type === 'Identifier' && callee.name === 'defineCollection'
+	// `defineCmsCollection` (the @nuasite/cms wrapper carrying a `cms` layout block)
+	// is treated identically — at runtime it strips `cms` and returns the Astro config.
+	return callee.type === 'Identifier' && (callee.name === 'defineCollection' || callee.name === 'defineCmsCollection')
 }
 
 function propertyKeyName(key: t.Node): string | null {
@@ -428,6 +512,8 @@ function analyzeBaseCall(node: t.CallExpression, field: ParsedField, bindings: B
 		if (firstArg?.type === 'ObjectExpression') {
 			const hints = parseHintsFromObject(firstArg)
 			if (hints) field.hints = hints
+			const layout = parseFieldLayoutFromObject(firstArg)
+			if (layout) field.layout = layout
 		}
 		return
 	}
@@ -533,4 +619,42 @@ function assignHint(hints: FieldHints, key: string, value: string | number): voi
 			if (typeof value === 'string') hints[key] = value
 			return
 	}
+}
+
+/** Read per-field layout hints (label/help/group/sidebar/width/order/hidden) from a marker's options object. */
+function parseFieldLayoutFromObject(obj: t.ObjectExpression): ParsedFieldLayout | undefined {
+	const layout: ParsedFieldLayout = {}
+	for (const prop of obj.properties) {
+		if (prop.type !== 'ObjectProperty') continue
+		const key = propertyKeyName(prop.key)
+		const value = prop.value
+		switch (key) {
+			case 'label':
+				if (value.type === 'StringLiteral') layout.label = value.value
+				break
+			case 'help':
+				if (value.type === 'StringLiteral') layout.help = value.value
+				break
+			case 'group':
+				if (value.type === 'StringLiteral') layout.group = value.value
+				break
+			case 'width':
+				if (value.type === 'StringLiteral' && (value.value === 'full' || value.value === 'half')) layout.width = value.value
+				break
+			case 'order':
+				if (value.type === 'NumericLiteral') {
+					layout.order = value.value
+				} else if (value.type === 'UnaryExpression' && value.operator === '-' && value.argument.type === 'NumericLiteral') {
+					layout.order = -value.argument.value
+				}
+				break
+			case 'sidebar':
+				if (value.type === 'BooleanLiteral') layout.sidebar = value.value
+				break
+			case 'hidden':
+				if (value.type === 'BooleanLiteral') layout.hidden = value.value
+				break
+		}
+	}
+	return Object.keys(layout).length > 0 ? layout : undefined
 }

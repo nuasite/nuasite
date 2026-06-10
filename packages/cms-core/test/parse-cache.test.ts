@@ -22,6 +22,9 @@ function makeCountingFs(initialMtime: number): {
 			if (p === 'src/content/config.ts') return CONFIG_SOURCE
 			throw new Error(`ENOENT: ${p}`)
 		},
+		async readBytes(p) {
+			throw new Error(`not used: ${p}`)
+		},
 		async stat(p) {
 			counts.stat++
 			if (p === 'src/content/config.ts') return { mtimeMs, size: CONFIG_SOURCE.length }

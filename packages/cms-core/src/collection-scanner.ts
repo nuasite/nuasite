@@ -438,6 +438,65 @@ async function buildCollectionDefinition(
 }
 
 /**
+ * Build a DATA collection definition (JSON/YAML) from an explicit source list,
+ * relative to `basePath`. Mirrors {@link buildCollectionDefinition} but parses
+ * data files instead of markdown frontmatter, so it backs both the directory
+ * scan ({@link scanDataCollection}) and the glob-loader path
+ * ({@link scanGlobCollection}) — the latter for data collections whose `base`
+ * lives outside `contentDir`.
+ */
+async function buildDataCollectionDefinition(
+	fs: CmsFileSystem,
+	basePath: string,
+	sources: Array<{ slug: string; relPath: string }>,
+	collectionName: string,
+	contentDir: string,
+): Promise<CollectionDefinition | null> {
+	if (sources.length === 0) return null
+
+	const sourceBasePath = getCollectionSourceBasePath(basePath, collectionName, contentDir)
+	const fieldMap = new Map<string, FieldObservation>()
+	const entryInfos: CollectionEntryInfo[] = []
+	const ext = sources.some(s => s.relPath.endsWith('.json'))
+		? 'json' as const
+		: sources.some(s => s.relPath.endsWith('.yaml'))
+		? 'yaml' as const
+		: 'yml' as const
+
+	const fileContents = await Promise.all(
+		sources.map(s => fs.readFile(path.join(basePath, s.relPath)).catch(() => null)),
+	)
+
+	for (let i = 0; i < sources.length; i++) {
+		const source = sources[i]!
+		const raw = fileContents[i]!
+		if (raw === null) continue
+		let data: Record<string, unknown> | null = null
+		try {
+			data = source.relPath.endsWith('.json') ? JSON.parse(raw) : parseYaml(raw) as Record<string, unknown>
+		} catch {
+			continue
+		}
+		if (!data || typeof data !== 'object') continue
+
+		const title = typeof data.name === 'string' ? data.name : typeof data.title === 'string' ? data.title : undefined
+		entryInfos.push({
+			slug: source.slug,
+			title,
+			sourcePath: path.join(sourceBasePath, source.relPath),
+			data,
+		})
+
+		collectFieldObservations(fieldMap, data, sources.length)
+	}
+
+	return assembleCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, sources.length, {
+		type: 'data',
+		fileExtension: ext,
+	})
+}
+
+/**
  * Scan a single collection directory and infer its schema
  */
 async function scanCollection(
@@ -496,14 +555,28 @@ async function scanGlobCollection(
 	// matching the directory-walk behavior of the original scanner — the glob pattern alone
 	// would otherwise match them.
 	const matches = await fs.glob(path.join(baseRel, pattern))
-	const sources = matches
-		.filter(rel => rel.endsWith('.md') || rel.endsWith('.mdx'))
+	const rels = matches
 		.map(rel => path.relative(baseRel, rel))
 		.filter(relToBase => !relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.')))
-		.map(relToBase => ({ slug: relToBase.replace(/\.(md|mdx)$/, ''), relPath: relToBase }))
 
-	if (sources.length === 0) return null
-	return await buildCollectionDefinition(fs, baseRel, sources, collectionName, contentDir)
+	// Markdown collections win when both are present; otherwise build a data
+	// collection (yaml/json) — the loader pattern dictates which, and a data
+	// `base` may sit outside `contentDir` and nest entries in subdirectories.
+	const mdSources = rels
+		.filter(relToBase => relToBase.endsWith('.md') || relToBase.endsWith('.mdx'))
+		.map(relToBase => ({ slug: relToBase.replace(/\.(md|mdx)$/, ''), relPath: relToBase }))
+	if (mdSources.length > 0) {
+		return await buildCollectionDefinition(fs, baseRel, mdSources, collectionName, contentDir)
+	}
+
+	const dataSources = rels
+		.filter(relToBase => /\.(ya?ml|json)$/.test(relToBase))
+		.map(relToBase => ({ slug: relToBase.replace(/\.(ya?ml|json)$/, ''), relPath: relToBase }))
+	if (dataSources.length > 0) {
+		return await buildDataCollectionDefinition(fs, baseRel, dataSources, collectionName, contentDir)
+	}
+
+	return null
 }
 
 /**
@@ -529,7 +602,23 @@ function applyParsedConfig(
 			if (!field) continue
 			applyParsedFieldOverrides(field, pf)
 		}
+
+		// Declarative form layout from `defineCmsCollection({ cms })`.
+		if (parsedColl.layout) def.layout = parsedColl.layout
 	}
+}
+
+/** Map a parsed field's layout hints onto the field definition (sidebar → position). */
+function applyParsedFieldLayout(field: FieldDefinition, pf: ParsedField): void {
+	const layout = pf.layout
+	if (!layout) return
+	if (layout.label !== undefined) field.label = layout.label
+	if (layout.help !== undefined) field.help = layout.help
+	if (layout.group !== undefined) field.group = layout.group
+	if (layout.width !== undefined) field.width = layout.width
+	if (layout.order !== undefined) field.order = layout.order
+	if (layout.sidebar) field.position = 'sidebar'
+	if (layout.hidden) field.hidden = true
 }
 
 /**
@@ -550,6 +639,7 @@ function applyParsedFieldOverrides(field: FieldDefinition, pf: ParsedField): voi
 	if (pf.hints) field.hints = pf.hints
 	if (pf.astroImage) field.astroImage = true
 	field.required = pf.required
+	applyParsedFieldLayout(field, pf)
 
 	if (pf.fields) {
 		const existingByName = new Map((field.fields ?? []).map(f => [f.name, f]))
@@ -583,6 +673,7 @@ function parsedFieldToFieldDefinition(pf: ParsedField): FieldDefinition {
 	if (pf.hints) fd.hints = pf.hints
 	if (pf.astroImage) fd.astroImage = true
 	if (pf.fields) fd.fields = pf.fields.map(parsedFieldToFieldDefinition)
+	applyParsedFieldLayout(fd, pf)
 	return fd
 }
 
@@ -837,47 +928,7 @@ async function scanDataCollection(
 		if (entry) sources.push(entry)
 	}
 
-	if (sources.length === 0) return null
-
-	const fieldMap = new Map<string, FieldObservation>()
-	const entryInfos: CollectionEntryInfo[] = []
-	const ext = sources.some(s => s.relPath.endsWith('.json'))
-		? 'json' as const
-		: sources.some(s => s.relPath.endsWith('.yaml'))
-		? 'yaml' as const
-		: 'yml' as const
-
-	const fileContents = await Promise.all(
-		sources.map(s => fs.readFile(path.join(collectionPath, s.relPath)).catch(() => null)),
-	)
-
-	for (let i = 0; i < sources.length; i++) {
-		const source = sources[i]!
-		const raw = fileContents[i]!
-		if (raw === null) continue
-		let data: Record<string, unknown> | null = null
-		try {
-			data = source.relPath.endsWith('.json') ? JSON.parse(raw) : parseYaml(raw) as Record<string, unknown>
-		} catch {
-			continue
-		}
-		if (!data || typeof data !== 'object') continue
-
-		const title = typeof data.name === 'string' ? data.name : typeof data.title === 'string' ? data.title : undefined
-		entryInfos.push({
-			slug: source.slug,
-			title,
-			sourcePath: path.join(contentDir, collectionName, source.relPath),
-			data,
-		})
-
-		collectFieldObservations(fieldMap, data, sources.length)
-	}
-
-	return assembleCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, sources.length, {
-		type: 'data',
-		fileExtension: ext,
-	})
+	return await buildDataCollectionDefinition(fs, collectionPath, sources, collectionName, contentDir)
 }
 
 /**

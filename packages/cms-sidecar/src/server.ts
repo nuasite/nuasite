@@ -28,6 +28,7 @@ export const SIDECAR_FEATURES: readonly string[] = [
 	'entry.crud',
 	'entry.rename',
 	'entry.array',
+	'entry.asset',
 	'entry.optimistic-concurrency',
 	'pages.crud',
 	'pages.list',
@@ -295,6 +296,15 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		return json(entry)
 	}
 
+	// --- GET entry asset (resolve an image/file value relative to the entry source, stream the bytes) ---
+	async function assetResponse(collection: string, slug: string, url: URL): Promise<Response> {
+		const assetPath = url.searchParams.get('path')
+		if (assetPath === null || assetPath === '') return error('validation', 'A "path" query parameter is required')
+		const asset = await core.getEntryAsset(collection, slug, assetPath)
+		if (!asset) return error('not_found', `Asset not found for ${collection}/${slug}: ${assetPath}`)
+		return new Response(asset.bytes, { headers: { 'content-type': asset.contentType, 'cache-control': 'no-cache' } })
+	}
+
 	// --- PATCH entry (optimistic concurrency + per-file mutex) ---
 	async function patchEntry(collection: string, slug: string, body: UpdateEntryBody): Promise<Response> {
 		const existing = await core.getEntry(collection, slug)
@@ -416,6 +426,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			if (action === 'rename' && method === 'POST') return renameEntryRoute(collection, slug, req)
 			if (action === 'array' && method === 'POST') return addArrayRoute(collection, slug, req)
 			if (action === 'array' && method === 'DELETE') return removeArrayRoute(collection, slug, req)
+			if (action === 'asset' && method === 'GET') return assetResponse(collection, slug, url)
 		}
 
 		return error('not_found', `No route: ${method} /cms/v1/collections/${tail.join('/')}`)

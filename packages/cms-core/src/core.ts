@@ -24,8 +24,10 @@ import {
 	createEntry as createEntryOp,
 	type CreateEntryInput,
 	deleteEntry as deleteEntryOp,
+	type EntryAsset,
 	type EntryOpsDeps,
 	getEntry as getEntryOp,
+	getEntryAsset as getEntryAssetOp,
 	type GetEntryResult,
 	removeArrayItem as removeArrayItemOp,
 	type RemoveArrayItemInput,
@@ -71,6 +73,8 @@ export interface CmsCore {
 	scanComponents(): Promise<Record<string, ComponentDefinition>>
 	/** Read a single entry's frontmatter + body, or `null` when it does not exist. */
 	getEntry(collection: string, slug: string): Promise<GetEntryResult | null>
+	/** Read an asset referenced by an entry (`image`/`file` value), resolving its path relative to the entry source. `null` when missing. */
+	getEntryAsset(collection: string, slug: string, assetPath: string): Promise<EntryAsset | null>
 
 	// ENTRY MUTATIONS
 	createEntry(input: CreateEntryInput): Promise<MutationResult>
@@ -119,6 +123,9 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 		},
 		getEntry(collection, slug) {
 			return getEntryOp(entryDeps, collection, slug)
+		},
+		getEntryAsset(collection, slug, assetPath) {
+			return getEntryAssetOp(entryDeps, collection, slug, assetPath)
 		},
 		createEntry(input) {
 			return createEntryOp(entryDeps, input)

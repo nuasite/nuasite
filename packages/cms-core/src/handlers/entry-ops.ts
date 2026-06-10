@@ -3,6 +3,7 @@ import yaml from 'yaml'
 import { scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig } from '../content-config-ast'
 import type { CmsFileSystem } from '../fs/types'
+import { mimeFromExt } from '../media/local'
 import { isPlainRecord, relativeImportPath, slugify } from '../shared'
 
 /** Frontmatter file extensions that hold markdown content (vs. pure data files). */
@@ -42,6 +43,27 @@ function isDataFile(filePath: string): boolean {
 }
 
 /**
+ * Resolve the root-relative base directory that holds a collection's source files.
+ *
+ * Honors a glob loader's `base` from the content config — e.g.
+ * `glob({ base: './content/blog' })` points outside `contentDir`, and the
+ * collection name (`o-virivkach`) need not match the directory. Falls back to the
+ * default `<contentDir>/<collection>` layout for collections without a custom
+ * loader base. This mirrors the scanner's `getCollectionSourceBasePath`, so the
+ * mutation/read path resolves entries in the very same place the listing scan does.
+ */
+async function resolveCollectionDir(deps: EntryOpsDeps, collection: string): Promise<string> {
+	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+	const loaderBase = parsed.get(collection)?.loaderBase
+	if (loaderBase) {
+		// Loader base is root-relative; strip a leading `./` and any trailing slash.
+		const normalized = loaderBase.replace(/^\.\/+/, '').replace(/[/\\]+$/, '')
+		if (normalized) return normalized
+	}
+	return `${deps.contentDir}/${collection}`
+}
+
+/**
  * Resolve a `{collection, slug}` pair to an existing entry's source path.
  *
  * Tries the flat layout first (`<collection>/<slug>.<ext>`) for every supported
@@ -49,7 +71,7 @@ function isDataFile(filePath: string): boolean {
  * Returns `null` when no matching file exists.
  */
 async function resolveEntryPath(deps: EntryOpsDeps, collection: string, slug: string): Promise<string | null> {
-	const base = `${deps.contentDir}/${collection}`
+	const base = await resolveCollectionDir(deps, collection)
 	const flatExts = ['md', 'mdx', 'json', 'yaml', 'yml']
 	for (const ext of flatExts) {
 		const candidate = `${base}/${slug}.${ext}`
@@ -60,6 +82,54 @@ async function resolveEntryPath(deps: EntryOpsDeps, collection: string, slug: st
 		if (await deps.fs.exists(candidate)) return candidate
 	}
 	return null
+}
+
+/**
+ * Resolve a content-relative path (as stored in frontmatter — e.g. an Astro
+ * `image()` value like `../../src/assets/x.webp`) against `baseDir`, returning a
+ * normalized root-relative path. A leading `/` resolves from the project root.
+ * Returns `null` when the path climbs above the project root (traversal).
+ */
+function resolveRelativePath(baseDir: string, rel: string): string | null {
+	const out = rel.startsWith('/') ? [] : baseDir.split('/').filter(Boolean)
+	for (const seg of rel.replace(/^\/+/, '').split('/')) {
+		if (seg === '' || seg === '.') continue
+		if (seg === '..') {
+			if (out.length === 0) return null
+			out.pop()
+			continue
+		}
+		out.push(seg)
+	}
+	return out.join('/')
+}
+
+/** Lowercased file extension including the leading dot (e.g. `.webp`), or `''`. */
+function extOf(filePath: string): string {
+	const idx = filePath.lastIndexOf('.')
+	return idx >= 0 ? filePath.slice(idx).toLowerCase() : ''
+}
+
+/** Raw bytes of an entry-relative asset plus a best-effort content type. */
+export interface EntryAsset {
+	bytes: Uint8Array
+	contentType: string
+}
+
+/**
+ * Read an asset referenced by an entry (an `image`/`file` field value), resolving
+ * the stored path relative to the entry's source file. Returns the raw bytes plus
+ * a content type inferred from the extension, or `null` when the entry or the
+ * asset does not exist (or the path escapes the project root).
+ */
+export async function getEntryAsset(deps: EntryOpsDeps, collection: string, slug: string, assetPath: string): Promise<EntryAsset | null> {
+	const sourcePath = await resolveEntryPath(deps, collection, slug)
+	if (!sourcePath) return null
+	const lastSlash = sourcePath.lastIndexOf('/')
+	const baseDir = lastSlash >= 0 ? sourcePath.slice(0, lastSlash) : ''
+	const resolved = resolveRelativePath(baseDir, assetPath)
+	if (!resolved || !(await deps.fs.exists(resolved))) return null
+	return { bytes: await deps.fs.readBytes(resolved), contentType: mimeFromExt(extOf(resolved)) }
 }
 
 // ============================================================================
@@ -200,7 +270,7 @@ async function detectCollectionMarkdownLayout(deps: EntryOpsDeps, collection: st
 }
 
 async function inferLayoutFromExistingEntries(deps: EntryOpsDeps, collection: string): Promise<MarkdownCollectionLayout | null> {
-	const collectionPath = `${deps.contentDir}/${collection}`
+	const collectionPath = await resolveCollectionDir(deps, collection)
 
 	const dirEntries = await deps.fs.list(collectionPath)
 	if (dirEntries.length === 0) return null
@@ -300,9 +370,10 @@ export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): 
 	}
 	const isData = ext === 'json' || ext === 'yaml' || ext === 'yml'
 	const layout = isData ? 'flat' : await detectCollectionMarkdownLayout(deps, collection)
+	const collectionDir = await resolveCollectionDir(deps, collection)
 	const sourcePath = layout === 'index'
-		? `${deps.contentDir}/${collection}/${normalizedSlug}/index.${ext}`
-		: `${deps.contentDir}/${collection}/${normalizedSlug}.${ext}`
+		? `${collectionDir}/${normalizedSlug}/index.${ext}`
+		: `${collectionDir}/${normalizedSlug}.${ext}`
 
 	let fileContent: string
 	if (isData) {

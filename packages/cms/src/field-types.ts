@@ -1,3 +1,4 @@
+import type { CollectionLayout } from '@nuasite/cms-types'
 import { z } from 'astro/zod'
 
 /**
@@ -27,35 +28,57 @@ import { z } from 'astro/zod'
 
 // --- Per-type hint interfaces ---
 
-export interface NumberHints {
+/**
+ * Editor layout hints carried by every `n.*` field. They configure where and how
+ * the field renders in the entry form; they apply no Zod validation and are read
+ * by the CMS scanner from the config source.
+ */
+export interface LayoutHints {
+	/** Human label shown instead of the field name. */
+	label?: string
+	/** Helper text shown under the label. */
+	help?: string
+	/** Section name; fields sharing a `group` render under one heading. */
+	group?: string
+	/** Pin the field to the editor's side column. */
+	sidebar?: boolean
+	/** Column span — `half` lets two fields share a row. */
+	width?: 'full' | 'half'
+	/** Ordering weight within its column/section (lower comes first). */
+	order?: number
+	/** Hide the field from the editor. */
+	hidden?: boolean
+}
+
+export interface NumberHints extends LayoutHints {
 	min?: number
 	max?: number
 	step?: number
 	placeholder?: string
 }
 
-export interface TextHints {
+export interface TextHints extends LayoutHints {
 	placeholder?: string
 	maxLength?: number
 	minLength?: number
 }
 
-export interface TextareaHints {
+export interface TextareaHints extends LayoutHints {
 	placeholder?: string
 	maxLength?: number
 	rows?: number
 }
 
-export interface DateHints {
+export interface DateHints extends LayoutHints {
 	min?: string
 	max?: string
 }
 
-export interface ImageHints {
+export interface ImageHints extends LayoutHints {
 	accept?: string
 }
 
-export interface FileHints {
+export interface FileHints extends LayoutHints {
 	accept?: string
 }
 
@@ -153,8 +176,39 @@ export const n = {
 	time: (_hints?: DateHints) => withOrderBy(z.string().describe('cms:time')),
 	/** Multiline textarea */
 	textarea: (hints?: TextareaHints) => stringField('textarea', hints),
+	/** Markdown body field — rendered with the rich MDX/markdown editor in the CMS. Stores a markdown string. */
+	markdown: (hints?: TextareaHints) => stringField('markdown', hints),
 	/** Text input */
 	text: (hints?: TextHints) => stringField('text', hints),
 	/** Plain string (no CMS type hint — type inferred from values) */
 	string: () => withOrderBy(z.string()),
+}
+
+/**
+ * Define a content collection with a declarative CMS form `layout`.
+ *
+ * A drop-in for Astro's `defineCollection` that additionally accepts a `cms`
+ * block (`{ display, sidebar, sections }`) describing how the entry form is laid
+ * out — tabs or stacked sections, a side column, and section grouping. The block
+ * is read by the Nua CMS scanner from the config **source**; at runtime it is
+ * stripped, so the returned value is exactly the Astro collection config.
+ *
+ * @example
+ * ```ts
+ * export const product = defineCmsCollection({
+ *   loader: glob({ pattern: '**​/*.yaml', base: './content/product' }),
+ *   schema: ({ image }) => n.object({ ... }),
+ *   cms: {
+ *     display: 'tabs',
+ *     sidebar: ['line', 'is_bestseller'],
+ *     sections: [{ title: 'Basics', fields: ['title', 'perex'] }],
+ *   },
+ * })
+ * ```
+ */
+export function defineCmsCollection<T extends Record<string, unknown>>(
+	config: T & { cms?: CollectionLayout },
+): Omit<T, 'cms'> {
+	const { cms: _cms, ...rest } = config
+	return rest
 }
