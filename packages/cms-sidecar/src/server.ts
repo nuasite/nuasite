@@ -245,23 +245,43 @@ async function listPages(fs: CmsFileSystem): Promise<PageEntry[]> {
 // Collection → route base (sidecar-layer fs walk)
 // ============================================================================
 
-const ROUTE_EXTENSIONS = ['.astro', '.md', '.mdx']
 const GET_COLLECTION_RE = /getCollection\s*\(\s*['"`]([^'"`]+)['"`]/g
 
 /**
- * Map each collection to the URL base of the route that renders it, by scanning the
- * *dynamic* route files under `src/pages` (`[...slug].astro` etc.) for the
- * `getCollection('<name>')` call in their `getStaticPaths`. The route file's path is
- * the base: `src/pages/products/[...slug].astro` → `product` → `/products`; a
- * root-level `[...slug].astro` → `''`.
- *
- * This is the only reliable source for an entry's URL — it comes from the route, not
- * the collection name (a `product` collection can live at `/products`). Collections
- * with no such route are absent: they have no per-entry page, so their entries get no
- * `pathname` (and a consumer knows not to navigate to one).
+ * How the route that renders a collection turns an entry into a URL:
+ * - `perItem`: a dynamic route (`[...slug].astro`) → one page per entry, at
+ *   `<base>/<slug>` (base is the route's directory, e.g. `/products`).
+ * - shared page (`perItem: false`): a static page that lists the collection →
+ *   every entry maps to that one page's URL (`base`, e.g. `/faq`), no slug.
  */
-async function resolveCollectionRouteBases(fs: CmsFileSystem): Promise<Map<string, string>> {
-	const bases = new Map<string, string>()
+interface CollectionRoute {
+	base: string
+	perItem: boolean
+}
+
+/**
+ * Map each collection to the route that renders it, by scanning the Astro pages
+ * under `src/pages` for `getCollection('<name>')`. This is the only reliable source
+ * for an entry's URL — it comes from the route, not the collection name (a `product`
+ * collection can live at `/products`, an `faq` collection on a single `/faq` page).
+ *
+ * - A *dynamic* route file (`[...slug].astro`) renders one page per entry; the URL
+ *   base is its directory. Only its first `getCollection` counts — that's the one its
+ *   `getStaticPaths` iterates (a secondary lookup, e.g. an author on a post page,
+ *   would otherwise mis-map that collection).
+ * - A *static* page renders every collection it reads on that one shared URL.
+ * - A per-item (dynamic) route wins over a shared page if a collection has both.
+ *
+ * Collections rendered nowhere are absent: their entries get no `pathname`, so a
+ * consumer knows there is no page to open.
+ */
+async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<Map<string, CollectionRoute>> {
+	const routes = new Map<string, CollectionRoute>()
+	const consider = (name: string, route: CollectionRoute): void => {
+		const existing = routes.get(name)
+		// Per-item routes win over a shared page; otherwise the first match wins.
+		if (!existing || (route.perItem && !existing.perItem)) routes.set(name, route)
+	}
 
 	async function walk(dir: string, urlPrefix: string): Promise<void> {
 		const entries = await fs.list(dir)
@@ -272,11 +292,8 @@ async function resolveCollectionRouteBases(fs: CmsFileSystem): Promise<Map<strin
 				await walk(full, `${urlPrefix}${entry.name}/`)
 				continue
 			}
-			// Only dynamic route files (`[param]`) render collection entries.
-			if (!entry.name.includes('[')) continue
-			const dot = entry.name.lastIndexOf('.')
-			const ext = dot >= 0 ? entry.name.slice(dot) : ''
-			if (!ROUTE_EXTENSIONS.includes(ext)) continue
+			// `getCollection` lives in Astro page frontmatter.
+			if (!entry.name.endsWith('.astro')) continue
 
 			let content: string
 			try {
@@ -284,17 +301,28 @@ async function resolveCollectionRouteBases(fs: CmsFileSystem): Promise<Map<strin
 			} catch {
 				continue
 			}
-			const base = urlPrefix.replace(/\/$/, '')
-			for (const match of content.matchAll(GET_COLLECTION_RE)) {
-				const name = match[1]
-				// First route wins (scan order surfaces the closest match for a collection).
-				if (name && !bases.has(name)) bases.set(name, base)
+			const names = [...content.matchAll(GET_COLLECTION_RE)].map(m => m[1]).filter((n): n is string => Boolean(n))
+			if (names.length === 0) continue
+
+			if (entry.name.includes('[')) {
+				// Dynamic route: the page-per-item collection is the getStaticPaths driver (first).
+				consider(names[0]!, { base: urlPrefix.replace(/\/$/, ''), perItem: true })
+			} else {
+				// Static page: every collection it lists shares this page's URL.
+				const baseName = entry.name.slice(0, -'.astro'.length)
+				const pathname = baseName === 'index' ? (urlPrefix.replace(/\/$/, '') || '/') : `${urlPrefix}${baseName}`
+				for (const name of names) consider(name, { base: pathname, perItem: false })
 			}
 		}
 	}
 
 	await walk('src/pages', '/')
-	return bases
+	return routes
+}
+
+/** Build an entry's page URL from its collection route (see {@link CollectionRoute}). */
+function entryPathname(route: CollectionRoute, slug: string): string {
+	return route.perItem ? `${route.base}/${slug}` : (route.base || '/')
 }
 
 // ============================================================================
@@ -496,11 +524,11 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		// Tag entries with the URL of their rendered page (when the collection has a route),
 		// so a consumer can sync a preview to the entry being edited. Falls back to no
 		// pathname on any fs error — better absent than wrong.
-		const routeBases = await resolveCollectionRouteBases(fs).catch(() => new Map<string, string>())
-		const base = routeBases.get(collection)
-		const all = base === undefined
+		const routes = await resolveCollectionRoutes(fs).catch(() => new Map<string, CollectionRoute>())
+		const route = routes.get(collection)
+		const all = route === undefined
 			? (def.entries ?? [])
-			: (def.entries ?? []).map(e => (e.pathname === undefined ? { ...e, pathname: `${base}/${e.slug}` } : e))
+			: (def.entries ?? []).map(e => (e.pathname === undefined ? { ...e, pathname: entryPathname(route, e.slug) } : e))
 		const filtered = filterByDraft(all, query.draft)
 
 		const offset = decodeCursor(query.cursor)

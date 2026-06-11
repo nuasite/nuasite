@@ -124,6 +124,14 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(list.entries.find(e => e.slug === 'hello-world')?.pathname).toBe('/blog/hello-world')
 	})
 
+	test('GET …/entries shares one pathname for a collection on a static listing page', async () => {
+		const { server } = await freshServer()
+		// `src/pages/team.astro` calls getCollection('team') → every item maps to `/team`.
+		const list = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/team/entries?draft=all'))
+		expect(list.entries.length).toBeGreaterThan(1)
+		expect(list.entries.every(e => e.pathname === '/team')).toBe(true)
+	})
+
 	test('GET …/entries omits pathname when the collection has no route', async () => {
 		const { server } = await freshServer()
 		// `authors` is rendered by no route file → no per-entry page → no pathname.

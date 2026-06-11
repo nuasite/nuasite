@@ -1,0 +1,10 @@
+---
+import { getCollection } from 'astro:content'
+
+const members = await getCollection('team')
+---
+
+<h1>Team</h1>
+<ul>
+	{members.map((member) => <li>{member.data.name}</li>)}
+</ul>
