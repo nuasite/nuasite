@@ -117,6 +117,21 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		}
 	})
 
+	test('GET …/entries tags entries with the rendered-page pathname from the route', async () => {
+		const { server } = await freshServer()
+		// `src/pages/blog/[...slug].astro` calls getCollection('blog') → base `/blog`.
+		const list = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/blog/entries?draft=all'))
+		expect(list.entries.find(e => e.slug === 'hello-world')?.pathname).toBe('/blog/hello-world')
+	})
+
+	test('GET …/entries omits pathname when the collection has no route', async () => {
+		const { server } = await freshServer()
+		// `authors` is rendered by no route file → no per-entry page → no pathname.
+		const list = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/authors/entries?draft=all'))
+		expect(list.entries.length).toBeGreaterThan(0)
+		expect(list.entries.every(e => e.pathname === undefined)).toBe(true)
+	})
+
 	test('GET …/entries?draft filter', async () => {
 		const { server } = await freshServer()
 		const published = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/blog/entries?draft=false'))

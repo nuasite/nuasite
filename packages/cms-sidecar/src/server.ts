@@ -242,6 +242,62 @@ async function listPages(fs: CmsFileSystem): Promise<PageEntry[]> {
 }
 
 // ============================================================================
+// Collection → route base (sidecar-layer fs walk)
+// ============================================================================
+
+const ROUTE_EXTENSIONS = ['.astro', '.md', '.mdx']
+const GET_COLLECTION_RE = /getCollection\s*\(\s*['"`]([^'"`]+)['"`]/g
+
+/**
+ * Map each collection to the URL base of the route that renders it, by scanning the
+ * *dynamic* route files under `src/pages` (`[...slug].astro` etc.) for the
+ * `getCollection('<name>')` call in their `getStaticPaths`. The route file's path is
+ * the base: `src/pages/products/[...slug].astro` → `product` → `/products`; a
+ * root-level `[...slug].astro` → `''`.
+ *
+ * This is the only reliable source for an entry's URL — it comes from the route, not
+ * the collection name (a `product` collection can live at `/products`). Collections
+ * with no such route are absent: they have no per-entry page, so their entries get no
+ * `pathname` (and a consumer knows not to navigate to one).
+ */
+async function resolveCollectionRouteBases(fs: CmsFileSystem): Promise<Map<string, string>> {
+	const bases = new Map<string, string>()
+
+	async function walk(dir: string, urlPrefix: string): Promise<void> {
+		const entries = await fs.list(dir)
+		for (const entry of entries) {
+			if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue
+			const full = `${dir}/${entry.name}`
+			if (entry.isDirectory) {
+				await walk(full, `${urlPrefix}${entry.name}/`)
+				continue
+			}
+			// Only dynamic route files (`[param]`) render collection entries.
+			if (!entry.name.includes('[')) continue
+			const dot = entry.name.lastIndexOf('.')
+			const ext = dot >= 0 ? entry.name.slice(dot) : ''
+			if (!ROUTE_EXTENSIONS.includes(ext)) continue
+
+			let content: string
+			try {
+				content = await fs.readFile(full)
+			} catch {
+				continue
+			}
+			const base = urlPrefix.replace(/\/$/, '')
+			for (const match of content.matchAll(GET_COLLECTION_RE)) {
+				const name = match[1]
+				// First route wins (scan order surfaces the closest match for a collection).
+				if (name && !bases.has(name)) bases.set(name, base)
+			}
+		}
+	}
+
+	await walk('src/pages', '/')
+	return bases
+}
+
+// ============================================================================
 // Router
 // ============================================================================
 
@@ -437,7 +493,14 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		if (!def) return error('not_found', `Collection not found: ${collection}`)
 
 		const query = parseEntriesQuery(url)
-		const all = def.entries ?? []
+		// Tag entries with the URL of their rendered page (when the collection has a route),
+		// so a consumer can sync a preview to the entry being edited. Falls back to no
+		// pathname on any fs error — better absent than wrong.
+		const routeBases = await resolveCollectionRouteBases(fs).catch(() => new Map<string, string>())
+		const base = routeBases.get(collection)
+		const all = base === undefined
+			? (def.entries ?? [])
+			: (def.entries ?? []).map(e => (e.pathname === undefined ? { ...e, pathname: `${base}/${e.slug}` } : e))
 		const filtered = filterByDraft(all, query.draft)
 
 		const offset = decodeCursor(query.cursor)
