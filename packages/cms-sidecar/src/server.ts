@@ -265,8 +265,9 @@ interface CollectionRoute {
  * for an entry's URL — it comes from the route, not the collection name (a `product`
  * collection can live at `/products`, an `faq` collection on a single `/faq` page).
  *
- * - A *dynamic* route file (`[...slug].astro`) renders one page per entry; the URL
- *   base is its directory. Only its first `getCollection` counts — that's the one its
+ * - A *dynamic* route (`[...slug].astro`, or a `[slug]/index.astro` directory) renders one
+ *   page per entry; the URL base is the path up to its dynamic segment. Only its first
+ *   `getCollection` counts — that's the one its
  *   `getStaticPaths` iterates (a secondary lookup, e.g. an author on a post page,
  *   would otherwise mis-map that collection).
  * - A *static* page renders every collection it reads on that one shared URL.
@@ -304,13 +305,20 @@ async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<Map<string, C
 			const names = [...content.matchAll(GET_COLLECTION_RE)].map(m => m[1]).filter((n): n is string => Boolean(n))
 			if (names.length === 0) continue
 
-			if (entry.name.includes('[')) {
+			// Full route path: directory prefix + file segment (Astro drops `index`).
+			const baseName = entry.name.slice(0, -'.astro'.length)
+			const routePath = baseName === 'index' ? urlPrefix : `${urlPrefix}${baseName}`
+			// A dynamic segment (`[slug]`, `[...slug]`) anywhere in the path makes this a
+			// page-per-item route — whether it comes from the filename (`[...slug].astro`) or
+			// a parent directory (`[slug]/index.astro`). Its base is the path up to the first
+			// dynamic segment (Astro segments are always whole, so `/[` is the marker).
+			const dynamicIdx = routePath.indexOf('/[')
+			if (dynamicIdx !== -1) {
 				// Dynamic route: the page-per-item collection is the getStaticPaths driver (first).
-				consider(names[0]!, { base: urlPrefix.replace(/\/$/, ''), perItem: true })
+				consider(names[0]!, { base: routePath.slice(0, dynamicIdx) || '/', perItem: true })
 			} else {
 				// Static page: every collection it lists shares this page's URL.
-				const baseName = entry.name.slice(0, -'.astro'.length)
-				const pathname = baseName === 'index' ? (urlPrefix.replace(/\/$/, '') || '/') : `${urlPrefix}${baseName}`
+				const pathname = routePath.replace(/\/$/, '') || '/'
 				for (const name of names) consider(name, { base: pathname, perItem: false })
 			}
 		}

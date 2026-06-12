@@ -68,7 +68,7 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(res.status).toBe(200)
 		const model = await jsonOf<ProjectModel>(res)
 
-		expect(model.collections.map(c => c.name).sort()).toEqual(['authors', 'blog', 'settings', 'team'])
+		expect(model.collections.map(c => c.name).sort()).toEqual(['authors', 'blog', 'docs', 'settings', 'team'])
 		expect(model.capabilities.coreVersion).toBe('0.42.1')
 		expect(model.capabilities.features).toEqual([...SIDECAR_FEATURES])
 
@@ -122,6 +122,16 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		// `src/pages/blog/[...slug].astro` calls getCollection('blog') → base `/blog`.
 		const list = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/blog/entries?draft=all'))
 		expect(list.entries.find(e => e.slug === 'hello-world')?.pathname).toBe('/blog/hello-world')
+	})
+
+	test('GET …/entries resolves a directory-form dynamic route (`[slug]/index.astro`)', async () => {
+		const { server } = await freshServer()
+		// `src/pages/docs/[slug]/index.astro` calls getCollection('docs'): the dynamic segment
+		// lives in a parent directory, not the filename → base `/docs`, one page per entry.
+		// Regression guard: previously the literal route template `/docs/[slug]` leaked through.
+		const list = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/docs/entries?draft=all'))
+		expect(list.entries.find(e => e.slug === 'intro')?.pathname).toBe('/docs/intro')
+		expect(list.entries.every(e => e.pathname !== undefined && !e.pathname.includes('['))).toBe(true)
 	})
 
 	test('GET …/entries shares one pathname for a collection on a static listing page', async () => {
