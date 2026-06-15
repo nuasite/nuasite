@@ -74,6 +74,15 @@ const EDITOR_CSS = `
 .nua-mdx-editor .ProseMirror pre code { background: none; padding: 0; }
 .nua-mdx-editor .ProseMirror img { max-width: 100%; height: auto; border-radius: 4px; }
 .nua-mdx-editor .ProseMirror hr { border: none; border-top: 1px solid #e4e4e7; margin: 1em 0; }
+/* tables (GFM) — PM/prosemirror-tables ship no usable styles; without these the
+   cells collapse to 0 width and the table is invisible & uneditable */
+.nua-mdx-editor .ProseMirror .tableWrapper { overflow-x: auto; margin: 0.8em 0; }
+.nua-mdx-editor .ProseMirror table { border-collapse: collapse; table-layout: fixed; width: 100%; margin: 0.8em 0; overflow: hidden; }
+.nua-mdx-editor .ProseMirror th, .nua-mdx-editor .ProseMirror td { border: 1px solid #d4d4d8; padding: 0.4em 0.6em; vertical-align: top; box-sizing: border-box; position: relative; min-width: 5em; }
+.nua-mdx-editor .ProseMirror th { background: #f4f4f5; font-weight: 600; text-align: left; }
+.nua-mdx-editor .ProseMirror th > p, .nua-mdx-editor .ProseMirror td > p { margin: 0; }
+.nua-mdx-editor .ProseMirror .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; z-index: 20; background-color: #93c5fd; pointer-events: none; }
+.nua-mdx-editor .ProseMirror .selectedCell:after { content: ''; position: absolute; inset: 0; z-index: 2; background: rgba(200,200,255,0.4); pointer-events: none; }
 `
 
 function useEditorStyles() {
