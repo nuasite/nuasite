@@ -77,6 +77,20 @@ function withFetch(responders: Responder[]): { client: CmsClient; calls: Recorde
 	return { client: createClient(API_BASE), calls: stub.calls }
 }
 
+describe('createClient — reads', () => {
+	test('getConfig requests /config', async () => {
+		const body = { listStyles: [{ label: 'Fajfky', class: 'checkmarks' }] }
+		const { client, calls } = withFetch([() => jsonResponse(body)])
+
+		const config = await client.getConfig()
+
+		expect(config).toEqual(body)
+		expect(calls[0]?.method).toBe('GET')
+		expect(calls[0]?.url).toBe(`${API_BASE}/config`)
+		expect(calls[0]?.credentials).toBe('include')
+	})
+})
+
 describe('createClient — mutations', () => {
 	test('updateEntry → ok, surfaces sourceHash as the new baseHash; sends baseHash + credentials', async () => {
 		const result: MutationResult = { success: true, sourcePath: 'src/content/blog/hello.md', sourceHash: 'sha256:new' }

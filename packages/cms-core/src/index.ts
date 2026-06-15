@@ -14,6 +14,7 @@ export type { CmsCore, CmsCoreOptions } from './core'
 export { globToRegExp } from './fs/glob'
 export { createNodeFs } from './fs/node-fs'
 export type { CmsFileSystem } from './fs/types'
+export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
 export {
 	type AddArrayItemInput,
 	type CreateEntryInput,
