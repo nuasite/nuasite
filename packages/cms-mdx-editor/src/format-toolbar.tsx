@@ -61,6 +61,22 @@ function insertImage(editor: Editor, src: string, alt: string) {
 	})
 }
 
+function insertYoutubeDirective(editor: Editor, value: string) {
+	const id = value.trim()
+	if (!id) return
+
+	editor.action((ctx) => {
+		const view = ctx.get(editorViewCtx)
+		const paragraphType = view.state.schema.nodes.paragraph
+		if (!paragraphType) return
+
+		// Directive format: `:::youtube{<value>}` where value is a YouTube URL or bare id, with no surrounding spaces.
+		const paragraph = paragraphType.create(null, view.state.schema.text(`:::youtube{${id}}`))
+		view.focus()
+		view.dispatch(view.state.tr.replaceSelectionWith(paragraph).scrollIntoView())
+	})
+}
+
 export interface FormatToolbarProps {
 	editor: Editor | null
 	media?: MediaSource
@@ -165,6 +181,17 @@ export function FormatToolbar({ editor, media, mediaContext, field, onInsertComp
 				<Btn active={formats.orderedList} title="Numbered list" onClick={() => editor && toggleList(editor, 'ordered')}>1. List</Btn>
 				<Btn active={formats.blockquote} title="Quote" onClick={() => editor?.action(callCommand(wrapInBlockquoteCommand.key))}>❝</Btn>
 				<Btn title="Insert table" onClick={() => editor?.action(callCommand(insertTableCommand.key, { row: 3, col: 3 }))}>▦ Table</Btn>
+				<Btn
+					title="Insert YouTube"
+					onClick={() => {
+						if (disabled || !editor) return
+						const value = window.prompt('YouTube URL or ID')
+						if (value === null) return
+						insertYoutubeDirective(editor, value)
+					}}
+				>
+					YouTube
+				</Btn>
 				<span style={sep} />
 				<Btn active={formats.link || linkOpen} title="Link" onClick={() => !disabled && setLinkOpen(v => !v)}>🔗 Link</Btn>
 				{media ? <Btn title="Insert image" onClick={() => !disabled && setMediaOpen(true)}>🖼 Image</Btn> : null}
