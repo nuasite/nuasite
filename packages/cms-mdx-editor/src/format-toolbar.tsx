@@ -51,14 +51,25 @@ function toggleList(editor: Editor, type: 'bullet' | 'ordered') {
 	}
 }
 
-function insertImage(editor: Editor, src: string, alt: string) {
+function insertImage(editor: Editor, src: string, alt: string, title: string) {
 	editor.action((ctx) => {
 		const view = ctx.get(editorViewCtx)
 		const imageType = view.state.schema.nodes.image
 		if (!imageType) return
 		view.focus()
-		view.dispatch(view.state.tr.replaceSelectionWith(imageType.create({ src, alt })).scrollIntoView())
+		view.dispatch(view.state.tr.replaceSelectionWith(imageType.create({ src, alt, title })).scrollIntoView())
 	})
+}
+
+function promptForImageText(defaultAlt: string): { alt: string; title: string } | undefined {
+	const alt = window.prompt('Alt text for screen readers', defaultAlt)
+	if (alt === null) return undefined
+
+	const title = window.prompt('Caption / source (optional)', '')
+	return {
+		alt: alt.trim(),
+		title: title === null ? '' : title.trim(),
+	}
 }
 
 function insertYoutubeDirective(editor: Editor, value: string) {
@@ -230,7 +241,9 @@ export function FormatToolbar({ editor, media, mediaContext, field, onInsertComp
 						accept="image/*"
 						onSelect={(url, alt) => {
 							setMediaOpen(false)
-							if (editor) insertImage(editor, url, alt ?? '')
+							if (!editor) return
+							const imageText = promptForImageText(alt ?? '')
+							if (imageText) insertImage(editor, url, imageText.alt, imageText.title)
 						}}
 						onClose={() => setMediaOpen(false)}
 					/>
