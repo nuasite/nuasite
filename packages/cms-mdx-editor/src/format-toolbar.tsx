@@ -16,7 +16,7 @@ import {
 	wrapInBulletListCommand,
 	wrapInOrderedListCommand,
 } from '@milkdown/preset-commonmark'
-import { toggleStrikethroughCommand } from '@milkdown/preset-gfm'
+import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm'
 import { callCommand } from '@milkdown/utils'
 import { useEffect, useState } from 'react'
 import { LinkPopover } from './link-popover'
@@ -164,6 +164,7 @@ export function FormatToolbar({ editor, media, mediaContext, field, onInsertComp
 				<Btn active={formats.bulletList} title="Bullet list" onClick={() => editor && toggleList(editor, 'bullet')}>• List</Btn>
 				<Btn active={formats.orderedList} title="Numbered list" onClick={() => editor && toggleList(editor, 'ordered')}>1. List</Btn>
 				<Btn active={formats.blockquote} title="Quote" onClick={() => editor?.action(callCommand(wrapInBlockquoteCommand.key))}>❝</Btn>
+				<Btn title="Insert table" onClick={() => editor?.action(callCommand(insertTableCommand.key, { row: 3, col: 3 }))}>▦ Table</Btn>
 				<span style={sep} />
 				<Btn active={formats.link || linkOpen} title="Link" onClick={() => !disabled && setLinkOpen(v => !v)}>🔗 Link</Btn>
 				{media ? <Btn title="Insert image" onClick={() => !disabled && setMediaOpen(true)}>🖼 Image</Btn> : null}
