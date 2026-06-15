@@ -28,7 +28,7 @@ import {
 	setDraftField,
 } from '@nuasite/cms-client'
 import { MdxBodyEditor } from '@nuasite/cms-mdx-editor'
-import type { CollectionDefinition, ComponentDefinition, FieldDefinition } from '@nuasite/cms-types'
+import type { CmsListStyle, CollectionDefinition, ComponentDefinition, FieldDefinition } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type EditorContext, FieldEditor } from './field-editor'
 
@@ -317,6 +317,9 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 	// Component definitions for the MDX block picker/labels. Only needed for mdx
 	// bodies; degrades to an empty list against an older sidecar (no /components).
 	const [components, setComponents] = useState<ComponentDefinition[]>([])
+	// Project-defined list styles for the MDX toolbar dropdown. Only needed for mdx
+	// bodies; degrades to an empty list against an older sidecar (no /config).
+	const [listStyles, setListStyles] = useState<CmsListStyle[]>([])
 
 	// `baseHash` is the optimistic-concurrency token. It starts undefined (GET
 	// exposes no hash) and is adopted from each successful `MutationResult.sourceHash`.
@@ -360,6 +363,23 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 			},
 			() => {
 				if (active) setComponents([])
+			},
+		)
+		return () => {
+			active = false
+		}
+	}, [client, isMdx])
+
+	// Load project list styles for the MDX toolbar (once per client; mdx only).
+	useEffect(() => {
+		if (!isMdx) return
+		let active = true
+		client.getConfig().then(
+			config => {
+				if (active) setListStyles(config.listStyles ?? [])
+			},
+			() => {
+				if (active) setListStyles([])
 			},
 		)
 		return () => {
@@ -517,7 +537,7 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 									<span className="nua-cadmin-field-type">{isMdx ? 'mdx' : 'markdown'}</span>
 								</div>
 								{isMdx
-									? <MdxBodyEditor value={draft.body} onChange={onBody} components={components} media={client} mediaContext={mediaContext} />
+									? <MdxBodyEditor value={draft.body} onChange={onBody} components={components} listStyles={listStyles} media={client} mediaContext={mediaContext} />
 									: <textarea className="nua-cadmin-body-editor" value={draft.body} rows={16} onChange={e => onBody(e.target.value)} />}
 							</div>
 						)
