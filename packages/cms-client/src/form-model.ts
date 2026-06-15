@@ -41,6 +41,13 @@ export function parseWireValue(type: FieldType, raw: string): unknown {
 			const n = Number(raw)
 			return raw.trim() === '' || Number.isNaN(n) ? raw : n
 		}
+		case 'date':
+		case 'datetime':
+		case 'time':
+			// The sidecar JSON-stringifies non-string frontmatter, so a YAML `Date` arrives
+			// double-quoted (e.g. `"2026-06-01T12:00:00.000Z"`). Unwrap it to a plain string;
+			// a value already stored as a string (e.g. `2026-06-01`) passes through unchanged.
+			return parseJsonLoose(raw)
 		case 'array':
 		case 'object':
 			return parseJsonLoose(raw)
@@ -102,6 +109,13 @@ export function blankValue(type: FieldType): unknown {
 			return []
 		case 'object':
 			return {}
+		case 'date':
+		case 'datetime':
+		case 'time':
+		case 'month':
+			// Seed temporal fields empty (not ''), so an untouched optional date is omitted on
+			// create instead of writing `date: ''` (which `z.coerce.date()` rejects as invalid).
+			return undefined
 		default:
 			return ''
 	}
@@ -146,6 +160,12 @@ export function coerceInput(type: FieldType, raw: string): unknown {
 			const n = Number(raw)
 			return Number.isNaN(n) ? raw : n
 		}
+		case 'date':
+		case 'datetime':
+		case 'time':
+			// Empty → undefined so a cleared optional date is omitted rather than written as
+			// `''` (which `z.coerce.date()` turns into an Invalid Date and rejects).
+			return raw.trim() === '' ? undefined : raw
 		default:
 			return raw
 	}
@@ -157,6 +177,60 @@ export function valueToInput(value: unknown): string {
 	if (typeof value === 'string') return value
 	if (typeof value === 'number' || typeof value === 'boolean') return String(value)
 	return JSON.stringify(value)
+}
+
+/**
+ * Render a stored temporal value for a native date/time `<input>`, which only accept a
+ * strict format (`yyyy-MM-dd`, `yyyy-MM-ddTHH:mm`, `HH:mm`, `yyyy-MM`). Accepts a `Date`,
+ * an ISO-ish string (with or without a time/zone), a plain `yyyy-MM-dd`, or a `HH:mm` time.
+ * Returns '' when the value is empty or unparseable so the control renders blank — never
+ * the raw out-of-format value, which the browser would silently reject (showing an empty
+ * field that then overwrites the stored value with '' on save).
+ */
+export function valueToDateInput(value: unknown, type: FieldType): string {
+	if (value === undefined || value === null || value === '') return ''
+
+	// Prefer slicing a canonical ISO string directly: parsing a date-only or UTC-midnight
+	// value into a local `Date` can roll the day back across timezones.
+	if (typeof value === 'string') {
+		const iso = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/)
+		if (iso) {
+			const [, y, mo, d, h, mi] = iso
+			switch (type) {
+				case 'datetime':
+					return `${y}-${mo}-${d}T${h ?? '00'}:${mi ?? '00'}`
+				case 'time':
+					return h ? `${h}:${mi}` : ''
+				case 'month':
+					return `${y}-${mo}`
+				default:
+					return `${y}-${mo}-${d}`
+			}
+		}
+		if (type === 'time') {
+			const t = value.trim().match(/^(\d{2}):(\d{2})/)
+			if (t) return `${t[1]}:${t[2]}`
+		}
+	}
+
+	const date = value instanceof Date ? value : new Date(String(value))
+	if (Number.isNaN(date.getTime())) return ''
+	const pad = (n: number) => String(n).padStart(2, '0')
+	const y = date.getFullYear()
+	const mo = pad(date.getMonth() + 1)
+	const d = pad(date.getDate())
+	const h = pad(date.getHours())
+	const mi = pad(date.getMinutes())
+	switch (type) {
+		case 'datetime':
+			return `${y}-${mo}-${d}T${h}:${mi}`
+		case 'time':
+			return `${h}:${mi}`
+		case 'month':
+			return `${y}-${mo}`
+		default:
+			return `${y}-${mo}-${d}`
+	}
 }
 
 /** Read a value as a boolean for toggle widgets, tolerating string encodings. */

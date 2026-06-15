@@ -10,6 +10,7 @@ import {
 	setDraftField,
 	valueToArray,
 	valueToBoolean,
+	valueToDateInput,
 	valueToInput,
 	valueToObject,
 } from '../src/form-model'
@@ -169,6 +170,49 @@ describe('value readers', () => {
 		expect(valueToObject({ k: 1 })).toEqual({ k: 1 })
 		expect(valueToObject(['a'])).toEqual({})
 		expect(valueToObject(null)).toEqual({})
+	})
+})
+
+describe('temporal fields (date/datetime/time/month)', () => {
+	test('parseWireValue unwraps a JSON-stringified Date and passes plain strings through', () => {
+		// The sidecar JSON-stringifies a YAML Date → double-quoted ISO string.
+		expect(parseWireValue('date', '"2026-06-01T12:00:00.000Z"')).toBe('2026-06-01T12:00:00.000Z')
+		expect(parseWireValue('datetime', '"2026-06-01T12:00:00.000Z"')).toBe('2026-06-01T12:00:00.000Z')
+		// Already a plain string in YAML → unchanged.
+		expect(parseWireValue('date', '2026-06-01')).toBe('2026-06-01')
+		expect(parseWireValue('date', '')).toBeUndefined()
+	})
+
+	test('coerceInput maps empty temporal input to undefined, keeps a real value', () => {
+		expect(coerceInput('date', '')).toBeUndefined()
+		expect(coerceInput('datetime', '')).toBeUndefined()
+		expect(coerceInput('time', '')).toBeUndefined()
+		expect(coerceInput('date', '2026-06-01')).toBe('2026-06-01')
+	})
+
+	test('blankValue seeds temporal fields empty so an untouched optional date is omitted', () => {
+		expect(blankValue('date')).toBeUndefined()
+		expect(blankValue('datetime')).toBeUndefined()
+		expect(blankValue('time')).toBeUndefined()
+		expect(blankValue('month')).toBeUndefined()
+	})
+
+	test('valueToDateInput formats stored values for the native control', () => {
+		// Full ISO datetime (the shape aktuality store) → date-only for <input type="date">.
+		expect(valueToDateInput('2026-06-01T12:00:00.000Z', 'date')).toBe('2026-06-01')
+		expect(valueToDateInput('2026-06-01T12:00:00', 'datetime')).toBe('2026-06-01T12:00')
+		expect(valueToDateInput('2026-06-01T12:00:00', 'month')).toBe('2026-06')
+		// Plain date string passes straight through.
+		expect(valueToDateInput('2026-06-01', 'date')).toBe('2026-06-01')
+		// Date object.
+		expect(valueToDateInput(new Date('2026-06-01T12:00:00'), 'date')).toBe('2026-06-01')
+		// Time-only.
+		expect(valueToDateInput('08:35', 'time')).toBe('08:35')
+		expect(valueToDateInput('2026-06-01T08:35:00', 'time')).toBe('08:35')
+		// Empty / unparseable → '' (so the control blanks instead of rejecting).
+		expect(valueToDateInput('', 'date')).toBe('')
+		expect(valueToDateInput(undefined, 'date')).toBe('')
+		expect(valueToDateInput('not a date', 'date')).toBe('')
 	})
 })
 
