@@ -57,28 +57,30 @@ afterEach(async () => {
 	document.body.innerHTML = ''
 })
 
+// The editor serializes bullets with Milkdown's default marker (`*`); only the
+// `:::list{.class}` wrapper is added by this plugin.
 test('styled list directive parses to a list attr and serializes back', async () => {
-	const markdown = ':::list{.checkmarks}\n- a\n- b\n:::'
-	const editor = await createEditor(markdown)
-	const doc = parse(editor, markdown)
+	const input = ':::list{.checkmarks}\n- a\n- b\n:::'
+	const expected = ':::list{.checkmarks}\n* a\n* b\n:::'
+	const editor = await createEditor(input)
+	const doc = parse(editor, input)
 	const list = doc.child(0)
 
 	expect(list.type.name).toBe('bullet_list')
 	expect(list.attrs.listStyle).toBe('checkmarks')
 	expect(hasLiteralDirectiveText(doc)).toBe(false)
-	expect(serialize(editor, doc)).toBe(markdown)
+	expect(serialize(editor, doc)).toBe(expected)
 })
 
 test('plain list round-trips without directive markers', async () => {
-	const markdown = '- a\n- b'
-	const editor = await createEditor(markdown)
-	const doc = parse(editor, markdown)
+	const editor = await createEditor('- a\n- b')
+	const doc = parse(editor, '- a\n- b')
 	const list = doc.child(0)
 	const serialized = serialize(editor, doc)
 
 	expect(list.type.name).toBe('bullet_list')
 	expect(list.attrs.listStyle).toBeNull()
-	expect(serialized).toBe(markdown)
+	expect(serialized).toBe('* a\n* b')
 	expect(serialized).not.toContain(':::')
 })
 
@@ -88,8 +90,8 @@ test('setting and clearing list style changes markdown directionally', async () 
 
 	editor.action(callCommand(setListStyleCommand.key, 'checkmarks'))
 	const view = editor.ctx.get(editorViewCtx)
-	expect(normalizeSerializedMarkdown(serializer(view.state.doc))).toBe(':::list{.checkmarks}\n- a\n- b\n:::')
+	expect(normalizeSerializedMarkdown(serializer(view.state.doc))).toBe(':::list{.checkmarks}\n* a\n* b\n:::')
 
 	editor.action(callCommand(setListStyleCommand.key, null))
-	expect(normalizeSerializedMarkdown(serializer(view.state.doc))).toBe('- a\n- b')
+	expect(normalizeSerializedMarkdown(serializer(view.state.doc))).toBe('* a\n* b')
 })

@@ -1,4 +1,3 @@
-import { remarkStringifyOptionsCtx } from '@milkdown/core'
 import { bulletListAttr, bulletListSchema, orderedListAttr, orderedListSchema } from '@milkdown/preset-commonmark'
 import type { Attrs, Node as PmNode } from '@milkdown/prose/model'
 import type { Command } from '@milkdown/prose/state'
@@ -8,7 +7,6 @@ import type { Plugin } from 'unified'
 
 const LIST_DIRECTIVE_NAME = 'list'
 const LIST_STYLE_CLASS_RE = /^[A-Za-z0-9_-]+$/
-const DASH_BULLET = '-' as const
 
 interface ListDirectiveNode extends MutableMarkdownNode {
 	type: 'containerDirective'
@@ -355,17 +353,9 @@ export const setListStyleCommand = $command('SetListStyle', () => {
 	}
 })
 
-const forceDashBulletListMarkdown = (ctx: Parameters<import('@milkdown/core').Config>[0]) => () => {
-	ctx.update(remarkStringifyOptionsCtx, (options) => ({
-		...options,
-		bullet: DASH_BULLET,
-	}))
-}
-
 export const styledListPlugin = [
 	remarkListDirectivePlugin,
 	styledBulletListSchema,
 	styledOrderedListSchema,
 	setListStyleCommand,
-	forceDashBulletListMarkdown,
 ].flat()

@@ -137,12 +137,18 @@ export function parseProjectCmsConfigSource(source: string): CmsConfig {
 	return { listStyles: parseListStyles(listStylesNode, bindings) }
 }
 
-/** Read and parse the consuming project's `astro.config.ts`, tolerating absence or malformed config. */
+const ASTRO_CONFIG_FILES = ['astro.config.ts', 'astro.config.mts', 'astro.config.mjs', 'astro.config.js']
+
+/** Read and parse the consuming project's Astro config, tolerating absence or malformed config. */
 export async function parseProjectCmsConfig(fs: CmsFileSystem): Promise<CmsConfig> {
-	try {
-		const source = await fs.readFile('astro.config.ts')
+	for (const file of ASTRO_CONFIG_FILES) {
+		let source: string
+		try {
+			source = await fs.readFile(file)
+		} catch {
+			continue
+		}
 		return parseProjectCmsConfigSource(source)
-	} catch {
-		return { listStyles: [] }
 	}
+	return EMPTY_CONFIG
 }

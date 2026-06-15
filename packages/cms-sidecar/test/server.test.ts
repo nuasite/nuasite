@@ -1,5 +1,12 @@
 import { createCmsCore, createLocalStorageAdapter, createNodeFs } from '@nuasite/cms-core'
-import type { CollectionDefinition, CollectionEntry, CollectionEntryInfo, ComponentDefinition, CmsConfig, GetRedirectsResponse } from '@nuasite/cms-types'
+import type {
+	CmsConfig,
+	CollectionDefinition,
+	CollectionEntry,
+	CollectionEntryInfo,
+	ComponentDefinition,
+	GetRedirectsResponse,
+} from '@nuasite/cms-types'
 import { afterEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
@@ -101,7 +108,9 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 
 	test('GET /config → CmsConfig from astro.config.ts', async () => {
 		const { server, root } = await freshServer()
-		await fs.writeFile(path.join(root, 'astro.config.ts'), `
+		await fs.writeFile(
+			path.join(root, 'astro.config.ts'),
+			`
 			import { defineConfig } from '@nuasite/nua/config'
 
 			export default defineConfig({
@@ -116,7 +125,8 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 					},
 				},
 			})
-		`)
+		`,
+		)
 
 		const res = await call(server, 'GET', '/config')
 		expect(res.status).toBe(200)

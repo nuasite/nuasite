@@ -14,7 +14,8 @@ export interface LinkPopoverProps {
 	onClose: () => void
 }
 
-const wrap: React.CSSProperties = {
+/** Shared popover styles, reused by the image and YouTube insert popovers. */
+export const popoverWrap: React.CSSProperties = {
 	display: 'flex',
 	gap: 6,
 	alignItems: 'center',
@@ -25,7 +26,7 @@ const wrap: React.CSSProperties = {
 	boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
 	marginTop: 6,
 }
-const input: React.CSSProperties = {
+export const popoverInput: React.CSSProperties = {
 	flex: 1,
 	border: '1px solid #d4d4d8',
 	borderRadius: 4,
@@ -34,7 +35,7 @@ const input: React.CSSProperties = {
 	outline: 'none',
 	minWidth: 0,
 }
-const btn: React.CSSProperties = {
+export const popoverBtn: React.CSSProperties = {
 	border: '1px solid #d4d4d8',
 	background: '#fff',
 	borderRadius: 4,
@@ -45,6 +46,9 @@ const btn: React.CSSProperties = {
 	color: '#3f3f46',
 	whiteSpace: 'nowrap',
 }
+const wrap = popoverWrap
+const input = popoverInput
+const btn = popoverBtn
 
 export function LinkPopover({ initialUrl, isEdit, onApply, onRemove, onClose }: LinkPopoverProps) {
 	const [url, setUrl] = useState(initialUrl)

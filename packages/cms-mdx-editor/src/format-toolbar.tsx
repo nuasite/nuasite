@@ -20,11 +20,13 @@ import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset
 import { callCommand } from '@milkdown/utils'
 import type { CmsListStyle } from '@nuasite/cms-types'
 import { useEffect, useState } from 'react'
+import { ImagePopover } from './image-popover'
 import { LinkPopover } from './link-popover'
 import { MediaLibrary } from './media-library'
 import type { MediaContext, MediaSource } from './media-source'
 import { type ActiveFormats, defaultActiveFormats, isInListType, removeLinkMark, setupFormatTracking, toggleHeading } from './milkdown-utils'
 import { setListStyleCommand } from './styled-list-plugin'
+import { YoutubePopover } from './youtube-popover'
 
 /** Track active formats on the editor, re-attaching when the instance changes. */
 export function useFormatTracking(editor: Editor | null): ActiveFormats {
@@ -69,27 +71,13 @@ function insertImage(editor: Editor, src: string, alt: string, title: string) {
 	})
 }
 
-function promptForImageText(defaultAlt: string): { alt: string; title: string } | undefined {
-	const alt = window.prompt('Alt text for screen readers', defaultAlt)
-	if (alt === null) return undefined
-
-	const title = window.prompt('Caption / source (optional)', '')
-	return {
-		alt: alt.trim(),
-		title: title === null ? '' : title.trim(),
-	}
-}
-
-function insertYoutubeDirective(editor: Editor, value: string) {
-	const id = value.trim()
-	if (!id) return
-
+function insertYoutubeDirective(editor: Editor, id: string) {
 	editor.action((ctx) => {
 		const view = ctx.get(editorViewCtx)
 		const paragraphType = view.state.schema.nodes.paragraph
 		if (!paragraphType) return
 
-		// Directive format: `:::youtube{<value>}` where value is a YouTube URL or bare id, with no surrounding spaces.
+		// Directive format: `:::youtube{<id>}` where id is the bare 11-char video id, with no surrounding spaces.
 		const paragraph = paragraphType.create(null, view.state.schema.text(`:::youtube{${id}}`))
 		view.focus()
 		view.dispatch(view.state.tr.replaceSelectionWith(paragraph).scrollIntoView())
@@ -165,6 +153,8 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 	const formats = useFormatTracking(editor)
 	const [linkOpen, setLinkOpen] = useState(false)
 	const [mediaOpen, setMediaOpen] = useState(false)
+	const [youtubeOpen, setYoutubeOpen] = useState(false)
+	const [pendingImage, setPendingImage] = useState<{ url: string; alt: string } | null>(null)
 	const disabled = editor === null
 	const hasListStyles = (listStyles?.length ?? 0) > 0
 	const inList = formats.bulletList || formats.orderedList
@@ -231,25 +221,13 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 							}}
 						>
 							<option value="">Default</option>
-							{listStyles?.map(style => (
-								<option key={style.class} value={style.class}>{style.label}</option>
-							))}
+							{listStyles?.map(style => <option key={style.class} value={style.class}>{style.label}</option>)}
 						</select>
 					)
 					: null}
 				<Btn active={formats.blockquote} title="Quote" onClick={() => editor?.action(callCommand(wrapInBlockquoteCommand.key))}>❝</Btn>
 				<Btn title="Insert table" onClick={() => editor?.action(callCommand(insertTableCommand.key, { row: 3, col: 3 }))}>▦ Table</Btn>
-				<Btn
-					title="Insert YouTube"
-					onClick={() => {
-						if (disabled || !editor) return
-						const value = window.prompt('YouTube URL or ID')
-						if (value === null) return
-						insertYoutubeDirective(editor, value)
-					}}
-				>
-					YouTube
-				</Btn>
+				<Btn active={youtubeOpen} title="Insert YouTube" onClick={() => !disabled && setYoutubeOpen(v => !v)}>YouTube</Btn>
 				<span style={sep} />
 				<Btn active={formats.link || linkOpen} title="Link" onClick={() => !disabled && setLinkOpen(v => !v)}>🔗 Link</Btn>
 				{media ? <Btn title="Insert image" onClick={() => !disabled && setMediaOpen(true)}>🖼 Image</Btn> : null}
@@ -279,6 +257,36 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 				)
 				: null}
 
+			{youtubeOpen
+				? (
+					<div style={{ padding: '0 6px' }}>
+						<YoutubePopover
+							onApply={(id) => {
+								setYoutubeOpen(false)
+								if (editor) insertYoutubeDirective(editor, id)
+							}}
+							onClose={() => setYoutubeOpen(false)}
+						/>
+					</div>
+				)
+				: null}
+
+			{pendingImage
+				? (
+					<div style={{ padding: '0 6px' }}>
+						<ImagePopover
+							initialAlt={pendingImage.alt}
+							onApply={(alt, caption) => {
+								const { url } = pendingImage
+								setPendingImage(null)
+								if (editor) insertImage(editor, url, alt, caption)
+							}}
+							onClose={() => setPendingImage(null)}
+						/>
+					</div>
+				)
+				: null}
+
 			{mediaOpen && media
 				? (
 					<MediaLibrary
@@ -288,9 +296,7 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 						accept="image/*"
 						onSelect={(url, alt) => {
 							setMediaOpen(false)
-							if (!editor) return
-							const imageText = promptForImageText(alt ?? '')
-							if (imageText) insertImage(editor, url, imageText.alt, imageText.title)
+							if (editor) setPendingImage({ url, alt: alt ?? '' })
 						}}
 						onClose={() => setMediaOpen(false)}
 					/>

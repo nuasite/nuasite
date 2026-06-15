@@ -14,7 +14,6 @@ export type { CmsCore, CmsCoreOptions } from './core'
 export { globToRegExp } from './fs/glob'
 export { createNodeFs } from './fs/node-fs'
 export type { CmsFileSystem } from './fs/types'
-export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
 export {
 	type AddArrayItemInput,
 	type CreateEntryInput,
@@ -40,4 +39,5 @@ export {
 	mimeFromExt,
 	type S3StorageOptions,
 } from './media/index'
+export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
 export { escapeHtml, relativeImportPath, slugify, slugifyHref } from './shared'

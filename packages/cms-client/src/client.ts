@@ -13,11 +13,11 @@
  */
 
 import type {
+	CmsConfig,
 	CollectionDefinition,
 	CollectionEntry,
 	CollectionEntryInfo,
 	ComponentDefinition,
-	CmsConfig,
 	MediaListResult,
 	MediaUploadResult,
 	MutationResult,
