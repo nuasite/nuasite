@@ -13,19 +13,22 @@ import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
 import { callCommand, replaceAll } from '@milkdown/utils'
-import type { ComponentDefinition } from '@nuasite/cms-types'
+import type { CmsListStyle, ComponentDefinition } from '@nuasite/cms-types'
 import { useEffect, useRef, useState } from 'react'
 import { ComponentPicker } from './component-picker'
 import { FormatToolbar } from './format-toolbar'
 import { insertMdxComponentCommand, mdxComponentNode, mdxEsmNode, remarkMdxPlugin } from './mdx-plugin'
 import { type ComponentResolver, createMdxComponentView } from './mdx-view'
 import type { MediaContext, MediaSource } from './media-source'
+import { styledListPlugin } from './styled-list-plugin'
 
 export interface MdxBodyEditorProps {
 	value: string
 	onChange: (markdown: string) => void
 	/** Project component definitions — drives the insert picker and prop labels. */
 	components?: ComponentDefinition[]
+	/** Project-defined list styles shown in the toolbar. */
+	listStyles?: CmsListStyle[]
 	/**
 	 * Media source (the host's `CmsClient` satisfies it) — enables the toolbar's
 	 * image insert and image-prop browse/upload. Absent → those affordances hide.
@@ -83,7 +86,7 @@ function useEditorStyles() {
 	}, [])
 }
 
-export function MdxBodyEditor({ value, onChange, components, media, mediaContext, allowComponents = true }: MdxBodyEditorProps) {
+export function MdxBodyEditor({ value, onChange, components, listStyles, media, mediaContext, allowComponents = true }: MdxBodyEditorProps) {
 	useEditorStyles()
 	const hostRef = useRef<HTMLDivElement>(null)
 	const editorRef = useRef<Editor | null>(null)
@@ -130,6 +133,7 @@ export function MdxBodyEditor({ value, onChange, components, media, mediaContext
 					})
 				})
 				.use(commonmark)
+				.use(styledListPlugin)
 				.use(gfm)
 				.use(listener)
 				.use(remarkMdxPlugin)
@@ -182,6 +186,7 @@ export function MdxBodyEditor({ value, onChange, components, media, mediaContext
 		<div className="nua-mdx-editor" style={wrapper}>
 			<FormatToolbar
 				editor={editorInstance}
+				listStyles={listStyles}
 				media={media}
 				mediaContext={mediaContext}
 				field="body"

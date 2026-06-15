@@ -18,11 +18,13 @@ import {
 } from '@milkdown/preset-commonmark'
 import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm'
 import { callCommand } from '@milkdown/utils'
+import type { CmsListStyle } from '@nuasite/cms-types'
 import { useEffect, useState } from 'react'
 import { LinkPopover } from './link-popover'
 import { MediaLibrary } from './media-library'
 import type { MediaContext, MediaSource } from './media-source'
 import { type ActiveFormats, defaultActiveFormats, isInListType, removeLinkMark, setupFormatTracking, toggleHeading } from './milkdown-utils'
+import { setListStyleCommand } from './styled-list-plugin'
 
 /** Track active formats on the editor, re-attaching when the instance changes. */
 export function useFormatTracking(editor: Editor | null): ActiveFormats {
@@ -49,6 +51,12 @@ function toggleList(editor: Editor, type: 'bullet' | 'ordered') {
 	} else {
 		editor.action(callCommand(type === 'bullet' ? wrapInBulletListCommand.key : wrapInOrderedListCommand.key))
 	}
+}
+
+function applyListStyle(editor: Editor, listStyle: string | null) {
+	const view = editor.ctx.get(editorViewCtx)
+	view.focus()
+	editor.action(callCommand(setListStyleCommand.key, listStyle))
 }
 
 function insertImage(editor: Editor, src: string, alt: string, title: string) {
@@ -90,6 +98,7 @@ function insertYoutubeDirective(editor: Editor, value: string) {
 
 export interface FormatToolbarProps {
 	editor: Editor | null
+	listStyles?: CmsListStyle[]
 	media?: MediaSource
 	mediaContext?: MediaContext
 	/** Upload field the image is filed under (e.g. 'body'). */
@@ -119,6 +128,17 @@ const baseBtn: React.CSSProperties = {
 	color: '#52525b',
 }
 const activeBtn: React.CSSProperties = { ...baseBtn, background: '#2563eb', borderColor: '#2563eb', color: '#fff' }
+const selectStyle: React.CSSProperties = {
+	border: '1px solid #d4d4d8',
+	borderRadius: 4,
+	background: '#fff',
+	color: '#3f3f46',
+	font: 'inherit',
+	fontSize: 12,
+	lineHeight: 1.4,
+	padding: '2px 6px',
+	maxWidth: 150,
+}
 
 function Btn({ active, title, onClick, style, children }: {
 	active?: boolean
@@ -141,11 +161,14 @@ function Btn({ active, title, onClick, style, children }: {
 	)
 }
 
-export function FormatToolbar({ editor, media, mediaContext, field, onInsertComponent }: FormatToolbarProps) {
+export function FormatToolbar({ editor, listStyles, media, mediaContext, field, onInsertComponent }: FormatToolbarProps) {
 	const formats = useFormatTracking(editor)
 	const [linkOpen, setLinkOpen] = useState(false)
 	const [mediaOpen, setMediaOpen] = useState(false)
 	const disabled = editor === null
+	const hasListStyles = (listStyles?.length ?? 0) > 0
+	const inList = formats.bulletList || formats.orderedList
+	const currentListStyle = formats.listStyle && listStyles?.some(style => style.class === formats.listStyle) ? formats.listStyle : ''
 
 	const applyLink = (url: string) => {
 		setLinkOpen(false)
@@ -190,6 +213,30 @@ export function FormatToolbar({ editor, media, mediaContext, field, onInsertComp
 				<span style={sep} />
 				<Btn active={formats.bulletList} title="Bullet list" onClick={() => editor && toggleList(editor, 'bullet')}>• List</Btn>
 				<Btn active={formats.orderedList} title="Numbered list" onClick={() => editor && toggleList(editor, 'ordered')}>1. List</Btn>
+				{hasListStyles
+					? (
+						<select
+							title="List style"
+							aria-label="List style"
+							disabled={disabled || !inList}
+							value={currentListStyle}
+							onChange={(event) => {
+								if (!editor) return
+								applyListStyle(editor, event.currentTarget.value || null)
+							}}
+							style={{
+								...selectStyle,
+								opacity: disabled || !inList ? 0.55 : 1,
+								cursor: disabled || !inList ? 'not-allowed' : 'default',
+							}}
+						>
+							<option value="">Default</option>
+							{listStyles?.map(style => (
+								<option key={style.class} value={style.class}>{style.label}</option>
+							))}
+						</select>
+					)
+					: null}
 				<Btn active={formats.blockquote} title="Quote" onClick={() => editor?.action(callCommand(wrapInBlockquoteCommand.key))}>❝</Btn>
 				<Btn title="Insert table" onClick={() => editor?.action(callCommand(insertTableCommand.key, { row: 3, col: 3 }))}>▦ Table</Btn>
 				<Btn
