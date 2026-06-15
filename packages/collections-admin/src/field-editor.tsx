@@ -10,7 +10,7 @@
 
 import { blankValue, type CmsClient, coerceInput, valueToArray, valueToBoolean, valueToInput, valueToObject } from '@nuasite/cms-client'
 import { MdxBodyEditor } from '@nuasite/cms-mdx-editor'
-import type { ComponentDefinition, FieldDefinition, FieldType } from '@nuasite/cms-types'
+import type { CmsListStyle, ComponentDefinition, FieldDefinition, FieldType } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MediaPicker } from './media-picker'
 
@@ -111,11 +111,28 @@ function TextareaWidget({ field, value, onChange }: { field: FieldDefinition; va
 /** Markdown field — the rich MDX/markdown WYSIWYG editor, reused for frontmatter markdown values. */
 function MarkdownWidget({ value, onChange, ctx }: { value: unknown; onChange: (v: unknown) => void; ctx: EditorContext }) {
 	const mediaContext = useMemo(() => ({ collection: ctx.collection, entry: ctx.slug }), [ctx.collection, ctx.slug])
+	// Project list styles for the MDX toolbar; degrades to none against an older sidecar (no /config).
+	const [listStyles, setListStyles] = useState<CmsListStyle[]>([])
+	useEffect(() => {
+		let active = true
+		ctx.client.getConfig().then(
+			config => {
+				if (active) setListStyles(config.listStyles ?? [])
+			},
+			() => {
+				if (active) setListStyles([])
+			},
+		)
+		return () => {
+			active = false
+		}
+	}, [ctx.client])
 	return (
 		<MdxBodyEditor
 			value={valueToInput(value)}
 			onChange={onChange}
 			components={NO_COMPONENTS}
+			listStyles={listStyles}
 			media={ctx.client}
 			mediaContext={mediaContext}
 		/>

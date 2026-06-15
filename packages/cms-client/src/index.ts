@@ -16,5 +16,6 @@
 // field widgets off one import — and so `@nuasite/cms-types` is a genuine runtime
 // dependency (not type-only), matching the shared-contract intent.
 export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
+export type { CmsConfig, CmsListStyle } from '@nuasite/cms-types'
 export * from './client'
 export * from './form-model'

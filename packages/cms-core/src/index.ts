@@ -39,4 +39,5 @@ export {
 	mimeFromExt,
 	type S3StorageOptions,
 } from './media/index'
+export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
 export { escapeHtml, relativeImportPath, slugify, slugifyHref } from './shared'

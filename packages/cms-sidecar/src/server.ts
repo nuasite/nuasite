@@ -1,5 +1,5 @@
-import type { CmsCore, CmsFileSystem } from '@nuasite/cms-core'
-import type { CollectionDefinition, CollectionEntry, CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
+import { type CmsCore, type CmsFileSystem, parseProjectCmsConfig } from '@nuasite/cms-core'
+import type { CmsConfig, CollectionDefinition, CollectionEntry, CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
 import { hashContent, hashSource, KeyedMutex } from './concurrency'
 import {
 	type AddArrayItemBody,
@@ -36,6 +36,7 @@ export const SIDECAR_FEATURES: readonly string[] = [
 	'redirects.crud',
 	'media',
 	'components',
+	'config',
 ]
 
 const API_PREFIX = '/cms/v1'
@@ -365,6 +366,10 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		return Object.values(map).sort((a, b) => a.name.localeCompare(b.name))
 	}
 
+	async function readConfig(): Promise<CmsConfig> {
+		return parseProjectCmsConfig(fs)
+	}
+
 	// --- Entry detail (assembles the CollectionEntry wire shape) ---
 	async function entryDetail(collection: string, slug: string): Promise<Response> {
 		const result = await core.getEntry(collection, slug)
@@ -471,6 +476,10 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 
 			case 'components':
 				if (method === 'GET') return json(await scanComponentsList())
+				break
+
+			case 'config':
+				if (method === 'GET') return json(await readConfig())
 				break
 
 			case 'collections':

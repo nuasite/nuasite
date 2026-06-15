@@ -15,6 +15,7 @@ export interface ActiveFormats {
 	linkHref: string | null
 	bulletList: boolean
 	orderedList: boolean
+	listStyle: string | null
 	blockquote: boolean
 	heading: number | null
 }
@@ -27,6 +28,7 @@ export const defaultActiveFormats: ActiveFormats = {
 	linkHref: null,
 	bulletList: false,
 	orderedList: false,
+	listStyle: null,
 	blockquote: false,
 	heading: null,
 }
@@ -69,13 +71,17 @@ export function getActiveFormats(view: EditorView): ActiveFormats {
 
 	let bulletList = false
 	let orderedList = false
+	let listStyle: string | null = null
 	let blockquote = false
 	let heading: number | null = null
 
 	for (let depth = $from.depth; depth > 0; depth--) {
 		const node = $from.node(depth)
-		if (node.type.name === 'bullet_list') bulletList = true
-		if (node.type.name === 'ordered_list') orderedList = true
+		if (node.type.name === 'bullet_list' || node.type.name === 'ordered_list') {
+			if (node.type.name === 'bullet_list') bulletList = true
+			if (node.type.name === 'ordered_list') orderedList = true
+			if (listStyle === null) listStyle = typeof node.attrs.listStyle === 'string' ? node.attrs.listStyle : null
+		}
 		if (node.type.name === 'blockquote') blockquote = true
 	}
 
@@ -84,7 +90,7 @@ export function getActiveFormats(view: EditorView): ActiveFormats {
 		heading = typeof level === 'number' ? level : null
 	}
 
-	return { bold, italic, strikethrough, link, linkHref, bulletList, orderedList, blockquote, heading }
+	return { bold, italic, strikethrough, link, linkHref, bulletList, orderedList, listStyle, blockquote, heading }
 }
 
 /** Whether the current selection is inside a list of the given node-type name. */
@@ -143,6 +149,7 @@ function formatsEqual(a: ActiveFormats, b: ActiveFormats): boolean {
 		&& a.linkHref === b.linkHref
 		&& a.bulletList === b.bulletList
 		&& a.orderedList === b.orderedList
+		&& a.listStyle === b.listStyle
 		&& a.blockquote === b.blockquote
 		&& a.heading === b.heading
 }

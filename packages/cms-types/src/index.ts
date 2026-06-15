@@ -232,6 +232,21 @@ export interface ComponentDefinition {
 }
 
 // ============================================================================
+// Project CMS config
+// ============================================================================
+
+/** One project-defined bullet-list style exposed to headless editors. */
+export interface CmsListStyle {
+	label: string
+	class: string
+}
+
+/** Project-level CMS config safe to expose through the headless API. */
+export interface CmsConfig {
+	listStyles?: CmsListStyle[]
+}
+
+// ============================================================================
 // Page Operations (shared between server handlers and editor UI)
 // ============================================================================
 

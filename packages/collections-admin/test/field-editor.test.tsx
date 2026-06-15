@@ -10,6 +10,7 @@ import { type EditorContext, FieldEditor } from '../src/field-editor'
 // here but the shape must satisfy `CmsClient`.
 const noopClient: CmsClient = {
 	getProject: () => Promise.reject(new Error('unused')),
+	getConfig: () => Promise.reject(new Error('unused')),
 	getCollections: () => Promise.reject(new Error('unused')),
 	getComponents: () => Promise.reject(new Error('unused')),
 	getEntries: () => Promise.reject(new Error('unused')),

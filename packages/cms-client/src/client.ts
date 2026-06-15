@@ -13,6 +13,7 @@
  */
 
 import type {
+	CmsConfig,
 	CollectionDefinition,
 	CollectionEntry,
 	CollectionEntryInfo,
@@ -205,6 +206,7 @@ function isErrorCode(value: string): value is CmsErrorCode {
 
 export interface CmsClient {
 	getProject(): Promise<CmsProjectModel>
+	getConfig(): Promise<CmsConfig>
 	getCollections(): Promise<CollectionDefinition[]>
 	getEntries(collection: string, options?: GetEntriesOptions): Promise<CmsEntriesListResult>
 	getEntry(collection: string, slug: string): Promise<CollectionEntry>
@@ -335,6 +337,9 @@ export function createClient(apiBase: string): CmsClient {
 	return {
 		getProject() {
 			return request<CmsProjectModel>('/project')
+		},
+		getConfig() {
+			return request<CmsConfig>('/config')
 		},
 		getCollections() {
 			return request<CollectionDefinition[]>('/collections')
