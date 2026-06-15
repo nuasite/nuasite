@@ -537,7 +537,16 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 									<span className="nua-cadmin-field-type">{isMdx ? 'mdx' : 'markdown'}</span>
 								</div>
 								{isMdx
-									? <MdxBodyEditor value={draft.body} onChange={onBody} components={components} listStyles={listStyles} media={client} mediaContext={mediaContext} />
+									? (
+										<MdxBodyEditor
+											value={draft.body}
+											onChange={onBody}
+											components={components}
+											listStyles={listStyles}
+											media={client}
+											mediaContext={mediaContext}
+										/>
+									)
 									: <textarea className="nua-cadmin-body-editor" value={draft.body} rows={16} onChange={e => onBody(e.target.value)} />}
 							</div>
 						)
