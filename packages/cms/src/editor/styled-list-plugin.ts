@@ -4,8 +4,11 @@ import type { Node as PmNode } from '@milkdown/prose/model'
 import type { Command } from '@milkdown/prose/state'
 import type { MarkdownNode, SerializerState } from '@milkdown/transformer'
 import { $command, $remark } from '@milkdown/utils'
+import { directiveFromMarkdown } from 'mdast-util-directive'
+import { directive } from 'micromark-extension-directive'
 
 const LIST_DIRECTIVE_NAME = 'list'
+const DIRECTIVE_TYPES = new Set(['textDirective', 'leafDirective', 'containerDirective'])
 
 function normalizeListStyleClass(value: unknown): string | null {
 	if (typeof value !== 'string') return null
@@ -56,6 +59,61 @@ function stripRawClosingDirective(listNode: any, siblings: any[], indexAfterList
 	return true
 }
 
+interface DirectiveLike {
+	type: string
+	name?: unknown
+	value?: unknown
+	attributes?: unknown
+	children?: DirectiveLike[]
+}
+
+function directiveMarker(type: string): string {
+	if (type === 'containerDirective') return ':::'
+	if (type === 'leafDirective') return '::'
+	return ':'
+}
+
+// Rebuild the `{...}` attribute block from parsed directive attributes. A bare token
+// like `:::youtube{id}` parses to `{ id: '' }`, so an empty value must round-trip back
+// to the bare key (not `key=""`).
+function stringifyAttributes(attributes: unknown): string {
+	if (!attributes || typeof attributes !== 'object') return ''
+	const parts: string[] = []
+	for (const [key, value] of Object.entries(attributes)) {
+		if (key === 'class' && typeof value === 'string') {
+			for (const cls of value.split(/\s+/).filter(Boolean)) parts.push(`.${cls}`)
+		} else if (key === 'id' && typeof value === 'string') {
+			parts.push(`#${value}`)
+		} else if (value === '' || value == null) {
+			parts.push(key)
+		} else {
+			parts.push(`${key}="${String(value)}"`)
+		}
+	}
+	return parts.length > 0 ? `{${parts.join(' ')}}` : ''
+}
+
+// Restore a non-list directive to its literal markdown source. Once `remark-directive`
+// is registered, a stray colon in prose (`klíč:hodnota`) parses as a `textDirective` —
+// which has no Milkdown node, and Milkdown throws on unknown node types. Turning it back
+// into text keeps the editor alive without dropping the user's content.
+function neutralizeDirective(node: DirectiveLike): DirectiveLike[] {
+	const marker = directiveMarker(node.type)
+	const name = typeof node.name === 'string' ? node.name : ''
+	const label = Array.isArray(node.children) ? node.children : []
+	const attributes = stringifyAttributes(node.attributes)
+
+	if (node.type === 'textDirective') {
+		const parts: DirectiveLike[] = [{ type: 'text', value: `${marker}${name}` }]
+		if (label.length > 0) parts.push({ type: 'text', value: '[' }, ...label, { type: 'text', value: ']' })
+		if (attributes) parts.push({ type: 'text', value: attributes })
+		return parts
+	}
+
+	const opener: DirectiveLike = { type: 'paragraph', children: [{ type: 'text', value: `${marker}${name}${attributes}` }] }
+	return [opener, ...label]
+}
+
 function transformListDirectives(parent: any): void {
 	if (!Array.isArray(parent?.children)) return
 
@@ -85,7 +143,17 @@ function transformListDirectives(parent: any): void {
 			continue
 		}
 
+		// Recurse depth-first so nested directives are restored before we touch this node.
 		transformListDirectives(child)
+
+		// Any directive node still standing would crash Milkdown — restore it to text.
+		if (child && DIRECTIVE_TYPES.has(child.type)) {
+			const replacement = child.type === 'containerDirective' && child.name === LIST_DIRECTIVE_NAME
+				? (Array.isArray(child.children) ? child.children : []) // bare `:::list` without a usable class: unwrap, keep the list
+				: neutralizeDirective(child)
+			parent.children.splice(index, 1, ...replacement)
+			index += replacement.length - 1
+		}
 	}
 }
 
@@ -110,6 +178,21 @@ function remarkListDirective(this: { data: () => any }) {
 }
 
 export const remarkListDirectivePlugin: any = $remark('remarkListDirective', () => remarkListDirective as any)
+
+// Parse-only directive support. Registering the micromark + fromMarkdown extensions means
+// directive syntax (`:::list{.class}`, a stray `klíč:hodnota`) is claimed during parsing,
+// so `remark-mdx` never feeds the `{...}` to acorn ("Could not parse expression with
+// acorn"). We deliberately skip `directiveToMarkdown`: its `unsafe` rules would escape
+// every `:` in serialized prose (`klíč\:hodnota`), corrupting content on save.
+function remarkDirectiveParseOnly(this: { data: () => any }) {
+	const data = this.data()
+	const micromarkExtensions = data.micromarkExtensions || (data.micromarkExtensions = [])
+	micromarkExtensions.push(directive())
+	const fromMarkdownExtensions = data.fromMarkdownExtensions || (data.fromMarkdownExtensions = [])
+	fromMarkdownExtensions.push(directiveFromMarkdown())
+}
+
+export const remarkDirectivePlugin: any = $remark('remarkDirective', () => remarkDirectiveParseOnly as any)
 
 export const styledBulletListSchema = bulletListSchema.extendSchema((prev) => (ctx) => {
 	const schema = prev(ctx)
@@ -220,7 +303,18 @@ export const setBulletListStyleCommand = $command('SetBulletListStyle', () => {
 	}
 })
 
+// Directive parsing + the list transform + the schema, without the styled-list UI
+// command or the `-` bullet normalization. Loaded for `.mdx` editing even when a site
+// has no list styles configured, so `:::list{.class}` and stray colons in MDX content
+// don't crash acorn — while plain bullet lists keep their default `*` serialization.
+export const mdxDirectiveSafetyPlugin = [
+	remarkDirectivePlugin,
+	remarkListDirectivePlugin,
+	styledBulletListSchema,
+].flat()
+
 export const styledListPlugin = [
+	remarkDirectivePlugin,
 	remarkListDirectivePlugin,
 	styledBulletListSchema,
 	setBulletListStyleCommand,

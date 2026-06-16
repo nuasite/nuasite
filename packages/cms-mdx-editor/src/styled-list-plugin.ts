@@ -3,10 +3,14 @@ import type { Attrs, Node as PmNode } from '@milkdown/prose/model'
 import type { Command } from '@milkdown/prose/state'
 import type { JSONRecord, MarkdownNode, Root, SerializerState } from '@milkdown/transformer'
 import { $command, $remark } from '@milkdown/utils'
+import { directiveFromMarkdown } from 'mdast-util-directive'
+import { directive } from 'micromark-extension-directive'
 import type { Plugin } from 'unified'
+import { YOUTUBE_DIRECTIVE_NAME } from './youtube-plugin'
 
 const LIST_DIRECTIVE_NAME = 'list'
 const LIST_STYLE_CLASS_RE = /^[A-Za-z0-9_-]+$/
+const DIRECTIVE_TYPES = new Set(['textDirective', 'leafDirective', 'containerDirective'])
 
 interface ListDirectiveNode extends MutableMarkdownNode {
 	type: 'containerDirective'
@@ -20,6 +24,7 @@ interface DirectiveAttributes {
 
 interface MutableMarkdownNode {
 	type: string
+	name?: unknown
 	value?: unknown
 	children?: MutableMarkdownNode[]
 	ordered?: unknown
@@ -106,6 +111,61 @@ function stripRawClosingDirective(listNode: MutableMarkdownNode, siblings: Mutab
 	return true
 }
 
+function directiveMarker(type: string): string {
+	if (type === 'containerDirective') return ':::'
+	if (type === 'leafDirective') return '::'
+	return ':'
+}
+
+// Rebuild the `{...}` attribute block from parsed directive attributes. A bare
+// token like `:::youtube{dQw4w9WgXcQ}` parses to `{ dQw4w9WgXcQ: '' }`, so an
+// empty value must round-trip back to the bare key (not `key=""`) — otherwise the
+// downstream YouTube renderer no longer recognizes the directive.
+function stringifyAttributes(attributes: unknown): string {
+	if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return ''
+	const parts: string[] = []
+	for (const [key, value] of Object.entries(attributes)) {
+		if (key === 'class' && typeof value === 'string') {
+			for (const cls of value.split(/\s+/).filter(Boolean)) parts.push(`.${cls}`)
+		} else if (key === 'id' && typeof value === 'string') {
+			parts.push(`#${value}`)
+		} else if (value === '' || value == null) {
+			parts.push(key)
+		} else {
+			parts.push(`${key}="${String(value)}"`)
+		}
+	}
+	return parts.length > 0 ? `{${parts.join(' ')}}` : ''
+}
+
+function textNode(value: string): MutableMarkdownNode {
+	return { type: 'text', value }
+}
+
+// Restore a non-list directive to its literal markdown source. Once `remark-directive`
+// is registered, a stray colon in prose (`klíč:hodnota`) parses as a `textDirective`,
+// and `:::youtube{...}` as a `containerDirective` — neither has a Milkdown node, and
+// Milkdown throws on unknown node types. Turning them back into text keeps the editor
+// alive without dropping or rewriting the user's content.
+function neutralizeDirective(node: MutableMarkdownNode): MutableMarkdownNode[] {
+	const marker = directiveMarker(node.type)
+	const name = typeof node.name === 'string' ? node.name : ''
+	const label = childrenOf(node) ?? []
+	const attributes = stringifyAttributes(node.attributes)
+
+	if (node.type === 'textDirective') {
+		const parts: MutableMarkdownNode[] = [textNode(`${marker}${name}`)]
+		if (label.length > 0) parts.push(textNode('['), ...label, textNode(']'))
+		if (attributes) parts.push(textNode(attributes))
+		return parts
+	}
+
+	// Block-level (leaf/container) false positives are rare in prose; preserve the
+	// content and prefix it with the literal opening line.
+	const opener: MutableMarkdownNode = { type: 'paragraph', children: [textNode(`${marker}${name}${attributes}`)] }
+	return [opener, ...label]
+}
+
 export function transformListDirectives(parent: MutableMarkdownNode): void {
 	const children = childrenOf(parent)
 	if (!children) return
@@ -139,7 +199,19 @@ export function transformListDirectives(parent: MutableMarkdownNode): void {
 			continue
 		}
 
+		// Recurse depth-first so nested directives are restored before we touch this node.
 		transformListDirectives(child)
+
+		// Any directive node still standing would crash Milkdown — restore it to text.
+		if (DIRECTIVE_TYPES.has(child.type)) {
+			// The youtube node maps this directive itself — leave it for Milkdown.
+			if (child.name === YOUTUBE_DIRECTIVE_NAME) continue
+			const replacement = child.type === 'containerDirective' && child.name === LIST_DIRECTIVE_NAME
+				? childrenOf(child) ?? [] // bare `:::list` without a usable class: unwrap, keep the list
+				: neutralizeDirective(child)
+			children.splice(index, 1, ...replacement)
+			index += replacement.length - 1
+		}
 	}
 }
 
@@ -170,6 +242,24 @@ const remarkListDirective: Plugin<[], Root> = function() {
 }
 
 export const remarkListDirectivePlugin = $remark('remarkListDirective', () => remarkListDirective)
+
+// Parse-only directive support. Registering the micromark + fromMarkdown extensions
+// means directive syntax (`:::list{.class}`, `:::youtube{id}`, a stray `klíč:hodnota`)
+// is claimed during parsing, so `remark-mdx` never feeds the `{...}` to acorn ("Could
+// not parse expression with acorn"). We intentionally skip `directiveToMarkdown`: its
+// `unsafe` rules would escape every `:` and `{` in serialized prose (`klíč\:hodnota`,
+// `\:::youtube\{id}`), corrupting content on save.
+const remarkDirectiveParseOnly: Plugin<[], Root> = function() {
+	const micromarkExtensions = this.data('micromarkExtensions') ?? []
+	micromarkExtensions.push(directive())
+	this.data('micromarkExtensions', micromarkExtensions)
+
+	const fromMarkdownExtensions = this.data('fromMarkdownExtensions') ?? []
+	fromMarkdownExtensions.push(directiveFromMarkdown())
+	this.data('fromMarkdownExtensions', fromMarkdownExtensions)
+}
+
+export const remarkDirectivePlugin = $remark('remarkDirective', () => remarkDirectiveParseOnly)
 
 function getPreviousAttrs(value: Attrs | false | null | undefined): Attrs {
 	return value && typeof value === 'object' ? value : {}
@@ -354,6 +444,7 @@ export const setListStyleCommand = $command('SetListStyle', () => {
 })
 
 export const styledListPlugin = [
+	remarkDirectivePlugin,
 	remarkListDirectivePlugin,
 	styledBulletListSchema,
 	styledOrderedListSchema,

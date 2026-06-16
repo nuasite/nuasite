@@ -21,6 +21,8 @@ import { insertMdxComponentCommand, mdxComponentNode, mdxEsmNode, remarkMdxPlugi
 import { type ComponentResolver, createMdxComponentView } from './mdx-view'
 import type { MediaContext, MediaSource } from './media-source'
 import { styledListPlugin } from './styled-list-plugin'
+import { insertYoutubeCommand, remarkYoutubeDirectivePlugin, youtubeNode } from './youtube-plugin'
+import { createYoutubeView } from './youtube-view'
 
 export interface MdxBodyEditorProps {
 	value: string
@@ -150,6 +152,10 @@ export function MdxBodyEditor({ value, onChange, components, listStyles, media, 
 				.use(mdxComponentNode)
 				.use(createMdxComponentView(resolver, mediaRef.current, mediaContextRef.current))
 				.use(insertMdxComponentCommand)
+				.use(remarkYoutubeDirectivePlugin)
+				.use(youtubeNode)
+				.use(createYoutubeView())
+				.use(insertYoutubeCommand)
 				.create()
 
 			if (destroyed) {

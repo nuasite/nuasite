@@ -26,6 +26,7 @@ import { MediaLibrary } from './media-library'
 import type { MediaContext, MediaSource } from './media-source'
 import { type ActiveFormats, defaultActiveFormats, isInListType, removeLinkMark, setupFormatTracking, toggleHeading } from './milkdown-utils'
 import { setListStyleCommand } from './styled-list-plugin'
+import { insertYoutubeCommand } from './youtube-plugin'
 import { YoutubePopover } from './youtube-popover'
 
 /** Track active formats on the editor, re-attaching when the instance changes. */
@@ -72,16 +73,9 @@ function insertImage(editor: Editor, src: string, alt: string, title: string) {
 }
 
 function insertYoutubeDirective(editor: Editor, id: string) {
-	editor.action((ctx) => {
-		const view = ctx.get(editorViewCtx)
-		const paragraphType = view.state.schema.nodes.paragraph
-		if (!paragraphType) return
-
-		// Directive format: `:::youtube{<id>}` where id is the bare 11-char video id, with no surrounding spaces.
-		const paragraph = paragraphType.create(null, view.state.schema.text(`:::youtube{${id}}`))
-		view.focus()
-		view.dispatch(view.state.tr.replaceSelectionWith(paragraph).scrollIntoView())
-	})
+	// Inserts a `youtube` node, which serializes to the leaf directive `::youtube{#id}`
+	// (parse-safe for every video id; see youtube-plugin).
+	editor.action(callCommand(insertYoutubeCommand.key, id))
 }
 
 export interface FormatToolbarProps {
