@@ -1,0 +1,32 @@
+---
+title: Styled lists in the editor
+author: Nua Team
+date: 2026-06-15
+tags:
+  - cms
+  - editor
+excerpt: Pick a list style in the editor — pink dots or checkmarks — and it renders straight on the page.
+coverImage: https://images.unsplash.com/photo-1542744094-3a31f272c490?w=1200&h=630&fit=crop
+draft: false
+---
+
+The editor can tag a list with a named style. It serializes to a `:::list{.class}`
+directive and the site renders it as `<ul class="class">`.
+
+Růžové tečky:
+
+:::list{.dots-pink}
+- jablko
+- hruška
+- švestka
+:::
+
+Fajfky:
+
+:::list{.checkmarks}
+- hotovo
+- zkontrolováno
+- nasazeno
+:::
+
+Plain prose with stray colons stays intact: klíč:hodnota, sraz v 8:30, Pozor:důležité.

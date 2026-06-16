@@ -31,6 +31,7 @@
 		"@astrojs/compiler": "catalog:astro",
 		"@babel/parser": "catalog:parsers",
 		"node-html-parser": "catalog:parsers",
+		"remark-directive": "^3.0.1",
 		"yaml": "catalog:parsers"
 	},
 	"devDependencies": {
@@ -50,6 +51,7 @@
 		"@milkdown/transformer": "catalog:editor",
 		"@milkdown/utils": "catalog:editor",
 		"remark-mdx": "catalog:editor",
+		"unified": "catalog:editor",
 		"@preact/signals": "catalog:editor",
 		"@tailwindcss/vite": "catalog:ui",
 		"@types/bun": "catalog:build",

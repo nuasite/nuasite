@@ -1,7 +1,7 @@
 import mdx from '@astrojs/mdx'
 import sitemap from '@astrojs/sitemap'
 import checks from '@nuasite/checks'
-import cms from '@nuasite/cms'
+import cms, { cmsRemarkPlugins } from '@nuasite/cms'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroIntegration } from 'astro'
 import { writeFile } from 'node:fs/promises'
@@ -87,9 +87,17 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 					return { from: normalizedFrom, to: normalizedTo, code }
 				})
 
-				// Inject Vite plugins and integrations
+				// Inject Vite plugins and integrations.
+				// CMS list-style directives (`:::list{.class}`) need `remark-directive`
+				// in the markdown pipeline — both to render `<ul class="class">` and to
+				// stop MDX from parsing the `{.class}` attributes as a JS expression
+				// (which crashes acorn). `@astrojs/mdx` inherits these via
+				// `extendMarkdownConfig` (default true).
 				updateConfig({
 					redirects: {},
+					markdown: {
+						remarkPlugins: cmsRemarkPlugins,
+					},
 					vite: {
 						plugins: vitePlugins,
 					},

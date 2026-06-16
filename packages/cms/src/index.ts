@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createLocalStorageAdapter } from '@nuasite/cms-core'
+import remarkDirective from 'remark-directive'
 import { processBuildOutput } from './build-processor'
 import { scanCollections } from './collection-scanner'
 import { ComponentRegistry } from './component-registry'
@@ -16,9 +17,19 @@ import { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
 import { type CmsMode, resolveCmsMode } from './mode'
 import { rehypeCmsMarker } from './rehype-cms-marker'
+import { remarkListDirective } from './remark-list-directive'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
 import { createPublicStaticFileChecker } from './utils'
 import { createVitePlugin } from './vite-plugin'
+
+/**
+ * Remark plugins that make the CMS list-style directive (`:::list{.class}`,
+ * emitted by the editor) render as `<ul class="class">`. `remark-directive`
+ * also stops MDX from treating the `{.class}` attribute block as a JS
+ * expression (which crashes acorn). Wired into the markdown/MDX pipeline by
+ * `@nuasite/nua`.
+ */
+export const cmsRemarkPlugins = [remarkDirective, remarkListDirective]
 
 export interface NuaCmsOptions extends CmsMarkerOptions {
 	/**

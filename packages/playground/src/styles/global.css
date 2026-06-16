@@ -1,2 +1,25 @@
 @import "tailwindcss";
-@source "../../../../node_modules/@nuasite/components"
+@source "../../../../node_modules/@nuasite/components";
+
+/* CMS list styles (nua.cms.cmsConfig.listStyles) — the editor emits
+   `<ul class="...">` for styled lists; the host site supplies the look. */
+ul.dots-pink {
+	list-style: disc;
+}
+ul.dots-pink > li::marker {
+	color: #ec4899;
+}
+
+ul.checkmarks {
+	list-style: none;
+	padding-left: 1.25rem;
+}
+ul.checkmarks > li {
+	position: relative;
+}
+ul.checkmarks > li::before {
+	content: "✓";
+	position: absolute;
+	left: -1.25rem;
+	color: #22c55e;
+}

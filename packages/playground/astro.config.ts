@@ -15,6 +15,10 @@ export default defineConfig({
 		cms: {
 			cmsConfig: {
 				siteTheme: 'dark',
+				listStyles: [
+					{ label: 'Růžové tečky', class: 'dots-pink' },
+					{ label: 'Fajfky', class: 'checkmarks' },
+				],
 			},
 		},
 	},
