@@ -40,9 +40,29 @@ function resolveOption<T extends object>(value: boolean | T | undefined, default
 	return value
 }
 
+/**
+ * Applies Nua's CMS defaults that differ from @nuasite/cms' own defaults.
+ * Currently: the in-preview collection management UI is hidden by default,
+ * since collection editing is owned elsewhere. Sites can opt back in by setting
+ * `cms.cmsConfig.features.collectionManagement` explicitly.
+ */
+function applyCmsDefaults(cms: NuaCmsOptions | false): NuaCmsOptions | false {
+	if (cms === false) return false
+	return {
+		...cms,
+		cmsConfig: {
+			...cms.cmsConfig,
+			features: {
+				collectionManagement: false,
+				...cms.cmsConfig?.features,
+			},
+		},
+	}
+}
+
 export function resolveOptions(options: NuaIntegrationOptions = {}): ResolvedIntegrationOptions {
 	return {
-		cms: resolveOption(options.cms),
+		cms: applyCmsDefaults(resolveOption(options.cms)),
 		pageMarkdown: resolveOption(options.pageMarkdown),
 		mdx: resolveOption(options.mdx),
 		sitemap: resolveOption(options.sitemap),
