@@ -47,12 +47,9 @@ export const youtubeNode = $node('youtube', () => ({
 	attrs: {
 		videoId: { default: '' },
 	},
-	toDOM: (node: PmNode) => {
-		const div = document.createElement('div')
-		div.setAttribute('data-youtube', node.attrs.videoId as string)
-		div.className = 'youtube-block'
-		return div as unknown as Node
-	},
+	// Array DOMOutputSpec rather than a DOM node: the latter trips up consumers whose
+	// TS lib redefines the global `Node` (e.g. Cloudflare Workers types in webmaster).
+	toDOM: (node: PmNode) => ['div', { 'data-youtube': node.attrs.videoId, class: 'youtube-block' }],
 	parseDOM: [{
 		tag: 'div[data-youtube]',
 		getAttrs: (dom: HTMLElement) => ({ videoId: dom.getAttribute('data-youtube') || '' }),
