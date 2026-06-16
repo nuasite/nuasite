@@ -20,7 +20,7 @@ import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-p
 import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
 import { config, mdxComponentPickerOpen, openMediaLibraryWithCallback, resetMarkdownEditorState, showToast, updateMarkdownContent } from '../signals'
 import { STRINGS } from '../strings'
-import { setBulletListStyleCommand, styledListPlugin } from '../styled-list-plugin'
+import { mdxDirectiveSafetyPlugin, setBulletListStyleCommand, styledListPlugin } from '../styled-list-plugin'
 import { LinkEditPopover } from './link-edit-popover'
 import { MdxComponentIcon } from './mdx-block-view'
 import { MdxComponentPicker } from './mdx-component-picker'
@@ -94,11 +94,15 @@ export function MarkdownInlineEditor({
 					})
 					.use(commonmark)
 
-				// Styled bullet lists are opt-in: only load the plugin (and its `-` bullet
+				// Styled bullet lists are opt-in: only load the full plugin (and its `-` bullet
 				// normalization) when the site configures list styles, so sites that don't use
-				// the feature keep their previous list serialization untouched.
+				// the feature keep their previous list serialization untouched. For .mdx editing
+				// without list styles, still load the directive-safety subset so `:::list{.class}`
+				// and stray colons don't crash acorn under remark-mdx.
 				if (listStyles.length > 0) {
 					builder.use(styledListPlugin)
+				} else if (isMdxRef.current) {
+					builder.use(mdxDirectiveSafetyPlugin)
 				}
 
 				builder

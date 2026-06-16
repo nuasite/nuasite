@@ -32,6 +32,8 @@
 		"@milkdown/preset-gfm": "catalog:editor",
 		"@milkdown/utils": "catalog:editor",
 		"@nuasite/cms-types": "workspace:*",
+		"mdast-util-directive": "catalog:editor",
+		"micromark-extension-directive": "catalog:editor",
 		"remark-mdx": "catalog:editor",
 		"remark-parse": "catalog:editor",
 		"unified": "catalog:editor"
