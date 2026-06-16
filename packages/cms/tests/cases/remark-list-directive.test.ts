@@ -8,7 +8,7 @@ interface Node {
 	value?: string
 	attributes?: Record<string, unknown>
 	children?: Node[]
-	data?: { hProperties?: { className?: string[] } }
+	data?: { hName?: string; hProperties?: { className?: string[]; src?: string } }
 }
 
 function run(tree: Node): Node {
@@ -60,4 +60,38 @@ test('restores a stray text directive back to literal source (no content loss)',
 	const text = children.map(node => node.value ?? '').join('')
 	expect(text).toBe('klíč:hodnota dál')
 	expect(children.some(node => node.type.includes('irective'))).toBe(false)
+})
+
+test('renders a youtube leaf directive (#id) as an iframe', () => {
+	const tree = run({
+		type: 'root',
+		children: [{ type: 'leafDirective', name: 'youtube', attributes: { id: '9bZkp7q19f0' }, children: [] }],
+	})
+
+	const first = tree.children?.[0]
+	expect(first?.data?.hName).toBe('iframe')
+	expect(first?.data?.hProperties?.src).toBe('https://www.youtube-nocookie.com/embed/9bZkp7q19f0')
+	expect(first?.data?.hProperties?.className).toEqual(['youtube-embed'])
+})
+
+test('renders a legacy bare youtube container directive as an iframe', () => {
+	const tree = run({
+		type: 'root',
+		children: [{ type: 'containerDirective', name: 'youtube', attributes: { dQw4w9WgXcQ: '' }, children: [] }],
+	})
+
+	const first = tree.children?.[0]
+	expect(first?.data?.hName).toBe('iframe')
+	expect(first?.data?.hProperties?.src).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
+})
+
+test('a youtube directive without an id falls back to literal text', () => {
+	const tree = run({
+		type: 'root',
+		children: [{ type: 'leafDirective', name: 'youtube', attributes: {}, children: [] }],
+	})
+
+	const first = tree.children?.[0]
+	expect(first?.data?.hName).toBeUndefined()
+	expect(first?.type).not.toContain('irective')
 })
