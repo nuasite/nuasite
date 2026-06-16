@@ -1,17 +1,22 @@
 import type { Plugin } from 'unified'
 
-// Render-side counterpart of the editor's styled-list plugin
-// (packages/cms-mdx-editor/src/styled-list-plugin.ts). The editor serializes a
-// styled list as the container directive `:::list{.className}`. On the site we
-// need `remark-directive` to claim that syntax before MDX would otherwise treat
-// `{.className}` as a JSX expression and crash acorn. This plugin then turns the
-// `list` directive into a plain `<ul class="className">` and — crucially —
-// converts every OTHER directive node back to its literal source text, so a
-// stray colon in prose (e.g. `klíč:hodnota` → a `:hodnota` text directive) is
-// never silently dropped by remark-rehype.
+// Render-side counterpart of the editor's directive plugins
+// (packages/cms-mdx-editor/src/{styled-list,youtube}-plugin.ts). The editor
+// serializes a styled list as `:::list{.className}` and a YouTube embed as the leaf
+// directive `::youtube{#id}`. On the site we need `remark-directive` to claim that
+// syntax before MDX would otherwise treat `{…}` as a JSX expression and crash acorn.
+// This plugin then:
+//   - turns the `list` directive into a plain `<ul class="className">`,
+//   - turns the `youtube` directive into an `<iframe class="youtube-embed">` the site
+//     styles (mirrors the list pattern: framework emits the element, site owns CSS),
+//   - converts every OTHER directive back to its literal source text, so a stray colon
+//     in prose (e.g. `klíč:hodnota` → a `:hodnota` text directive) is never silently
+//     dropped by remark-rehype.
 
 const LIST_DIRECTIVE_NAME = 'list'
+const YOUTUBE_DIRECTIVE_NAME = 'youtube'
 const LIST_STYLE_CLASS_RE = /^[A-Za-z0-9_-]+$/
+const VIDEO_ID_RE = /^[A-Za-z0-9_-]+$/
 const DIRECTIVE_TYPES = new Set(['textDirective', 'leafDirective', 'containerDirective'])
 
 interface MdastNode {
@@ -76,6 +81,42 @@ function unwrapListDirective(node: MdastNode): MdastNode[] {
 	return children
 }
 
+// Pull the video id out of a youtube directive's attributes: the emitted `{#id}`
+// form (→ `id`), the legacy bare `{id}` form (→ a single empty-valued key) and
+// `{id=…}`. Returns null for anything that isn't a plausible video id.
+function youtubeVideoId(attributes: Record<string, unknown> | null | undefined): string | null {
+	if (!attributes) return null
+	const id = attributes.id
+	if (typeof id === 'string' && VIDEO_ID_RE.test(id)) return id
+	for (const [key, value] of Object.entries(attributes)) {
+		if ((value === '' || value == null) && VIDEO_ID_RE.test(key)) return key
+	}
+	return null
+}
+
+// Turn `::youtube{#id}` into an `<iframe class="youtube-embed">`. The framework emits
+// a working, privacy-friendly embed; the site owns the styling (e.g. responsive 16:9
+// via `.youtube-embed`), exactly like the styled-list `<ul class>`. Returns false when
+// no id is present so the caller can fall back to neutralizing the directive to text.
+function renderYoutubeDirective(node: MdastNode): boolean {
+	const id = youtubeVideoId(node.attributes)
+	if (!id) return false
+	const data = node.data ?? (node.data = {})
+	data.hName = 'iframe'
+	data.hProperties = {
+		src: `https://www.youtube-nocookie.com/embed/${id}`,
+		title: 'YouTube video',
+		width: '560',
+		height: '315',
+		loading: 'lazy',
+		allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+		allowFullScreen: true,
+		className: ['youtube-embed'],
+	}
+	node.children = []
+	return true
+}
+
 // Reconstruct any non-list directive back to literal source so no text is lost.
 function neutralizeDirective(node: MdastNode): MdastNode[] {
 	const marker = directiveMarker(node.type)
@@ -106,6 +147,9 @@ function transform(node: MdastNode): void {
 		transform(child)
 
 		if (!DIRECTIVE_TYPES.has(child.type)) continue
+
+		// YouTube renders in place as an <iframe>; keep the node (now carrying hName).
+		if (child.name === YOUTUBE_DIRECTIVE_NAME && renderYoutubeDirective(child)) continue
 
 		const replacement = child.type === 'containerDirective' && child.name === LIST_DIRECTIVE_NAME
 			? unwrapListDirective(child)
