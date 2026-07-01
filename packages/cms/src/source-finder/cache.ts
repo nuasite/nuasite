@@ -21,6 +21,9 @@ let searchIndexInitialized = false
 /** Pre-built reverse index: normalizedText → SourceLocation[] (collection data files) */
 let collectionTextIndex: Map<string, SourceLocation[]> | null = null
 
+/** Per-collection-directory index: declared page URL → file abs path — used by the same-slug URL-disambiguation fallback */
+const declaredUrlIndexCache = new Map<string, Map<string, string>>()
+
 /** Lazy reverse index on i18n entries: translationKey → SearchIndexEntry[]. Rebuilt on demand after any mutation. */
 let translationKeyIndex: Map<string, SearchIndexEntry[]> | null = null
 
@@ -93,6 +96,10 @@ export function setCollectionTextIndex(index: Map<string, SourceLocation[]> | nu
 	collectionTextIndex = index
 }
 
+export function getDeclaredUrlIndexCache(): Map<string, Map<string, string>> {
+	return declaredUrlIndexCache
+}
+
 // ============================================================================
 // Dirty File Tracking (incremental re-indexing)
 // ============================================================================
@@ -106,6 +113,10 @@ export function markFileDirty(absPath: string): void {
 	dirtyFiles.add(absPath)
 	// Also evict the parsed file cache so it's re-read from disk
 	parsedFileCache.delete(absPath)
+	// A changed file may add/remove/alter a declared URL anywhere in its
+	// collection directory — cheaper to drop the whole cache than track
+	// per-directory membership for a rarely-hit index.
+	declaredUrlIndexCache.clear()
 }
 
 export function getDirtyFiles(): Set<string> {
@@ -155,4 +166,5 @@ export function clearSourceFinderCache(): void {
 	searchIndexInitialized = false
 	collectionTextIndex = null
 	translationKeyIndex = null
+	declaredUrlIndexCache.clear()
 }

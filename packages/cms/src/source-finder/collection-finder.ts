@@ -4,7 +4,7 @@ import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument } from 'yaml
 
 import { getProjectRoot } from '../config'
 import type { CollectionDefinition } from '../types'
-import { getCollectionTextIndex, getMarkdownFileCache, setCollectionTextIndex } from './cache'
+import { getCollectionTextIndex, getDeclaredUrlIndexCache, getMarkdownFileCache, setCollectionTextIndex } from './cache'
 import { normalizeText } from './snippet-utils'
 import type { CollectionInfo, MarkdownContent, SourceLocation } from './types'
 
@@ -271,9 +271,12 @@ export async function findCollectionSource(
 	let collectionDirs: string[]
 	try {
 		const entries = await fs.readdir(contentPath, { withFileTypes: true })
+		// Sorted so match/resolution order is deterministic across runs and
+		// platforms, not dependent on readdir's unspecified enumeration order.
 		collectionDirs = entries
 			.filter(e => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))
 			.map(e => e.name)
+			.sort()
 	} catch {
 		return undefined
 	}
@@ -418,6 +421,8 @@ async function resolveByDeclaredUrl(
 
 	// Contradiction: the right entry is named differently from its slug. Scan
 	// the collection(s) that produced filename matches for a declared-URL hit.
+	// `matches` (and thus this Set) is built by iterating the sorted
+	// `collectionDirs`, so directory order here is deterministic.
 	for (const dir of new Set(matches.map(m => m.name))) {
 		const hit = await findFileByDeclaredUrl(path.join(contentPath, dir), requestedUrl)
 		if (hit) return { name: dir, file: hit }
@@ -426,36 +431,63 @@ async function resolveByDeclaredUrl(
 }
 
 /**
- * Scan a collection directory (flat `*.md(x)` files and Hugo-style
- * `<slug>/index.md(x)`) for the entry whose declared canonical URL matches.
- * Only invoked on the rare contradiction path, so the full-directory read is
- * bounded to genuine same-slug collisions.
+ * Find the file in a collection directory whose declared canonical URL
+ * matches, via a per-directory URL→file index that's built once and cached
+ * (see `getDeclaredUrlIndexCache`) — only the first request for an ambiguous
+ * slug in a given directory pays for the full scan.
  */
 async function findFileByDeclaredUrl(collectionPathAbs: string, requestedUrl: string): Promise<string | undefined> {
+	const cache = getDeclaredUrlIndexCache()
+	let index = cache.get(collectionPathAbs)
+	if (!index) {
+		index = await buildDeclaredUrlIndex(collectionPathAbs)
+		cache.set(collectionPathAbs, index)
+	}
+	return index.get(requestedUrl)
+}
+
+/**
+ * Scan a collection directory (flat `*.md(x)` files and Hugo-style
+ * `<slug>/index.md(x)`) and index every entry by its declared canonical URL.
+ * Entries are visited in sorted order so that if two entries declare the same
+ * URL (a content bug), the winner is deterministic rather than readdir-order
+ * dependent.
+ */
+async function buildDeclaredUrlIndex(collectionPathAbs: string): Promise<Map<string, string>> {
+	const index = new Map<string, string>()
 	let dirEntries
 	try {
 		dirEntries = await fs.readdir(collectionPathAbs, { withFileTypes: true })
 	} catch {
-		return undefined
+		return index
 	}
 
-	const subDirs: string[] = []
-	for (const e of dirEntries) {
-		if (e.isFile() && /\.mdx?$/.test(e.name)) {
-			const file = path.join(collectionPathAbs, e.name)
-			if ((await readDeclaredPageUrl(file)) === requestedUrl) return file
-		} else if (e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.')) {
-			subDirs.push(e.name)
-		}
+	const files = dirEntries
+		.filter(e => e.isFile() && /\.mdx?$/.test(e.name))
+		.map(e => e.name)
+		.sort()
+	for (const name of files) {
+		const file = path.join(collectionPathAbs, name)
+		const declared = await readDeclaredPageUrl(file)
+		if (declared && !index.has(declared)) index.set(declared, file)
 	}
 
+	const subDirs = dirEntries
+		.filter(e => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))
+		.map(e => e.name)
+		.sort()
 	for (const dir of subDirs) {
 		for (const idx of ['index.md', 'index.mdx']) {
 			const file = path.join(collectionPathAbs, dir, idx)
-			if ((await readDeclaredPageUrl(file)) === requestedUrl) return file
+			const declared = await readDeclaredPageUrl(file)
+			if (declared) {
+				if (!index.has(declared)) index.set(declared, file)
+				break
+			}
 		}
 	}
-	return undefined
+
+	return index
 }
 
 /**
