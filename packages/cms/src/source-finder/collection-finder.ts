@@ -219,9 +219,13 @@ async function getCachedMarkdownFile(filePath: string): Promise<{ content: strin
 /**
  * Frontmatter fields, in preference order, that may declare an entry's own
  * canonical page URL. Only site-absolute values (starting with `/`) are trusted
- * — external `url: https://…` values and bare slugs are ignored.
+ * — external `url: https://…` values and bare slugs are ignored. Deliberately
+ * excludes `canonical`/`canonicalUrl`: by SEO convention those declare the URL
+ * that should be indexed *instead of* the current page (duplicate-content
+ * consolidation), which can point at a different entry entirely — trusting it
+ * as self-identity could resolve an edit to the wrong file.
  */
-const DECLARED_URL_FIELDS = ['urlpath', 'permalink', 'pathname', 'route', 'canonicalurl', 'canonical', 'url']
+const DECLARED_URL_FIELDS = ['urlpath', 'permalink', 'pathname', 'route', 'url']
 
 /**
  * Find markdown collection file for a given page path.

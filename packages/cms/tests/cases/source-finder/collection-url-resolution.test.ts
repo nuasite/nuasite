@@ -36,6 +36,30 @@ withTempDir('findCollectionSource - URL-based disambiguation', (getCtx) => {
 		expect(beta?.file).toBe('content/articles/foo-beta.md')
 	})
 
+	test('does not treat a `canonical` field as self-declared identity', async () => {
+		const ctx = getCtx()
+		await ctx.mkdir('content/articles')
+		// The filename match for slug `product-b` declares a locale-prefixed
+		// urlPath, so it contradicts the (locale-less) requested path and
+		// triggers the declared-URL fallback scan of the directory.
+		await ctx.writeFile(
+			'content/articles/product-b.md',
+			`---\nslug: "product-b"\nurlPath: "/en/products/product-b"\ntitle: "Product B"\n---\n\nBody.\n`,
+		)
+		// An unrelated duplicate/syndicated entry whose `canonical` field points
+		// at product-b's preferred URL per normal SEO convention — it does not
+		// declare *itself* as that page.
+		await ctx.writeFile(
+			'content/articles/product-b-clone.md',
+			`---\nslug: "product-b-clone"\ncanonical: "/products/product-b"\ntitle: "Clone"\n---\n\nBody.\n`,
+		)
+
+		const res = await findCollectionSource('/products/product-b', 'content')
+		// Must not be misdirected to the clone via its `canonical` field.
+		expect(res?.file).not.toBe('content/articles/product-b-clone.md')
+		expect(res?.file).toBe('content/articles/product-b.md')
+	})
+
 	test('keeps the fast filename path for non-colliding entries', async () => {
 		const ctx = getCtx()
 		await ctx.mkdir('content/articles')
