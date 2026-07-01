@@ -4,7 +4,7 @@ import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument } from 'yaml
 
 import { getProjectRoot } from '../config'
 import type { CollectionDefinition } from '../types'
-import { getCollectionTextIndex, getMarkdownFileCache, setCollectionTextIndex } from './cache'
+import { getCollectionTextIndex, getDeclaredUrlIndexCache, getMarkdownFileCache, setCollectionTextIndex } from './cache'
 import { normalizeText } from './snippet-utils'
 import type { CollectionInfo, MarkdownContent, SourceLocation } from './types'
 
@@ -52,20 +52,10 @@ async function doBuildCollectionTextIndex(
 				} else {
 					// Markdown — index scalars from frontmatter only
 					const { lines } = cached
-					let fmStart = -1
-					let fmEnd = -1
-					for (let i = 0; i < lines.length; i++) {
-						if (lines[i]?.trim() === '---') {
-							if (fmStart === -1) fmStart = i
-							else {
-								fmEnd = i
-								break
-							}
-						}
-					}
-					if (fmEnd > 0) {
-						const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
-						collectScalarsFromYaml(yamlStr, fmStart + 1, lines, info, index)
+					const bounds = findFrontmatterBounds(lines)
+					if (bounds) {
+						const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
+						collectScalarsFromYaml(yamlStr, bounds.start + 1, lines, info, index)
 					}
 				}
 			} catch {
@@ -188,6 +178,22 @@ export function lookupCollectionText(
 // ============================================================================
 
 /**
+ * Locate the `---`-delimited frontmatter block in a markdown file's lines.
+ * Returns the indexes of the opening and closing `---` lines, or undefined if
+ * the file has no closed frontmatter block.
+ */
+function findFrontmatterBounds(lines: string[]): { start: number; end: number } | undefined {
+	let start = -1
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i]?.trim() === '---') {
+			if (start === -1) start = i
+			else return { start, end: i }
+		}
+	}
+	return undefined
+}
+
+/**
  * Get cached markdown file content
  */
 async function getCachedMarkdownFile(filePath: string): Promise<{ content: string; lines: string[] } | null> {
@@ -211,11 +217,30 @@ async function getCachedMarkdownFile(filePath: string): Promise<{ content: strin
 // ============================================================================
 
 /**
+ * Frontmatter fields, in preference order, that may declare an entry's own
+ * canonical page URL. Only site-absolute values (starting with `/`) are trusted
+ * — external `url: https://…` values and bare slugs are ignored. Deliberately
+ * excludes `canonical`/`canonicalUrl`: by SEO convention those declare the URL
+ * that should be indexed *instead of* the current page (duplicate-content
+ * consolidation), which can point at a different entry entirely — trusting it
+ * as self-identity could resolve an edit to the wrong file.
+ */
+const DECLARED_URL_FIELDS = ['urlpath', 'permalink', 'pathname', 'route', 'url']
+
+/**
  * Find markdown collection file for a given page path.
  *
  * Uses slug-based reverse lookup: scans all collection directories for a
  * matching entry regardless of the URL prefix. This supports localized or
  * renamed routes (e.g. `/aktuality/my-article` with content in `src/content/news/`).
+ *
+ * Filename matching alone cannot tell apart two entries that share a slug but
+ * live under different URL prefixes (e.g. the same article slug published under
+ * two topic prefixes, where one file carries a disambiguating filename suffix).
+ * When a filename match declares a canonical URL in its frontmatter that
+ * contradicts the requested path, we fall back to matching entries by that
+ * declared URL. Projects whose entries declare no URL field keep the exact
+ * previous (filename-only) behavior.
  *
  * @param pagePath - The URL path of the page (e.g., '/services/3d-tisk')
  * @param contentDir - The content directory (default: 'src/content')
@@ -233,6 +258,7 @@ export async function findCollectionSource(
 		return undefined
 	}
 
+	const requestedUrl = normalizeSitePath(`/${cleanPath}`)
 	const contentPath = path.join(getProjectRoot(), contentDir)
 
 	try {
@@ -245,9 +271,12 @@ export async function findCollectionSource(
 	let collectionDirs: string[]
 	try {
 		const entries = await fs.readdir(contentPath, { withFileTypes: true })
+		// Sorted so match/resolution order is deterministic across runs and
+		// platforms, not dependent on readdir's unspecified enumeration order.
 		collectionDirs = entries
 			.filter(e => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))
 			.map(e => e.name)
+			.sort()
 	} catch {
 		return undefined
 	}
@@ -264,6 +293,20 @@ export async function findCollectionSource(
 			if (mdFile) {
 				matches.push({ name: dir, file: mdFile })
 			}
+		}
+
+		if (matches.length === 0) continue
+
+		// Prefer the entry whose declared canonical URL equals the requested
+		// path. Only kicks in when an entry actually declares a URL, so
+		// URL-less projects fall through to the filename logic unchanged.
+		const byUrl = await resolveByDeclaredUrl(matches, requestedUrl, contentPath)
+		if (byUrl) {
+			// byUrl.file may differ from the file the filename match found
+			// (that's the whole point of this fallback) — its slug must be
+			// derived from the actual resolved file, not the URL-tail slug
+			// candidate, or downstream collectionSlug lookups break.
+			return { name: byUrl.name, slug: slugFromFilePath(byUrl.file), file: path.relative(getProjectRoot(), byUrl.file) }
 		}
 
 		if (matches.length === 1 && matches[0]) {
@@ -289,6 +332,162 @@ export async function findCollectionSource(
 	}
 
 	return undefined
+}
+
+/** Normalize a site-absolute path: ensure a leading slash, drop query/hash and any trailing slash. */
+function normalizeSitePath(p: string): string {
+	let s = p.split('?')[0]?.split('#')[0] ?? p
+	if (!s.startsWith('/')) s = `/${s}`
+	if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1)
+	return s
+}
+
+/**
+ * Derive a collection entry's slug from its file path, matching the same
+ * convention collection-scanner.ts uses: flat `<slug>.md(x)` files use the
+ * basename minus extension; Hugo-style `<slug>/index.md(x)` files use the
+ * parent directory name.
+ */
+function slugFromFilePath(fileAbsPath: string): string {
+	const base = path.basename(fileAbsPath)
+	if (base === 'index.md' || base === 'index.mdx') {
+		return path.basename(path.dirname(fileAbsPath))
+	}
+	return base.replace(/\.mdx?$/, '')
+}
+
+/**
+ * Read an entry's declared canonical page URL from its frontmatter, if any.
+ * Returns the normalized site-absolute path, or undefined when the file has no
+ * frontmatter or declares no site-absolute URL field.
+ */
+async function readDeclaredPageUrl(fileAbsPath: string): Promise<string | undefined> {
+	const cached = await getCachedMarkdownFile(fileAbsPath)
+	if (!cached) return undefined
+
+	const bounds = findFrontmatterBounds(cached.lines)
+	if (!bounds) return undefined
+
+	let doc
+	try {
+		doc = parseDocument(cached.lines.slice(bounds.start + 1, bounds.end).join('\n'))
+	} catch {
+		return undefined
+	}
+	if (!isMap(doc.contents)) return undefined
+
+	const found: Record<string, string> = {}
+	for (const pair of doc.contents.items) {
+		if (!isPair(pair) || !isScalar(pair.key) || !isScalar(pair.value)) continue
+		const key = String(pair.key.value).toLowerCase()
+		if (!DECLARED_URL_FIELDS.includes(key)) continue
+		const val = pair.value.value
+		if (typeof val === 'string' && val.startsWith('/')) {
+			found[key] ??= normalizeSitePath(val)
+		}
+	}
+
+	for (const field of DECLARED_URL_FIELDS) {
+		if (found[field]) return found[field]
+	}
+	return undefined
+}
+
+/**
+ * Resolve the correct entry for `requestedUrl` using declared canonical URLs.
+ *
+ * 1. If a filename candidate declares exactly `requestedUrl`, use it.
+ * 2. Otherwise, if any candidate declares *some* URL (so the collection is
+ *    URL-aware) but none matches, the filename match is for a same-slug sibling
+ *    under a different prefix — scan the candidate collection(s) for the file
+ *    whose declared URL is `requestedUrl`.
+ * 3. If no candidate declares any URL, return undefined so the caller keeps the
+ *    legacy filename behavior.
+ */
+async function resolveByDeclaredUrl(
+	matches: { name: string; file: string }[],
+	requestedUrl: string,
+	contentPath: string,
+): Promise<{ name: string; file: string } | undefined> {
+	let sawDeclaredUrl = false
+	for (const m of matches) {
+		const declared = await readDeclaredPageUrl(m.file)
+		if (declared === undefined) continue
+		sawDeclaredUrl = true
+		if (declared === requestedUrl) return m
+	}
+
+	if (!sawDeclaredUrl) return undefined
+
+	// Contradiction: the right entry is named differently from its slug. Scan
+	// the collection(s) that produced filename matches for a declared-URL hit.
+	// `matches` (and thus this Set) is built by iterating the sorted
+	// `collectionDirs`, so directory order here is deterministic.
+	for (const dir of new Set(matches.map(m => m.name))) {
+		const hit = await findFileByDeclaredUrl(path.join(contentPath, dir), requestedUrl)
+		if (hit) return { name: dir, file: hit }
+	}
+	return undefined
+}
+
+/**
+ * Find the file in a collection directory whose declared canonical URL
+ * matches, via a per-directory URL→file index that's built once and cached
+ * (see `getDeclaredUrlIndexCache`) — only the first request for an ambiguous
+ * slug in a given directory pays for the full scan.
+ */
+async function findFileByDeclaredUrl(collectionPathAbs: string, requestedUrl: string): Promise<string | undefined> {
+	const cache = getDeclaredUrlIndexCache()
+	let index = cache.get(collectionPathAbs)
+	if (!index) {
+		index = await buildDeclaredUrlIndex(collectionPathAbs)
+		cache.set(collectionPathAbs, index)
+	}
+	return index.get(requestedUrl)
+}
+
+/**
+ * Scan a collection directory (flat `*.md(x)` files and Hugo-style
+ * `<slug>/index.md(x)`) and index every entry by its declared canonical URL.
+ * Entries are visited in sorted order so that if two entries declare the same
+ * URL (a content bug), the winner is deterministic rather than readdir-order
+ * dependent.
+ */
+async function buildDeclaredUrlIndex(collectionPathAbs: string): Promise<Map<string, string>> {
+	const index = new Map<string, string>()
+	let dirEntries
+	try {
+		dirEntries = await fs.readdir(collectionPathAbs, { withFileTypes: true })
+	} catch {
+		return index
+	}
+
+	const files = dirEntries
+		.filter(e => e.isFile() && /\.mdx?$/.test(e.name))
+		.map(e => e.name)
+		.sort()
+	for (const name of files) {
+		const file = path.join(collectionPathAbs, name)
+		const declared = await readDeclaredPageUrl(file)
+		if (declared && !index.has(declared)) index.set(declared, file)
+	}
+
+	const subDirs = dirEntries
+		.filter(e => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))
+		.map(e => e.name)
+		.sort()
+	for (const dir of subDirs) {
+		for (const idx of ['index.md', 'index.mdx']) {
+			const file = path.join(collectionPathAbs, dir, idx)
+			const declared = await readDeclaredPageUrl(file)
+			if (declared) {
+				if (!index.has(declared)) index.set(declared, file)
+				break
+			}
+		}
+	}
+
+	return index
 }
 
 /**
@@ -370,23 +569,11 @@ export async function findMarkdownSourceLocation(
 		const { lines } = cached
 		const normalizedSearch = normalizeText(textContent)
 
-		// Find frontmatter boundaries
-		let frontmatterStart = -1
-		let frontmatterEnd = -1
-		for (let i = 0; i < lines.length; i++) {
-			if (lines[i]?.trim() === '---') {
-				if (frontmatterStart === -1) {
-					frontmatterStart = i
-				} else {
-					frontmatterEnd = i
-					break
-				}
-			}
-		}
-		if (frontmatterEnd <= 0) return undefined
+		const bounds = findFrontmatterBounds(lines)
+		if (!bounds) return undefined
 
-		const yamlStr = lines.slice(frontmatterStart + 1, frontmatterEnd).join('\n')
-		const lineOffset = frontmatterStart + 1
+		const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
+		const lineOffset = bounds.start + 1
 		return findScalarInYamlAst(yamlStr, lineOffset, normalizedSearch, lines, collectionInfo)
 	} catch {
 		// Error reading file
@@ -550,20 +737,10 @@ export async function findFieldInCollectionEntry(
 
 		// For markdown, search inside frontmatter only
 		const { lines } = cached
-		let fmStart = -1
-		let fmEnd = -1
-		for (let i = 0; i < lines.length; i++) {
-			if (lines[i]?.trim() === '---') {
-				if (fmStart === -1) fmStart = i
-				else {
-					fmEnd = i
-					break
-				}
-			}
-		}
-		if (fmEnd <= 0) return undefined
-		const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
-		return findFieldByNameInYaml(yamlStr, fmStart + 1, fieldName, lines, info)
+		const bounds = findFrontmatterBounds(lines)
+		if (!bounds) return undefined
+		const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
+		return findFieldByNameInYaml(yamlStr, bounds.start + 1, fieldName, lines, info)
 	} catch {
 		return undefined
 	}
@@ -598,20 +775,10 @@ export async function findFieldsInCollectionEntry(
 
 		// For markdown, search inside frontmatter only
 		const { lines } = cached
-		let fmStart = -1
-		let fmEnd = -1
-		for (let i = 0; i < lines.length; i++) {
-			if (lines[i]?.trim() === '---') {
-				if (fmStart === -1) fmStart = i
-				else {
-					fmEnd = i
-					break
-				}
-			}
-		}
-		if (fmEnd <= 0) return new Map()
-		const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
-		return findFieldsByNameInYaml(yamlStr, fmStart + 1, fieldNames, lines, info)
+		const bounds = findFrontmatterBounds(lines)
+		if (!bounds) return new Map()
+		const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
+		return findFieldsByNameInYaml(yamlStr, bounds.start + 1, fieldNames, lines, info)
 	} catch {
 		return new Map()
 	}
@@ -695,27 +862,12 @@ export async function parseMarkdownContent(
 
 		const { lines } = cached
 
-		// Parse frontmatter
-		let frontmatterStart = -1
-		let frontmatterEnd = -1
-
-		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i]?.trim()
-			if (line === '---') {
-				if (frontmatterStart === -1) {
-					frontmatterStart = i
-				} else {
-					frontmatterEnd = i
-					break
-				}
-			}
-		}
-
+		const bounds = findFrontmatterBounds(lines)
 		const frontmatter: Record<string, { value: string; line: number }> = {}
 
 		// Extract frontmatter fields using yaml parser
-		if (frontmatterEnd > 0) {
-			const yamlStr = lines.slice(frontmatterStart + 1, frontmatterEnd).join('\n')
+		if (bounds) {
+			const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
 			const lineCounter = new LineCounter()
 			const doc = parseDocument(yamlStr, { lineCounter })
 
@@ -726,7 +878,7 @@ export async function parseMarkdownContent(
 						const value = isScalar(pair.value) ? String(pair.value.value) : ''
 						const keyRange = (pair.key as any).range
 						const yamlLine = keyRange ? lineCounter.linePos(keyRange[0]).line : 0
-						const fileLine = yamlLine + frontmatterStart + 1
+						const fileLine = yamlLine + bounds.start + 1
 						if (key && value) {
 							frontmatter[key] = { value, line: fileLine }
 						}
@@ -736,7 +888,7 @@ export async function parseMarkdownContent(
 		}
 
 		// Extract body (everything after frontmatter)
-		const bodyStartLine = frontmatterEnd > 0 ? frontmatterEnd + 1 : 0
+		const bodyStartLine = bounds ? bounds.end + 1 : 0
 		const bodyLines = lines.slice(bodyStartLine)
 		const body = bodyLines.join('\n').trim()
 
