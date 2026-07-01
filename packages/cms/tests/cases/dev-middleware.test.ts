@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { enhanceManifestInBackground } from '../../src/dev-middleware'
+import { discoverCollectionRoutes, enhanceManifestInBackground, invalidateCollectionRoutesCache } from '../../src/dev-middleware'
 import { ManifestWriter } from '../../src/manifest-writer'
 import { clearSourceFinderCache } from '../../src/source-finder'
 import type { CmsMarkerOptions, CollectionDefinition, ManifestEntry } from '../../src/types'
@@ -220,5 +220,53 @@ describe('enhanceManifestInBackground — collection text on listing pages', () 
 		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
 		expect(entry?.sourcePath).toBe('src/pages/index.astro')
 		expect(entry?.sourceLine).toBeDefined()
+	})
+})
+
+describe('discoverCollectionRoutes — dynamic route detection', () => {
+	let ctx: TempDirContext
+
+	beforeEach(async () => {
+		invalidateCollectionRoutesCache()
+		ctx = await createTempDir('dev-mw-routes-')
+		await ctx.mkdir('src/pages')
+	})
+
+	afterEach(async () => {
+		invalidateCollectionRoutesCache()
+		await cleanupTempDir(ctx)
+	})
+
+	test('records a usable static prefix for a purely static route file', async () => {
+		await ctx.mkdir('src/pages/blog')
+		await ctx.writeFile(
+			'src/pages/blog/[slug].astro',
+			'---\nimport { getCollection } from "astro:content"\nconst posts = await getCollection("blog")\n---\n',
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('blog')).toBe('/blog/')
+	})
+
+	test('records `true` (routed, no static prefix) for a dynamic ancestor directory', async () => {
+		await ctx.mkdir('src/pages/[topic]')
+		await ctx.writeFile(
+			'src/pages/[topic]/[slug].astro',
+			'---\nimport { getCollection } from "astro:content"\nconst articles = await getCollection("articles")\n---\n',
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('articles')).toBe(true)
+	})
+
+	test('does not record a collection no page ever calls getCollection() on', async () => {
+		await ctx.mkdir('src/pages/blog')
+		await ctx.writeFile(
+			'src/pages/blog/[slug].astro',
+			'---\nimport { getCollection } from "astro:content"\nconst posts = await getCollection("blog")\n---\n',
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('team')).toBeUndefined()
 	})
 })

@@ -17,6 +17,7 @@ import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
 import {
+	declaredSitePathFromData,
 	enhanceManifestWithSourceSnippets,
 	findCollectionSource,
 	findImageSourceLocation,
@@ -28,6 +29,7 @@ import type {
 	CmsMarkerOptions,
 	CollectionDefinition,
 	CollectionEntry,
+	CollectionEntryInfo,
 	ComponentDefinition,
 	ComponentInstance,
 	ManifestEntry,
@@ -176,24 +178,36 @@ export function createDevMiddleware(
 			}
 
 			// 2. Add collection entry pages from collection definitions,
-			//    pre-populating pathnames from filesystem routes so the collections
-			//    browser can redirect to detail pages without visiting them first.
-			//    We build patched copies rather than mutating the originals so that
-			//    heuristic pathnames don't persist if the route file is later removed.
+			//    pre-populating pathnames so the collections browser can redirect to
+			//    detail pages without visiting them first. Prefer the entry's own
+			//    declared URL (urlPath/permalink/…) from frontmatter, which is
+			//    correct even when the collection is served under a *dynamic* route
+			//    prefix (e.g. `[topic]/[slug]`) that discoverCollectionRoutes can't
+			//    map to a static prefix. Fall back to the discovered static route
+			//    prefix + slug. We build patched copies rather than mutating the
+			//    originals so that heuristic pathnames don't persist if the route
+			//    file is later removed.
 			const collectionDefs = manifestWriter.getCollectionDefinitions()
 			const collectionRoutes = await discoverCollectionRoutes()
 			const responseCollectionDefs: Record<string, CollectionDefinition> = {}
 
 			for (const [name, def] of Object.entries(collectionDefs)) {
-				const routePrefix = collectionRoutes.get(def.name)
-				const needsPatching = routePrefix && def.entries?.some(e => !e.pathname)
+				const routeInfo = collectionRoutes.get(def.name)
 
-				if (!needsPatching) {
+				if (routeInfo === undefined) {
+					// No page renders this collection at all — leave entries alone rather
+					// than fabricating a pathname from an unrelated frontmatter field
+					// (e.g. a data collection's own `url` field pointing elsewhere).
 					responseCollectionDefs[name] = def
 				} else {
-					responseCollectionDefs[name] = {
+					const routePrefix = typeof routeInfo === 'string' ? routeInfo : undefined
+					const resolvePathname = (entry: CollectionEntryInfo): string | undefined =>
+						declaredSitePathFromData(entry.data) ?? (routePrefix ? `${routePrefix}${entry.slug}` : undefined)
+					const needsPatching = def.entries?.some(e => !e.pathname && resolvePathname(e))
+
+					responseCollectionDefs[name] = !needsPatching ? def : {
 						...def,
-						entries: def.entries!.map(e => e.pathname ? e : { ...e, pathname: `${routePrefix}${e.slug}` }),
+						entries: def.entries!.map(e => e.pathname ? e : { ...e, pathname: resolvePathname(e) ?? e.pathname }),
 					}
 				}
 
@@ -693,8 +707,17 @@ async function discoverPagesFromFilesystem(): Promise<string[]> {
 	return pages
 }
 
+/**
+ * A collection's route info: a usable static URL prefix (e.g. '/blog/'), or
+ * `true` when the collection is confirmed routed by some page but no static
+ * prefix can be fabricated because an ancestor path segment is itself dynamic
+ * (e.g. `[topic]/[slug].astro`) — callers must resolve those entries' pathnames
+ * from their own declared URL instead of `${prefix}${slug}`.
+ */
+type CollectionRouteInfo = string | true
+
 /** Cached result of collection route discovery; invalidated by file watcher */
-let collectionRoutesCache: Map<string, string> | null = null
+let collectionRoutesCache: Map<string, CollectionRouteInfo> | null = null
 
 /** Invalidate the cached collection routes (called from vite-plugin when route files change) */
 export function invalidateCollectionRoutesCache() {
@@ -702,16 +725,19 @@ export function invalidateCollectionRoutesCache() {
 }
 
 /**
- * Discover collection route patterns by scanning src/pages for dynamic route files
- * (e.g. [slug].astro) that call getCollection(). Returns a map from collection name
- * to the URL prefix (e.g. 'blog' → '/blog/'). Result is cached after first call.
+ * Discover which collections are rendered as pages by scanning src/pages for
+ * dynamic route files (e.g. [slug].astro) that call getCollection(). Returns a
+ * map from collection name to its route info (see {@link CollectionRouteInfo}).
+ * Recurses into dynamic directories too (e.g. `[topic]/[slug].astro`) so those
+ * collections are still recognized as routed, just without a static prefix.
+ * Result is cached after first call.
  */
-async function discoverCollectionRoutes(): Promise<Map<string, string>> {
+export async function discoverCollectionRoutes(): Promise<Map<string, CollectionRouteInfo>> {
 	if (collectionRoutesCache) return collectionRoutesCache
 
 	const projectRoot = getProjectRoot()
 	const pagesDir = path.join(projectRoot, 'src', 'pages')
-	const routes = new Map<string, string>()
+	const routes = new Map<string, CollectionRouteInfo>()
 
 	try {
 		await fs.access(pagesDir)
@@ -720,16 +746,14 @@ async function discoverCollectionRoutes(): Promise<Map<string, string>> {
 		return routes
 	}
 
-	async function walk(dir: string, urlPrefix: string) {
+	async function walk(dir: string, urlPrefix: string, dynamicAncestor: boolean) {
 		const entries = await fs.readdir(dir, { withFileTypes: true })
 		for (const entry of entries) {
 			if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue
 
 			const fullPath = path.join(dir, entry.name)
 			if (entry.isDirectory()) {
-				// Skip directories with dynamic segments
-				if (entry.name.includes('[')) continue
-				await walk(fullPath, `${urlPrefix}${entry.name}/`)
+				await walk(fullPath, `${urlPrefix}${entry.name}/`, dynamicAncestor || entry.name.includes('['))
 			} else {
 				const ext = path.extname(entry.name)
 				if (!PAGE_EXTENSIONS.has(ext)) continue
@@ -740,14 +764,17 @@ async function discoverCollectionRoutes(): Promise<Map<string, string>> {
 					const content = await fs.readFile(fullPath, 'utf-8')
 					const match = content.match(/getCollection\(\s*['"](\w+)['"]\s*\)/)
 					if (match?.[1]) {
-						routes.set(match[1], urlPrefix)
+						// A static prefix is only usable when no ancestor directory is
+						// itself dynamic — otherwise record "routed, no prefix" so the
+						// caller still trusts declared URLs without fabricating one.
+						routes.set(match[1], dynamicAncestor ? true : urlPrefix)
 					}
 				} catch { /* skip unreadable files */ }
 			}
 		}
 	}
 
-	await walk(pagesDir, '/')
+	await walk(pagesDir, '/', false)
 	collectionRoutesCache = routes
 	return routes
 }

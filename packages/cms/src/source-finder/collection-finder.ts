@@ -343,6 +343,26 @@ function normalizeSitePath(p: string): string {
 }
 
 /**
+ * Extract an entry's declared canonical site path from its already-parsed
+ * frontmatter/data object (e.g. `CollectionEntryInfo.data`). Same field set and
+ * rules as {@link readDeclaredPageUrl}, but operates in-memory so callers that
+ * already hold the data don't re-read the file. Returns the normalized
+ * site-absolute path, or undefined when no site-absolute URL field is declared.
+ */
+export function declaredSitePathFromData(data: unknown): string | undefined {
+	if (!data || typeof data !== 'object') return undefined
+	const lowerKeyed = new Map<string, unknown>()
+	for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+		lowerKeyed.set(key.toLowerCase(), value)
+	}
+	for (const field of DECLARED_URL_FIELDS) {
+		const value = lowerKeyed.get(field)
+		if (typeof value === 'string' && value.startsWith('/')) return normalizeSitePath(value)
+	}
+	return undefined
+}
+
+/**
  * Derive a collection entry's slug from its file path, matching the same
  * convention collection-scanner.ts uses: flat `<slug>.md(x)` files use the
  * basename minus extension; Hugo-style `<slug>/index.md(x)` files use the

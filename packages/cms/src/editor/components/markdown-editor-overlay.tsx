@@ -1,6 +1,6 @@
 import { type Editor, editorViewCtx } from '@milkdown/core'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { slugify } from '../../shared'
+import { resolveCreateRedirectUrl, slugify } from '../../shared'
 import { updateMarkdownPage } from '../api'
 import { STORAGE_KEYS, Z_INDEX } from '../constants'
 import { cn } from '../lib/cn'
@@ -240,17 +240,7 @@ export function MarkdownEditorOverlay() {
 			})
 
 			if (result.success) {
-				// Derive the new page URL from existing collection entry pathnames
-				const entries = opts.collectionDefinition.entries ?? []
-				const existingEntry = entries.find((e) => e.pathname)
-				let redirectUrl: string | undefined
-				if (existingEntry?.pathname) {
-					// Extract base path from an existing entry pathname (e.g., "/blog/first-post" → "/blog/")
-					const lastSlash = existingEntry.pathname.lastIndexOf('/')
-					if (lastSlash >= 0) {
-						redirectUrl = existingEntry.pathname.slice(0, lastSlash + 1) + slug
-					}
-				}
+				const redirectUrl = resolveCreateRedirectUrl(opts.collectionDefinition.entries ?? [], slug)
 
 				showToast(STRINGS.markdown.pageCreated, 'success')
 				resetMarkdownEditorState()
