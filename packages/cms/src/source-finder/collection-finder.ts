@@ -299,7 +299,11 @@ export async function findCollectionSource(
 		// URL-less projects fall through to the filename logic unchanged.
 		const byUrl = await resolveByDeclaredUrl(matches, requestedUrl, contentPath)
 		if (byUrl) {
-			return { name: byUrl.name, slug, file: path.relative(getProjectRoot(), byUrl.file) }
+			// byUrl.file may differ from the file the filename match found
+			// (that's the whole point of this fallback) — its slug must be
+			// derived from the actual resolved file, not the URL-tail slug
+			// candidate, or downstream collectionSlug lookups break.
+			return { name: byUrl.name, slug: slugFromFilePath(byUrl.file), file: path.relative(getProjectRoot(), byUrl.file) }
 		}
 
 		if (matches.length === 1 && matches[0]) {
@@ -333,6 +337,20 @@ function normalizeSitePath(p: string): string {
 	if (!s.startsWith('/')) s = `/${s}`
 	if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1)
 	return s
+}
+
+/**
+ * Derive a collection entry's slug from its file path, matching the same
+ * convention collection-scanner.ts uses: flat `<slug>.md(x)` files use the
+ * basename minus extension; Hugo-style `<slug>/index.md(x)` files use the
+ * parent directory name.
+ */
+function slugFromFilePath(fileAbsPath: string): string {
+	const base = path.basename(fileAbsPath)
+	if (base === 'index.md' || base === 'index.mdx') {
+		return path.basename(path.dirname(fileAbsPath))
+	}
+	return base.replace(/\.mdx?$/, '')
 }
 
 /**

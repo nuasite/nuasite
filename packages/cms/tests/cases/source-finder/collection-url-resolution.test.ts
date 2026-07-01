@@ -34,6 +34,10 @@ withTempDir('findCollectionSource - URL-based disambiguation', (getCtx) => {
 		// sibling), because `/beta/foo` strips to slug `foo` -> `foo.md`.
 		const beta = await findCollectionSource('/beta/foo', 'content')
 		expect(beta?.file).toBe('content/articles/foo-beta.md')
+		// slug must describe the resolved file (foo-beta.md), not the
+		// URL-tail candidate (`foo`) that led to it — collectionSlug lookups
+		// downstream key off the file's real slug.
+		expect(beta?.slug).toBe('foo-beta')
 	})
 
 	test('does not treat a `canonical` field as self-declared identity', async () => {
