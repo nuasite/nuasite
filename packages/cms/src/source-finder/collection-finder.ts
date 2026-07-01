@@ -52,20 +52,10 @@ async function doBuildCollectionTextIndex(
 				} else {
 					// Markdown — index scalars from frontmatter only
 					const { lines } = cached
-					let fmStart = -1
-					let fmEnd = -1
-					for (let i = 0; i < lines.length; i++) {
-						if (lines[i]?.trim() === '---') {
-							if (fmStart === -1) fmStart = i
-							else {
-								fmEnd = i
-								break
-							}
-						}
-					}
-					if (fmEnd > 0) {
-						const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
-						collectScalarsFromYaml(yamlStr, fmStart + 1, lines, info, index)
+					const bounds = findFrontmatterBounds(lines)
+					if (bounds) {
+						const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
+						collectScalarsFromYaml(yamlStr, bounds.start + 1, lines, info, index)
 					}
 				}
 			} catch {
@@ -186,6 +176,22 @@ export function lookupCollectionText(
 // ============================================================================
 // Markdown File Cache
 // ============================================================================
+
+/**
+ * Locate the `---`-delimited frontmatter block in a markdown file's lines.
+ * Returns the indexes of the opening and closing `---` lines, or undefined if
+ * the file has no closed frontmatter block.
+ */
+function findFrontmatterBounds(lines: string[]): { start: number; end: number } | undefined {
+	let start = -1
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i]?.trim() === '---') {
+			if (start === -1) start = i
+			else return { start, end: i }
+		}
+	}
+	return undefined
+}
 
 /**
  * Get cached markdown file content
@@ -334,23 +340,12 @@ async function readDeclaredPageUrl(fileAbsPath: string): Promise<string | undefi
 	const cached = await getCachedMarkdownFile(fileAbsPath)
 	if (!cached) return undefined
 
-	const { lines } = cached
-	let fmStart = -1
-	let fmEnd = -1
-	for (let i = 0; i < lines.length; i++) {
-		if (lines[i]?.trim() === '---') {
-			if (fmStart === -1) fmStart = i
-			else {
-				fmEnd = i
-				break
-			}
-		}
-	}
-	if (fmEnd <= 0) return undefined
+	const bounds = findFrontmatterBounds(cached.lines)
+	if (!bounds) return undefined
 
 	let doc
 	try {
-		doc = parseDocument(lines.slice(fmStart + 1, fmEnd).join('\n'))
+		doc = parseDocument(cached.lines.slice(bounds.start + 1, bounds.end).join('\n'))
 	} catch {
 		return undefined
 	}
@@ -520,23 +515,11 @@ export async function findMarkdownSourceLocation(
 		const { lines } = cached
 		const normalizedSearch = normalizeText(textContent)
 
-		// Find frontmatter boundaries
-		let frontmatterStart = -1
-		let frontmatterEnd = -1
-		for (let i = 0; i < lines.length; i++) {
-			if (lines[i]?.trim() === '---') {
-				if (frontmatterStart === -1) {
-					frontmatterStart = i
-				} else {
-					frontmatterEnd = i
-					break
-				}
-			}
-		}
-		if (frontmatterEnd <= 0) return undefined
+		const bounds = findFrontmatterBounds(lines)
+		if (!bounds) return undefined
 
-		const yamlStr = lines.slice(frontmatterStart + 1, frontmatterEnd).join('\n')
-		const lineOffset = frontmatterStart + 1
+		const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
+		const lineOffset = bounds.start + 1
 		return findScalarInYamlAst(yamlStr, lineOffset, normalizedSearch, lines, collectionInfo)
 	} catch {
 		// Error reading file
@@ -700,20 +683,10 @@ export async function findFieldInCollectionEntry(
 
 		// For markdown, search inside frontmatter only
 		const { lines } = cached
-		let fmStart = -1
-		let fmEnd = -1
-		for (let i = 0; i < lines.length; i++) {
-			if (lines[i]?.trim() === '---') {
-				if (fmStart === -1) fmStart = i
-				else {
-					fmEnd = i
-					break
-				}
-			}
-		}
-		if (fmEnd <= 0) return undefined
-		const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
-		return findFieldByNameInYaml(yamlStr, fmStart + 1, fieldName, lines, info)
+		const bounds = findFrontmatterBounds(lines)
+		if (!bounds) return undefined
+		const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
+		return findFieldByNameInYaml(yamlStr, bounds.start + 1, fieldName, lines, info)
 	} catch {
 		return undefined
 	}
@@ -748,20 +721,10 @@ export async function findFieldsInCollectionEntry(
 
 		// For markdown, search inside frontmatter only
 		const { lines } = cached
-		let fmStart = -1
-		let fmEnd = -1
-		for (let i = 0; i < lines.length; i++) {
-			if (lines[i]?.trim() === '---') {
-				if (fmStart === -1) fmStart = i
-				else {
-					fmEnd = i
-					break
-				}
-			}
-		}
-		if (fmEnd <= 0) return new Map()
-		const yamlStr = lines.slice(fmStart + 1, fmEnd).join('\n')
-		return findFieldsByNameInYaml(yamlStr, fmStart + 1, fieldNames, lines, info)
+		const bounds = findFrontmatterBounds(lines)
+		if (!bounds) return new Map()
+		const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
+		return findFieldsByNameInYaml(yamlStr, bounds.start + 1, fieldNames, lines, info)
 	} catch {
 		return new Map()
 	}
@@ -845,27 +808,12 @@ export async function parseMarkdownContent(
 
 		const { lines } = cached
 
-		// Parse frontmatter
-		let frontmatterStart = -1
-		let frontmatterEnd = -1
-
-		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i]?.trim()
-			if (line === '---') {
-				if (frontmatterStart === -1) {
-					frontmatterStart = i
-				} else {
-					frontmatterEnd = i
-					break
-				}
-			}
-		}
-
+		const bounds = findFrontmatterBounds(lines)
 		const frontmatter: Record<string, { value: string; line: number }> = {}
 
 		// Extract frontmatter fields using yaml parser
-		if (frontmatterEnd > 0) {
-			const yamlStr = lines.slice(frontmatterStart + 1, frontmatterEnd).join('\n')
+		if (bounds) {
+			const yamlStr = lines.slice(bounds.start + 1, bounds.end).join('\n')
 			const lineCounter = new LineCounter()
 			const doc = parseDocument(yamlStr, { lineCounter })
 
@@ -876,7 +824,7 @@ export async function parseMarkdownContent(
 						const value = isScalar(pair.value) ? String(pair.value.value) : ''
 						const keyRange = (pair.key as any).range
 						const yamlLine = keyRange ? lineCounter.linePos(keyRange[0]).line : 0
-						const fileLine = yamlLine + frontmatterStart + 1
+						const fileLine = yamlLine + bounds.start + 1
 						if (key && value) {
 							frontmatter[key] = { value, line: fileLine }
 						}
@@ -886,7 +834,7 @@ export async function parseMarkdownContent(
 		}
 
 		// Extract body (everything after frontmatter)
-		const bodyStartLine = frontmatterEnd > 0 ? frontmatterEnd + 1 : 0
+		const bodyStartLine = bounds ? bounds.end + 1 : 0
 		const bodyLines = lines.slice(bodyStartLine)
 		const body = bodyLines.join('\n').trim()
 
