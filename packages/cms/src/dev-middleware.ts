@@ -17,6 +17,7 @@ import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
 import {
+	declaredSitePathFromData,
 	enhanceManifestWithSourceSnippets,
 	findCollectionSource,
 	findImageSourceLocation,
@@ -28,6 +29,7 @@ import type {
 	CmsMarkerOptions,
 	CollectionDefinition,
 	CollectionEntry,
+	CollectionEntryInfo,
 	ComponentDefinition,
 	ComponentInstance,
 	ManifestEntry,
@@ -176,24 +178,31 @@ export function createDevMiddleware(
 			}
 
 			// 2. Add collection entry pages from collection definitions,
-			//    pre-populating pathnames from filesystem routes so the collections
-			//    browser can redirect to detail pages without visiting them first.
-			//    We build patched copies rather than mutating the originals so that
-			//    heuristic pathnames don't persist if the route file is later removed.
+			//    pre-populating pathnames so the collections browser can redirect to
+			//    detail pages without visiting them first. Prefer the entry's own
+			//    declared URL (urlPath/permalink/…) from frontmatter, which is
+			//    correct even when the collection is served under a *dynamic* route
+			//    prefix (e.g. `[topic]/[slug]`) that discoverCollectionRoutes can't
+			//    map to a static prefix. Fall back to the discovered static route
+			//    prefix + slug. We build patched copies rather than mutating the
+			//    originals so that heuristic pathnames don't persist if the route
+			//    file is later removed.
 			const collectionDefs = manifestWriter.getCollectionDefinitions()
 			const collectionRoutes = await discoverCollectionRoutes()
 			const responseCollectionDefs: Record<string, CollectionDefinition> = {}
 
 			for (const [name, def] of Object.entries(collectionDefs)) {
 				const routePrefix = collectionRoutes.get(def.name)
-				const needsPatching = routePrefix && def.entries?.some(e => !e.pathname)
+				const resolvePathname = (entry: CollectionEntryInfo): string | undefined =>
+					declaredSitePathFromData(entry.data) ?? (routePrefix ? `${routePrefix}${entry.slug}` : undefined)
+				const needsPatching = def.entries?.some(e => !e.pathname && resolvePathname(e))
 
 				if (!needsPatching) {
 					responseCollectionDefs[name] = def
 				} else {
 					responseCollectionDefs[name] = {
 						...def,
-						entries: def.entries!.map(e => e.pathname ? e : { ...e, pathname: `${routePrefix}${e.slug}` }),
+						entries: def.entries!.map(e => e.pathname ? e : { ...e, pathname: resolvePathname(e) ?? e.pathname }),
 					}
 				}
 

@@ -10,8 +10,8 @@
  * while entries that declare no URL keep the legacy filename behavior.
  */
 
-import { expect, test } from 'bun:test'
-import { findCollectionSource } from '../../../src/source-finder'
+import { describe, expect, test } from 'bun:test'
+import { declaredSitePathFromData, findCollectionSource } from '../../../src/source-finder'
 import { withTempDir } from '../../utils'
 
 function article(urlPath: string, title: string): string {
@@ -91,5 +91,40 @@ withTempDir('findCollectionSource - URL-based disambiguation', (getCtx) => {
 		await ctx.writeFile('content/articles/foo.md', article('/alpha/foo', 'Alpha Foo'))
 
 		expect(await findCollectionSource('/kontakty', 'content')).toBeUndefined()
+	})
+})
+
+// declaredSitePathFromData powers the collections browser's entry links: when a
+// collection is served under a dynamic route prefix (e.g. [topic]/[slug]) that
+// can't be discovered statically, the entry's own declared urlPath is used as
+// its pathname instead of a guessed prefix + slug.
+describe('declaredSitePathFromData', () => {
+	test('returns the declared urlPath, normalized', () => {
+		expect(declaredSitePathFromData({ urlPath: '/lide/kdo-jsme' })).toBe('/lide/kdo-jsme')
+		expect(declaredSitePathFromData({ urlPath: '/lide/kdo-jsme/' })).toBe('/lide/kdo-jsme')
+	})
+
+	test('honors field preference order (urlPath before url)', () => {
+		expect(declaredSitePathFromData({ url: '/from-url', urlPath: '/from-urlpath' })).toBe('/from-urlpath')
+	})
+
+	test('is case-insensitive on the field key', () => {
+		expect(declaredSitePathFromData({ URLPath: '/lide/x' })).toBe('/lide/x')
+	})
+
+	test('ignores non-site-absolute values (external URLs, bare slugs)', () => {
+		expect(declaredSitePathFromData({ url: 'https://example.com/x' })).toBeUndefined()
+		expect(declaredSitePathFromData({ slug: 'kdo-jsme' })).toBeUndefined()
+	})
+
+	test('ignores `canonical` (not a self-identity field)', () => {
+		expect(declaredSitePathFromData({ canonical: '/products/a' })).toBeUndefined()
+	})
+
+	test('returns undefined for missing or non-object data', () => {
+		expect(declaredSitePathFromData(undefined)).toBeUndefined()
+		expect(declaredSitePathFromData(null)).toBeUndefined()
+		expect(declaredSitePathFromData('string')).toBeUndefined()
+		expect(declaredSitePathFromData({ title: 'No URL here' })).toBeUndefined()
 	})
 })
