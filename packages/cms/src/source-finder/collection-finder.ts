@@ -211,11 +211,26 @@ async function getCachedMarkdownFile(filePath: string): Promise<{ content: strin
 // ============================================================================
 
 /**
+ * Frontmatter fields, in preference order, that may declare an entry's own
+ * canonical page URL. Only site-absolute values (starting with `/`) are trusted
+ * — external `url: https://…` values and bare slugs are ignored.
+ */
+const DECLARED_URL_FIELDS = ['urlpath', 'permalink', 'pathname', 'route', 'canonicalurl', 'canonical', 'url']
+
+/**
  * Find markdown collection file for a given page path.
  *
  * Uses slug-based reverse lookup: scans all collection directories for a
  * matching entry regardless of the URL prefix. This supports localized or
  * renamed routes (e.g. `/aktuality/my-article` with content in `src/content/news/`).
+ *
+ * Filename matching alone cannot tell apart two entries that share a slug but
+ * live under different URL prefixes (e.g. the same article slug published under
+ * two topic prefixes, where one file carries a disambiguating filename suffix).
+ * When a filename match declares a canonical URL in its frontmatter that
+ * contradicts the requested path, we fall back to matching entries by that
+ * declared URL. Projects whose entries declare no URL field keep the exact
+ * previous (filename-only) behavior.
  *
  * @param pagePath - The URL path of the page (e.g., '/services/3d-tisk')
  * @param contentDir - The content directory (default: 'src/content')
@@ -233,6 +248,7 @@ export async function findCollectionSource(
 		return undefined
 	}
 
+	const requestedUrl = normalizeSitePath(`/${cleanPath}`)
 	const contentPath = path.join(getProjectRoot(), contentDir)
 
 	try {
@@ -266,6 +282,16 @@ export async function findCollectionSource(
 			}
 		}
 
+		if (matches.length === 0) continue
+
+		// Prefer the entry whose declared canonical URL equals the requested
+		// path. Only kicks in when an entry actually declares a URL, so
+		// URL-less projects fall through to the filename logic unchanged.
+		const byUrl = await resolveByDeclaredUrl(matches, requestedUrl, contentPath)
+		if (byUrl) {
+			return { name: byUrl.name, slug, file: path.relative(getProjectRoot(), byUrl.file) }
+		}
+
 		if (matches.length === 1 && matches[0]) {
 			return {
 				name: matches[0].name,
@@ -288,6 +314,130 @@ export async function findCollectionSource(
 		}
 	}
 
+	return undefined
+}
+
+/** Normalize a site-absolute path: ensure a leading slash, drop query/hash and any trailing slash. */
+function normalizeSitePath(p: string): string {
+	let s = p.split('?')[0]?.split('#')[0] ?? p
+	if (!s.startsWith('/')) s = `/${s}`
+	if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1)
+	return s
+}
+
+/**
+ * Read an entry's declared canonical page URL from its frontmatter, if any.
+ * Returns the normalized site-absolute path, or undefined when the file has no
+ * frontmatter or declares no site-absolute URL field.
+ */
+async function readDeclaredPageUrl(fileAbsPath: string): Promise<string | undefined> {
+	const cached = await getCachedMarkdownFile(fileAbsPath)
+	if (!cached) return undefined
+
+	const { lines } = cached
+	let fmStart = -1
+	let fmEnd = -1
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i]?.trim() === '---') {
+			if (fmStart === -1) fmStart = i
+			else {
+				fmEnd = i
+				break
+			}
+		}
+	}
+	if (fmEnd <= 0) return undefined
+
+	let doc
+	try {
+		doc = parseDocument(lines.slice(fmStart + 1, fmEnd).join('\n'))
+	} catch {
+		return undefined
+	}
+	if (!isMap(doc.contents)) return undefined
+
+	const found: Record<string, string> = {}
+	for (const pair of doc.contents.items) {
+		if (!isPair(pair) || !isScalar(pair.key) || !isScalar(pair.value)) continue
+		const key = String(pair.key.value).toLowerCase()
+		if (!DECLARED_URL_FIELDS.includes(key)) continue
+		const val = pair.value.value
+		if (typeof val === 'string' && val.startsWith('/')) {
+			found[key] ??= normalizeSitePath(val)
+		}
+	}
+
+	for (const field of DECLARED_URL_FIELDS) {
+		if (found[field]) return found[field]
+	}
+	return undefined
+}
+
+/**
+ * Resolve the correct entry for `requestedUrl` using declared canonical URLs.
+ *
+ * 1. If a filename candidate declares exactly `requestedUrl`, use it.
+ * 2. Otherwise, if any candidate declares *some* URL (so the collection is
+ *    URL-aware) but none matches, the filename match is for a same-slug sibling
+ *    under a different prefix — scan the candidate collection(s) for the file
+ *    whose declared URL is `requestedUrl`.
+ * 3. If no candidate declares any URL, return undefined so the caller keeps the
+ *    legacy filename behavior.
+ */
+async function resolveByDeclaredUrl(
+	matches: { name: string; file: string }[],
+	requestedUrl: string,
+	contentPath: string,
+): Promise<{ name: string; file: string } | undefined> {
+	let sawDeclaredUrl = false
+	for (const m of matches) {
+		const declared = await readDeclaredPageUrl(m.file)
+		if (declared === undefined) continue
+		sawDeclaredUrl = true
+		if (declared === requestedUrl) return m
+	}
+
+	if (!sawDeclaredUrl) return undefined
+
+	// Contradiction: the right entry is named differently from its slug. Scan
+	// the collection(s) that produced filename matches for a declared-URL hit.
+	for (const dir of new Set(matches.map(m => m.name))) {
+		const hit = await findFileByDeclaredUrl(path.join(contentPath, dir), requestedUrl)
+		if (hit) return { name: dir, file: hit }
+	}
+	return undefined
+}
+
+/**
+ * Scan a collection directory (flat `*.md(x)` files and Hugo-style
+ * `<slug>/index.md(x)`) for the entry whose declared canonical URL matches.
+ * Only invoked on the rare contradiction path, so the full-directory read is
+ * bounded to genuine same-slug collisions.
+ */
+async function findFileByDeclaredUrl(collectionPathAbs: string, requestedUrl: string): Promise<string | undefined> {
+	let dirEntries
+	try {
+		dirEntries = await fs.readdir(collectionPathAbs, { withFileTypes: true })
+	} catch {
+		return undefined
+	}
+
+	const subDirs: string[] = []
+	for (const e of dirEntries) {
+		if (e.isFile() && /\.mdx?$/.test(e.name)) {
+			const file = path.join(collectionPathAbs, e.name)
+			if ((await readDeclaredPageUrl(file)) === requestedUrl) return file
+		} else if (e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.')) {
+			subDirs.push(e.name)
+		}
+	}
+
+	for (const dir of subDirs) {
+		for (const idx of ['index.md', 'index.mdx']) {
+			const file = path.join(collectionPathAbs, dir, idx)
+			if ((await readDeclaredPageUrl(file)) === requestedUrl) return file
+		}
+	}
 	return undefined
 }
 
