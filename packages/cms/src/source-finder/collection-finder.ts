@@ -300,7 +300,7 @@ export async function findCollectionSource(
 		// Prefer the entry whose declared canonical URL equals the requested
 		// path. Only kicks in when an entry actually declares a URL, so
 		// URL-less projects fall through to the filename logic unchanged.
-		const byUrl = await resolveByDeclaredUrl(matches, requestedUrl, contentPath)
+		const byUrl = await resolveByDeclaredUrl(matches, requestedUrl, contentPath, pathParts[0])
 		if (byUrl) {
 			// byUrl.file may differ from the file the filename match found
 			// (that's the whole point of this fallback) — its slug must be
@@ -327,6 +327,29 @@ export async function findCollectionSource(
 				name: chosen.name,
 				slug,
 				file: path.relative(getProjectRoot(), chosen.file),
+			}
+		}
+	}
+
+	// No filename-based candidate matched any tail slug. The source file may be
+	// named unlike its URL entirely — e.g. people entries stored as
+	// `<role>__<slug>.md` but served at `/<family>/<slug>`, so no tail segment
+	// ever hits a `<slug>.md` file. Fall back to resolving by declared canonical
+	// URL across every collection.
+	//
+	// Guarded to multi-segment paths: the tail-slug loop above only ran for
+	// `pathParts.length >= 2`, so single-segment paths (bare static pages like
+	// `/about`) were never treated as collection pages. Keeping that boundary
+	// avoids both a full declared-URL scan on every such page and the risk of
+	// mis-attributing a static page to a collection entry that happens to
+	// declare the same URL.
+	if (pathParts.length >= 2) {
+		const byDeclaredUrl = await findByDeclaredUrlAcross(collectionDirs, contentPath, requestedUrl, pathParts[0])
+		if (byDeclaredUrl) {
+			return {
+				name: byDeclaredUrl.name,
+				slug: slugFromFilePath(byDeclaredUrl.file),
+				file: path.relative(getProjectRoot(), byDeclaredUrl.file),
 			}
 		}
 	}
@@ -428,6 +451,7 @@ async function resolveByDeclaredUrl(
 	matches: { name: string; file: string }[],
 	requestedUrl: string,
 	contentPath: string,
+	urlPrefix: string | undefined,
 ): Promise<{ name: string; file: string } | undefined> {
 	let sawDeclaredUrl = false
 	for (const m of matches) {
@@ -441,13 +465,30 @@ async function resolveByDeclaredUrl(
 
 	// Contradiction: the right entry is named differently from its slug. Scan
 	// the collection(s) that produced filename matches for a declared-URL hit.
-	// `matches` (and thus this Set) is built by iterating the sorted
-	// `collectionDirs`, so directory order here is deterministic.
-	for (const dir of new Set(matches.map(m => m.name))) {
+	return findByDeclaredUrlAcross([...new Set(matches.map(m => m.name))], contentPath, requestedUrl, urlPrefix)
+}
+
+/**
+ * Resolve `requestedUrl` to a source file by its declared canonical URL across
+ * the given collection directories, using the cached per-directory URL→file
+ * index. When more than one collection declares the same URL, a directory whose
+ * name equals the URL's first path segment wins; otherwise the sorted-first
+ * match is returned so the result is deterministic regardless of readdir order.
+ */
+async function findByDeclaredUrlAcross(
+	dirs: string[],
+	contentPath: string,
+	requestedUrl: string,
+	urlPrefix: string | undefined,
+): Promise<{ name: string; file: string } | undefined> {
+	let firstHit: { name: string; file: string } | undefined
+	for (const dir of [...dirs].sort()) {
 		const hit = await findFileByDeclaredUrl(path.join(contentPath, dir), requestedUrl)
-		if (hit) return { name: dir, file: hit }
+		if (!hit) continue
+		if (dir === urlPrefix) return { name: dir, file: hit }
+		firstHit ??= { name: dir, file: hit }
 	}
-	return undefined
+	return firstHit
 }
 
 /**

@@ -85,12 +85,46 @@ withTempDir('findCollectionSource - URL-based disambiguation', (getCtx) => {
 		expect(res?.file).toBe('content/news/hello.md')
 	})
 
-	test('returns undefined for a non-collection page', async () => {
+	test('resolves an entry whose filename shares nothing with its URL slug', async () => {
+		const ctx = getCtx()
+		await ctx.mkdir('content/people')
+		// People-style: filename encodes a role (`<role>__<slug>.md`) and the page
+		// is served at `/<family>/<slug>`, so no URL tail segment ever matches a
+		// `<slug>.md` file — the tail-slug loop finds nothing. Resolution must fall
+		// back to the declared urlPath.
+		await ctx.writeFile(
+			'content/people/expert__denia-ratajova.md',
+			`---\nslug: "denia-ratajova"\nurlPath: "/lide-sveta-neziskovek/denia-ratajova"\ntitle: "Denia"\n---\n\nBio.\n`,
+		)
+
+		const res = await findCollectionSource('/lide-sveta-neziskovek/denia-ratajova', 'content')
+		expect(res?.file).toBe('content/people/expert__denia-ratajova.md')
+		expect(res?.name).toBe('people')
+		expect(res?.slug).toBe('expert__denia-ratajova')
+	})
+
+	test('returns undefined for a non-collection page (no declared-URL match)', async () => {
 		const ctx = getCtx()
 		await ctx.mkdir('content/articles')
 		await ctx.writeFile('content/articles/foo.md', article('/alpha/foo', 'Alpha Foo'))
 
+		// Even with the declared-URL fallback, a path no entry declares stays unresolved.
 		expect(await findCollectionSource('/kontakty', 'content')).toBeUndefined()
+	})
+
+	test('does not resolve a single-segment path via the declared-URL fallback', async () => {
+		const ctx = getCtx()
+		await ctx.mkdir('content/pages')
+		// An entry declaring a bare single-segment URL. Single-segment requests are
+		// almost always static pages (e.g. `/about`); the tail-slug loop never
+		// treated them as collection pages, so the fallback must not either — this
+		// prevents mis-attributing a static page to a collection entry.
+		await ctx.writeFile(
+			'content/pages/x.md',
+			`---\nslug: "about"\nurlPath: "/about"\ntitle: "About"\n---\n\nBody.\n`,
+		)
+
+		expect(await findCollectionSource('/about', 'content')).toBeUndefined()
 	})
 })
 

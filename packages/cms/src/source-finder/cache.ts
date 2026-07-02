@@ -1,3 +1,4 @@
+import path from 'node:path'
 import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types'
 
 // ============================================================================
@@ -113,10 +114,16 @@ export function markFileDirty(absPath: string): void {
 	dirtyFiles.add(absPath)
 	// Also evict the parsed file cache so it's re-read from disk
 	parsedFileCache.delete(absPath)
-	// A changed file may add/remove/alter a declared URL anywhere in its
-	// collection directory — cheaper to drop the whole cache than track
-	// per-directory membership for a rarely-hit index.
-	declaredUrlIndexCache.clear()
+	// A changed file may add/remove/alter its declared URL, so drop the URL→file
+	// index for its collection directory. The index is keyed by collection dir:
+	// for a flat `<dir>/<slug>.md` that's the file's directory; for Hugo-style
+	// `<dir>/<slug>/index.md` it's the parent of the file's directory. Evict both
+	// candidates (deleting a non-existent key is a no-op) instead of clearing the
+	// whole cache, which would rebuild every collection's index on the next
+	// unmatched-page lookup.
+	const fileDir = path.dirname(absPath)
+	declaredUrlIndexCache.delete(fileDir)
+	declaredUrlIndexCache.delete(path.dirname(fileDir))
 }
 
 export function getDirtyFiles(): Set<string> {
