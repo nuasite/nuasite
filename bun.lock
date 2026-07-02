@@ -20,7 +20,7 @@
     },
     "packages/agent-summary": {
       "name": "@nuasite/agent-summary",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "devDependencies": {
         "@types/bun": "catalog:build",
         "astro": "catalog:astro",
@@ -31,7 +31,7 @@
     },
     "packages/checks": {
       "name": "@nuasite/checks",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "node-html-parser": "catalog:parsers",
       },
@@ -45,7 +45,7 @@
     },
     "packages/cli": {
       "name": "@nuasite/cli",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "bin": {
         "nua": "src/index.ts",
       },
@@ -61,7 +61,7 @@
     },
     "packages/cms": {
       "name": "@nuasite/cms",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "@astrojs/compiler": "catalog:astro",
         "@babel/parser": "catalog:parsers",
@@ -128,7 +128,7 @@
     },
     "packages/cms-client": {
       "name": "@nuasite/cms-client",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "@nuasite/cms-types": "workspace:*",
       },
@@ -141,7 +141,7 @@
     },
     "packages/cms-core": {
       "name": "@nuasite/cms-core",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "@babel/parser": "catalog:parsers",
         "@nuasite/cms-types": "workspace:*",
@@ -161,7 +161,7 @@
     },
     "packages/cms-mdx-editor": {
       "name": "@nuasite/cms-mdx-editor",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "@milkdown/core": "catalog:editor",
         "@milkdown/plugin-listener": "catalog:editor",
@@ -191,7 +191,7 @@
     },
     "packages/cms-sidecar": {
       "name": "@nuasite/cms-sidecar",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "bin": {
         "cms-sidecar": "src/cli.ts",
       },
@@ -212,7 +212,7 @@
     },
     "packages/cms-studio": {
       "name": "@nuasite/cms-studio",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "bin": {
         "cms-studio": "src/cli.ts",
       },
@@ -239,7 +239,7 @@
     },
     "packages/cms-types": {
       "name": "@nuasite/cms-types",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "devDependencies": {
         "@types/bun": "catalog:build",
       },
@@ -249,7 +249,7 @@
     },
     "packages/collections-admin": {
       "name": "@nuasite/collections-admin",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "@nuasite/cms-client": "workspace:*",
         "@nuasite/cms-mdx-editor": "workspace:*",
@@ -269,14 +269,14 @@
     },
     "packages/components": {
       "name": "@nuasite/components",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "peerDependencies": {
         "typescript": "catalog:build",
       },
     },
     "packages/core": {
       "name": "@nuasite/core",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "devDependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -290,7 +290,7 @@
     },
     "packages/llm-enhancements": {
       "name": "@nuasite/llm-enhancements",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "node-html-parser": "catalog:parsers",
       },
@@ -309,7 +309,7 @@
     },
     "packages/notes": {
       "name": "@nuasite/notes",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "preact": "catalog:editor",
       },
@@ -324,7 +324,7 @@
     },
     "packages/nua": {
       "name": "@nuasite/nua",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
@@ -346,7 +346,7 @@
     },
     "packages/playground": {
       "name": "playground",
-      "version": "0.46.3",
+      "version": "0.46.4",
       "dependencies": {
         "@nuasite/cms": "workspace:*",
         "@nuasite/nua": "workspace:*",
