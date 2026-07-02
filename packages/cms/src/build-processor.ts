@@ -313,7 +313,7 @@ async function processFile(
 
 	// First, try to detect if this page is from a content collection
 	// We need to know this BEFORE processing HTML to skip marking markdown-rendered elements
-	const collectionInfo = await findCollectionSource(pagePath, config.contentDir)
+	const collectionInfo = await findCollectionSource(pagePath, config.contentDir, manifestWriter.getCollectionDefinitions())
 	const isCollectionPage = !!collectionInfo
 
 	// Parse markdown content early if this is a collection page

@@ -1,8 +1,10 @@
+import { resolvePathnameFromSpec } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument } from 'yaml'
 
 import { getProjectRoot } from '../config'
+import { scanCollections } from '../scan-cache'
 import type { CollectionDefinition } from '../types'
 import { getCollectionTextIndex, getDeclaredUrlIndexCache, getMarkdownFileCache, setCollectionTextIndex } from './cache'
 import { normalizeText } from './snippet-utils'
@@ -249,6 +251,7 @@ const DECLARED_URL_FIELDS = ['urlpath', 'permalink', 'pathname', 'route', 'url']
 export async function findCollectionSource(
 	pagePath: string,
 	contentDir: string = 'src/content',
+	collections?: Record<string, CollectionDefinition>,
 ): Promise<CollectionInfo | undefined> {
 	// Remove leading/trailing slashes
 	const cleanPath = pagePath.replace(/^\/+|\/+$/g, '')
@@ -259,6 +262,18 @@ export async function findCollectionSource(
 	}
 
 	const requestedUrl = normalizeSitePath(`/${cleanPath}`)
+
+	// Highest priority: derive each entry's canonical URL from its collection's
+	// declarative `cms.pathname` rule (the same spec the forward resolver/manifest
+	// use) and match. This keeps reverse resolution (URL → source file) consistent
+	// with forward resolution without the entry needing a redundant `urlPath`
+	// frontmatter field, and correctly resolves entries whose filename differs
+	// from their URL slug (e.g. people stored as `<role>__<slug>.md` served at
+	// `/<family>/<slug>`). Collections without a `cms.pathname` rule contribute
+	// nothing here and fall through to the filename/declared-URL logic below.
+	const bySpec = await resolveBySpec(requestedUrl, contentDir, collections)
+	if (bySpec) return bySpec
+
 	const contentPath = path.join(getProjectRoot(), contentDir)
 
 	try {
@@ -355,6 +370,67 @@ export async function findCollectionSource(
 	}
 
 	return undefined
+}
+
+// Reverse index (computed spec URL → source) cached per scanned-collections
+// object. The scan cache hands back a fresh object identity whenever the
+// content config or any entry changes, so a WeakMap keyed on it rebuilds the
+// index exactly when the underlying data changes and never goes stale.
+const specPathnameIndexCache = new WeakMap<object, Map<string, CollectionInfo>>()
+
+/**
+ * Resolve `requestedUrl` to a source file by applying each collection's
+ * declarative `cms.pathname` rule to its entries' frontmatter data. Returns
+ * undefined when no collection declares a rule or none produces `requestedUrl`.
+ *
+ * `collections` should be the definitions already scanned once at plugin setup
+ * (`manifestWriter.getCollectionDefinitions()`) — passing them keeps this off the
+ * hot per-page path with no rescans and guarantees the reverse index matches the
+ * forward resolver's specs exactly. When omitted (tests, misc callers) it falls
+ * back to a self-contained scan.
+ */
+async function resolveBySpec(
+	requestedUrl: string,
+	contentDir: string,
+	collections: Record<string, CollectionDefinition> | undefined,
+): Promise<CollectionInfo | undefined> {
+	let defs = collections
+	if (!defs) {
+		try {
+			defs = await scanCollections(contentDir)
+		} catch {
+			return undefined
+		}
+	}
+
+	let index = specPathnameIndexCache.get(defs)
+	if (!index) {
+		index = buildSpecPathnameIndex(defs)
+		specPathnameIndexCache.set(defs, index)
+	}
+	return index.get(requestedUrl)
+}
+
+/**
+ * Build a `computed-URL → CollectionInfo` map from every collection that
+ * declares a `cms.pathname` rule. Collections and entries are visited in sorted
+ * order and the first writer of a URL wins, so a URL collision (a content bug)
+ * resolves deterministically rather than depending on scan/readdir order.
+ */
+function buildSpecPathnameIndex(collections: Record<string, CollectionDefinition>): Map<string, CollectionInfo> {
+	const index = new Map<string, CollectionInfo>()
+	for (const name of Object.keys(collections).sort()) {
+		const def = collections[name]
+		if (!def?.pathname || !def.entries) continue
+		const entries = [...def.entries].sort((a, b) => a.slug.localeCompare(b.slug))
+		for (const entry of entries) {
+			if (!entry.data) continue
+			const url = resolvePathnameFromSpec(def, entry.data)
+			if (!url || index.has(url)) continue
+			index.set(url, { name: def.name, slug: entry.slug, file: entry.sourcePath })
+		}
+	}
+	return index
 }
 
 /** Normalize a site-absolute path: ensure a leading slash, drop query/hash and any trailing slash. */

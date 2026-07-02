@@ -1,4 +1,4 @@
-import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
+import { createCmsCore, createNodeFs, resolvePathnameFromSpec } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
@@ -193,23 +193,33 @@ export function createDevMiddleware(
 
 			for (const [name, def] of Object.entries(collectionDefs)) {
 				const routeInfo = collectionRoutes.get(def.name)
+				const routePrefix = typeof routeInfo === 'string' ? routeInfo : undefined
+				// Whether any page route renders this collection. The heuristic fallbacks
+				// below (a frontmatter-declared site path, or the discovered route prefix)
+				// only apply to routed collections — otherwise a declared `cms.pathname`
+				// spec whose fields are missing for an entry would fabricate a URL from an
+				// unrelated frontmatter field (e.g. a data collection's own `url`).
+				const routed = routeInfo !== undefined
 
-				if (routeInfo === undefined) {
-					// No page renders this collection at all — leave entries alone rather
-					// than fabricating a pathname from an unrelated frontmatter field
-					// (e.g. a data collection's own `url` field pointing elsewhere).
-					responseCollectionDefs[name] = def
-				} else {
-					const routePrefix = typeof routeInfo === 'string' ? routeInfo : undefined
-					const resolvePathname = (entry: CollectionEntryInfo): string | undefined =>
-						declaredSitePathFromData(entry.data) ?? (routePrefix ? `${routePrefix}${entry.slug}` : undefined)
-					const needsPatching = def.entries?.some(e => !e.pathname && resolvePathname(e))
+				// A declarative `cms.pathname` rule is the highest-priority source: it wins
+				// over the rendered-route pathname (addPage set entry.pathname to the page
+				// URL). resolvePathnameFromSpec is the same resolver manifest-writer uses at
+				// build, so dev-preview and the built manifest agree on the entry's URL.
+				const resolvePathname = (entry: CollectionEntryInfo): string | undefined =>
+					resolvePathnameFromSpec(def, entry.data)
+						?? entry.pathname
+						?? (routed ? declaredSitePathFromData(entry.data) : undefined)
+						?? (routePrefix ? `${routePrefix}${entry.slug}` : undefined)
 
-					responseCollectionDefs[name] = !needsPatching ? def : {
-						...def,
-						entries: def.entries!.map(e => e.pathname ? e : { ...e, pathname: resolvePathname(e) ?? e.pathname }),
-					}
-				}
+				// Build patched copies rather than mutating the originals so heuristic
+				// pathnames don't persist if the route file is later removed. Only patch
+				// entries whose resolved pathname differs from what they already have.
+				const patchedEntries = def.entries?.map(e => {
+					const pathname = resolvePathname(e)
+					return pathname && pathname !== e.pathname ? { ...e, pathname } : e
+				})
+				const changed = patchedEntries?.some((e, i) => e !== def.entries![i]) ?? false
+				responseCollectionDefs[name] = changed ? { ...def, entries: patchedEntries! } : def
 
 				const entries = responseCollectionDefs[name].entries
 				if (entries) {
@@ -440,7 +450,7 @@ async function markHtmlForDev(
 	const idGenerator = () => `cms-${pageCounter++}`
 
 	// Check if this is a collection page
-	const collectionInfo = await findCollectionSource(pagePath, config.contentDir)
+	const collectionInfo = await findCollectionSource(pagePath, config.contentDir, manifestWriter.getCollectionDefinitions())
 	const isCollectionPage = !!collectionInfo
 
 	let mdContent: Awaited<ReturnType<typeof parseMarkdownContent>> | undefined

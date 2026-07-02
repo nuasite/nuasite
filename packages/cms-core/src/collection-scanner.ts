@@ -3,7 +3,7 @@ import path from 'node:path'
 import { isMap, isPair, isScalar, parse as parseYaml, parseDocument } from 'yaml'
 import { type ParseCache, parseContentConfig, type ParsedConfig, type ParsedField } from './content-config-ast'
 import type { CmsFileSystem } from './fs/types'
-import { slugifyHref } from './shared'
+import { resolvePathnameFromSpec, slugifyHref } from './shared'
 
 /** Regex patterns for type inference */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}/
@@ -609,6 +609,8 @@ function applyParsedConfig(
 
 		// Declarative form layout from `defineCmsCollection({ cms })`.
 		if (parsedColl.layout) def.layout = parsedColl.layout
+		// Declarative page-URL rule from `defineCmsCollection({ cms: { pathname } })`.
+		if (parsedColl.pathname) def.pathname = parsedColl.pathname
 	}
 }
 
@@ -997,6 +999,34 @@ export async function scanCollections(
 	detectDerivedHrefFields(collections)
 	assignSemanticRoles(collections)
 	applyCollectionOrderBy(collections, parsed)
+	warnOnPathnameCollisions(collections)
 
 	return collections
+}
+
+/**
+ * Warn when a collection's declarative `cms.pathname` rule maps two distinct
+ * entries to the same URL — e.g. an all-literal spec, or a spec whose `field`
+ * segments are constant across entries. Such a rule silently collapses entries
+ * onto one page, so surface it at scan time (once per scan) rather than letting
+ * the manifest ship colliding pathnames with no signal. Runs after
+ * `applyParsedConfig`, which is where `def.pathname` gets populated.
+ */
+function warnOnPathnameCollisions(collections: Record<string, CollectionDefinition>): void {
+	for (const def of Object.values(collections)) {
+		if (!def.pathname || !def.entries) continue
+		const bySlug = new Map<string, string>()
+		for (const entry of def.entries) {
+			const pathname = resolvePathnameFromSpec(def, entry.data)
+			if (!pathname) continue
+			const prev = bySlug.get(pathname)
+			if (prev) {
+				console.warn(
+					`[cms] collection "${def.name}": pathname rule maps both "${prev}" and "${entry.slug}" to "${pathname}" — these entries will collide on one URL`,
+				)
+			} else {
+				bySlug.set(pathname, entry.slug)
+			}
+		}
+	}
 }

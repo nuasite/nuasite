@@ -1,3 +1,4 @@
+import { resolvePathnameFromSpec } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
@@ -279,12 +280,19 @@ export class ManifestWriter {
 
 		// Populate pathname on collection definition entries
 		for (const def of Object.values(this.collectionDefinitions)) {
-			if (def.entries) {
-				for (const entry of def.entries) {
-					const pathname = collectionPathMap.get(`${def.name}/${entry.slug}`)
-					if (pathname) {
-						entry.pathname = pathname
-					}
+			if (!def.entries) continue
+			for (const entry of def.entries) {
+				// A declarative `cms.pathname` rule is the highest-priority source: it
+				// wins over the rendered-page pathname. resolvePathnameFromSpec is the
+				// same resolver the dev middleware uses, so dev and build agree.
+				const fromSpec = resolvePathnameFromSpec(def, entry.data)
+				if (fromSpec) {
+					entry.pathname = fromSpec
+					continue
+				}
+				const pathname = collectionPathMap.get(`${def.name}/${entry.slug}`)
+				if (pathname) {
+					entry.pathname = pathname
 				}
 			}
 		}

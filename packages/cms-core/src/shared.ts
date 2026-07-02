@@ -1,3 +1,70 @@
+import type { CollectionDefinition, PathnameSpec } from '@nuasite/cms-types'
+
+/**
+ * Coerce a frontmatter value into a URL path segment. Strings pass through;
+ * numbers and booleans are stringified (YAML auto-coerces `year: 2024` → number,
+ * `draft: true` → boolean); dates use their ISO calendar day (`2024-01-15`), which
+ * is what YAML produces a `Date` from. Anything else — `null`/`undefined` (missing)
+ * or objects/arrays (not addressable as a single segment) — yields `undefined`,
+ * which voids the whole rule so callers fall through to other pathname sources.
+ */
+function pathSegmentValue(raw: unknown): string | undefined {
+	if (typeof raw === 'string') return raw
+	if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw)
+	if (raw instanceof Date) return raw.toISOString().slice(0, 10)
+	return undefined
+}
+
+/**
+ * Compose a collection entry's page URL from a declarative {@link PathnameSpec}
+ * and the entry's frontmatter `data`.
+ *
+ * Each segment resolves to either a fixed `literal` or the value of `data[field]`
+ * (optionally remapped through the segment's `map`). Field values are coerced via
+ * {@link pathSegmentValue} — strings, numbers, booleans, and dates all resolve.
+ * Resolved segments are joined with `/`, prefixed with a single leading `/`,
+ * collapsed of duplicate slashes, and stripped of any trailing slash. If any
+ * `{ field }` segment's value is missing or not coercible (null/object/array) the
+ * whole rule yields `undefined`, so callers fall through to their existing
+ * pathname sources.
+ */
+export function computePathnameFromSpec(spec: PathnameSpec, data: Record<string, unknown>): string | undefined {
+	const segments: string[] = []
+	for (const seg of spec) {
+		if ('literal' in seg) {
+			segments.push(seg.literal)
+			continue
+		}
+		const value = pathSegmentValue(data[seg.field])
+		if (value === undefined) return undefined
+		segments.push(
+			seg.map && Object.hasOwn(seg.map, value) ? seg.map[value]! : value,
+		)
+	}
+	const path = ('/' + segments.join('/')).replace(/\/{2,}/g, '/').replace(/\/+$/, '')
+	return path === '' ? '/' : path
+}
+
+/**
+ * Resolve a collection entry's declarative `cms.pathname` to a page URL — the
+ * single source of spec-driven pathname resolution shared by the dev middleware
+ * and the build-time manifest writer, so the two never drift.
+ *
+ * A declared `pathname` spec is the highest-priority source for an entry's URL
+ * (it wins over the rendered-route pathname); this helper returns the spec-derived
+ * URL, or `undefined` when no spec is declared or the spec doesn't resolve for
+ * this entry, in which case callers fall back to their own route-derived sources.
+ */
+export function resolvePathnameFromSpec(
+	def: Pick<CollectionDefinition, 'pathname'>,
+	data: Record<string, unknown> | undefined,
+): string | undefined {
+	// parseCmsPathname never yields an empty array (it returns undefined instead),
+	// so a present `pathname` is always a usable spec.
+	if (!def.pathname) return undefined
+	return computePathnameFromSpec(def.pathname, data ?? {})
+}
+
 /**
  * Slugify with diacritics normalization for href paths.
  * "Lidé" → "lide", "Aktuálně z nezisku" → "aktualne-z-nezisku"

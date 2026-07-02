@@ -12,6 +12,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import { declaredSitePathFromData, findCollectionSource } from '../../../src/source-finder'
+import type { CollectionDefinition } from '../../../src/types'
 import { withTempDir } from '../../utils'
 
 function article(urlPath: string, title: string): string {
@@ -125,6 +126,63 @@ withTempDir('findCollectionSource - URL-based disambiguation', (getCtx) => {
 		)
 
 		expect(await findCollectionSource('/about', 'content')).toBeUndefined()
+	})
+})
+
+// A collection's declarative `cms.pathname` rule is the highest-priority source
+// for reverse resolution: findCollectionSource derives each entry's canonical URL
+// from the rule + the entry's frontmatter data and matches it, so URL → source
+// works with NO `urlPath` frontmatter and even when the filename differs from the
+// URL slug (people stored as `<role>__<slug>.md`). The scanned definitions are
+// threaded in from `manifestWriter.getCollectionDefinitions()` on the hot path.
+describe('findCollectionSource - cms.pathname spec resolution', () => {
+	function makeDef(name: string, pathname: CollectionDefinition['pathname'], entries: CollectionDefinition['entries']): CollectionDefinition {
+		return { name, label: name, path: `content/${name}`, entryCount: entries?.length ?? 0, fields: [], fileExtension: 'md', type: 'content', pathname, entries }
+	}
+
+	test('resolves a people entry whose filename encodes a role, via urlFamily + slug', async () => {
+		const collections = {
+			people: makeDef('people', [{ field: 'urlFamily' }, { field: 'slug' }], [
+				{ slug: 'expert__adela-lancova', sourcePath: 'content/people/expert__adela-lancova.md', data: { urlFamily: 'lide-sveta-neziskovek', slug: 'adela-lancova' } },
+			]),
+		}
+		const res = await findCollectionSource('/lide-sveta-neziskovek/adela-lancova', 'content', collections)
+		expect(res?.file).toBe('content/people/expert__adela-lancova.md')
+		expect(res?.name).toBe('people')
+		expect(res?.slug).toBe('expert__adela-lancova')
+	})
+
+	test('applies a segment `map` (topic → route prefix) when deriving the URL', async () => {
+		const collections = {
+			articles: makeDef('articles', [{ field: 'topic', map: { aktualne: 'aktualne-z-nezisku' } }, { field: 'slug' }], [
+				{ slug: 'foo', sourcePath: 'content/articles/foo.md', data: { topic: 'aktualne', slug: 'foo' } },
+			]),
+		}
+		const res = await findCollectionSource('/aktualne-z-nezisku/foo', 'content', collections)
+		expect(res?.file).toBe('content/articles/foo.md')
+		expect(res?.slug).toBe('foo')
+	})
+
+	test('disambiguates same-slug entries across collections by their derived URL', async () => {
+		const collections = {
+			articles: makeDef('articles', [{ field: 'topic' }, { field: 'slug' }], [
+				{ slug: 'foo', sourcePath: 'content/articles/foo.md', data: { topic: 'fundraising', slug: 'foo' } },
+				{ slug: 'foo-lide', sourcePath: 'content/articles/foo-lide.md', data: { topic: 'lide', slug: 'foo' } },
+			]),
+		}
+		expect((await findCollectionSource('/fundraising/foo', 'content', collections))?.file).toBe('content/articles/foo.md')
+		expect((await findCollectionSource('/lide/foo', 'content', collections))?.file).toBe('content/articles/foo-lide.md')
+	})
+
+	test('a URL no spec produces stays unresolved (does not misattribute)', async () => {
+		const collections = {
+			podcasts: makeDef('podcasts', [{ literal: 'podcast' }, { field: 'slug' }], [
+				{ slug: 'ep1', sourcePath: 'content/podcasts/ep1.md', data: { slug: 'ep1' } },
+			]),
+		}
+		expect((await findCollectionSource('/podcast/ep1', 'content', collections))?.file).toBe('content/podcasts/ep1.md')
+		// `/kontakty` is not derivable from any spec → undefined (contentDir absent).
+		expect(await findCollectionSource('/kontakty', 'content', collections)).toBeUndefined()
 	})
 })
 
