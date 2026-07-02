@@ -21,4 +21,16 @@ const authors = defineCollection({
 	}),
 })
 
-export const collections = { blog, authors }
+// A collection whose page URL is composed from fields (not its filename slug),
+// via a declarative `cms.pathname` rule. Files are named `<role>__<slug>.md`
+// but served at `/<urlFamily>/<slug>`, so the on-disk slug never matches the URL.
+const people = defineCollection({
+	schema: z.object({
+		title: n.text(),
+		urlFamily: z.string(),
+		slug: z.string(),
+	}),
+	cms: { pathname: [{ field: 'urlFamily' }, { field: 'slug' }] },
+})
+
+export const collections = { blog, authors, people }

@@ -1,4 +1,4 @@
-import { type CmsCore, type CmsFileSystem, parseProjectCmsConfig } from '@nuasite/cms-core'
+import { type CmsCore, type CmsFileSystem, parseProjectCmsConfig, resolvePathnameFromSpec } from '@nuasite/cms-core'
 import type { CmsConfig, CollectionDefinition, CollectionEntry, CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
 import { hashContent, hashSource, KeyedMutex } from './concurrency'
 import {
@@ -543,9 +543,22 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		// pathname on any fs error — better absent than wrong.
 		const routes = await resolveCollectionRoutes(fs).catch(() => new Map<string, CollectionRoute>())
 		const route = routes.get(collection)
-		const all = route === undefined
-			? (def.entries ?? [])
-			: (def.entries ?? []).map(e => (e.pathname === undefined ? { ...e, pathname: entryPathname(route, e.slug) } : e))
+		const all = (def.entries ?? []).map(e => {
+			if (e.pathname !== undefined) return e
+			// A declarative `cms.pathname` rule is authoritative: derive the entry's
+			// URL from its fields (e.g. topic/urlFamily + slug), matching the site's
+			// forward resolver. This is what lets an entry whose URL segment differs
+			// from its filename slug — people stored as `<role>__<slug>.md` served at
+			// `/<family>/<slug>`, or the same slug under two topic prefixes — resolve
+			// to the correct page in the editor iframe instead of a guessed
+			// `<route-prefix>/<filename-slug>`.
+			const fromSpec = resolvePathnameFromSpec(def, e.data)
+			if (fromSpec !== undefined) return { ...e, pathname: fromSpec }
+			// No rule: fall back to the discovered route prefix + slug (unchanged
+			// behavior for collections that don't declare `cms.pathname`).
+			if (route !== undefined) return { ...e, pathname: entryPathname(route, e.slug) }
+			return e
+		})
 		const filtered = filterByDraft(all, query.draft)
 
 		const offset = decodeCursor(query.cursor)

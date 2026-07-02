@@ -75,7 +75,7 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(res.status).toBe(200)
 		const model = await jsonOf<ProjectModel>(res)
 
-		expect(model.collections.map(c => c.name).sort()).toEqual(['authors', 'blog', 'docs', 'settings', 'team'])
+		expect(model.collections.map(c => c.name).sort()).toEqual(['authors', 'blog', 'docs', 'people', 'settings', 'team'])
 		expect(model.capabilities.coreVersion).toBe('0.42.1')
 		expect(model.capabilities.features).toEqual([...SIDECAR_FEATURES])
 
@@ -186,6 +186,19 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		const list = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/authors/entries?draft=all'))
 		expect(list.entries.length).toBeGreaterThan(0)
 		expect(list.entries.every(e => e.pathname === undefined)).toBe(true)
+	})
+
+	test('GET …/entries derives pathname from a `cms.pathname` rule, overriding the route guess', async () => {
+		const { server } = await freshServer()
+		// `people` declares `cms: { pathname: [{ field: 'urlFamily' }, { field: 'slug' }] }`.
+		// Its entry is the file `expert__adela.md` (on-disk slug `expert__adela`) with
+		// frontmatter `urlFamily: lide, slug: adela`, and it's served through
+		// `src/pages/autori/[slug].astro` → route base `/autori`. Without the rule the
+		// sidecar would guess `/autori/expert__adela` (the exact editor-iframe bug); the
+		// declarative rule must win and yield `/lide/adela`.
+		const list = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/people/entries?draft=all'))
+		const entry = list.entries.find(e => e.slug === 'expert__adela')
+		expect(entry?.pathname).toBe('/lide/adela')
 	})
 
 	test('GET …/entries?draft filter', async () => {
