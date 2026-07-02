@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { scanCollections } from '../../src/collection-scanner'
+import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import { partitionFields } from '../../src/editor/components/field-utils'
 import type { FieldDefinition } from '../../src/types'
 import { setupContentCollections, withTempDir } from '../utils'
@@ -11,7 +11,7 @@ withTempDir('collection-scanner: semantic role detection', (getCtx) => {
 		await ctx.writeFile('src/content/posts/post-1.md', `---\ntitle: A\ndraft: true\n---\n`)
 		await ctx.writeFile('src/content/posts/post-2.md', `---\ntitle: B\ndraft: false\n---\n`)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const draft = result['posts']!.fields.find((f: FieldDefinition) => f.name === 'draft')
 		expect(draft?.role).toBe('publish-toggle')
 	})
@@ -22,7 +22,7 @@ withTempDir('collection-scanner: semantic role detection', (getCtx) => {
 		await ctx.writeFile('src/content/posts/post-1.md', `---\ntitle: A\nisDraft: true\npublished: false\n---\n`)
 		await ctx.writeFile('src/content/posts/post-2.md', `---\ntitle: B\nisDraft: false\npublished: true\n---\n`)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const fields = result['posts']!.fields
 		const toggles = fields.filter((f: FieldDefinition) => f.role === 'publish-toggle')
 		expect(toggles.length).toBe(1)
@@ -34,7 +34,7 @@ withTempDir('collection-scanner: semantic role detection', (getCtx) => {
 		await setupContentCollections(ctx, ['posts'])
 		await ctx.writeFile('src/content/posts/post-1.md', `---\ntitle: A\ndraft: "maybe"\n---\n`)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const draft = result['posts']!.fields.find((f: FieldDefinition) => f.name === 'draft')
 		expect(draft?.role).toBeUndefined()
 	})
@@ -44,7 +44,7 @@ withTempDir('collection-scanner: semantic role detection', (getCtx) => {
 		await setupContentCollections(ctx, ['posts'])
 		await ctx.writeFile('src/content/posts/post-1.md', `---\ntitle: A\ndate: '2025-01-01'\n---\n`)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const date = result['posts']!.fields.find((f: FieldDefinition) => f.name === 'date')
 		expect(date?.role).toBe('publish-date')
 	})
@@ -56,7 +56,7 @@ withTempDir('collection-scanner: semantic role detection', (getCtx) => {
 		await ctx.writeFile('src/content/b/e1.md', `---\ntitle: B\npublishedAt: '2025-01-01'\n---\n`)
 		await ctx.writeFile('src/content/c/e1.md', `---\ntitle: C\npubDate: '2025-01-01'\n---\n`)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		expect(result['a']!.fields.find((f: FieldDefinition) => f.name === 'publishDate')?.role).toBe('publish-date')
 		expect(result['b']!.fields.find((f: FieldDefinition) => f.name === 'publishedAt')?.role).toBe('publish-date')
 		expect(result['c']!.fields.find((f: FieldDefinition) => f.name === 'pubDate')?.role).toBe('publish-date')
@@ -67,7 +67,7 @@ withTempDir('collection-scanner: semantic role detection', (getCtx) => {
 		await setupContentCollections(ctx, ['events'])
 		await ctx.writeFile('src/content/events/e1.md', `---\ntitle: A\neventDate: '2025-01-01'\n---\n`)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['events']!.fields.find((f: FieldDefinition) => f.name === 'eventDate')
 		expect(field?.type).toBe('date')
 		expect(field?.role).toBe('publish-date')
@@ -81,7 +81,7 @@ withTempDir('collection-scanner: semantic role detection', (getCtx) => {
 			`---\ntitle: A\ndate: '2025-01-01'\nupdatedAt: '2025-02-01'\n---\n`,
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const tagged = result['posts']!.fields.filter((f: FieldDefinition) => f.role === 'publish-date')
 		expect(tagged.length).toBe(1)
 		expect(tagged[0]!.name).toBe('date')

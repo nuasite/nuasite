@@ -391,13 +391,17 @@ async function buildCollectionDefinition(
 	const entryInfos: CollectionEntryInfo[] = []
 	let hasDraft = false
 
+	// Read tolerantly: a file removed/renamed between the directory listing and the
+	// read (routine during dev on save/checkout) must skip that one entry, not reject
+	// the whole Promise.all and abort the scan.
 	const fileContents = await Promise.all(
-		sources.map(s => fs.readFile(path.join(basePath, s.relPath))),
+		sources.map(s => fs.readFile(path.join(basePath, s.relPath)).catch(() => null)),
 	)
 
 	for (let i = 0; i < sources.length; i++) {
 		const source = sources[i]!
 		const content = fileContents[i]!
+		if (content === null) continue
 		const frontmatter = parseFrontmatter(content)
 
 		const directives = parseFieldDirectives(content)
@@ -947,14 +951,20 @@ export async function scanCollections(
 
 	const entries = await fs.list(contentDir)
 
+	// Each collection scans independently: a single unreadable/racing collection is
+	// skipped (logged) rather than rejecting Promise.all and aborting every collection.
 	const scanPromises = entries
 		.filter(entry => entry.isDirectory && !entry.name.startsWith('_') && !entry.name.startsWith('.'))
 		.map(async entry => {
-			const collectionPath = path.join(contentDir, entry.name)
-			const definition = await scanCollection(fs, collectionPath, entry.name, contentDir)
-				?? await scanDataCollection(fs, collectionPath, entry.name, contentDir)
-			if (definition) {
-				collections[entry.name] = definition
+			try {
+				const collectionPath = path.join(contentDir, entry.name)
+				const definition = await scanCollection(fs, collectionPath, entry.name, contentDir)
+					?? await scanDataCollection(fs, collectionPath, entry.name, contentDir)
+				if (definition) {
+					collections[entry.name] = definition
+				}
+			} catch (error) {
+				console.warn(`[cms] Skipping collection "${entry.name}" — scan failed:`, error)
 			}
 		})
 
@@ -965,7 +975,13 @@ export async function scanCollections(
 	for (const [collectionName, parsedCollection] of parsed) {
 		if (collections[collectionName]) continue
 		if (!parsedCollection.loaderBase || !parsedCollection.loaderPattern) continue
-		const definition = await scanGlobCollection(fs, collectionName, parsedCollection.loaderBase, parsedCollection.loaderPattern, contentDir)
+		let definition: CollectionDefinition | null
+		try {
+			definition = await scanGlobCollection(fs, collectionName, parsedCollection.loaderBase, parsedCollection.loaderPattern, contentDir)
+		} catch (error) {
+			console.warn(`[cms] Skipping glob collection "${collectionName}" — scan failed:`, error)
+			continue
+		}
 		if (!definition) continue
 		// Nest under the collection that owns the shared base directory (e.g. jsem-otazky -> jsem),
 		// so the CMS browser can group it under its parent page instead of listing it flat.

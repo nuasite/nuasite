@@ -1,13 +1,13 @@
 import { expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { scanCollections } from '../../src/collection-scanner'
+import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import { tryAstroImageUpload } from '../../src/handlers/astro-image-upload'
 import { ManifestWriter } from '../../src/manifest-writer'
 import { setupContentCollections, withTempDir } from '../utils'
 
 async function buildManifestWriter() {
-	const collections = await scanCollections()
+	const collections = await scanCollections(createNodeFs(process.cwd()))
 	const mw = new ManifestWriter('cms-manifest.json')
 	mw.setCollectionDefinitions(collections)
 	return mw
