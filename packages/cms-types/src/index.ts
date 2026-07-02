@@ -378,3 +378,220 @@ export interface MediaStorageAdapter {
 	/** Local filesystem info for direct file serving in dev (bypasses Vite's public dir cache) */
 	staticFiles?: { urlPrefix: string; dir: string }
 }
+
+// === Render / manifest model ==========================================
+// Moved here from @nuasite/cms so DOM-free consumers (e.g. Cloudflare
+// Workers) can use the manifest types. @nuasite/cms re-exports them.
+
+export interface BackgroundImageMetadata {
+	/** Full Tailwind class, e.g. bg-[url('/path.png')] */
+	bgImageClass: string
+	/** Extracted image URL, e.g. /path.png */
+	imageUrl: string
+	/** Background size class: bg-auto | bg-cover | bg-contain */
+	bgSize?: string
+	/** Background position class: bg-center | bg-top | bg-bottom-left | ... */
+	bgPosition?: string
+	/** Background repeat class: bg-repeat | bg-no-repeat | bg-repeat-x | bg-repeat-y */
+	bgRepeat?: string
+}
+
+/** Image metadata for better tracking and integrity */
+export interface ImageMetadata {
+	/** Image source URL */
+	src: string
+	/** Alt text */
+	alt: string
+	/** SHA256 hash of image content (for integrity checking) */
+	hash?: string
+	/** Image dimensions */
+	dimensions?: { width: number; height: number }
+	/** Responsive image srcset */
+	srcSet?: string
+	/** Image sizes attribute */
+	sizes?: string
+	/** 0-based DOM-order index of this `<img>` among same-(src, sourceFile)
+	 *  occurrences on the page. Disambiguates source location when the same
+	 *  image URL appears multiple times in the same source file. */
+	srcOccurrence?: number
+}
+
+/** Content constraints for validation */
+export interface ContentConstraints {
+	/** Maximum content length */
+	maxLength?: number
+	/** Minimum content length */
+	minLength?: number
+	/** Regex pattern for validation */
+	pattern?: string
+	/** Allowed HTML tags for rich text content */
+	allowedTags?: string[]
+}
+
+/** Represents a single Tailwind color with its shades and values */
+export interface TailwindColor {
+	/** Color name (e.g., 'red', 'blue', 'primary') */
+	name: string
+	/** Map of shade to CSS color value (e.g., { '500': '#ef4444', '600': '#dc2626' }) */
+	values: Record<string, string>
+	/** Whether this is a custom/theme color vs default Tailwind */
+	isCustom?: boolean
+}
+
+/** Attribute with source information for git diff tracking */
+export interface Attribute {
+	/** The resolved attribute value (from rendered HTML) */
+	value: string
+	/** The expression text if dynamic (e.g., "component.githubUrl") */
+	sourceExpression?: string
+	/** Path to the source file where the value is defined */
+	sourcePath?: string
+	/** Line number where the value is defined in source (1-indexed) */
+	sourceLine?: number
+	/** The exact source snippet that can be replaced for git diff */
+	sourceSnippet?: string
+}
+
+/** Available colors palette from Tailwind config */
+export interface AvailableColors {
+	/** All available colors with their shades */
+	colors: TailwindColor[]
+	/** Default Tailwind color names */
+	defaultColors: string[]
+	/** Custom/theme color names */
+	customColors: string[]
+}
+
+/** Text style value with class name and CSS properties */
+export interface TextStyleValue {
+	/** Tailwind class name (e.g., 'font-bold', 'text-xl') */
+	class: string
+	/** Display label for UI */
+	label: string
+	/** CSS properties to apply (e.g., { fontWeight: '700' }) */
+	css: Record<string, string>
+}
+
+/** Available text styles from Tailwind config */
+export interface AvailableTextStyles {
+	/** Font weight options (font-normal, font-bold, etc.) */
+	fontWeight: TextStyleValue[]
+	/** Font size options (text-xs, text-sm, text-base, etc.) */
+	fontSize: TextStyleValue[]
+	/** Text decoration options (underline, line-through, etc.) */
+	textDecoration: TextStyleValue[]
+	/** Font style options (italic, not-italic) */
+	fontStyle: TextStyleValue[]
+}
+
+export interface ManifestEntry {
+	id: string
+	tag: string
+	/** Plain text content (for display/search) */
+	text: string
+	/** HTML content when element contains inline styling (strong, em, etc.) */
+	html?: string
+	sourcePath?: string
+	sourceLine?: number
+	/** Full element snippet from opening to closing tag (for text content updates) */
+	sourceSnippet?: string
+	variableName?: string
+	childCmsIds?: string[]
+	parentComponentId?: string
+	/** Collection name for collection entries (e.g., 'services', 'blog') */
+	collectionName?: string
+	/** Entry slug for collection entries (e.g., '3d-tisk') */
+	collectionSlug?: string
+	/** Schema field name when this entry was resolved to a specific collection field (e.g., 'image', 'cover'). */
+	collectionFieldName?: string
+	/** Path to the markdown content file (e.g., 'src/content/blog/my-post.md') */
+	contentPath?: string
+
+	// === Robustness fields ===
+
+	/** Stable ID derived from content + context hash, survives rebuilds */
+	stableId?: string
+	/** SHA256 hash of sourceSnippet at generation time for conflict detection */
+	sourceHash?: string
+	/** Image metadata for img elements (replaces imageSrc/imageAlt) */
+	imageMetadata?: ImageMetadata
+	/** Background image metadata for elements using bg-[url()] */
+	backgroundImage?: BackgroundImageMetadata
+	/** Content validation constraints */
+	constraints?: ContentConstraints
+	/** Color classes applied to this element (for buttons, etc.) */
+	colorClasses?: Record<string, Attribute>
+	/** All HTML attributes with source information */
+	attributes?: Record<string, Attribute>
+	/** Whether inline text styling (bold, italic, etc.) can be applied.
+	 *  False when text comes from a string variable/prop that cannot contain HTML markup. */
+	allowStyling?: boolean
+
+	// === Reference field metadata ===
+
+	/** Collection the text was found in when it came through a reference (e.g., 'authors') */
+	referenceCollection?: string
+	/** Collections that have reference fields pointing to referenceCollection */
+	referencedBy?: Array<{ collection: string; fieldName: string; isArray?: boolean }>
+}
+
+export interface ComponentInstance {
+	id: string
+	componentName: string
+	file: string
+	sourcePath: string
+	sourceLine: number
+	props: Record<string, any>
+	slots?: Record<string, string>
+	parentId?: string
+	/** File where this component is invoked (parent page/layout) */
+	invocationSourcePath?: string
+	/** 0-based index among same-name component invocations in the parent file */
+	invocationIndex?: number
+	/** Whether this component represents an inline HTML element inside a .map() array */
+	isInlineArray?: boolean
+}
+
+/** Manifest metadata for versioning and conflict detection */
+export interface ManifestMetadata {
+	/** Manifest schema version */
+	version: string
+	/** ISO timestamp when manifest was generated */
+	generatedAt: string
+	/** Build system that generated the manifest (e.g., 'astro', 'vite') */
+	generatedBy?: string
+	/** Build ID for correlation */
+	buildId?: string
+	/** SHA256 hash of all entry content for quick drift detection */
+	contentHash?: string
+	/** Per-source-file hashes for granular conflict detection */
+	sourceFileHashes?: Record<string, string>
+}
+
+/** Page entry for the global manifest */
+export interface PageEntry {
+	/** Page URL pathname (e.g., '/', '/about') */
+	pathname: string
+	/** Page title from SEO data */
+	title?: string
+}
+
+export interface CmsManifest {
+	/** Manifest metadata for versioning and conflict detection */
+	metadata?: ManifestMetadata
+	entries: Record<string, ManifestEntry>
+	components: Record<string, ComponentInstance>
+	componentDefinitions: Record<string, ComponentDefinition>
+	/** Content collection entries indexed by "collectionName/slug" */
+	collections?: Record<string, CollectionEntry>
+	/** Collection definitions with inferred schemas */
+	collectionDefinitions?: Record<string, CollectionDefinition>
+	/** Available Tailwind colors from the project's config */
+	availableColors?: AvailableColors
+	/** Available text styles from the project's Tailwind config */
+	availableTextStyles?: AvailableTextStyles
+	/** All pages in the site with pathname and title */
+	pages?: PageEntry[]
+	/** Component names allowed in the MDX component picker (undefined = all) */
+	mdxComponents?: string[]
+}
