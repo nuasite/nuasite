@@ -1,5 +1,5 @@
-import { expect, test } from 'bun:test'
 import { createNodeFs, scanCollections } from '@nuasite/cms-core'
+import { expect, test } from 'bun:test'
 import type { FieldDefinition } from '../../src/types'
 import { setupContentCollections, type TempDirContext, withTempDir } from '../utils'
 

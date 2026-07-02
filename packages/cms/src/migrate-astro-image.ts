@@ -1,7 +1,7 @@
+import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parseDocument } from 'yaml'
-import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import { pickAstroImageTarget } from './astro-image-paths'
 import { getProjectRoot } from './config'
 

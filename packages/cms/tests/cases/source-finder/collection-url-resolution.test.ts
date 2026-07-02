@@ -137,13 +137,27 @@ withTempDir('findCollectionSource - URL-based disambiguation', (getCtx) => {
 // threaded in from `manifestWriter.getCollectionDefinitions()` on the hot path.
 describe('findCollectionSource - cms.pathname spec resolution', () => {
 	function makeDef(name: string, pathname: CollectionDefinition['pathname'], entries: CollectionDefinition['entries']): CollectionDefinition {
-		return { name, label: name, path: `content/${name}`, entryCount: entries?.length ?? 0, fields: [], fileExtension: 'md', type: 'content', pathname, entries }
+		return {
+			name,
+			label: name,
+			path: `content/${name}`,
+			entryCount: entries?.length ?? 0,
+			fields: [],
+			fileExtension: 'md',
+			type: 'content',
+			pathname,
+			entries,
+		}
 	}
 
 	test('resolves a people entry whose filename encodes a role, via urlFamily + slug', async () => {
 		const collections = {
 			people: makeDef('people', [{ field: 'urlFamily' }, { field: 'slug' }], [
-				{ slug: 'expert__adela-lancova', sourcePath: 'content/people/expert__adela-lancova.md', data: { urlFamily: 'lide-sveta-neziskovek', slug: 'adela-lancova' } },
+				{
+					slug: 'expert__adela-lancova',
+					sourcePath: 'content/people/expert__adela-lancova.md',
+					data: { urlFamily: 'lide-sveta-neziskovek', slug: 'adela-lancova' },
+				},
 			]),
 		}
 		const res = await findCollectionSource('/lide-sveta-neziskovek/adela-lancova', 'content', collections)

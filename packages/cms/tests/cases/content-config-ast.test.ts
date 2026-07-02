@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import { parseConfigSource } from '@nuasite/cms-core'
+import { describe, expect, test } from 'bun:test'
 
 describe('parseConfigSource — supported forms', () => {
 	test('detects fields in `n.object({...})` schema', () => {

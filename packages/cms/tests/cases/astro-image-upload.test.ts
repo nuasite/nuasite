@@ -1,7 +1,7 @@
+import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import { expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import { tryAstroImageUpload } from '../../src/handlers/astro-image-upload'
 import { ManifestWriter } from '../../src/manifest-writer'
 import { setupContentCollections, withTempDir } from '../utils'

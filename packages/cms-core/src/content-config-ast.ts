@@ -1,6 +1,14 @@
 import { parse as parseBabel } from '@babel/parser'
 import type * as t from '@babel/types'
-import { type CollectionLayout, type CollectionLayoutSection, type FieldHints, type FieldType, isFieldType, type PathnameSegment, type PathnameSpec } from '@nuasite/cms-types'
+import {
+	type CollectionLayout,
+	type CollectionLayoutSection,
+	type FieldHints,
+	type FieldType,
+	isFieldType,
+	type PathnameSegment,
+	type PathnameSpec,
+} from '@nuasite/cms-types'
 import type { CmsFileSystem } from './fs/types'
 
 export interface ParsedReference {
