@@ -3,7 +3,7 @@ import path from 'node:path'
 import { isMap, isPair, isScalar, parse as parseYaml, parseDocument } from 'yaml'
 import { type ParseCache, parseContentConfig, type ParsedConfig, type ParsedField } from './content-config-ast'
 import type { CmsFileSystem } from './fs/types'
-import { slugifyHref } from './shared'
+import { resolvePathnameFromSpec, slugifyHref } from './shared'
 
 /** Regex patterns for type inference */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}/
@@ -391,13 +391,17 @@ async function buildCollectionDefinition(
 	const entryInfos: CollectionEntryInfo[] = []
 	let hasDraft = false
 
+	// Read tolerantly: a file removed/renamed between the directory listing and the
+	// read (routine during dev on save/checkout) must skip that one entry, not reject
+	// the whole Promise.all and abort the scan.
 	const fileContents = await Promise.all(
-		sources.map(s => fs.readFile(path.join(basePath, s.relPath))),
+		sources.map(s => fs.readFile(path.join(basePath, s.relPath)).catch(() => null)),
 	)
 
 	for (let i = 0; i < sources.length; i++) {
 		const source = sources[i]!
 		const content = fileContents[i]!
+		if (content === null) continue
 		const frontmatter = parseFrontmatter(content)
 
 		const directives = parseFieldDirectives(content)
@@ -605,6 +609,8 @@ function applyParsedConfig(
 
 		// Declarative form layout from `defineCmsCollection({ cms })`.
 		if (parsedColl.layout) def.layout = parsedColl.layout
+		// Declarative page-URL rule from `defineCmsCollection({ cms: { pathname } })`.
+		if (parsedColl.pathname) def.pathname = parsedColl.pathname
 	}
 }
 
@@ -947,14 +953,20 @@ export async function scanCollections(
 
 	const entries = await fs.list(contentDir)
 
+	// Each collection scans independently: a single unreadable/racing collection is
+	// skipped (logged) rather than rejecting Promise.all and aborting every collection.
 	const scanPromises = entries
 		.filter(entry => entry.isDirectory && !entry.name.startsWith('_') && !entry.name.startsWith('.'))
 		.map(async entry => {
-			const collectionPath = path.join(contentDir, entry.name)
-			const definition = await scanCollection(fs, collectionPath, entry.name, contentDir)
-				?? await scanDataCollection(fs, collectionPath, entry.name, contentDir)
-			if (definition) {
-				collections[entry.name] = definition
+			try {
+				const collectionPath = path.join(contentDir, entry.name)
+				const definition = await scanCollection(fs, collectionPath, entry.name, contentDir)
+					?? await scanDataCollection(fs, collectionPath, entry.name, contentDir)
+				if (definition) {
+					collections[entry.name] = definition
+				}
+			} catch (error) {
+				console.warn(`[cms] Skipping collection "${entry.name}" — scan failed:`, error)
 			}
 		})
 
@@ -965,7 +977,13 @@ export async function scanCollections(
 	for (const [collectionName, parsedCollection] of parsed) {
 		if (collections[collectionName]) continue
 		if (!parsedCollection.loaderBase || !parsedCollection.loaderPattern) continue
-		const definition = await scanGlobCollection(fs, collectionName, parsedCollection.loaderBase, parsedCollection.loaderPattern, contentDir)
+		let definition: CollectionDefinition | null
+		try {
+			definition = await scanGlobCollection(fs, collectionName, parsedCollection.loaderBase, parsedCollection.loaderPattern, contentDir)
+		} catch (error) {
+			console.warn(`[cms] Skipping glob collection "${collectionName}" — scan failed:`, error)
+			continue
+		}
 		if (!definition) continue
 		// Nest under the collection that owns the shared base directory (e.g. jsem-otazky -> jsem),
 		// so the CMS browser can group it under its parent page instead of listing it flat.
@@ -981,6 +999,34 @@ export async function scanCollections(
 	detectDerivedHrefFields(collections)
 	assignSemanticRoles(collections)
 	applyCollectionOrderBy(collections, parsed)
+	warnOnPathnameCollisions(collections)
 
 	return collections
+}
+
+/**
+ * Warn when a collection's declarative `cms.pathname` rule maps two distinct
+ * entries to the same URL — e.g. an all-literal spec, or a spec whose `field`
+ * segments are constant across entries. Such a rule silently collapses entries
+ * onto one page, so surface it at scan time (once per scan) rather than letting
+ * the manifest ship colliding pathnames with no signal. Runs after
+ * `applyParsedConfig`, which is where `def.pathname` gets populated.
+ */
+function warnOnPathnameCollisions(collections: Record<string, CollectionDefinition>): void {
+	for (const def of Object.values(collections)) {
+		if (!def.pathname || !def.entries) continue
+		const bySlug = new Map<string, string>()
+		for (const entry of def.entries) {
+			const pathname = resolvePathnameFromSpec(def, entry.data)
+			if (!pathname) continue
+			const prev = bySlug.get(pathname)
+			if (prev) {
+				console.warn(
+					`[cms] collection "${def.name}": pathname rule maps both "${prev}" and "${entry.slug}" to "${pathname}" — these entries will collide on one URL`,
+				)
+			} else {
+				bySlug.set(pathname, entry.slug)
+			}
+		}
+	}
 }

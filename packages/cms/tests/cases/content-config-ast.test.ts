@@ -1,5 +1,5 @@
+import { parseConfigSource } from '@nuasite/cms-core'
 import { describe, expect, test } from 'bun:test'
-import { parseConfigSource } from '../../src/content-config-ast'
 
 describe('parseConfigSource — supported forms', () => {
 	test('detects fields in `n.object({...})` schema', () => {

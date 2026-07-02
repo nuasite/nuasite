@@ -24,6 +24,8 @@ export type {
 	FieldHints,
 	FieldType,
 	MutationResult,
+	PathnameSegment,
+	PathnameSpec,
 } from '@nuasite/cms-types'
 export type {
 	AddRedirectRequest,

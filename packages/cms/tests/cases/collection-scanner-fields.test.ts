@@ -1,5 +1,5 @@
+import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import { expect, test } from 'bun:test'
-import { scanCollections } from '../../src/collection-scanner'
 import type { FieldDefinition } from '../../src/types'
 import { setupContentCollections, type TempDirContext, withTempDir } from '../utils'
 
@@ -26,7 +26,7 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 			}),
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const teamDef = result['team']
 		expect(teamDef).toBeDefined()
 
@@ -58,7 +58,7 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 			}),
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const def = result['testimonials']
 		expect(def).toBeDefined()
 
@@ -83,7 +83,7 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 			JSON.stringify({ name: 'Post', tags: ['a', 'b', 'c'] }),
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const postsDef = result['posts']
 		expect(postsDef).toBeDefined()
 
@@ -103,7 +103,7 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 			JSON.stringify({ name: 'Post', items: [] }),
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const postsDef = result['posts']
 		expect(postsDef).toBeDefined()
 
@@ -126,7 +126,7 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 			JSON.stringify({ name: 'B', data: [{ key: 'y' }] }),
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const miscDef = result['misc']
 		expect(miscDef).toBeDefined()
 
@@ -155,7 +155,7 @@ withTempDir('collection-scanner: array-of-objects sub-field inference', (getCtx)
 			}),
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const productsDef = result['products']
 		expect(productsDef).toBeDefined()
 
@@ -213,7 +213,7 @@ withTempDir('collection-scanner: schema field filtering', (getCtx) => {
 			`---\ntitle: World\ndate: '2025-01-02'\norder: 10\n---\nContent`,
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const postsDef = result['posts']
 		expect(postsDef).toBeDefined()
 
@@ -233,7 +233,7 @@ withTempDir('collection-scanner: schema field filtering', (getCtx) => {
 			`---\ntitle: Note\npriority: 1\n---\nContent`,
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const notesDef = result['notes']
 		expect(notesDef).toBeDefined()
 
@@ -260,7 +260,7 @@ withTempDir('collection-scanner: n.xxx type detection', (getCtx) => {
 			`---\ntitle: Hello\nphoto: /img/hero.jpg\nwebsite: https://example.com\nbio: Some long bio text\n---\nContent`,
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const postsDef = result['posts']
 		expect(postsDef).toBeDefined()
 
@@ -303,7 +303,7 @@ export const collections = { posts: postsCollection }
 			`---\ntitle: Hello\ncover: ./hero.jpg\ncaption: Sample\n---\nContent`,
 		)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const postsDef = result['posts']
 		expect(postsDef).toBeDefined()
 

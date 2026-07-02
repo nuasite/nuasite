@@ -1,5 +1,5 @@
+import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import { expect, test } from 'bun:test'
-import { scanCollections } from '../../src/collection-scanner'
 import type { FieldDefinition } from '../../src/types'
 import { setupContentCollections, type TempDirContext, withTempDir } from '../utils'
 
@@ -68,7 +68,7 @@ export const collections = { foo, 'foo-items': fooItems }
 		await ctx.writeFile('src/content/foo/alpha/items/one.md', '---\ntitle: One\n---\n')
 		await ctx.writeFile('src/content/foo/beta/items/two.mdx', '---\ntitle: Two\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		expect(Object.keys(result).sort()).toEqual(['foo', 'foo-items'])
 		expect(result['foo']!.entries!.map(e => e.slug).sort()).toEqual(['alpha', 'beta'])
 		expect(result['foo']!.entries!.map(e => e.sourcePath).sort()).toEqual([
@@ -90,7 +90,7 @@ export const collections = { foo, 'foo-items': fooItems }
 		await ctx.writeFile('src/content/team/b.md', '---\nname: Bob\norder: 2\n---\n')
 		await ctx.writeFile('src/content/team/a.md', '---\nname: Alice\norder: 1\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const def = result['team']!
 		expect(def.orderBy).toBe('order')
 		expect(def.orderDirection).toBe('asc')
@@ -104,7 +104,7 @@ export const collections = { foo, 'foo-items': fooItems }
 		await ctx.writeFile('src/content/blog/old.md', '---\ntitle: Old\ndate: "2024-01-01"\n---\n')
 		await ctx.writeFile('src/content/blog/new.md', '---\ntitle: New\ndate: "2025-06-15"\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const def = result['blog']!
 		expect(def.orderBy).toBe('date')
 		expect(def.orderDirection).toBe('desc')
@@ -117,7 +117,7 @@ export const collections = { foo, 'foo-items': fooItems }
 
 		await ctx.writeFile('src/content/items/a.md', '---\nname: A\norder: 1\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const def = result['items']!
 		expect(def.orderBy).toBe('order')
 		expect(def.orderDirection).toBe('asc')
@@ -130,7 +130,7 @@ export const collections = { foo, 'foo-items': fooItems }
 
 		await ctx.writeFile('src/content/posts/a.md', '---\ntitle: A\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const def = result['posts']!
 		expect(def.orderBy).toBeUndefined()
 		expect(def.orderDirection).toBeUndefined()
@@ -145,7 +145,7 @@ export const collections = { foo, 'foo-items': fooItems }
 		await ctx.writeFile('src/content/team/a.md', '---\nname: Alice\norder: 1\n---\n')
 		await ctx.writeFile('src/content/team/b.md', '---\nname: Bob\norder: 2\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const slugs = result['team']!.entries!.map((e: { slug: string }) => e.slug)
 		expect(slugs).toEqual(['a', 'b', 'c'])
 	})
@@ -159,7 +159,7 @@ export const collections = { foo, 'foo-items': fooItems }
 		await ctx.writeFile('src/content/blog/mid.md', '---\ntitle: Mid\ndate: "2024-06-15"\n---\n')
 		await ctx.writeFile('src/content/blog/new.md', '---\ntitle: New\ndate: "2025-01-01"\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const slugs = result['blog']!.entries!.map((e: { slug: string }) => e.slug)
 		expect(slugs).toEqual(['new', 'mid', 'old'])
 	})
@@ -172,7 +172,7 @@ export const collections = { foo, 'foo-items': fooItems }
 		await ctx.writeFile('src/content/items/no-order.md', '---\nname: No Order\n---\n')
 		await ctx.writeFile('src/content/items/first.md', '---\nname: First\norder: 1\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const entries = result['items']!.entries!
 		expect(entries[0]!.data?.name).toBe('First')
 		// Entry without order field sorts to end
@@ -190,7 +190,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/team/a.md', '---\nname: A\norder: 5\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['team']!.fields.find((f: FieldDefinition) => f.name === 'order')!
 		expect(field.hints).toBeDefined()
 		expect(field.hints!.min).toBe(1)
@@ -205,7 +205,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/posts/a.md', '---\ntitle: Hello\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['posts']!.fields.find((f: FieldDefinition) => f.name === 'title')!
 		expect(field.hints).toBeDefined()
 		expect(field.hints!.placeholder).toBe('Enter title')
@@ -219,7 +219,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/team/a.md', '---\nname: A\nbio: Some bio\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['team']!.fields.find((f: FieldDefinition) => f.name === 'bio')!
 		expect(field.hints).toBeDefined()
 		expect(field.hints!.rows).toBe(4)
@@ -233,7 +233,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/events/a.md', '---\ntitle: Event\ndate: "2025-06-01"\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['events']!.fields.find((f: FieldDefinition) => f.name === 'date')!
 		expect(field.hints).toBeDefined()
 		expect(field.hints!.min).toBe('2024-01-01')
@@ -247,7 +247,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/posts/a.md', '---\ntitle: A\norder: 1\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['posts']!.fields.find((f: FieldDefinition) => f.name === 'order')!
 		expect(field.hints).toBeUndefined()
 	})
@@ -259,7 +259,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/items/a.md', '---\nname: A\nprice: 9.99\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['items']!.fields.find((f: FieldDefinition) => f.name === 'price')!
 		expect(field.hints).toBeDefined()
 		expect(field.hints!.step).toBe(0.01)
@@ -273,7 +273,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/posts/a.md', '---\ntitle: Hello\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['posts']!.fields.find((f: FieldDefinition) => f.name === 'title')!
 		expect(field.hints!.placeholder).toBe('Enter title')
 	})
@@ -289,7 +289,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/team/a.md', '---\nname: Alice\norder: 1\nbio: Bio text\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const fields = result['team']!.fields
 
 		const name = fields.find((f: FieldDefinition) => f.name === 'name')!
@@ -311,7 +311,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/data/a.md', '---\nname: A\ntemp: 20\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['data']!.fields.find((f: FieldDefinition) => f.name === 'temp')!
 		expect(field.hints).toBeDefined()
 		expect(field.hints!.min).toBe(-40)
@@ -325,7 +325,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/items/a.md', '---\nname: A\nqty: 5\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['items']!.fields.find((f: FieldDefinition) => f.name === 'qty')!
 		expect(field.hints).toBeDefined()
 		expect(field.hints!.min).toBe(0)
@@ -347,7 +347,7 @@ withTempDir('collection-scanner: field hints', (getCtx) => {
 
 		await ctx.writeFile('src/content/team/a.md', '---\nname: A\nbio: Bio\n---\n')
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const field = result['team']!.fields.find((f: FieldDefinition) => f.name === 'bio')!
 		expect(field.hints).toBeDefined()
 		expect(field.hints!.rows).toBe(5)
@@ -383,7 +383,7 @@ export const collections = { tags: tagsCollection, blog: blogCollection }
 		await ctx.writeFile('src/content/tags/foo.json', JSON.stringify({ name: 'foo' }))
 		await ctx.writeFile('src/content/blog/post-1.md', `---\ntitle: Post\ntags:\n  - foo\n---\nBody`)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const tagsField = result['blog']!.fields.find((f: FieldDefinition) => f.name === 'tags')
 		expect(tagsField).toBeDefined()
 		expect(tagsField!.type).toBe('array')
@@ -398,7 +398,7 @@ export const collections = { tags: tagsCollection, blog: blogCollection }
 
 		await ctx.writeFile('src/content/posts/post-1.md', `---\ntitle: Hello\nstatus: draft\n---\nBody`)
 
-		const result = await scanCollections()
+		const result = await scanCollections(createNodeFs(process.cwd()))
 		const statusField = result['posts']!.fields.find((f: FieldDefinition) => f.name === 'status')
 		expect(statusField).toBeDefined()
 		expect(statusField!.type).toBe('select')

@@ -1,8 +1,8 @@
+import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parseDocument } from 'yaml'
 import { pickAstroImageTarget } from './astro-image-paths'
-import { scanCollections } from './collection-scanner'
 import { getProjectRoot } from './config'
 
 export interface MigrationOptions {
@@ -33,7 +33,7 @@ export async function migrateAstroImages(options: MigrationOptions = {}): Promis
 	const projectRoot = options.projectRoot ?? getProjectRoot()
 	const dryRun = options.dryRun ?? false
 
-	const collections = await scanCollections()
+	const collections = await scanCollections(createNodeFs(projectRoot))
 	const migrations: FieldMigration[] = []
 	const skipped: MigrationResult['skipped'] = []
 

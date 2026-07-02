@@ -104,6 +104,26 @@ export interface FieldDefinition {
 	role?: 'publish-toggle' | 'publish-date'
 }
 
+/**
+ * One segment of a declarative page-URL rule for a collection entry.
+ *
+ * - `{ field }` resolves to the value of `data[field]`; when `map` contains that
+ *   value the mapped replacement is used, otherwise the value passes through.
+ * - `{ literal }` is a fixed path segment.
+ */
+export type PathnameSegment =
+	| { field: string; map?: Record<string, string> }
+	| { literal: string }
+
+/**
+ * Declarative rule for composing an entry's page URL from its frontmatter,
+ * authored via `defineCmsCollection({ cms: { pathname: [...] } })`. Segments are
+ * joined with `/`, prefixed with a single leading `/`, and any trailing slash is
+ * stripped. When any `{ field }` segment's value is missing or not a string the
+ * whole rule yields `undefined`.
+ */
+export type PathnameSpec = PathnameSegment[]
+
 /** One named section of an entry form, grouping a set of fields by name. */
 export interface CollectionLayoutSection {
 	/** Section heading (also the tab label when `display: 'tabs'`). */
@@ -126,6 +146,8 @@ export interface CollectionLayout {
 	sidebar?: string[]
 	/** Ordered main-column sections. Fields not listed fall into a trailing default section. */
 	sections?: CollectionLayoutSection[]
+	/** Declarative rule for composing each entry's page URL from its frontmatter fields. */
+	pathname?: PathnameSpec
 }
 
 /** Per-entry metadata for collection browsing */
@@ -172,6 +194,12 @@ export interface CollectionDefinition {
 	parentCollection?: string
 	/** Declarative entry-form layout (sections/tabs/sidebar), from `defineCmsCollection`. */
 	layout?: CollectionLayout
+	/**
+	 * Declarative rule for composing each entry's page URL from its frontmatter,
+	 * from `defineCmsCollection({ cms: { pathname } })`. When present, it is the
+	 * highest-priority source for an entry's `pathname` in the manifest.
+	 */
+	pathname?: PathnameSpec
 }
 
 /** Represents a content collection entry (markdown file) */

@@ -1,6 +1,14 @@
 import { parse as parseBabel } from '@babel/parser'
 import type * as t from '@babel/types'
-import { type CollectionLayout, type CollectionLayoutSection, type FieldHints, type FieldType, isFieldType } from '@nuasite/cms-types'
+import {
+	type CollectionLayout,
+	type CollectionLayoutSection,
+	type FieldHints,
+	type FieldType,
+	isFieldType,
+	type PathnameSegment,
+	type PathnameSpec,
+} from '@nuasite/cms-types'
 import type { CmsFileSystem } from './fs/types'
 
 export interface ParsedReference {
@@ -44,6 +52,8 @@ export interface ParsedCollection {
 	loaderBase?: string
 	/** Declarative form layout from a `defineCmsCollection({ cms: { … } })` block. */
 	layout?: CollectionLayout
+	/** Declarative page-URL rule from a `defineCmsCollection({ cms: { pathname } })` block. */
+	pathname?: PathnameSpec
 }
 
 export type ParsedConfig = Map<string, ParsedCollection>
@@ -227,6 +237,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				&& propertyKeyName(p.key) === 'cms',
 		)
 		const layout = cmsProperty?.type === 'ObjectProperty' ? parseCmsLayout(cmsProperty.value, bindings) : undefined
+		const pathname = cmsProperty?.type === 'ObjectProperty' ? parseCmsPathname(cmsProperty.value, bindings) : undefined
 
 		const schemaProperty = decl.properties.find(
 			p =>
@@ -241,6 +252,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				loaderPattern,
 				loaderBase,
 				layout,
+				pathname,
 			})
 			continue
 		}
@@ -254,6 +266,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				loaderPattern,
 				loaderBase,
 				layout,
+				pathname,
 			})
 			continue
 		}
@@ -264,6 +277,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 			loaderPattern,
 			loaderBase,
 			layout,
+			pathname,
 		})
 	}
 
@@ -330,6 +344,62 @@ function isDefineCollectionCallee(callee: t.Node): boolean {
 	// `defineCmsCollection` (the @nuasite/cms wrapper carrying a `cms` layout block)
 	// is treated identically — at runtime it strips `cms` and returns the Astro config.
 	return callee.type === 'Identifier' && (callee.name === 'defineCollection' || callee.name === 'defineCmsCollection')
+}
+
+/**
+ * Parse a `cms: { pathname: [...] }` block into a serializable {@link PathnameSpec}.
+ * Robust by design: unknown/malformed entries are skipped and never throw; returns
+ * undefined when no usable segment is found.
+ */
+function parseCmsPathname(node: t.Node, bindings: Bindings): PathnameSpec | undefined {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type !== 'ObjectExpression') return undefined
+
+	const pathnameProp = resolved.properties.find(
+		p => p.type === 'ObjectProperty' && propertyKeyName(p.key) === 'pathname',
+	)
+	if (!pathnameProp || pathnameProp.type !== 'ObjectProperty') return undefined
+
+	const arr = resolveExpression(pathnameProp.value, bindings)
+	if (arr.type !== 'ArrayExpression') return undefined
+
+	const spec: PathnameSpec = []
+	for (const el of arr.elements) {
+		if (!el || el.type === 'SpreadElement') continue
+		const segment = parsePathnameSegment(resolveExpression(el, bindings))
+		if (segment) spec.push(segment)
+	}
+	return spec.length > 0 ? spec : undefined
+}
+
+/** Parse one `{ field, map? }` or `{ literal }` segment object. */
+function parsePathnameSegment(node: t.Node): PathnameSegment | null {
+	if (node.type !== 'ObjectExpression') return null
+	let field: string | undefined
+	let literal: string | undefined
+	let map: Record<string, string> | undefined
+	for (const prop of node.properties) {
+		if (prop.type !== 'ObjectProperty') continue
+		const key = propertyKeyName(prop.key)
+		if (key === 'field' && prop.value.type === 'StringLiteral') field = prop.value.value
+		else if (key === 'literal' && prop.value.type === 'StringLiteral') literal = prop.value.value
+		else if (key === 'map' && prop.value.type === 'ObjectExpression') map = parseStringRecord(prop.value)
+	}
+	if (literal !== undefined) return { literal }
+	if (field !== undefined) return map ? { field, map } : { field }
+	return null
+}
+
+/** Collect string→string pairs from an object expression (non-string values skipped). */
+function parseStringRecord(node: t.ObjectExpression): Record<string, string> | undefined {
+	const out: Record<string, string> = {}
+	for (const prop of node.properties) {
+		if (prop.type !== 'ObjectProperty') continue
+		const key = propertyKeyName(prop.key)
+		if (key === null) continue
+		if (prop.value.type === 'StringLiteral') out[key] = prop.value.value
+	}
+	return Object.keys(out).length > 0 ? out : undefined
 }
 
 function propertyKeyName(key: t.Node): string | null {
