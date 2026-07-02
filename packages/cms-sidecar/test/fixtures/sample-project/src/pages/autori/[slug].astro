@@ -1,0 +1,12 @@
+---
+import { getCollection } from 'astro:content'
+
+export async function getStaticPaths() {
+	const people = await getCollection('people')
+	return people.map((person) => ({ params: { slug: person.id }, props: { person } }))
+}
+
+const { person } = Astro.props
+---
+
+<h1>{person.data.title}</h1>
