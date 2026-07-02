@@ -14,7 +14,7 @@
 		"directory": "packages/cms-types"
 	},
 	"license": "Apache-2.0",
-	"version": "0.46.5",
+	"version": "0.47.0",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
 	"type": "module",
