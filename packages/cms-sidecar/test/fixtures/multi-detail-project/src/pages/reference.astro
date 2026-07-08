@@ -1,0 +1,10 @@
+---
+import { getCollection } from 'astro:content'
+
+const references = await getCollection('references')
+---
+
+<h1>References</h1>
+<ul>
+	{references.map((r) => <li>{r.data.title}</li>)}
+</ul>

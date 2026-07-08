@@ -1,0 +1,17 @@
+---
+import { getCollection } from 'astro:content'
+
+export async function getStaticPaths() {
+	const posts = await getCollection('posts')
+	return posts.map((post) => ({ params: { slug: post.data.slug }, props: { post } }))
+}
+
+const { post } = Astro.props
+// Render-body enrichment: `authors` is a secondary lookup here, not a page-per-item
+// driver — it must NOT be mapped to this route.
+const authors = await getCollection('authors')
+const author = authors[0]
+---
+
+<h1>{post.data.title}</h1>
+<p>{author?.data.title}</p>

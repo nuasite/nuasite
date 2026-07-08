@@ -26,9 +26,9 @@ afterEach(async () => {
 	}
 })
 
-async function freshServer(): Promise<{ server: CmsSidecarServer; root: string }> {
+async function freshServerFrom(fixture: string): Promise<{ server: CmsSidecarServer; root: string }> {
 	const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cms-sidecar-'))
-	await fs.cp(FIXTURE_ROOT, root, { recursive: true })
+	await fs.cp(path.join(__dirname, 'fixtures', fixture), root, { recursive: true })
 	cleanups.push(root)
 	const nodeFs = createNodeFs(root)
 	const core = createCmsCore(nodeFs, {
@@ -37,6 +37,10 @@ async function freshServer(): Promise<{ server: CmsSidecarServer; root: string }
 	})
 	const server = createServer({ core, fs: nodeFs, root, coreVersion: '0.42.1' })
 	return { server, root }
+}
+
+async function freshServer(): Promise<{ server: CmsSidecarServer; root: string }> {
+	return freshServerFrom('sample-project')
 }
 
 const BASE = 'http://sidecar.local/cms/v1'
@@ -186,6 +190,29 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		const list = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/authors/entries?draft=all'))
 		expect(list.entries.length).toBeGreaterThan(0)
 		expect(list.entries.every(e => e.pathname === undefined)).toBe(true)
+	})
+
+	test('GET …/entries: a shared `[slug]` detail wins over the listing for every collection it drives', async () => {
+		const { server } = await freshServerFrom('multi-detail-project')
+		// `src/pages/[slug].astro` drives products + references from one getStaticPaths, and
+		// `reference.astro` / `produkty.astro` also list them. The per-item detail route must
+		// win for BOTH — not just the first getCollection (products) — and a root base `/` must
+		// not double the slash.
+		const products = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/products/entries?draft=all'))
+		expect(products.entries.find(e => e.slug === 'desk')?.pathname).toBe('/desk')
+		const references = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/references/entries?draft=all'))
+		expect(references.entries.find(e => e.slug === 'acme')?.pathname).toBe('/acme')
+		expect([...products.entries, ...references.entries].every(e => e.pathname !== undefined && !e.pathname.includes('//'))).toBe(true)
+	})
+
+	test('GET …/entries excludes a render-body getCollection lookup from the per-item route', async () => {
+		const { server } = await freshServerFrom('multi-detail-project')
+		// `blog/[...slug].astro` drives `posts` in getStaticPaths and reads `authors` in the
+		// render body. posts is page-per-item at `/blog/*`; authors is only a lookup → no pathname.
+		const posts = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/posts/entries?draft=all'))
+		expect(posts.entries.find(e => e.slug === 'first-post')?.pathname).toBe('/blog/first-post')
+		const authors = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/authors/entries?draft=all'))
+		expect(authors.entries.every(e => e.pathname === undefined)).toBe(true)
 	})
 
 	test('GET …/entries derives pathname from a `cms.pathname` rule, overriding the route guess', async () => {
