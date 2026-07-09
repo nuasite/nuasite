@@ -1,4 +1,13 @@
-import { type CmsCore, type CmsFileSystem, parseProjectCmsConfig, resolvePathnameFromSpec, scanRouteCollections } from '@nuasite/cms-core'
+import {
+	type CmsCore,
+	type CmsFileSystem,
+	type CollectionRoute,
+	entryPathname,
+	parseProjectCmsConfig,
+	readRouteMap,
+	resolvePathnameFromSpec,
+	scanRouteCollections,
+} from '@nuasite/cms-core'
 import type { CmsConfig, CollectionDefinition, CollectionEntry, CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
 import { hashContent, hashSource, KeyedMutex } from './concurrency'
 import {
@@ -248,22 +257,12 @@ async function listPages(fs: CmsFileSystem): Promise<PageEntry[]> {
 // ============================================================================
 
 /**
- * How the route that renders a collection turns an entry into a URL:
- * - `perItem`: a dynamic route (`[...slug].astro`) → one page per entry, at
- *   `<base>/<slug>` (base is the route's directory, e.g. `/products`).
- * - shared page (`perItem: false`): a static page that lists the collection →
- *   every entry maps to that one page's URL (`base`, e.g. `/faq`), no slug.
- */
-interface CollectionRoute {
-	base: string
-	perItem: boolean
-}
-
-/**
  * Map each collection to the route that renders it, by parsing the Astro pages under
- * `src/pages` with {@link scanRouteCollections}. This is the only reliable source for an
- * entry's URL — it comes from the route, not the collection name (a `product` collection
- * can live at `/products`, an `faq` collection on a single `/faq` page).
+ * `src/pages` with {@link scanRouteCollections}. This is the fallback source for an entry's
+ * URL, used when the integration hasn't written a `.nua/cms/routes.json` (see
+ * {@link readRouteMap}) — e.g. a standalone sidecar. The URL comes from the route, not the
+ * collection name (a `product` collection can live at `/products`, an `faq` collection on a
+ * single `/faq` page).
  *
  * - A *dynamic* route (`[...slug].astro`, or a `[slug]/index.astro` directory) renders one
  *   page per entry; the URL base is the path up to its dynamic segment. Every collection
@@ -333,11 +332,14 @@ async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<Map<string, C
 	return routes
 }
 
-/** Build an entry's page URL from its collection route (see {@link CollectionRoute}). */
-function entryPathname(route: CollectionRoute, slug: string): string {
-	if (!route.perItem) return route.base || '/'
-	// A root-level `[slug]` route has base `/`; joining naively would double the slash.
-	return `${route.base === '/' ? '' : route.base}/${slug}`
+/**
+ * The collection→route map: the integration's `.nua/cms/routes.json` (authoritative — real
+ * Astro routes, so config base / i18n prefixes / trailingSlash are already applied) when
+ * present, otherwise the sidecar's own `src/pages` scan.
+ */
+async function collectionRoutes(fs: CmsFileSystem): Promise<Map<string, CollectionRoute>> {
+	return (await readRouteMap(fs).catch(() => null))
+		?? await resolveCollectionRoutes(fs).catch(() => new Map<string, CollectionRoute>())
 }
 
 // ============================================================================
@@ -560,7 +562,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		// Tag entries with the URL of their rendered page (when the collection has a route),
 		// so a consumer can sync a preview to the entry being edited. Falls back to no
 		// pathname on any fs error — better absent than wrong.
-		const routes = await resolveCollectionRoutes(fs).catch(() => new Map<string, CollectionRoute>())
+		const routes = await collectionRoutes(fs)
 		const route = routes.get(collection)
 		const all = (def.entries ?? []).map(e => {
 			if (e.pathname !== undefined) return e

@@ -49,5 +49,15 @@ export {
 	type S3StorageOptions,
 } from './media/index'
 export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
+export {
+	type CollectionRoute,
+	entryPathname,
+	parseRouteMap,
+	readRouteMap,
+	ROUTE_MAP_PATH,
+	ROUTE_MAP_VERSION,
+	type RouteMapFile,
+	serializeRouteMap,
+} from './route-map'
 export { type RouteCollectionScan, scanRouteCollections } from './route-scan'
 export { computePathnameFromSpec, escapeHtml, relativeImportPath, resolvePathnameFromSpec, slugify, slugifyHref } from './shared'
