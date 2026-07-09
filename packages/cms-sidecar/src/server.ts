@@ -29,6 +29,7 @@ export const SIDECAR_FEATURES: readonly string[] = [
 	'entry.rename',
 	'entry.array',
 	'entry.asset',
+	'project.asset',
 	'entry.optimistic-concurrency',
 	'pages.crud',
 	'pages.list',
@@ -444,6 +445,15 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		return new Response(asset.bytes, { headers: { 'content-type': asset.contentType, 'cache-control': 'no-cache' } })
 	}
 
+	// --- GET project asset (resolve a root-relative /assets|/uploads value with no owning entry) ---
+	async function projectAssetResponse(url: URL): Promise<Response> {
+		const assetPath = url.searchParams.get('path')
+		if (assetPath === null || assetPath === '') return error('validation', 'A "path" query parameter is required')
+		const asset = await core.getProjectAsset(assetPath)
+		if (!asset) return error('not_found', `Asset not found: ${assetPath}`)
+		return new Response(asset.bytes, { headers: { 'content-type': asset.contentType, 'cache-control': 'no-cache' } })
+	}
+
 	// --- PATCH entry (optimistic concurrency + per-file mutex) ---
 	async function patchEntry(collection: string, slug: string, body: UpdateEntryBody): Promise<Response> {
 		const existing = await core.getEntry(collection, slug)
@@ -522,6 +532,10 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 
 			case 'config':
 				if (method === 'GET') return json(await readConfig())
+				break
+
+			case 'asset':
+				if (method === 'GET') return projectAssetResponse(url)
 				break
 
 			case 'collections':

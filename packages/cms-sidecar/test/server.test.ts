@@ -440,6 +440,23 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect((await call(server, 'GET', `/collections/blog/entries/hello-world/asset?path=${missing}`)).status).toBe(404)
 		expect((await call(server, 'GET', `/collections/blog/entries/ghost/asset?path=${present}`)).status).toBe(404)
 	})
+
+	test('GET /asset → streams a root-relative /public value with no owning entry', async () => {
+		const { server, root } = await freshServer()
+		const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+		await fs.mkdir(path.join(root, 'public', 'assets'), { recursive: true })
+		await fs.writeFile(path.join(root, 'public', 'assets', 'titul.png'), bytes)
+		const res = await call(server, 'GET', `/asset?path=${encodeURIComponent('/assets/titul.png')}`)
+		expect(res.status).toBe(200)
+		expect(res.headers.get('content-type')).toBe('image/png')
+		expect(Buffer.from(await res.arrayBuffer())).toEqual(bytes)
+	})
+
+	test('GET /asset → 400 without a path, 404 for a missing file', async () => {
+		const { server } = await freshServer()
+		expect((await call(server, 'GET', '/asset')).status).toBe(400)
+		expect((await call(server, 'GET', `/asset?path=${encodeURIComponent('/assets/nope.png')}`)).status).toBe(404)
+	})
 })
 
 describe('cms-sidecar optimistic concurrency (baseHash / sourceHash)', () => {

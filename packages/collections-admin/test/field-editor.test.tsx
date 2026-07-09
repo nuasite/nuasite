@@ -24,6 +24,7 @@ const noopClient: CmsClient = {
 	listMedia: () => Promise.reject(new Error('unused')),
 	uploadMedia: () => Promise.reject(new Error('unused')),
 	mediaFileUrl: (collection, entry, path) => `/cms/v1/collections/${collection}/entries/${entry}/asset?path=${encodeURIComponent(path)}`,
+	mediaAssetUrl: (path) => `/cms/v1/asset?path=${encodeURIComponent(path)}`,
 	deleteMedia: () => Promise.reject(new Error('unused')),
 	createFolder: () => Promise.reject(new Error('unused')),
 }

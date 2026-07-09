@@ -85,13 +85,33 @@ async function resolveEntryPath(deps: EntryOpsDeps, collection: string, slug: st
 }
 
 /**
- * Resolve a content-relative path (as stored in frontmatter — e.g. an Astro
- * `image()` value like `../../src/assets/x.webp`) against `baseDir`, returning a
- * normalized root-relative path. A leading `/` resolves from the project root.
- * Returns `null` when the path climbs above the project root (traversal).
+ * Resolve a stored asset value (as it appears in frontmatter) to candidate on-disk
+ * paths, root-relative, in priority order. Handles the shapes that actually occur:
+ *
+ * - **Leading `/`** — a runtime URL (`/assets/x.jpeg`, `/uploads/x.webp`). Astro
+ *   serves the `public/` dir at the site root, so try `public/<path>` first, then
+ *   `<path>` from the project root (assets kept outside `public/`). `baseDir` is
+ *   irrelevant, so these resolve without an owning entry.
+ * - **Relative** (`../../src/assets/x.webp`, `./x.png`, `x.png`) — an Astro
+ *   `image()` value, resolved against `baseDir` (the entry's directory), honoring
+ *   `.`/`..`.
+ *
+ * Returns `[]` when the path climbs above the project root, or is relative with no `baseDir`.
  */
-function resolveRelativePath(baseDir: string, rel: string): string | null {
-	const out = rel.startsWith('/') ? [] : baseDir.split('/').filter(Boolean)
+function resolveAssetCandidates(baseDir: string | undefined, rel: string): string[] {
+	if (rel.startsWith('/')) {
+		const fromRoot = normalizeSegments([], rel)
+		if (fromRoot === null || fromRoot === '') return []
+		return [`public/${fromRoot}`, fromRoot]
+	}
+	if (baseDir === undefined) return []
+	const joined = normalizeSegments(baseDir.split('/').filter(Boolean), rel)
+	return joined === null ? [] : [joined]
+}
+
+/** Join `rel` onto `base` segments, applying `.`/`..`; `null` on traversal above root. */
+function normalizeSegments(base: string[], rel: string): string | null {
+	const out = base.slice()
 	for (const seg of rel.replace(/^\/+/, '').split('/')) {
 		if (seg === '' || seg === '.') continue
 		if (seg === '..') {
@@ -102,6 +122,16 @@ function resolveRelativePath(baseDir: string, rel: string): string | null {
 		out.push(seg)
 	}
 	return out.join('/')
+}
+
+/** First existing candidate read as bytes + content type, or `null` when none exist. */
+async function readAsset(deps: EntryOpsDeps, candidates: string[]): Promise<EntryAsset | null> {
+	for (const candidate of candidates) {
+		if (await deps.fs.exists(candidate)) {
+			return { bytes: await deps.fs.readBytes(candidate), contentType: mimeFromExt(extOf(candidate)) }
+		}
+	}
+	return null
 }
 
 /** Lowercased file extension including the leading dot (e.g. `.webp`), or `''`. */
@@ -117,19 +147,31 @@ export interface EntryAsset {
 }
 
 /**
- * Read an asset referenced by an entry (an `image`/`file` field value), resolving
- * the stored path relative to the entry's source file. Returns the raw bytes plus
- * a content type inferred from the extension, or `null` when the entry or the
- * asset does not exist (or the path escapes the project root).
+ * Read an asset referenced by an entry (an `image`/`file` field value). A
+ * root-relative value (`/assets/x.jpeg`) resolves against the project root/`public/`
+ * and needs no entry; a relative value (`../../src/assets/x.webp`) resolves against
+ * the entry's source directory. Returns the raw bytes plus a content type inferred
+ * from the extension, or `null` when the entry or asset does not exist (or the path
+ * escapes the project root).
  */
 export async function getEntryAsset(deps: EntryOpsDeps, collection: string, slug: string, assetPath: string): Promise<EntryAsset | null> {
+	// Root-relative values don't need the entry — resolve directly so they also
+	// preview before the entry exists (and survive a missing/renamed source).
+	if (assetPath.startsWith('/')) return readAsset(deps, resolveAssetCandidates(undefined, assetPath))
 	const sourcePath = await resolveEntryPath(deps, collection, slug)
 	if (!sourcePath) return null
 	const lastSlash = sourcePath.lastIndexOf('/')
 	const baseDir = lastSlash >= 0 ? sourcePath.slice(0, lastSlash) : ''
-	const resolved = resolveRelativePath(baseDir, assetPath)
-	if (!resolved || !(await deps.fs.exists(resolved))) return null
-	return { bytes: await deps.fs.readBytes(resolved), contentType: mimeFromExt(extOf(resolved)) }
+	return readAsset(deps, resolveAssetCandidates(baseDir, assetPath))
+}
+
+/**
+ * Read a project asset by its runtime path (`/assets/x.jpeg`, `/uploads/x.webp`)
+ * with no owning entry — for previewing a root-relative value while creating an
+ * entry (no slug yet). Only leading-`/` paths resolve; relative paths need an entry.
+ */
+export async function getProjectAsset(deps: EntryOpsDeps, assetPath: string): Promise<EntryAsset | null> {
+	return readAsset(deps, resolveAssetCandidates(undefined, assetPath))
 }
 
 // ============================================================================

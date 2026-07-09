@@ -239,6 +239,13 @@ export interface CmsClient {
 	 * the same-origin local studio; the BFF must allow the route for hosted use).
 	 */
 	mediaFileUrl(collection: string, entry: string, path: string): string
+	/**
+	 * Build a GET URL for a project asset by its runtime path — a root-relative
+	 * `image`/`file` value such as `/assets/x.jpeg` or `/uploads/x.webp`. The sidecar
+	 * resolves it against the project root/`public/` with no owning entry, so it
+	 * previews while creating (before a slug exists). Suitable for `<img src>`.
+	 */
+	mediaAssetUrl(path: string): string
 	deleteMedia(id: string): Promise<{ success: boolean; error?: string }>
 	/** Create an empty media subfolder (sidecar `POST /media` JSON). 501 if the adapter has none. */
 	createFolder(folder: string): Promise<{ success: boolean; error?: string }>
@@ -421,6 +428,9 @@ export function createClient(apiBase: string): CmsClient {
 		},
 		mediaFileUrl(collection, entry, path) {
 			return `${base}${entryPath(collection, entry)}/asset?path=${encodeURIComponent(path)}`
+		},
+		mediaAssetUrl(path) {
+			return `${base}/asset?path=${encodeURIComponent(path)}`
 		},
 		deleteMedia(id) {
 			return mutate<{ success: boolean; error?: string }>(`/media/${encodeURIComponent(id)}`, 'DELETE')
