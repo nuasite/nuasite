@@ -1,0 +1,10 @@
+---
+import { getCollection } from 'astro:content'
+
+const products = await getCollection('products')
+---
+
+<h1>Products</h1>
+<ul>
+	{products.map((p) => <li>{p.data.title}</li>)}
+</ul>

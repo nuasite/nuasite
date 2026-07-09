@@ -261,16 +261,50 @@ interface CollectionRoute {
 }
 
 /**
+ * The `getCollection` names inside a page's `getStaticPaths` block — the collections it
+ * enumerates into pages (one page per entry). A single dynamic route may drive several,
+ * and every one is page-per-item. `getCollection` calls in the render body (a secondary
+ * lookup, e.g. an author on a post page) are deliberately excluded.
+ *
+ * Returns `null` when there is no `getStaticPaths` (e.g. an SSR `prerender=false` route),
+ * so the caller can fall back to its own heuristic.
+ */
+function getStaticPathsCollections(content: string): string[] | null {
+	const head = /getStaticPaths\s*\(/.exec(content)
+	if (!head) return null
+	// Skip the parameter list (it may destructure, e.g. `({ paginate })`) to reach the body brace.
+	let i = head.index + head[0].length
+	let parens = 1
+	for (; i < content.length && parens > 0; i++) {
+		if (content[i] === '(') parens++
+		else if (content[i] === ')') parens--
+	}
+	const open = content.indexOf('{', i)
+	if (parens !== 0 || open === -1) return null
+	// Brace-match the function body, then scan getCollection only within it.
+	let depth = 0
+	for (let j = open; j < content.length; j++) {
+		if (content[j] === '{') depth++
+		else if (content[j] === '}' && --depth === 0) {
+			const body = content.slice(open + 1, j)
+			return [...body.matchAll(GET_COLLECTION_RE)].map(m => m[1]).filter((n): n is string => Boolean(n))
+		}
+	}
+	return null
+}
+
+/**
  * Map each collection to the route that renders it, by scanning the Astro pages
  * under `src/pages` for `getCollection('<name>')`. This is the only reliable source
  * for an entry's URL — it comes from the route, not the collection name (a `product`
  * collection can live at `/products`, an `faq` collection on a single `/faq` page).
  *
  * - A *dynamic* route (`[...slug].astro`, or a `[slug]/index.astro` directory) renders one
- *   page per entry; the URL base is the path up to its dynamic segment. Only its first
- *   `getCollection` counts — that's the one its
- *   `getStaticPaths` iterates (a secondary lookup, e.g. an author on a post page,
- *   would otherwise mis-map that collection).
+ *   page per entry; the URL base is the path up to its dynamic segment. Every collection
+ *   its `getStaticPaths` enumerates is page-per-item here — a single `[slug]` detail may
+ *   drive several (a shared detail for `products` + `references` + …). Render-body
+ *   `getCollection` lookups (e.g. an author on a post page) are excluded; when there is no
+ *   `getStaticPaths` block to read, only the first `getCollection` counts.
  * - A *static* page renders every collection it reads on that one shared URL.
  * - A per-item (dynamic) route wins over a shared page if a collection has both.
  *
@@ -315,8 +349,14 @@ async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<Map<string, C
 			// dynamic segment (Astro segments are always whole, so `/[` is the marker).
 			const dynamicIdx = routePath.indexOf('/[')
 			if (dynamicIdx !== -1) {
-				// Dynamic route: the page-per-item collection is the getStaticPaths driver (first).
-				consider(names[0]!, { base: routePath.slice(0, dynamicIdx) || '/', perItem: true })
+				const base = routePath.slice(0, dynamicIdx) || '/'
+				// Every collection the route's getStaticPaths enumerates is page-per-item; a single
+				// [slug] detail may drive several. Fall back to the first getCollection when there
+				// is no getStaticPaths block to read (e.g. an SSR route).
+				const drivers = getStaticPathsCollections(content)
+				for (const name of new Set(drivers && drivers.length > 0 ? drivers : [names[0]!])) {
+					consider(name, { base, perItem: true })
+				}
 			} else {
 				// Static page: every collection it lists shares this page's URL.
 				const pathname = routePath.replace(/\/$/, '') || '/'
@@ -331,7 +371,9 @@ async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<Map<string, C
 
 /** Build an entry's page URL from its collection route (see {@link CollectionRoute}). */
 function entryPathname(route: CollectionRoute, slug: string): string {
-	return route.perItem ? `${route.base}/${slug}` : (route.base || '/')
+	if (!route.perItem) return route.base || '/'
+	// A root-level `[slug]` route has base `/`; joining naively would double the slash.
+	return `${route.base === '/' ? '' : route.base}/${slug}`
 }
 
 // ============================================================================
