@@ -39,6 +39,14 @@ async function freshProject(): Promise<ReturnType<typeof createCmsCore>> {
 	await fs.writeFile(path.join(root, 'src', 'content.config.ts'), CONFIG_SOURCE)
 	await fs.writeFile(path.join(root, 'content', 'note', 'hello.yaml'), 'title: Hello\nhero: ../assets/pic.webp\n')
 	await fs.writeFile(path.join(root, 'content', 'assets', 'pic.webp'), PIC_BYTES)
+	// Root-relative values (`/assets/x`, `/uploads/x`) point at Astro's `public/` dir,
+	// which is served at the site root — plus a non-public root asset for the fallback.
+	await fs.mkdir(path.join(root, 'public', 'assets'), { recursive: true })
+	await fs.writeFile(path.join(root, 'public', 'assets', 'titul.jpeg'), PIC_BYTES)
+	await fs.mkdir(path.join(root, 'public', 'uploads'), { recursive: true })
+	await fs.writeFile(path.join(root, 'public', 'uploads', 'u.png'), PIC_BYTES)
+	await fs.mkdir(path.join(root, 'data'), { recursive: true })
+	await fs.writeFile(path.join(root, 'data', 'root-only.svg'), PIC_BYTES)
 	return createCmsCore(createNodeFs(root))
 }
 
@@ -64,5 +72,43 @@ describe('getEntryAsset', () => {
 	test('returns null when the entry does not exist', async () => {
 		const core = await freshProject()
 		expect(await core.getEntryAsset('note', 'does-not-exist', '../assets/pic.webp')).toBeNull()
+	})
+
+	test('resolves a root-relative /assets value from public/ (Astro public convention)', async () => {
+		const core = await freshProject()
+		const asset = await core.getEntryAsset('note', 'hello', '/assets/titul.jpeg')
+		if (asset === null) throw new Error('expected the asset to resolve')
+		expect(asset.contentType).toBe('image/jpeg')
+		expect(Buffer.from(asset.bytes)).toEqual(PIC_BYTES)
+	})
+
+	test('resolves a root-relative value even when the entry does not exist', async () => {
+		const core = await freshProject()
+		expect(await core.getEntryAsset('note', 'does-not-exist', '/assets/titul.jpeg')).not.toBeNull()
+	})
+})
+
+describe('getProjectAsset', () => {
+	test('resolves a root-relative /uploads value from public/ with no owning entry', async () => {
+		const core = await freshProject()
+		const asset = await core.getProjectAsset('/uploads/u.png')
+		if (asset === null) throw new Error('expected the asset to resolve')
+		expect(asset.contentType).toBe('image/png')
+		expect(Buffer.from(asset.bytes)).toEqual(PIC_BYTES)
+	})
+
+	test('falls back to the project root when the path is not under public/', async () => {
+		const core = await freshProject()
+		expect(await core.getProjectAsset('/data/root-only.svg')).not.toBeNull()
+	})
+
+	test('returns null for a relative path (needs an owning entry)', async () => {
+		const core = await freshProject()
+		expect(await core.getProjectAsset('../assets/pic.webp')).toBeNull()
+	})
+
+	test('returns null on root traversal', async () => {
+		const core = await freshProject()
+		expect(await core.getProjectAsset('/../../etc/passwd')).toBeNull()
 	})
 })

@@ -29,6 +29,7 @@ import {
 	getEntry as getEntryOp,
 	getEntryAsset as getEntryAssetOp,
 	type GetEntryResult,
+	getProjectAsset as getProjectAssetOp,
 	removeArrayItem as removeArrayItemOp,
 	type RemoveArrayItemInput,
 	renameEntry as renameEntryOp,
@@ -75,6 +76,8 @@ export interface CmsCore {
 	getEntry(collection: string, slug: string): Promise<GetEntryResult | null>
 	/** Read an asset referenced by an entry (`image`/`file` value), resolving its path relative to the entry source. `null` when missing. */
 	getEntryAsset(collection: string, slug: string, assetPath: string): Promise<EntryAsset | null>
+	/** Read a project asset by its runtime path (`/assets/x`, `/uploads/x`) with no owning entry — for previewing while creating. `null` when missing. */
+	getProjectAsset(assetPath: string): Promise<EntryAsset | null>
 
 	// ENTRY MUTATIONS
 	createEntry(input: CreateEntryInput): Promise<MutationResult>
@@ -126,6 +129,9 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 		},
 		getEntryAsset(collection, slug, assetPath) {
 			return getEntryAssetOp(entryDeps, collection, slug, assetPath)
+		},
+		getProjectAsset(assetPath) {
+			return getProjectAssetOp(entryDeps, assetPath)
 		},
 		createEntry(input) {
 			return createEntryOp(entryDeps, input)
