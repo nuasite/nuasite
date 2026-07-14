@@ -1,4 +1,4 @@
-import { createCmsCore, createNodeFs, resolvePathnameFromSpec } from '@nuasite/cms-core'
+import { createCmsCore, createNodeFs, resolvePathnameFromSpec, scanRouteCollections } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
@@ -772,12 +772,13 @@ export async function discoverCollectionRoutes(): Promise<Map<string, Collection
 
 				try {
 					const content = await fs.readFile(fullPath, 'utf-8')
-					const match = content.match(/getCollection\(\s*['"](\w+)['"]\s*\)/)
-					if (match?.[1]) {
+					const { staticPaths, all } = scanRouteCollections(content)
+					const names = staticPaths.length > 0 ? staticPaths : all.slice(0, 1)
+					for (const name of names) {
 						// A static prefix is only usable when no ancestor directory is
 						// itself dynamic — otherwise record "routed, no prefix" so the
 						// caller still trusts declared URLs without fabricating one.
-						routes.set(match[1], dynamicAncestor ? true : urlPrefix)
+						routes.set(name, dynamicAncestor ? true : urlPrefix)
 					}
 				} catch { /* skip unreadable files */ }
 			}

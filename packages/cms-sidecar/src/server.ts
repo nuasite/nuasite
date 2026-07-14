@@ -1,4 +1,4 @@
-import { type CmsCore, type CmsFileSystem, parseProjectCmsConfig, resolvePathnameFromSpec } from '@nuasite/cms-core'
+import { type CmsCore, type CmsFileSystem, parseProjectCmsConfig, resolvePathnameFromSpec, scanRouteCollections } from '@nuasite/cms-core'
 import type { CmsConfig, CollectionDefinition, CollectionEntry, CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
 import { hashContent, hashSource, KeyedMutex } from './concurrency'
 import {
@@ -247,8 +247,6 @@ async function listPages(fs: CmsFileSystem): Promise<PageEntry[]> {
 // Collection → route base (sidecar-layer fs walk)
 // ============================================================================
 
-const GET_COLLECTION_RE = /getCollection\s*\(\s*['"`]([^'"`]+)['"`]/g
-
 /**
  * How the route that renders a collection turns an entry into a URL:
  * - `perItem`: a dynamic route (`[...slug].astro`) → one page per entry, at
@@ -262,43 +260,10 @@ interface CollectionRoute {
 }
 
 /**
- * The `getCollection` names inside a page's `getStaticPaths` block — the collections it
- * enumerates into pages (one page per entry). A single dynamic route may drive several,
- * and every one is page-per-item. `getCollection` calls in the render body (a secondary
- * lookup, e.g. an author on a post page) are deliberately excluded.
- *
- * Returns `null` when there is no `getStaticPaths` (e.g. an SSR `prerender=false` route),
- * so the caller can fall back to its own heuristic.
- */
-function getStaticPathsCollections(content: string): string[] | null {
-	const head = /getStaticPaths\s*\(/.exec(content)
-	if (!head) return null
-	// Skip the parameter list (it may destructure, e.g. `({ paginate })`) to reach the body brace.
-	let i = head.index + head[0].length
-	let parens = 1
-	for (; i < content.length && parens > 0; i++) {
-		if (content[i] === '(') parens++
-		else if (content[i] === ')') parens--
-	}
-	const open = content.indexOf('{', i)
-	if (parens !== 0 || open === -1) return null
-	// Brace-match the function body, then scan getCollection only within it.
-	let depth = 0
-	for (let j = open; j < content.length; j++) {
-		if (content[j] === '{') depth++
-		else if (content[j] === '}' && --depth === 0) {
-			const body = content.slice(open + 1, j)
-			return [...body.matchAll(GET_COLLECTION_RE)].map(m => m[1]).filter((n): n is string => Boolean(n))
-		}
-	}
-	return null
-}
-
-/**
- * Map each collection to the route that renders it, by scanning the Astro pages
- * under `src/pages` for `getCollection('<name>')`. This is the only reliable source
- * for an entry's URL — it comes from the route, not the collection name (a `product`
- * collection can live at `/products`, an `faq` collection on a single `/faq` page).
+ * Map each collection to the route that renders it, by parsing the Astro pages under
+ * `src/pages` with {@link scanRouteCollections}. This is the only reliable source for an
+ * entry's URL — it comes from the route, not the collection name (a `product` collection
+ * can live at `/products`, an `faq` collection on a single `/faq` page).
  *
  * - A *dynamic* route (`[...slug].astro`, or a `[slug]/index.astro` directory) renders one
  *   page per entry; the URL base is the path up to its dynamic segment. Every collection
@@ -338,8 +303,8 @@ async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<Map<string, C
 			} catch {
 				continue
 			}
-			const names = [...content.matchAll(GET_COLLECTION_RE)].map(m => m[1]).filter((n): n is string => Boolean(n))
-			if (names.length === 0) continue
+			const { staticPaths, all } = scanRouteCollections(content)
+			if (all.length === 0) continue
 
 			// Full route path: directory prefix + file segment (Astro drops `index`).
 			const baseName = entry.name.slice(0, -'.astro'.length)
@@ -354,14 +319,12 @@ async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<Map<string, C
 				// Every collection the route's getStaticPaths enumerates is page-per-item; a single
 				// [slug] detail may drive several. Fall back to the first getCollection when there
 				// is no getStaticPaths block to read (e.g. an SSR route).
-				const drivers = getStaticPathsCollections(content)
-				for (const name of new Set(drivers && drivers.length > 0 ? drivers : [names[0]!])) {
-					consider(name, { base, perItem: true })
-				}
+				const drivers = staticPaths.length > 0 ? staticPaths : all.slice(0, 1)
+				for (const name of drivers) consider(name, { base, perItem: true })
 			} else {
 				// Static page: every collection it lists shares this page's URL.
 				const pathname = routePath.replace(/\/$/, '') || '/'
-				for (const name of names) consider(name, { base: pathname, perItem: false })
+				for (const name of all) consider(name, { base: pathname, perItem: false })
 			}
 		}
 	}
