@@ -48,6 +48,31 @@ beforeEach(() => {
 				tag: 'p',
 				text: 'Resolvable text',
 			},
+			'pending-source-id': {
+				id: 'pending-source-id',
+				tag: 'p',
+				text: 'Dynamic text',
+				sourcePath: '/test/template.astro',
+				sourceLine: 4,
+				requiresSourceResolution: true,
+			},
+			'pending-image-id': {
+				id: 'pending-image-id',
+				tag: 'img',
+				text: '',
+				sourcePath: '/test/template.astro',
+				sourceLine: 4,
+				requiresSourceResolution: true,
+				imageMetadata: { src: '/images/hero.jpg', alt: '' },
+			},
+			'resolved-image-id': {
+				id: 'resolved-image-id',
+				tag: 'img',
+				text: '',
+				sourcePath: '/test/page.astro',
+				sourceLine: 4,
+				imageMetadata: { src: '/images/logo.jpg', alt: '' },
+			},
 		},
 		components: {},
 		componentDefinitions: {},
@@ -66,7 +91,9 @@ beforeEach(() => {
 			const entries = Object.fromEntries(
 				Object.entries(mockManifestData.entries).map(([id, entry]) => [
 					id,
-					resolvedEntryIds.has(id) ? { ...entry, sourcePath: '/test/resolved.md', sourceLine: 1 } : entry,
+					resolvedEntryIds.has(id)
+						? { ...entry, sourcePath: '/test/resolved.md', sourceLine: 1, requiresSourceResolution: undefined }
+						: entry,
 				]),
 			)
 			return new Response(JSON.stringify({ ...mockManifestData, entries }), {
@@ -317,6 +344,40 @@ test('startEditMode locks elements whose manifest entry has no source path', asy
 
 	expect(locked.contentEditable).toBe('false')
 	expect(locked.getAttribute('data-cms-locked')).toBe('true')
+})
+
+test('startEditMode locks dynamic expressions until their source is resolved', async () => {
+	document.body.innerHTML = '<div data-cms-id="pending-source-id">Dynamic text</div>'
+
+	await startEditMode(mockConfig, () => {})
+
+	const locked = document.querySelector<HTMLElement>('[data-cms-id="pending-source-id"]')
+	if (!locked) throw new Error('Expected pending source element')
+	expect(locked.contentEditable).toBe('false')
+	expect(locked.getAttribute('data-cms-locked')).toBe('true')
+})
+
+// The media library would otherwise be wired to coordinates pointing at the `.map()` template
+// line, so replacing the image would try to rewrite a src that isn't there.
+test('startEditMode locks an image whose source is still an unresolved expression', async () => {
+	document.body.innerHTML = '<img data-cms-id="pending-image-id" data-cms-img src="/images/hero.jpg" />'
+
+	await startEditMode(mockConfig, () => {})
+
+	const locked = document.querySelector<HTMLElement>('[data-cms-id="pending-image-id"]')
+	if (!locked) throw new Error('Expected pending image element')
+	expect(locked.getAttribute('data-cms-locked')).toBe('true')
+})
+
+test('startEditMode wires a resolved image to the media library', async () => {
+	document.body.innerHTML = '<img data-cms-id="resolved-image-id" data-cms-img src="/images/logo.jpg" />'
+
+	await startEditMode(mockConfig, () => {})
+
+	const image = document.querySelector<HTMLElement>('[data-cms-id="resolved-image-id"]')
+	if (!image) throw new Error('Expected resolved image element')
+	expect(image.hasAttribute('data-cms-locked')).toBe(false)
+	expect(image.style.cursor).toBe('pointer')
 })
 
 test('clicking a resolvable locked element rewires it as editable', async () => {

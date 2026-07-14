@@ -394,6 +394,10 @@ async function processFile(
 				entry.imageMetadata.srcSet,
 				pageFiles,
 				preferredLocation,
+				{
+					includeCollectionFiles: !!entry.collectionName && !!entry.collectionSlug,
+					allowUnscopedMatches: false,
+				},
 			)
 			if (imageSource) {
 				entry.sourcePath = imageSource.file
