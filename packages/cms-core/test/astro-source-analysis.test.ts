@@ -1,9 +1,8 @@
-import { parse } from '@babel/parser'
 import { describe, expect, test } from 'bun:test'
-import { analyzeAstroContentAst, analyzeAstroScript, analyzeAstroSource, extractAstroFrontmatter } from '../src/astro-source-analysis'
+import { analyzeAstroScript, analyzeAstroSource } from '../src/astro-source-analysis'
 
-describe('extractAstroFrontmatter', () => {
-	test('handles a BOM and CRLF while preserving source coordinates', () => {
+describe('Astro frontmatter', () => {
+	test('handles a BOM and CRLF', () => {
 		const source = [
 			'\uFEFF---',
 			"import { getCollection } from 'astro:content'",
@@ -12,22 +11,9 @@ describe('extractAstroFrontmatter', () => {
 			'<h1>{posts.length}</h1>',
 		].join('\r\n')
 
-		const frontmatter = extractAstroFrontmatter(source)
-		expect(frontmatter?.code).toBe(
-			"import { getCollection } from 'astro:content'\r\nconst posts = await getCollection('posts')",
-		)
-		expect(frontmatter?.range).toEqual({
-			start: { offset: source.indexOf('import'), line: 2, column: 0 },
-			end: { offset: source.indexOf('\r\n---', source.indexOf('const posts')), line: 3, column: 42 },
-		})
-
 		const analysis = analyzeAstroSource(source)
-		expect(analysis.collectionCalls).toHaveLength(1)
-		expect(analysis.collectionCalls[0]?.range?.start).toEqual({
-			offset: source.indexOf("getCollection('posts')"),
-			line: 3,
-			column: 20,
-		})
+		expect(analysis.imports).toEqual([{ source: 'astro:content' }])
+		expect(analysis.collectionCalls[0]).toMatchObject({ accessor: 'getCollection', collectionName: 'posts' })
 	})
 })
 
@@ -56,23 +42,15 @@ describe('Astro content imports and calls', () => {
 			'astro:content',
 			'astro:content',
 		])
-		expect(analysis.imports[0]?.specifiers).toMatchObject([
-			{ kind: 'default', localName: 'helper', typeOnly: false },
-			{ kind: 'named', importedName: 'value', localName: 'localValue', typeOnly: false },
-			{ kind: 'named', importedName: 'HelperType', localName: 'HelperType', typeOnly: true },
-		])
-		expect(analysis.imports[1]?.specifiers).toEqual([])
 		expect(analysis.collectionCalls.map(call => ({
 			accessor: call.accessor,
 			collectionName: call.collectionName,
-			access: call.access,
-			localName: call.localName,
 		}))).toEqual([
-			{ accessor: 'getCollection', collectionName: 'posts', access: 'named', localName: 'collect' },
-			{ accessor: 'getEntry', collectionName: 'authors', access: 'named', localName: 'entry' },
-			{ accessor: 'getEntryBySlug', collectionName: 'notes', access: 'named', localName: 'bySlug' },
-			{ accessor: 'getEntries', collectionName: null, access: 'named', localName: 'entries' },
-			{ accessor: 'getCollection', collectionName: 'products', access: 'namespace', localName: 'content' },
+			{ accessor: 'getCollection', collectionName: 'posts' },
+			{ accessor: 'getEntry', collectionName: 'authors' },
+			{ accessor: 'getEntryBySlug', collectionName: 'notes' },
+			{ accessor: 'getEntries', collectionName: null },
+			{ accessor: 'getCollection', collectionName: 'products' },
 		])
 	})
 
@@ -140,77 +118,41 @@ describe('top-level collection bindings', () => {
 			const ambiguous = await getEntries([])
 		`)
 
-		expect(analysis.collectionBindings.map(binding => ({
-			localName: binding.localName,
-			accessor: binding.accessor,
-			collectionName: binding.collectionName,
-			shape: binding.shape,
-			itemPath: binding.itemPath,
-			kind: binding.kind,
-			sourceName: binding.sourceName,
-		}))).toEqual([
+		expect(analysis.collectionBindings).toEqual([
 			{
 				localName: 'articles',
-				accessor: 'getCollection',
 				collectionName: 'articles',
-				shape: 'array',
 				itemPath: '',
-				kind: 'call',
-				sourceName: null,
 			},
 			{
 				localName: 'articleAlias',
-				accessor: 'getCollection',
 				collectionName: 'articles',
-				shape: 'array',
 				itemPath: '',
-				kind: 'alias',
-				sourceName: 'articles',
 			},
 			{
 				localName: 'items',
-				accessor: 'getCollection',
 				collectionName: 'articles',
-				shape: 'array',
 				itemPath: '.data',
-				kind: 'map',
-				sourceName: 'articleAlias',
 			},
 			{
 				localName: 'titles',
-				accessor: 'getCollection',
 				collectionName: 'articles',
-				shape: 'array',
 				itemPath: '.data.title',
-				kind: 'map',
-				sourceName: 'items',
 			},
 			{
 				localName: 'author',
-				accessor: 'getEntry',
 				collectionName: 'authors',
-				shape: 'entry',
 				itemPath: '',
-				kind: 'call',
-				sourceName: null,
 			},
 			{
 				localName: 'authorAlias',
-				accessor: 'getEntry',
 				collectionName: 'authors',
-				shape: 'entry',
 				itemPath: '',
-				kind: 'alias',
-				sourceName: 'author',
 			},
 			{
 				localName: 'page',
-				accessor: 'getEntryBySlug',
 				collectionName: 'pages',
-				shape: 'entry',
 				itemPath: '',
-				kind: 'call',
-				sourceName: null,
 			},
 		])
 		expect(analysis.collectionBindings.some(binding => binding.localName === 'ambiguous')).toBe(false)
@@ -218,31 +160,25 @@ describe('top-level collection bindings', () => {
 })
 
 describe('source entrypoints', () => {
-	test('accepts a pre-parsed Babel file with an absolute source origin', () => {
-		const source = "import { getCollection } from 'astro:content'\ngetCollection('posts')"
-		const ast = parse(source, { sourceType: 'module', plugins: ['typescript', 'jsx'], errorRecovery: true })
-		const analysis = analyzeAstroContentAst(ast, { offset: 100, line: 7, column: 3 })
+	test('parses JSX and TSX modules', () => {
+		const analysis = analyzeAstroScript(`
+			import { getCollection } from 'astro:content'
+			const posts = await getCollection('posts')
+			export const Listing = () => <ul>{posts.map(post => <li>{post.id}</li>)}</ul>
+		`)
 
-		expect(analysis.collectionCalls[0]?.range?.start).toEqual({
-			offset: 100 + source.indexOf("getCollection('posts')"),
-			line: 8,
-			column: 0,
-		})
+		expect(analysis.collectionCalls.map(call => call.collectionName)).toEqual(['posts'])
 	})
 
 	test('returns empty facts for missing or fatally invalid frontmatter', () => {
 		const missing = analyzeAstroSource('<h1>No frontmatter</h1>')
-		expect(missing).toMatchObject({
-			ast: null,
-			frontmatter: null,
+		expect(missing).toEqual({
 			imports: [],
 			collectionCalls: [],
 			collectionBindings: [],
 		})
 
 		const invalid = analyzeAstroSource('---\nconst broken = "\n---\n<h1>Broken</h1>')
-		expect(invalid.frontmatter).not.toBeNull()
-		expect(invalid.ast).toBeNull()
-		expect(invalid.collectionCalls).toEqual([])
+		expect(invalid).toEqual({ imports: [], collectionCalls: [], collectionBindings: [] })
 	})
 })

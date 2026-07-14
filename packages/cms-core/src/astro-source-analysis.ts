@@ -3,86 +3,33 @@ import type * as t from '@babel/types'
 
 export type AstroContentAccessor = 'getCollection' | 'getEntry' | 'getEntryBySlug' | 'getEntries'
 
-export interface AstroSourcePoint {
-	offset: number
-	line: number
-	column: number
-}
-
-export interface AstroSourceRange {
-	start: AstroSourcePoint
-	end: AstroSourcePoint
-}
-
-export interface AstroFrontmatter {
-	code: string
-	range: AstroSourceRange
-}
-
-export type AstroImportSpecifier =
-	| {
-		kind: 'default'
-		localName: string
-		typeOnly: boolean
-		range: AstroSourceRange | null
-	}
-	| {
-		kind: 'named'
-		importedName: string
-		localName: string
-		typeOnly: boolean
-		range: AstroSourceRange | null
-	}
-	| {
-		kind: 'namespace'
-		localName: string
-		typeOnly: boolean
-		range: AstroSourceRange | null
-	}
-
 export interface AstroSourceImport {
 	source: string
-	typeOnly: boolean
-	specifiers: AstroImportSpecifier[]
-	range: AstroSourceRange | null
 }
 
 export interface AstroContentCall {
 	accessor: AstroContentAccessor
 	collectionName: string | null
-	access: 'named' | 'namespace'
-	/** The named alias or namespace identifier used at the call site. */
-	localName: string
 	inExportedGetStaticPaths: boolean
-	range: AstroSourceRange | null
 }
 
 export interface AstroCollectionBinding {
 	localName: string
-	accessor: AstroContentAccessor
-	collectionName: string | null
-	shape: 'array' | 'entry'
+	collectionName: string
 	/** Path from an item (array) or value (entry) to the value held by this binding. */
 	itemPath: string
-	kind: 'call' | 'alias' | 'map'
-	sourceName: string | null
-	range: AstroSourceRange | null
 }
 
-export interface AstroContentFacts {
+export interface AstroSourceAnalysis {
 	imports: AstroSourceImport[]
 	collectionCalls: AstroContentCall[]
 	collectionBindings: AstroCollectionBinding[]
 }
 
-export interface AstroSourceAnalysis extends AstroContentFacts {
-	ast: t.File | null
-	frontmatter: AstroFrontmatter | null
-}
-
-interface ImportedAccessor {
-	accessor: AstroContentAccessor
-	localName: string
+interface CollectionBinding {
+	collectionName: string
+	itemPath: string
+	shape: 'array' | 'entry'
 }
 
 interface AnalyzerContext {
@@ -111,8 +58,6 @@ const SKIPPED_CHILD_KEYS = new Set([
 	'errors',
 ])
 
-const SCRIPT_ORIGIN: AstroSourcePoint = { offset: 0, line: 1, column: 0 }
-
 function isContentAccessor(value: string): value is AstroContentAccessor {
 	return value === 'getCollection'
 		|| value === 'getEntry'
@@ -140,38 +85,8 @@ function childNodes(node: t.Node): t.Node[] {
 	return children
 }
 
-function sourcePoint(origin: AstroSourcePoint, offset: number, line: number, column: number): AstroSourcePoint {
-	return {
-		offset: origin.offset + offset,
-		line: origin.line + line - 1,
-		column: line === 1 ? origin.column + column : column,
-	}
-}
-
-function nodeRange(node: t.Node, origin: AstroSourcePoint): AstroSourceRange | null {
-	if (typeof node.start !== 'number' || typeof node.end !== 'number' || !node.loc) return null
-	return {
-		start: sourcePoint(origin, node.start, node.loc.start.line, node.loc.start.column),
-		end: sourcePoint(origin, node.end, node.loc.end.line, node.loc.end.column),
-	}
-}
-
-function pointAtOffset(source: string, offset: number): AstroSourcePoint {
-	let line = 1
-	let column = 0
-	for (let index = 0; index < offset; index++) {
-		if (source.charCodeAt(index) === 10) {
-			line++
-			column = 0
-		} else {
-			column++
-		}
-	}
-	return { offset, line, column }
-}
-
 /** Extract frontmatter only when the opening fence is the first line, after an optional BOM. */
-export function extractAstroFrontmatter(source: string): AstroFrontmatter | null {
+function extractAstroFrontmatter(source: string): string | null {
 	const fenceStart = source.charCodeAt(0) === 0xFEFF ? 1 : 0
 	if (source.slice(fenceStart, fenceStart + 3) !== '---') return null
 
@@ -197,13 +112,7 @@ export function extractAstroFrontmatter(source: string): AstroFrontmatter | null
 				codeEnd--
 				if (codeEnd > codeStart && source.charCodeAt(codeEnd - 1) === 13) codeEnd--
 			}
-			return {
-				code: source.slice(codeStart, codeEnd),
-				range: {
-					start: pointAtOffset(source, codeStart),
-					end: pointAtOffset(source, codeEnd),
-				},
-			}
+			return source.slice(codeStart, codeEnd)
 		}
 		if (newline === -1) return null
 		lineStart = newline + 1
@@ -227,62 +136,32 @@ function importedName(specifier: t.ImportSpecifier): string {
 	return specifier.imported.type === 'Identifier' ? specifier.imported.name : specifier.imported.value
 }
 
-function importFacts(ast: t.File, origin: AstroSourcePoint): AstroSourceImport[] {
-	const imports: AstroSourceImport[] = []
-	for (const statement of ast.program.body) {
-		if (statement.type !== 'ImportDeclaration') continue
-		const declarationTypeOnly = statement.importKind === 'type' || statement.importKind === 'typeof'
-		const specifiers: AstroImportSpecifier[] = []
-		for (const specifier of statement.specifiers) {
-			if (specifier.type === 'ImportDefaultSpecifier') {
-				specifiers.push({
-					kind: 'default',
-					localName: specifier.local.name,
-					typeOnly: declarationTypeOnly,
-					range: nodeRange(specifier, origin),
-				})
-			} else if (specifier.type === 'ImportNamespaceSpecifier') {
-				specifiers.push({
-					kind: 'namespace',
-					localName: specifier.local.name,
-					typeOnly: declarationTypeOnly,
-					range: nodeRange(specifier, origin),
-				})
-			} else {
-				const typeOnly = declarationTypeOnly || specifier.importKind === 'type' || specifier.importKind === 'typeof'
-				specifiers.push({
-					kind: 'named',
-					importedName: importedName(specifier),
-					localName: specifier.local.name,
-					typeOnly,
-					range: nodeRange(specifier, origin),
-				})
-			}
-		}
-		imports.push({
-			source: statement.source.value,
-			typeOnly: declarationTypeOnly,
-			specifiers,
-			range: nodeRange(statement, origin),
-		})
-	}
-	return imports
+function importFacts(ast: t.File): AstroSourceImport[] {
+	return ast.program.body.flatMap(statement => statement.type === 'ImportDeclaration' ? [{ source: statement.source.value }] : [])
 }
 
-function contentImportBindings(imports: AstroSourceImport[]): {
-	named: Map<string, ImportedAccessor>
+function contentImportBindings(ast: t.File): {
+	named: Map<string, AstroContentAccessor>
 	namespaces: Set<string>
 } {
-	const named = new Map<string, ImportedAccessor>()
+	const named = new Map<string, AstroContentAccessor>()
 	const namespaces = new Set<string>()
-	for (const imported of imports) {
-		if (imported.source !== 'astro:content' || imported.typeOnly) continue
-		for (const specifier of imported.specifiers) {
-			if (specifier.typeOnly) continue
-			if (specifier.kind === 'namespace') {
-				namespaces.add(specifier.localName)
-			} else if (specifier.kind === 'named' && isContentAccessor(specifier.importedName)) {
-				named.set(specifier.localName, { accessor: specifier.importedName, localName: specifier.localName })
+	for (const statement of ast.program.body) {
+		if (
+			statement.type !== 'ImportDeclaration'
+			|| statement.source.value !== 'astro:content'
+			|| statement.importKind === 'type'
+			|| statement.importKind === 'typeof'
+		) continue
+		for (const specifier of statement.specifiers) {
+			if (specifier.type === 'ImportNamespaceSpecifier') namespaces.add(specifier.local.name)
+			if (
+				specifier.type === 'ImportSpecifier'
+				&& specifier.importKind !== 'type'
+				&& specifier.importKind !== 'typeof'
+			) {
+				const name = importedName(specifier)
+				if (isContentAccessor(name)) named.set(specifier.local.name, name)
 			}
 		}
 	}
@@ -478,22 +357,21 @@ function memberPropertyName(node: t.MemberExpression | t.OptionalMemberExpressio
 
 function callAccessor(
 	node: t.CallExpression | t.OptionalCallExpression,
-	named: ReadonlyMap<string, ImportedAccessor>,
+	named: ReadonlyMap<string, AstroContentAccessor>,
 	namespaces: ReadonlySet<string>,
 	shadowed: ReadonlySet<string>,
-): { accessor: AstroContentAccessor; access: 'named' | 'namespace'; localName: string } | null {
+): AstroContentAccessor | null {
 	const callee = unwrapExpression(node.callee)
 	if (callee.type === 'Identifier') {
 		if (shadowed.has(callee.name)) return null
-		const imported = named.get(callee.name)
-		return imported ? { ...imported, access: 'named' } : null
+		return named.get(callee.name) ?? null
 	}
 	if (callee.type !== 'MemberExpression' && callee.type !== 'OptionalMemberExpression') return null
 	const object = unwrapExpression(callee.object)
 	if (object.type !== 'Identifier' || shadowed.has(object.name) || !namespaces.has(object.name)) return null
 	const property = memberPropertyName(callee)
 	if (!property || !isContentAccessor(property)) return null
-	return { accessor: property, access: 'namespace', localName: object.name }
+	return property
 }
 
 function collectionNameFromCall(node: t.CallExpression | t.OptionalCallExpression): string | null {
@@ -505,8 +383,7 @@ function collectionNameFromCall(node: t.CallExpression | t.OptionalCallExpressio
 
 function collectCalls(
 	ast: t.File,
-	origin: AstroSourcePoint,
-	named: ReadonlyMap<string, ImportedAccessor>,
+	named: ReadonlyMap<string, AstroContentAccessor>,
 	namespaces: ReadonlySet<string>,
 ): AstroContentCall[] {
 	const calls: AstroContentCall[] = []
@@ -530,13 +407,12 @@ function collectCalls(
 
 		const insideExportedGetStaticPaths = context.insideExportedGetStaticPaths || staticPathsNodes.has(node)
 		if (node.type === 'CallExpression' || node.type === 'OptionalCallExpression') {
-			const matched = callAccessor(node, named, namespaces, shadowed)
-			if (matched) {
+			const accessor = callAccessor(node, named, namespaces, shadowed)
+			if (accessor) {
 				calls.push({
-					...matched,
+					accessor,
 					collectionName: collectionNameFromCall(node),
 					inExportedGetStaticPaths: insideExportedGetStaticPaths,
-					range: nodeRange(node, origin),
 				})
 			}
 		}
@@ -575,8 +451,8 @@ function returnedExpression(callback: t.ArrowFunctionExpression | t.FunctionExpr
 
 function mapBinding(
 	node: t.Node,
-	bindings: ReadonlyMap<string, AstroCollectionBinding>,
-): { binding: AstroCollectionBinding; sourceName: string } | null {
+	bindings: ReadonlyMap<string, CollectionBinding>,
+): CollectionBinding | null {
 	const value = unwrapExpression(node)
 	if (value.type !== 'CallExpression' && value.type !== 'OptionalCallExpression') return null
 	const callee = unwrapExpression(value.callee)
@@ -596,33 +472,23 @@ function mapBinding(
 	const projection = expressionAccessor(returned)
 	if (!projection || projection.base !== parameter.name) return null
 
-	return {
-		binding: {
-			...sourceBinding,
-			itemPath: sourceBinding.itemPath + projection.path,
-			kind: 'map',
-			sourceName: source.base,
-			range: null,
-		},
-		sourceName: source.base,
-	}
+	return { ...sourceBinding, itemPath: sourceBinding.itemPath + projection.path }
 }
 
 function directCallBinding(
 	node: t.Node,
-	named: ReadonlyMap<string, ImportedAccessor>,
+	named: ReadonlyMap<string, AstroContentAccessor>,
 	namespaces: ReadonlySet<string>,
 	shadowed: ReadonlySet<string>,
-): Omit<AstroCollectionBinding, 'localName' | 'kind' | 'sourceName' | 'range'> | null {
+): CollectionBinding | null {
 	const value = unwrapExpression(node)
 	if (value.type !== 'CallExpression' && value.type !== 'OptionalCallExpression') return null
 	const matched = callAccessor(value, named, namespaces, shadowed)
 	const collectionName = collectionNameFromCall(value)
-	if (!matched || matched.accessor === 'getEntries' || !collectionName) return null
+	if (!matched || matched === 'getEntries' || !collectionName) return null
 	return {
-		accessor: matched.accessor,
 		collectionName,
-		shape: matched.accessor === 'getCollection' ? 'array' : 'entry',
+		shape: matched === 'getCollection' ? 'array' : 'entry',
 		itemPath: '',
 	}
 }
@@ -640,12 +506,11 @@ function topLevelVariableDeclarations(ast: t.File): t.VariableDeclaration[] {
 
 function collectBindings(
 	ast: t.File,
-	origin: AstroSourcePoint,
-	named: ReadonlyMap<string, ImportedAccessor>,
+	named: ReadonlyMap<string, AstroContentAccessor>,
 	namespaces: ReadonlySet<string>,
 ): AstroCollectionBinding[] {
 	const facts: AstroCollectionBinding[] = []
-	const bindings = new Map<string, AstroCollectionBinding>()
+	const bindings = new Map<string, CollectionBinding>()
 	const importedLocals = new Set([...named.keys(), ...namespaces])
 	const shadowed = topLevelShadowedNames(ast, importedLocals)
 
@@ -657,52 +522,36 @@ function collectBindings(
 			const alias = expressionAccessor(declarator.init)
 			const aliased = alias?.path === '' ? bindings.get(alias.base) : undefined
 			const mapped = mapBinding(declarator.init, bindings)
-			const base = direct ?? mapped?.binding ?? aliased
+			const base = direct ?? mapped ?? aliased
 			if (!base) continue
 
-			const kind = direct ? 'call' : mapped ? 'map' : 'alias'
-			const sourceName = mapped?.sourceName ?? (aliased && alias ? alias.base : null)
-			const fact: AstroCollectionBinding = {
-				...base,
-				localName: name,
-				kind,
-				sourceName,
-				range: nodeRange(declarator, origin),
-			}
-			bindings.set(name, fact)
-			facts.push(fact)
+			bindings.set(name, base)
+			facts.push({ localName: name, collectionName: base.collectionName, itemPath: base.itemPath })
 		}
 	}
 	return facts
 }
 
-/** Analyze a Babel AST that has already been parsed by a consumer. */
-export function analyzeAstroContentAst(ast: t.File, origin: AstroSourcePoint = SCRIPT_ORIGIN): AstroContentFacts {
-	const imports = importFacts(ast, origin)
-	const { named, namespaces } = contentImportBindings(imports)
+function analyzeAstroContentAst(ast: t.File): AstroSourceAnalysis {
+	const imports = importFacts(ast)
+	const { named, namespaces } = contentImportBindings(ast)
 	return {
 		imports,
-		collectionCalls: collectCalls(ast, origin, named, namespaces),
-		collectionBindings: collectBindings(ast, origin, named, namespaces),
+		collectionCalls: collectCalls(ast, named, namespaces),
+		collectionBindings: collectBindings(ast, named, namespaces),
 	}
 }
 
 /** Analyze JavaScript or TypeScript source containing Astro content accessors. */
 export function analyzeAstroScript(source: string): AstroSourceAnalysis {
 	const ast = parseScript(source)
-	const facts = ast ? analyzeAstroContentAst(ast) : { imports: [], collectionCalls: [], collectionBindings: [] }
-	return { ast, frontmatter: null, ...facts }
+	return ast ? analyzeAstroContentAst(ast) : { imports: [], collectionCalls: [], collectionBindings: [] }
 }
 
 /** Analyze the frontmatter of a complete `.astro` source string. */
 export function analyzeAstroSource(source: string): AstroSourceAnalysis {
 	const frontmatter = extractAstroFrontmatter(source)
-	if (!frontmatter) {
-		return { ast: null, frontmatter: null, imports: [], collectionCalls: [], collectionBindings: [] }
-	}
-	const ast = parseScript(frontmatter.code)
-	const facts = ast
-		? analyzeAstroContentAst(ast, frontmatter.range.start)
-		: { imports: [], collectionCalls: [], collectionBindings: [] }
-	return { ast, frontmatter, ...facts }
+	return frontmatter === null
+		? { imports: [], collectionCalls: [], collectionBindings: [] }
+		: analyzeAstroScript(frontmatter)
 }
