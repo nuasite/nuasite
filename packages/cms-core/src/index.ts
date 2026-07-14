@@ -1,3 +1,12 @@
+export {
+	analyzeAstroScript,
+	analyzeAstroSource,
+	type AstroCollectionBinding,
+	type AstroContentAccessor,
+	type AstroContentCall,
+	type AstroSourceAnalysis,
+	type AstroSourceImport,
+} from './astro-source-analysis'
 export { scanCollections } from './collection-scanner'
 export { scanComponentDefinitions } from './component-registry'
 export {
