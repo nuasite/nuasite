@@ -26,7 +26,7 @@ import {
 import { extractAstroImageOriginalUrl, extractImageSnippet, extractInnerHtmlFromSnippet, normalizeText } from './snippet-utils'
 import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types'
 
-/** Collection data files live under this path — used to prefer them over templates */
+/** Collection data files require explicit structural provenance before lookup. */
 const CONTENT_DIR_PREFIX = 'src/content/'
 
 function isCollectionFile(file: string): boolean {
@@ -602,14 +602,14 @@ interface MapInvocation {
  * params (`(item)`) and destructured object params (`({ label, href })`).
  */
 function parseMapInvocations(fullText: string): MapInvocation[] {
-	const mapPattern = /([\w.[\]]+)\.map\(\s*(?:\(\s*(\w+)|\(\s*\{([^}]+)\})/g
+	const mapPattern = /([\w.[\]]+)\.map\(\s*(?:\(\s*(\w+)|([A-Za-z_$][\w$]*)\s*=>|\(\s*\{([^}]+)\})/g
 	const maps: MapInvocation[] = []
 	let match: RegExpExecArray | null
 	while ((match = mapPattern.exec(fullText)) !== null) {
 		const arrayExpr = match[1]!
-		const simple = match[2] ?? null
-		const destructured: string[] = match[3]
-			? match[3].split(',').map((entry) => {
+		const simple = match[2] ?? match[3] ?? null
+		const destructured: string[] = match[4]
+			? match[4].split(',').map((entry) => {
 				// Capture the *local binding* — alias for `prop: alias`, otherwise prop itself.
 				const trimmed = entry.trim()
 				if (!trimmed) return ''
@@ -1279,6 +1279,28 @@ function imageEntryToLocation(entry: ImageIndexEntry): SourceLocation {
 }
 
 /**
+ * The single place that can have rendered an image URL, or undefined when more than one can.
+ *
+ * Entries from hosts that don't stamp `data-astro-source-*` carry no coordinates, so a URL is
+ * only attributable when the project leaves it no choice: exactly one indexed occurrence, and
+ * none in collection content (a value that also lives in frontmatter could have come from there
+ * instead). Matching is by exact URL — the suffix matching `findInImageIndex` does for CDN
+ * rewrites is a heuristic, and a heuristic can't stand in for coordinates.
+ */
+export function findUniqueImageLocation(imageSrc: string): SourceLocation | undefined {
+	let match: ImageIndexEntry | undefined
+
+	for (const entry of getImageSearchIndex()) {
+		if (entry.src !== imageSrc) continue
+		if (isCollectionFile(entry.file)) return undefined
+		if (match && (match.file !== entry.file || match.line !== entry.line)) return undefined
+		match ??= entry
+	}
+
+	return match ? imageEntryToLocation(match) : undefined
+}
+
+/**
  * Classify a candidate result by file priority and stash it into the right
  * bucket. Returns the result if it's a collection-file match (caller should
  * return immediately — collection data files are always authoritative).
@@ -1429,7 +1451,7 @@ function extractPathname(src: string): string {
  *      collides for multiple imgs sharing the same src.
  *   2. `preferredLocation` (file, line) exact match — used when occurrence
  *      isn't provided (Astro's stamping happens to be precise enough).
- *   3. Collection data files (always authoritative).
+ *   3. Collection data files, only when `includeCollectionFiles` is enabled.
  *   4. Entries in `pageFiles` — disambiguates same image across multiple pages.
  *   5. Any other match.
  */
@@ -1437,6 +1459,7 @@ export function findInImageIndex(
 	imageSrc: string,
 	pageFiles?: readonly string[],
 	preferredLocation?: { file?: string; line?: number; srcOccurrence?: number },
+	options?: { includeCollectionFiles?: boolean; allowUnscopedMatches?: boolean },
 ): SourceLocation | undefined {
 	const index = getImageSearchIndex()
 
@@ -1464,6 +1487,7 @@ export function findInImageIndex(
 	}
 	for (const entry of index) {
 		if (!candidates.includes(entry.src)) continue
+		if (!options?.includeCollectionFiles && isCollectionFile(entry.file)) continue
 		if (occurrenceScope(entry.file)) {
 			if (preferredOccurrence !== undefined && occurrenceCounter++ === preferredOccurrence) {
 				occurrenceMatch ??= imageEntryToLocation(entry)
@@ -1477,7 +1501,7 @@ export function findInImageIndex(
 	}
 	if (occurrenceMatch) return occurrenceMatch
 	if (lineMatch) return lineMatch
-	const exact = matches.page ?? matches.other
+	const exact = matches.page ?? (options?.allowUnscopedMatches === false ? undefined : matches.other)
 	if (exact) return exact
 
 	// Fallback: path suffix matching for CDN-transformed URLs
@@ -1485,6 +1509,7 @@ export function findInImageIndex(
 	// authored src "https://cdn.nuasite.com/assets/photo.webp"
 	const targetPath = extractPathname(imageSrc)
 	for (const entry of index) {
+		if (!options?.includeCollectionFiles && isCollectionFile(entry.file)) continue
 		const entryPath = extractPathname(entry.src)
 		if (entryPath.length <= 5) continue
 		if (!targetPath.endsWith(entryPath) && !entryPath.endsWith(targetPath)) continue
@@ -1492,5 +1517,5 @@ export function findInImageIndex(
 		if (collectionHit) return collectionHit
 	}
 
-	return matches.page ?? matches.other
+	return matches.page ?? (options?.allowUnscopedMatches === false ? undefined : matches.other)
 }

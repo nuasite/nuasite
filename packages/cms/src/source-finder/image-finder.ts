@@ -83,7 +83,8 @@ export function findImageElementNearLine(
 	let bestMatch: ImageMatch | null = null
 	let bestDistance = Infinity
 
-	function visit(node: AstroNode): void {
+	function visit(node: AstroNode, parentExpression: AstroNode | null): void {
+		const currentExpression = node.type === 'expression' ? node : parentExpression
 		if (node.type === 'element') {
 			const elemNode = node as ElementNode
 			if (elemNode.name.toLowerCase() === 'img') {
@@ -98,10 +99,16 @@ export function findImageElementNearLine(
 					if (distance < bestDistance) {
 						bestDistance = distance
 						const snippet = extractImageSnippet(lines, imgLine - 1)
+						const expressionTexts = currentExpression && 'children' in currentExpression
+							? currentExpression.children
+								.filter(child => child.type === 'text')
+								.map(child => child.value)
+							: undefined
 						bestMatch = {
 							line: imgLine,
 							src: srcAttr.value,
 							snippet,
+							expressionTexts,
 						}
 					}
 				}
@@ -110,12 +117,12 @@ export function findImageElementNearLine(
 
 		if ('children' in node && Array.isArray(node.children)) {
 			for (const child of node.children) {
-				visit(child)
+				visit(child, currentExpression)
 			}
 		}
 	}
 
-	visit(ast)
+	visit(ast, null)
 
 	// Only return match if within a reasonable distance (15 lines)
 	return bestMatch && bestDistance <= 15 ? bestMatch : null
@@ -152,21 +159,38 @@ export async function findImageSourceLocation(
 	imageSrcSet?: string,
 	pageFiles?: readonly string[],
 	preferredLocation?: { file?: string; line?: number; srcOccurrence?: number },
+	options?: { includeCollectionFiles?: boolean; searchOnIndexMiss?: boolean; allowUnscopedMatches?: boolean },
 ): Promise<SourceLocation | undefined> {
 	// Use index if available (much faster)
 	if (isSearchIndexInitialized()) {
-		const result = findInImageIndex(imageSrc, pageFiles, preferredLocation)
+		const result = findInImageIndex(imageSrc, pageFiles, preferredLocation, options)
 		if (result) return result
 
 		// Fallback: try URLs extracted from srcset
 		if (imageSrcSet) {
 			const srcsetUrls = parseSrcsetUrls(imageSrcSet)
 			for (const url of srcsetUrls) {
-				const srcsetResult = findInImageIndex(url, pageFiles, preferredLocation)
+				const srcsetResult = findInImageIndex(url, pageFiles, preferredLocation, options)
 				if (srcsetResult) return srcsetResult
 			}
 		}
 
+		if (!options?.searchOnIndexMiss) return undefined
+	}
+
+	if (options?.allowUnscopedMatches === false) {
+		const scopedFiles = new Set([
+			...(preferredLocation?.file ? [preferredLocation.file] : []),
+			...(pageFiles ?? []),
+		])
+		const candidates = [imageSrc, ...(imageSrcSet ? parseSrcsetUrls(imageSrcSet) : [])]
+		for (const file of scopedFiles) {
+			const filePath = path.isAbsolute(file) ? file : path.join(getProjectRoot(), file)
+			for (const candidate of candidates) {
+				const result = await searchFileForImage(filePath, candidate)
+				if (result) return result
+			}
+		}
 		return undefined
 	}
 

@@ -523,6 +523,8 @@ export interface ManifestEntry {
 	sourceLine?: number
 	/** Full element snippet from opening to closing tag (for text content updates) */
 	sourceSnippet?: string
+	/** Source coordinates identify a template expression, but its editable value still needs resolution. */
+	requiresSourceResolution?: boolean
 	variableName?: string
 	childCmsIds?: string[]
 	parentComponentId?: string

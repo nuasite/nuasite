@@ -101,15 +101,20 @@ export function notifyLockedElement(): void {
 	signals.showToast(STRINGS.editor.lockedElement, 'info')
 }
 
-/** Resolve a locked text entry, then rewire edit mode when the server finds its source. */
+/**
+ * Re-fetch a locked entry with on-demand source resolution, then unlock it when
+ * the server finds a valid sourcePath.
+ */
 const inFlightLockedFetches = new Map<string, Promise<void>>()
 
 function entryHasResolvedSource(id: string): boolean {
-	return !!signals.manifest.value.entries[id]?.sourcePath
+	const entry = signals.manifest.value.entries[id]
+	return !!entry?.sourcePath && !entry.requiresSourceResolution
 }
 
 async function resolveLockedEntry(
 	id: string,
+	target: HTMLElement,
 	config: CmsConfig,
 	editModeSignal: AbortSignal,
 	onStateChange?: () => void,
@@ -131,6 +136,7 @@ async function resolveLockedEntry(
 	if (!signals.isEditing.value) return
 	const refreshedTarget = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${id}"]`)
 	if (refreshedTarget instanceof HTMLElement) refreshedTarget.focus()
+	target.removeAttribute(CSS.LOCKED_ATTRIBUTE)
 }
 
 function handleLockedClick(event: Event, config: CmsConfig, editModeSignal: AbortSignal, onStateChange?: () => void): void {
@@ -147,7 +153,7 @@ function handleLockedClick(event: Event, config: CmsConfig, editModeSignal: Abor
 
 	let resolution = inFlightLockedFetches.get(id)
 	if (!resolution) {
-		resolution = resolveLockedEntry(id, config, editModeSignal, onStateChange)
+		resolution = resolveLockedEntry(id, target, config, editModeSignal, onStateChange)
 		inFlightLockedFetches.set(id, resolution)
 		const clearResolution = () => {
 			if (inFlightLockedFetches.get(id) === resolution) inFlightLockedFetches.delete(id)
@@ -296,9 +302,14 @@ export async function startEditMode(
 			return
 		}
 
+		// An entry whose coordinates still point at a template expression has no writable
+		// target yet, so it takes the locked path below — the media library would otherwise
+		// happily replace an image whose src lives in a collection file we haven't found.
+		const sourceUnresolved = !manifestEntry?.sourcePath || !!manifestEntry.requiresSourceResolution
+
 		// Check if this is an image element
 		// Image elements open the media library for replacement
-		if (el.hasAttribute(IMAGE_ATTRIBUTE)) {
+		if (el.hasAttribute(IMAGE_ATTRIBUTE) && !sourceUnresolved) {
 			logDebug(config.debug, 'Image element detected:', cmsId)
 			makeElementNonEditable(el)
 			setupImageClickHandler(config, el as HTMLImageElement, cmsId, savedImageEdits[cmsId], onStateChange)
@@ -316,7 +327,7 @@ export async function startEditMode(
 
 		// Without a source path, the writer has nowhere to persist text edits — lock
 		// the element so it can't be typed into and the user gets told why on click.
-		if (!manifestEntry?.sourcePath) {
+		if (sourceUnresolved) {
 			logDebug(config.debug, 'Skipping element without source path:', cmsId)
 			makeElementNonEditable(el)
 			el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')

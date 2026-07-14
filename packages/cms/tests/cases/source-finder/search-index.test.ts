@@ -988,6 +988,11 @@ describe('resolveMapChain', () => {
 		expect(result).toEqual({ arrayPath: 'images', leafSuffix: '' })
 	})
 
+	test('simple .map() with an unparenthesized parameter', () => {
+		const result = resolveMapChain(['images.map(img => (\n  '], 'img.src')
+		expect(result).toEqual({ arrayPath: 'images', leafSuffix: '.src' })
+	})
+
 	test('nested .map() chains', () => {
 		const result = resolveMapChain(
 			['categories.map((cat) => (\n  cat.images.map((img, i) => (\n    '],
@@ -1237,7 +1242,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/assets/alice.webp')
+		const result = findInImageIndex('/assets/alice.webp', undefined, undefined, { includeCollectionFiles: true })
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/content/people/alice.json')
 	})
@@ -1253,11 +1258,11 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const logoResult = findInImageIndex('/images/logo.png')
+		const logoResult = findInImageIndex('/images/logo.png', undefined, undefined, { includeCollectionFiles: true })
 		expect(logoResult).toBeDefined()
 		expect(logoResult?.file).toBe('src/content/config/settings.yaml')
 
-		const faviconResult = findInImageIndex('/images/favicon.ico')
+		const faviconResult = findInImageIndex('/images/favicon.ico', undefined, undefined, { includeCollectionFiles: true })
 		expect(faviconResult).toBeDefined()
 		expect(faviconResult?.file).toBe('src/content/config/settings.yaml')
 	})
@@ -1273,7 +1278,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/photos/hero.jpg')
+		const result = findInImageIndex('/photos/hero.jpg', undefined, undefined, { includeCollectionFiles: true })
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/content/blog/post.md')
 	})
@@ -1293,7 +1298,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 		expect(result).toBeUndefined()
 	})
 
-	test('prefers collection data file over template when same URL exists in both', async () => {
+	test('prefers collection data when structural context enables it', async () => {
 		const ctx = getCtx()
 
 		// Same image URL in a template and a collection data file
@@ -1318,12 +1323,17 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/assets/abc123-photo.webp')
+		const result = findInImageIndex(
+			'/assets/abc123-photo.webp',
+			undefined,
+			undefined,
+			{ includeCollectionFiles: true },
+		)
 		expect(result).not.toBeUndefined()
 		expect(result!.file).toContain('src/content/news/my-post.md')
 	})
 
-	test('prefers collection data file even when template is indexed first', async () => {
+	test('prefers enabled collection data even when the template is indexed first', async () => {
 		const ctx = getCtx()
 
 		// Template files are typically indexed first (src/pages before src/content)
@@ -1349,7 +1359,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/uploads/logo.png')
+		const result = findInImageIndex('/uploads/logo.png', undefined, undefined, { includeCollectionFiles: true })
 		expect(result).not.toBeUndefined()
 		expect(result!.file).toContain('src/content/partners/acme.json')
 	})

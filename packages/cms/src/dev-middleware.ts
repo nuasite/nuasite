@@ -17,11 +17,16 @@ import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
 import {
+	applyCollectionSource,
+	buildCollectionReferenceIndex,
+	buildCollectionTextIndex,
 	declaredSitePathFromData,
 	enhanceManifestWithSourceSnippets,
 	findCollectionSource,
 	findImageSourceLocation,
 	findSourceLocation,
+	getCollectionsRenderedByPage,
+	lookupCollectionText,
 	parseMarkdownContent,
 	reindexDirtyFiles,
 } from './source-finder'
@@ -80,7 +85,7 @@ export function createDevMiddleware(
 ) {
 	const isPublicStaticFile = options.isPublicStaticFile ?? (() => false)
 
-	// Manifest requests wait for indexed enhancement; slow text misses resolve on demand.
+	// Manifest requests wait for indexed enhancement; slow misses resolve on demand.
 	const pendingPhase2: Map<string, Promise<void>> = new Map()
 	const pendingEntryResolution: Map<string, Promise<void>> = new Map()
 
@@ -289,7 +294,7 @@ export function createDevMiddleware(
 				const resolutionKey = `${pagePath}\0${entryId}`
 				let resolution = pendingEntryResolution.get(resolutionKey)
 				if (!resolution) {
-					resolution = resolveManifestTextEntryOnDemand(pagePath, entryId, manifestWriter)
+					resolution = resolveManifestEntryOnDemand(pagePath, entryId, manifestWriter)
 					pendingEntryResolution.set(resolutionKey, resolution)
 					const clearResolution = () => {
 						if (pendingEntryResolution.get(resolutionKey) === resolution) {
@@ -301,7 +306,7 @@ export function createDevMiddleware(
 				try {
 					await resolution
 				} catch (error) {
-					console.error('[cms] On-demand text source resolution failed:', error)
+					console.error('[cms] On-demand source resolution failed:', error)
 				}
 			}
 
@@ -646,57 +651,105 @@ export async function enhanceManifestInBackground(
 		const pageFiles = getPageFileCandidates(pagePath)
 		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions, pageFiles)
 
-		// Image misses stay on the existing indexed path. Text misses use the slow
-		// full-tree fallback only when the editor requests a locked entry.
-		for (const entry of Object.values(enhanced)) {
-			if (entry.sourceSnippet || entry.sourcePath) continue
-			if (entry.imageMetadata?.src) {
-				const preferredLocation = entry.sourcePath || entry.imageMetadata.srcOccurrence !== undefined
-					? {
-						file: entry.sourcePath,
-						line: entry.sourceLine,
-						srcOccurrence: entry.imageMetadata.srcOccurrence,
-					}
-					: undefined
-				const loc = await findImageSourceLocation(
-					entry.imageMetadata.src,
-					entry.imageMetadata.srcSet,
-					pageFiles,
-					preferredLocation,
-				)
-				if (loc) {
-					entry.sourcePath = loc.file
-					entry.sourceLine = loc.line
-					entry.sourceSnippet = loc.snippet
-				}
-			}
-		}
-
-		// Update the manifest with fully-resolved entries and component props
+		// Keep slow full-tree fallback lookups out of the bulk page-load path.
 		manifestWriter.addPage(pagePath, enhanced, components, collection, seo)
 	} catch (error) {
 		console.error('[cms] Background enhancement failed:', error)
 	}
 }
 
-export async function resolveManifestTextEntryOnDemand(
+export async function resolveManifestEntryOnDemand(
 	pagePath: string,
 	entryId: string,
 	manifestWriter: ManifestWriter,
 ): Promise<void> {
 	const pageData = manifestWriter.getPageManifest(pagePath)
 	const entry = pageData?.entries[entryId]
-	if (!pageData || !entry || entry.sourcePath || entry.imageMetadata?.src || !entry.text || !entry.tag) return
+	if (!pageData || !entry || (entry.sourcePath && !entry.requiresSourceResolution)) return
 
-	const location = await findSourceLocation(entry.text, entry.tag, getPageFileCandidates(pagePath))
-	if (location) {
-		entry.sourcePath = location.file
-		entry.sourceLine = location.line
-		entry.sourceSnippet = location.snippet
-		if (location.variableName) entry.variableName = location.variableName
+	const pageFiles = getPageFileCandidates(pagePath)
+	if (entry.imageMetadata?.src) {
+		const hasPageFallback = !!entry.sourcePath && !entry.sourceLine
+		const preferredLocation = !hasPageFallback && (entry.sourcePath || entry.imageMetadata.srcOccurrence !== undefined)
+			? {
+				file: entry.sourcePath,
+				line: entry.sourceLine,
+				srcOccurrence: entry.imageMetadata.srcOccurrence,
+			}
+			: undefined
+		const location = hasPageFallback
+			? undefined
+			: await findImageSourceLocation(
+				entry.imageMetadata.src,
+				entry.imageMetadata.srcSet,
+				pageFiles,
+				preferredLocation,
+				{ searchOnIndexMiss: true, allowUnscopedMatches: false },
+			)
+		if (location) {
+			entry.sourcePath = location.file
+			entry.sourceLine = location.line
+			entry.sourceSnippet = location.snippet
+			entry.requiresSourceResolution = undefined
+		} else if (entry.collectionName) {
+			const collectionSource = await lookupCollectionSourceOnDemand(
+				entry.imageMetadata.src,
+				entry,
+				pageFiles,
+				manifestWriter,
+			)
+			if (collectionSource) {
+				pageData.entries[entryId] = applyCollectionSource(entry, collectionSource.location, collectionSource.referenceIndex)
+			}
+		}
+	} else if (entry.text && entry.tag) {
+		// Full-tree search distinguishes template props from equal collection values.
+		const location = await findSourceLocation(entry.text, entry.tag, pageFiles)
+		if (location) {
+			entry.sourcePath = location.file
+			entry.sourceLine = location.line
+			entry.sourceSnippet = location.snippet
+			entry.requiresSourceResolution = undefined
+			if (location.variableName) entry.variableName = location.variableName
+		} else {
+			const collectionSource = await lookupCollectionSourceOnDemand(entry.text.trim(), entry, pageFiles, manifestWriter)
+			if (collectionSource) {
+				pageData.entries[entryId] = applyCollectionSource(
+					entry,
+					collectionSource.location,
+					collectionSource.referenceIndex,
+					{ allowStyling: false },
+				)
+			}
+		}
 	}
 
 	manifestWriter.addPage(pagePath, pageData.entries, pageData.components, pageData.collection, pageData.seo)
+}
+
+async function lookupCollectionSourceOnDemand(
+	value: string,
+	entry: ManifestEntry,
+	pageFiles: readonly string[],
+	manifestWriter: ManifestWriter,
+) {
+	const collectionDefinitions = manifestWriter.getCollectionDefinitions()
+	if (Object.keys(collectionDefinitions).length === 0) return undefined
+
+	const seeds = entry.collectionName ? [entry.collectionName] : []
+	const allowedCollections = entry.collectionName && entry.collectionFieldName
+		? new Set([entry.collectionName])
+		: await getCollectionsRenderedByPage(pageFiles, collectionDefinitions, seeds)
+	if (allowedCollections.size === 0) return undefined
+
+	await buildCollectionTextIndex(collectionDefinitions)
+	const referenceIndex = buildCollectionReferenceIndex(collectionDefinitions)
+	const location = lookupCollectionText(value, referenceIndex, {
+		requireUnique: true,
+		allowedCollections,
+		fieldName: entry.collectionFieldName,
+	})
+	return location ? { location, referenceIndex } : undefined
 }
 
 /** Page file extensions recognized by Astro */

@@ -6,9 +6,12 @@ import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument } from 'yaml
 import { getProjectRoot } from '../config'
 import { scanCollections } from '../scan-cache'
 import type { CollectionDefinition } from '../types'
+import { getCachedParsedFile } from './ast-parser'
+import { getAstroContentAnalysis } from './astro-content-analysis'
 import { getCollectionTextIndex, getDeclaredUrlIndexCache, getMarkdownFileCache, setCollectionTextIndex } from './cache'
 import { normalizeText } from './snippet-utils'
 import type { CollectionInfo, MarkdownContent, SourceLocation } from './types'
+import { resolveImportPath } from './variable-extraction'
 
 // ============================================================================
 // Collection Text Index — pre-built reverse index for fast text→source lookups
@@ -152,27 +155,103 @@ function collectFromYamlNode(
 
 /**
  * O(1) lookup in the pre-built collection text index.
- * Returns all matching source locations, preferring referenced collections.
+ * Prefers referenced collections and can reject ambiguous edit targets.
  */
 export function lookupCollectionText(
 	textContent: string,
 	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
+	options?: { requireUnique?: boolean; allowedCollections?: ReadonlySet<string>; fieldName?: string },
 ): SourceLocation | undefined {
 	const index = getCollectionTextIndex()
 	if (!index) return undefined
 	const normalized = normalizeText(textContent)
-	const locations = index.get(normalized)
-	if (!locations || locations.length === 0) return undefined
+	const indexed = index.get(normalized)
+	if (!indexed || indexed.length === 0) return undefined
+
+	const allowed = options?.allowedCollections
+	const allowedLocations = allowed
+		? indexed.filter(location => location.collectionName && allowed.has(location.collectionName))
+		: indexed
+	const locations = options?.fieldName
+		? allowedLocations.filter(location => location.variableName === options.fieldName)
+		: allowedLocations
+	if (locations.length === 0) return undefined
 
 	// Prefer locations from referenced collections
 	if (referenceIndex) {
-		for (const loc of locations) {
-			if (loc.collectionName && referenceIndex.has(loc.collectionName)) {
-				return loc
+		const referencedLocations = locations.filter(
+			location => location.collectionName && referenceIndex.has(location.collectionName),
+		)
+		if (referencedLocations.length > 0) {
+			if (options?.requireUnique && referencedLocations.length !== 1) return undefined
+			return referencedLocations[0]
+		}
+	}
+	if (options?.requireUnique && locations.length !== 1) return undefined
+	return locations[0]
+}
+
+function expandReferencedCollections(
+	rendered: Set<string>,
+	collections: Record<string, CollectionDefinition>,
+): void {
+	const queue = [...rendered]
+	while (queue.length > 0) {
+		const current = queue.shift()!
+		for (const field of collections[current]?.fields ?? []) {
+			const target = field.type === 'reference' || (field.type === 'array' && field.itemType === 'reference')
+				? field.collection
+				: undefined
+			if (target && collections[target] && !rendered.has(target)) {
+				rendered.add(target)
+				queue.push(target)
 			}
 		}
 	}
-	return locations[0]
+}
+
+/**
+ * Collections a page can actually render, derived from its own source files.
+ *
+ * Value-based attribution (matching rendered text/image URLs against the collection
+ * index) is only safe for these — otherwise a nav label like "About" that happens to
+ * equal some article's `title:` would be edited into that article. See PR #63.
+ */
+export async function getCollectionsRenderedByPage(
+	pageFiles: readonly string[] | undefined,
+	collections: Record<string, CollectionDefinition>,
+	seedCollections: Iterable<string> = [],
+): Promise<Set<string>> {
+	const rendered = new Set([...seedCollections].filter(name => collections[name]))
+	const visited = new Set<string>()
+	const projectRoot = getProjectRoot()
+
+	async function visitModule(filePath: string): Promise<void> {
+		const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(projectRoot, filePath)
+		if (visited.has(absolutePath)) return
+		visited.add(absolutePath)
+
+		const cached = await getCachedParsedFile(absolutePath)
+		if (!cached) return
+
+		const analysis = getAstroContentAnalysis(
+			cached,
+			absolutePath.endsWith('.astro') ? 'astro' : 'script',
+		)
+		for (const call of analysis.collectionCalls) {
+			if (call.collectionName && collections[call.collectionName]) rendered.add(call.collectionName)
+		}
+
+		await Promise.all(analysis.imports.map(async (importInfo) => {
+			const importedPath = await resolveImportPath(importInfo.source, absolutePath)
+			if (importedPath) await visitModule(importedPath)
+		}))
+	}
+
+	await Promise.all((pageFiles ?? []).map(visitModule))
+	expandReferencedCollections(rendered, collections)
+
+	return rendered
 }
 
 // ============================================================================
