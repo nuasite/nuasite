@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { discoverCollectionRoutes, enhanceManifestInBackground, invalidateCollectionRoutesCache } from '../../src/dev-middleware'
+import {
+	discoverCollectionRoutes,
+	enhanceManifestInBackground,
+	invalidateCollectionRoutesCache,
+	resolveManifestTextEntryOnDemand,
+} from '../../src/dev-middleware'
 import { ManifestWriter } from '../../src/manifest-writer'
 import { clearSourceFinderCache } from '../../src/source-finder'
 import type { CmsMarkerOptions, CollectionDefinition, ManifestEntry } from '../../src/types'
@@ -220,6 +225,48 @@ describe('enhanceManifestInBackground — collection text on listing pages', () 
 		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
 		expect(entry?.sourcePath).toBe('src/pages/index.astro')
 		expect(entry?.sourceLine).toBeDefined()
+	})
+
+	test('defers a slow text fallback until the locked entry is requested', async () => {
+		await ctx.writeFile(
+			'src/components/Nav.astro',
+			[
+				'---',
+				'interface Props {',
+				'  items: Array<{ label: string; href: string }>',
+				'}',
+				'const { items } = Astro.props',
+				'---',
+				'<nav>{items.map((item) => <a href={item.href}>{item.label}</a>)}</nav>',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import Nav from "../components/Nav.astro"',
+				'const navItems = [',
+				'  { label: "Home", href: "/" },',
+				'  { label: "About", href: "/about" },',
+				']',
+				'---',
+				'<Nav items={navItems} />',
+			].join('\n'),
+		)
+
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': { id: 'cms-1', tag: 'a', text: 'About' },
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, undefined, config, manifestWriter)
+		expect(manifestWriter.getPageManifest('/')?.entries['cms-1']?.sourcePath).toBeUndefined()
+
+		await resolveManifestTextEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/pages/index.astro')
+		expect(entry?.sourceSnippet).toContain('label: "About"')
 	})
 })
 

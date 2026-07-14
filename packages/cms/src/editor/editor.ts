@@ -101,44 +101,60 @@ export function notifyLockedElement(): void {
 	signals.showToast(STRINGS.editor.lockedElement, 'info')
 }
 
-/**
- * Manifest is built in two phases (fast HTML marking, then background source
- * resolution). Entering edit mode before phase 2 completes can pre-lock elements
- * that later gain a valid sourcePath, leaving stale locks on the DOM.
- *
- * On click, re-check the local snapshot, then re-fetch from the server in case
- * phase 2 finished since the editor took its snapshot. Toggle edit mode once
- * afterwards to make the now-unlocked element editable.
- */
-let inFlightLockedFetch: Promise<unknown> | null = null
-function handleLockedClick(event: Event): void {
-	const target = event.currentTarget as HTMLElement | null
-	const id = target?.getAttribute(CSS.ID_ATTRIBUTE)
-	if (!target || !id) {
+/** Resolve a locked text entry, then rewire edit mode when the server finds its source. */
+const inFlightLockedFetches = new Map<string, Promise<void>>()
+
+function entryHasResolvedSource(id: string): boolean {
+	return !!signals.manifest.value.entries[id]?.sourcePath
+}
+
+async function resolveLockedEntry(
+	id: string,
+	config: CmsConfig,
+	editModeSignal: AbortSignal,
+	onStateChange?: () => void,
+): Promise<void> {
+	if (editModeSignal.aborted) return
+	if (!entryHasResolvedSource(id)) {
+		try {
+			const fresh = await fetchManifest(id)
+			if (editModeSignal.aborted) return
+			signals.setManifest(fresh)
+		} catch {
+			return
+		}
+	}
+	if (editModeSignal.aborted || !entryHasResolvedSource(id)) return
+
+	stopEditMode(onStateChange)
+	await startEditMode(config, onStateChange)
+	if (!signals.isEditing.value) return
+	const refreshedTarget = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${id}"]`)
+	if (refreshedTarget instanceof HTMLElement) refreshedTarget.focus()
+}
+
+function handleLockedClick(event: Event, config: CmsConfig, editModeSignal: AbortSignal, onStateChange?: () => void): void {
+	const target = event.currentTarget
+	if (!(target instanceof HTMLElement)) {
+		notifyLockedElement()
+		return
+	}
+	const id = target.getAttribute(CSS.ID_ATTRIBUTE)
+	if (!id) {
 		notifyLockedElement()
 		return
 	}
 
-	if (signals.manifest.value.entries[id]?.sourcePath) {
-		target.removeAttribute(CSS.LOCKED_ATTRIBUTE)
-		return
-	}
-
-	// In-memory signal can lag phase-2 writes. Coalesce concurrent clicks into
-	// one fetch so the dev server doesn't get hammered.
-	if (!inFlightLockedFetch) {
-		inFlightLockedFetch = fetchManifest()
-			.then((fresh) => signals.setManifest(fresh))
-			.catch(() => {})
-			.finally(() => {
-				inFlightLockedFetch = null
-			})
-	}
-	inFlightLockedFetch.then(() => {
-		if (signals.manifest.value.entries[id]?.sourcePath) {
-			target.removeAttribute(CSS.LOCKED_ATTRIBUTE)
+	let resolution = inFlightLockedFetches.get(id)
+	if (!resolution) {
+		resolution = resolveLockedEntry(id, config, editModeSignal, onStateChange)
+		inFlightLockedFetches.set(id, resolution)
+		const clearResolution = () => {
+			if (inFlightLockedFetches.get(id) === resolution) inFlightLockedFetches.delete(id)
 		}
-	})
+		editModeSignal.addEventListener('abort', clearResolution, { once: true })
+		void resolution.then(clearResolution, clearResolution)
+	}
 	notifyLockedElement()
 }
 
@@ -304,7 +320,7 @@ export async function startEditMode(
 			logDebug(config.debug, 'Skipping element without source path:', cmsId)
 			makeElementNonEditable(el)
 			el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
-			el.addEventListener('click', handleLockedClick, { signal: editModeSignal })
+			el.addEventListener('click', event => handleLockedClick(event, config, editModeSignal, onStateChange), { signal: editModeSignal })
 			return
 		}
 

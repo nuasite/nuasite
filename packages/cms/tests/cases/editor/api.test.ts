@@ -50,7 +50,7 @@ describe('fetchManifest', () => {
 		global.fetch = undefined
 	})
 
-	test('fetches both page-specific and global manifest in parallel', async () => {
+	test('fetches both manifests and requests on-demand resolution for the page entry', async () => {
 		const fetchedUrls: string[] = []
 		;(global as any).fetch = async (url: string | Request) => {
 			fetchedUrls.push(url.toString())
@@ -60,10 +60,12 @@ describe('fetchManifest', () => {
 			})
 		}
 
-		await fetchManifest()
+		await fetchManifest('entry-1')
 		// Both manifests are fetched in parallel (URLs include cache-busting timestamps)
-		expect(fetchedUrls.some(url => url.startsWith('/about.json'))).toBe(true)
-		expect(fetchedUrls.some(url => url.startsWith('/cms-manifest.json'))).toBe(true)
+		const pageUrl = fetchedUrls.find(url => url.startsWith('/about.json'))
+		const globalUrl = fetchedUrls.find(url => url.startsWith('/cms-manifest.json'))
+		expect(pageUrl).toContain('resolve=entry-1')
+		expect(globalUrl).not.toContain('resolve=entry-1')
 	})
 
 	test('falls back to cms-manifest.json when page manifest fails', async () => {
