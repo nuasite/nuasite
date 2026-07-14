@@ -80,12 +80,9 @@ export function createDevMiddleware(
 ) {
 	const isPublicStaticFile = options.isPublicStaticFile ?? (() => false)
 
-	// Tracks in-flight Phase 2 enhancement promises per page so that requests for the
-	// page manifest can await source-path resolution before responding. Without this,
-	// hosts that serve HTML faster than the source-finder pipeline completes (e.g.
-	// pletivo, sandbox runtimes) leak a partial manifest where entries have tag/text
-	// but no sourcePath, which the editor then treats as locked elements.
+	// Manifest requests wait for indexed enhancement; slow text misses resolve on demand.
 	const pendingPhase2: Map<string, Promise<void>> = new Map()
+	const pendingEntryResolution: Map<string, Promise<void>> = new Map()
 
 	// Serve uploaded media files directly from disk.
 	// Vite's public dir middleware caches file listings, so newly uploaded files
@@ -262,7 +259,8 @@ export function createDevMiddleware(
 
 	// Serve per-page manifest endpoints (e.g., /about.json for /about page)
 	server.middlewares.use(async (req, res, next) => {
-		const url = (req.url || '').split('?')[0]!
+		const requestUrl = new URL(req.url || '/', 'http://localhost')
+		const url = requestUrl.pathname
 
 		// Match /*.json pattern (but not files that actually exist)
 		const match = url.match(/^\/(.*)\.json$/)
@@ -276,15 +274,34 @@ export function createDevMiddleware(
 				pagePath = '/'
 			}
 
-			// If Phase 2 source resolution is still in flight for this page, wait for it
-			// so the response includes full sourcePath data — avoids the race where the
-			// editor fetches a partial manifest and locks elements it can't yet edit.
+			// Avoid serving a stale snapshot while indexed enhancement is still running.
 			const inFlight = pendingPhase2.get(pagePath)
 			if (inFlight) {
 				try {
 					await inFlight
 				} catch {
 					// fall through — serve whatever partial manifest we have
+				}
+			}
+
+			const entryId = requestUrl.searchParams.get('resolve')
+			if (entryId) {
+				const resolutionKey = `${pagePath}\0${entryId}`
+				let resolution = pendingEntryResolution.get(resolutionKey)
+				if (!resolution) {
+					resolution = resolveManifestTextEntryOnDemand(pagePath, entryId, manifestWriter)
+					pendingEntryResolution.set(resolutionKey, resolution)
+					const clearResolution = () => {
+						if (pendingEntryResolution.get(resolutionKey) === resolution) {
+							pendingEntryResolution.delete(resolutionKey)
+						}
+					}
+					void resolution.then(clearResolution, clearResolution)
+				}
+				try {
+					await resolution
+				} catch (error) {
+					console.error('[cms] On-demand text source resolution failed:', error)
 				}
 			}
 
@@ -629,7 +646,8 @@ export async function enhanceManifestInBackground(
 		const pageFiles = getPageFileCandidates(pagePath)
 		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions, pageFiles)
 
-		// Fallback for entries without sourcePath — search index can still find them
+		// Image misses stay on the existing indexed path. Text misses use the slow
+		// full-tree fallback only when the editor requests a locked entry.
 		for (const entry of Object.values(enhanced)) {
 			if (entry.sourceSnippet || entry.sourcePath) continue
 			if (entry.imageMetadata?.src) {
@@ -651,14 +669,6 @@ export async function enhanceManifestInBackground(
 					entry.sourceLine = loc.line
 					entry.sourceSnippet = loc.snippet
 				}
-			} else if (entry.text && entry.tag) {
-				const loc = await findSourceLocation(entry.text, entry.tag, pageFiles)
-				if (loc) {
-					entry.sourcePath = loc.file
-					entry.sourceLine = loc.line
-					entry.sourceSnippet = loc.snippet
-					if (loc.variableName) entry.variableName = loc.variableName
-				}
 			}
 		}
 
@@ -667,6 +677,26 @@ export async function enhanceManifestInBackground(
 	} catch (error) {
 		console.error('[cms] Background enhancement failed:', error)
 	}
+}
+
+export async function resolveManifestTextEntryOnDemand(
+	pagePath: string,
+	entryId: string,
+	manifestWriter: ManifestWriter,
+): Promise<void> {
+	const pageData = manifestWriter.getPageManifest(pagePath)
+	const entry = pageData?.entries[entryId]
+	if (!pageData || !entry || entry.sourcePath || entry.imageMetadata?.src || !entry.text || !entry.tag) return
+
+	const location = await findSourceLocation(entry.text, entry.tag, getPageFileCandidates(pagePath))
+	if (location) {
+		entry.sourcePath = location.file
+		entry.sourceLine = location.line
+		entry.sourceSnippet = location.snippet
+		if (location.variableName) entry.variableName = location.variableName
+	}
+
+	manifestWriter.addPage(pagePath, pageData.entries, pageData.components, pageData.collection, pageData.seo)
 }
 
 /** Page file extensions recognized by Astro */

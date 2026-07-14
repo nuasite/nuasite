@@ -9,8 +9,11 @@ const mockConfig: CmsConfig = {
 	debug: false,
 }
 
+let beforeManifestResolution: ((entryId: string) => Promise<void>) | undefined
+
 beforeEach(() => {
 	document.body.innerHTML = ''
+	beforeManifestResolution = undefined
 
 	// Mock window.location for page-specific manifest URL
 	Object.defineProperty(window, 'location', {
@@ -40,6 +43,11 @@ beforeEach(() => {
 				tag: 'p',
 				text: 'Text with no source path',
 			},
+			'resolvable-id': {
+				id: 'resolvable-id',
+				tag: 'p',
+				text: 'Resolvable text',
+			},
 		},
 		components: {},
 		componentDefinitions: {},
@@ -48,10 +56,25 @@ beforeEach(() => {
 	// Reset toast state between tests so assertions on toasts aren't leaky
 	signals.toasts.value = []
 	_resetToastThrottles()
+	const resolvedEntryIds = new Set<string>()
 	;(global as any).fetch = async (url: string | Request) => {
 		const urlStr = url.toString()
-		// Handle both page-specific manifest (/index.json) and global manifest (/cms-manifest.json)
-		if (urlStr.includes('/cms-manifest.json') || urlStr.includes('/index.json')) {
+		if (urlStr.includes('/index.json')) {
+			const requestedId = new URL(urlStr, 'http://localhost').searchParams.get('resolve')
+			if (requestedId) await beforeManifestResolution?.(requestedId)
+			if (requestedId === 'resolvable-id') resolvedEntryIds.add(requestedId)
+			const entries = Object.fromEntries(
+				Object.entries(mockManifestData.entries).map(([id, entry]) => [
+					id,
+					resolvedEntryIds.has(id) ? { ...entry, sourcePath: '/test/resolved.md', sourceLine: 1 } : entry,
+				]),
+			)
+			return new Response(JSON.stringify({ ...mockManifestData, entries }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		}
+		if (urlStr.includes('/cms-manifest.json')) {
 			return new Response(JSON.stringify(mockManifestData), {
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
@@ -294,6 +317,56 @@ test('startEditMode locks elements whose manifest entry has no source path', asy
 
 	expect(locked.contentEditable).toBe('false')
 	expect(locked.getAttribute('data-cms-locked')).toBe('true')
+})
+
+test('clicking a resolvable locked element rewires it as editable', async () => {
+	document.body.innerHTML = '<div data-cms-id="resolvable-id">Resolvable text</div>'
+
+	await startEditMode(mockConfig, () => {})
+	const element = document.querySelector<HTMLElement>('[data-cms-id="resolvable-id"]')
+	if (!element) throw new Error('Expected resolvable element')
+	expect(element.getAttribute('data-cms-locked')).toBe('true')
+
+	element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	for (let attempt = 0; attempt < 10 && element.contentEditable !== 'true'; attempt++) {
+		await new Promise(resolve => setTimeout(resolve, 0))
+	}
+
+	expect(element.contentEditable).toBe('true')
+	expect(element.hasAttribute('data-cms-locked')).toBe(false)
+	expect(signals.manifest.value.entries['resolvable-id']?.sourcePath).toBe('/test/resolved.md')
+})
+
+test('a late locked-entry resolution does not restart a stopped edit session', async () => {
+	document.body.innerHTML = '<div data-cms-id="resolvable-id">Resolvable text</div>'
+
+	await startEditMode(mockConfig, () => {})
+	const element = document.querySelector<HTMLElement>('[data-cms-id="resolvable-id"]')
+	if (!element) throw new Error('Expected resolvable element')
+
+	let releaseResolution: (() => void) | undefined
+	const resolutionStarted = new Promise<void>((resolveStarted) => {
+		beforeManifestResolution = async (entryId) => {
+			if (entryId === 'resolvable-id') {
+				resolveStarted()
+				await new Promise<void>((resolve) => {
+					releaseResolution = resolve
+				})
+			}
+		}
+	})
+
+	element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	await resolutionStarted
+	stopEditMode(() => {})
+	if (!releaseResolution) throw new Error('Expected pending resolution')
+	releaseResolution()
+	for (let attempt = 0; attempt < 5; attempt++) {
+		await new Promise(resolve => setTimeout(resolve, 0))
+	}
+
+	expect(signals.isEditing.value).toBe(false)
+	expect(element.contentEditable).toBe('false')
 })
 
 test('clicking a locked element shows a toast explaining why it is not editable', async () => {
