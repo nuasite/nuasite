@@ -1,3 +1,19 @@
+export {
+	analyzeAstroContentAst,
+	analyzeAstroScript,
+	analyzeAstroSource,
+	type AstroCollectionBinding,
+	type AstroContentAccessor,
+	type AstroContentCall,
+	type AstroContentFacts,
+	type AstroFrontmatter,
+	type AstroImportSpecifier,
+	type AstroSourceAnalysis,
+	type AstroSourceImport,
+	type AstroSourcePoint,
+	type AstroSourceRange,
+	extractAstroFrontmatter,
+} from './astro-source-analysis'
 export { scanCollections } from './collection-scanner'
 export { scanComponentDefinitions } from './component-registry'
 export {
