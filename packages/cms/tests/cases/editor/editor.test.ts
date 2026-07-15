@@ -398,6 +398,36 @@ test('clicking a resolvable locked element rewires it as editable', async () => 
 	expect(signals.manifest.value.entries['resolvable-id']?.sourcePath).toBe('/test/resolved.md')
 })
 
+// Resolution rewires only the clicked element — a session restart would close open
+// dialogs and drop the wiring of every other element mid-edit.
+test('resolving a locked element does not restart the edit session', async () => {
+	document.body.innerHTML = `
+		<div data-cms-id="test-id-1">Test content 1</div>
+		<div data-cms-id="resolvable-id">Resolvable text</div>
+	`
+
+	await startEditMode(mockConfig, () => {})
+	const editable = document.querySelector<HTMLElement>('[data-cms-id="test-id-1"]')
+	const locked = document.querySelector<HTMLElement>('[data-cms-id="resolvable-id"]')
+	if (!editable || !locked) throw new Error('Expected both elements')
+	expect(editable.contentEditable).toBe('true')
+
+	signals.openColorEditor('test-id-1', new DOMRect())
+
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	for (let attempt = 0; attempt < 10 && locked.contentEditable !== 'true'; attempt++) {
+		await new Promise(resolve => setTimeout(resolve, 0))
+	}
+
+	expect(locked.contentEditable).toBe('true')
+	expect(locked.hasAttribute('data-cms-locked')).toBe(false)
+	expect(editable.contentEditable).toBe('true')
+	expect(signals.isColorEditorOpen.value).toBe(true)
+	expect(signals.isEditing.value).toBe(true)
+
+	stopEditMode(() => {})
+})
+
 test('a late locked-entry resolution does not restart a stopped edit session', async () => {
 	document.body.innerHTML = '<div data-cms-id="resolvable-id">Resolvable text</div>'
 
