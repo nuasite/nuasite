@@ -193,6 +193,15 @@ export const n = {
  * is read by the Nua CMS scanner from the config **source**; at runtime it is
  * stripped, so the returned value is exactly the Astro collection config.
  *
+ * Astro's own `defineCollection` stamps `type: 'content_layer'` on any collection
+ * that declares a `loader`, and Astro's content-config parser then *requires* that
+ * type (a loader collection without it is rejected with "Invalid input"). Because
+ * this helper returns the bare config instead of routing it through
+ * `defineCollection`, it reproduces that one normalization. We can't delegate to
+ * Astro's `defineCollection` (it lives behind the virtual `astro:content` module,
+ * which doesn't resolve when this package is loaded from `astro.config.mjs` in
+ * plain Node), so we mirror the single field it would have set.
+ *
  * @example
  * ```ts
  * export const product = defineCmsCollection({
@@ -210,5 +219,8 @@ export function defineCmsCollection<T extends Record<string, unknown>>(
 	config: T & { cms?: CollectionLayout },
 ): Omit<T, 'cms'> {
 	const { cms: _cms, ...rest } = config
+	if ('loader' in rest) {
+		;(rest as { type?: string }).type ??= 'content_layer'
+	}
 	return rest
 }
