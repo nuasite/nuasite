@@ -15,6 +15,7 @@ const {
 	tryAgainMessage = "Try again",
 	fastSubmitMessage = "Please wait a moment before submitting.",
 	submitAnywayLabel = "Send anyway",
+	class: className,
 	...rest
 } = Astro.props
 
@@ -41,7 +42,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 <astro-form>
 	<form
 		action={action}
-		class="astro-form"
+		class:list={['astro-form', className]}
 		data-form-id={formId}
 		data-token-field={tokenFieldName}
 		data-success-message={successMessage}

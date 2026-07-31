@@ -100,6 +100,15 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 					},
 					vite: {
 						plugins: vitePlugins,
+						ssr: {
+							// Without this, dev-mode SSR externalizes the package and its
+							// TS barrel is loaded by the runtime instead of Vite. Under Bun
+							// (the nua CLI runtime) the nested `.astro` imports then resolve
+							// to file-path strings via Bun's file loader, and Astro renders
+							// the components as literal path-named tags — `<Form>` loses its
+							// `<form>` wrapper and submits silently do nothing.
+							noExternal: ['@nuasite/components'],
+						},
 					},
 					integrations,
 				})
