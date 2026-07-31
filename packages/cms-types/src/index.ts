@@ -354,6 +354,8 @@ export interface GetRedirectsResponse {
 export interface MediaItem {
 	id: string
 	url: string
+	/** Optional pre-sized variant for grid rendering; falls back to `url`. */
+	thumbnailUrl?: string
 	filename: string
 	annotation?: string
 	contentType: string
