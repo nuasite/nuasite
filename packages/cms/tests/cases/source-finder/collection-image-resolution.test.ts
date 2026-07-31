@@ -460,7 +460,7 @@ describe('enhanceManifestWithSourceSnippets — collection images', () => {
 	})
 })
 
-describe('findInImageIndex — collection data file preference', () => {
+describe('findInImageIndex — collection data file scoping', () => {
 	let ctx: TempDirContext
 
 	beforeEach(async () => {
@@ -472,7 +472,7 @@ describe('findInImageIndex — collection data file preference', () => {
 		await cleanupTempDir(ctx)
 	})
 
-	test('prefers collection data file when same URL exists in template and data file', async () => {
+	test('uses the template by default when the same URL exists in collection data', async () => {
 		// This reproduces the real-world scenario: a listing page template has
 		// static src="/assets/hash.webp" AND the collection data file has the same URL
 		await ctx.writeFile(
@@ -505,11 +505,18 @@ describe('findInImageIndex — collection data file preference', () => {
 
 		const result = findInImageIndex('/assets/c65c265604c3-8047-jpg.webp')
 		expect(result).not.toBeUndefined()
-		expect(result!.file).toContain('src/content/')
-		expect(result!.file).toContain('my-post.mdx')
+		expect(result!.file).toContain('src/pages/listing.astro')
+
+		const collectionResult = findInImageIndex(
+			'/assets/c65c265604c3-8047-jpg.webp',
+			undefined,
+			undefined,
+			{ includeCollectionFiles: true },
+		)
+		expect(collectionResult?.file).toContain('src/content/news/my-post.mdx')
 	})
 
-	test('prefers collection JSON data file over template', async () => {
+	test('only considers collection JSON data when explicitly requested', async () => {
 		await ctx.writeFile(
 			'src/pages/partners.astro',
 			[
@@ -536,7 +543,15 @@ describe('findInImageIndex — collection data file preference', () => {
 
 		const result = findInImageIndex('/uploads/acme-logo.png')
 		expect(result).not.toBeUndefined()
-		expect(result!.file).toContain('src/content/partners/acme.json')
+		expect(result!.file).toContain('src/pages/partners.astro')
+
+		const collectionResult = findInImageIndex(
+			'/uploads/acme-logo.png',
+			undefined,
+			undefined,
+			{ includeCollectionFiles: true },
+		)
+		expect(collectionResult?.file).toContain('src/content/partners/acme.json')
 	})
 
 	test('returns template match when URL only exists in template', async () => {
@@ -557,7 +572,7 @@ describe('findInImageIndex — collection data file preference', () => {
 		expect(result!.file).toContain('src/pages/about.astro')
 	})
 
-	test('suffix matching also prefers collection data files', async () => {
+	test('suffix matching excludes collection data by default', async () => {
 		await ctx.writeFile(
 			'src/pages/index.astro',
 			[
@@ -578,12 +593,16 @@ describe('findInImageIndex — collection data file preference', () => {
 		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
 		await initializeSearchIndex()
 
-		// Suffix match: /uploads/photo.webp
 		const result = findInImageIndex('/uploads/photo.webp')
-		// Should prefer the collection data file
-		if (result) {
-			expect(result.file).toContain('src/content/')
-		}
+		expect(result?.file).toContain('src/pages/index.astro')
+
+		const collectionResult = findInImageIndex(
+			'/uploads/photo.webp',
+			undefined,
+			undefined,
+			{ includeCollectionFiles: true },
+		)
+		expect(collectionResult?.file).toContain('src/content/team/alice.yaml')
 	})
 })
 
@@ -599,7 +618,7 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 		await cleanupTempDir(ctx)
 	})
 
-	test('findImageSourceLocation returns wrong file before index is built, correct after', async () => {
+	test('findImageSourceLocation keeps template attribution after the index is built', async () => {
 		// Setup: same image URL in both template and collection data file
 		await ctx.writeFile(
 			'src/pages/listing.astro',
@@ -629,11 +648,20 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 			expect(beforeResult.file).not.toContain('src/content/')
 		}
 
-		// After index is built: should prefer the collection data file
+		// Building the global index must not change an unscoped lookup to collection data.
 		await initializeSearchIndex()
 		const afterResult = await findImageSourceLocation('/assets/hash123-photo.webp')
 		expect(afterResult).not.toBeUndefined()
-		expect(afterResult!.file).toContain('src/content/news/post.md')
+		expect(afterResult!.file).toContain('src/pages/listing.astro')
+
+		const collectionResult = await findImageSourceLocation(
+			'/assets/hash123-photo.webp',
+			undefined,
+			undefined,
+			undefined,
+			{ includeCollectionFiles: true },
+		)
+		expect(collectionResult?.file).toContain('src/content/news/post.md')
 	})
 
 	test('findSourceLocation returns correct file after index rebuild', async () => {
@@ -689,11 +717,11 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 
 		const { findImageSourceLocation, initializeSearchIndex, clearSourceFinderCache: clearCache } = await import('../../../src/source-finder')
 
-		// Build index — should find collection file
+		// The safe default remains the page template even when collection data is indexed.
 		await initializeSearchIndex()
 		const result1 = await findImageSourceLocation('/assets/test-image.jpg')
 		expect(result1).not.toBeUndefined()
-		expect(result1!.file).toContain('src/content/')
+		expect(result1!.file).toContain('src/pages/index.astro')
 
 		// Clear cache — simulates what dev-middleware does on each request
 		clearCache()
@@ -705,11 +733,20 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 			expect(result2.file).not.toContain('src/content/')
 		}
 
-		// Re-initialize — collection file should be preferred again
+		// Re-initialize — the default remains stable.
 		await initializeSearchIndex()
 		const result3 = await findImageSourceLocation('/assets/test-image.jpg')
 		expect(result3).not.toBeUndefined()
-		expect(result3!.file).toContain('src/content/')
+		expect(result3!.file).toContain('src/pages/index.astro')
+
+		const collectionResult = await findImageSourceLocation(
+			'/assets/test-image.jpg',
+			undefined,
+			undefined,
+			undefined,
+			{ includeCollectionFiles: true },
+		)
+		expect(collectionResult?.file).toContain('src/content/team/bob.json')
 	})
 
 	test('concurrent initializeSearchIndex calls share the same build', async () => {

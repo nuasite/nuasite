@@ -17,6 +17,7 @@ import type { MediaStorageAdapter } from './media/types'
 import { type CmsMode, resolveCmsMode } from './mode'
 import { rehypeCmsMarker } from './rehype-cms-marker'
 import { remarkListDirective } from './remark-list-directive'
+import { writeRouteMap } from './route-map-writer'
 import { scanCollections } from './scan-cache'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
 import { createPublicStaticFileChecker } from './utils'
@@ -185,6 +186,9 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 	let componentDefinitions: Record<string, ComponentDefinition> = {}
 	let isPublicStaticFile: ((urlPath: string) => boolean) | undefined
+	// Captured across hooks to write the sidecar route map (see astro:routes:resolved).
+	let isDevCommand = false
+	let projectRootUrl: URL | undefined
 
 	const idCounter = { value: 0 }
 	const manifestWriter = new ManifestWriter(manifestFile, componentDefinitions)
@@ -206,6 +210,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		name: '@nuasite/cms',
 		hooks: {
 			'astro:config:setup': async ({ updateConfig, command, injectScript, injectRoute, logger }) => {
+				isDevCommand = command === 'dev'
 				// CMS is only needed during dev — skip all setup during build
 				if (command !== 'dev') return
 
@@ -401,6 +406,22 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 			'astro:config:done': ({ config }) => {
 				isPublicStaticFile = createPublicStaticFileChecker(fileURLToPath(config.publicDir))
+				projectRootUrl = config.root
+			},
+
+			// Write the authoritative collection→route map from Astro's resolved routes so the
+			// sidecar can derive entry URLs from real routes (config base, i18n prefixes,
+			// trailingSlash) instead of guessing from src/pages filenames. Dev only — the
+			// sidecar it feeds runs alongside the dev server; a missing file is a safe fallback.
+			'astro:routes:resolved': async ({ routes, logger }) => {
+				if (!isDevCommand) return
+				const root = projectRootUrl ? fileURLToPath(projectRootUrl) : getProjectRoot()
+				try {
+					const count = await writeRouteMap(routes, root)
+					logger.info(`CMS route map written (${count} collection${count === 1 ? '' : 's'})`)
+				} catch (error) {
+					logger.warn(`CMS route map not written: ${error instanceof Error ? error.message : String(error)}`)
+				}
 			},
 
 			'astro:server:setup': ({ server, logger }) => {

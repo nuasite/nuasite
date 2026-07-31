@@ -99,6 +99,9 @@ export interface CollectionInfo {
 	file: string
 }
 
+/** Collection name → the collections holding a reference field pointing at it */
+export type CollectionReferenceIndex = Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>
+
 export interface MarkdownContent {
 	/** Frontmatter fields as key-value pairs with line numbers */
 	frontmatter: Record<string, { value: string; line: number }>
@@ -196,6 +199,8 @@ export interface ImageMatch {
 	line: number
 	src: string
 	snippet: string
+	/** Raw text fragments from the enclosing Astro expression, used to trace `.map()` bindings. */
+	expressionTexts?: string[]
 }
 
 // ============================================================================

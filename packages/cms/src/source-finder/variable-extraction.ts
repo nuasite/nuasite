@@ -303,7 +303,7 @@ export async function resolveImportPath(source: string, fromFile: string): Promi
 	const basePath = path.resolve(fromDir, source)
 
 	// Try different extensions
-	const extensions = ['.ts', '.js', '.astro', '.tsx', '.jsx', '']
+	const extensions = ['.ts', '.js', '.astro', '.tsx', '.jsx', '.mts', '.mjs', '.cts', '.cjs', '']
 	for (const ext of extensions) {
 		const fullPath = basePath + ext
 		try {
@@ -315,7 +315,7 @@ export async function resolveImportPath(source: string, fromFile: string): Promi
 	}
 
 	// Try index files
-	for (const ext of ['.ts', '.js', '.tsx', '.jsx']) {
+	for (const ext of ['.ts', '.js', '.astro', '.tsx', '.jsx', '.mts', '.mjs', '.cts', '.cjs']) {
 		const indexPath = path.join(basePath, `index${ext}`)
 		try {
 			await fs.access(indexPath)

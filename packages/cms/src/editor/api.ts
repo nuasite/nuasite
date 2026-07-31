@@ -44,16 +44,17 @@ export function getPageManifestUrl(pathname: string): string {
  * 1. Per-page manifest (/{page}.json) - contains entries, components for this page
  * 2. Global manifest (/cms-manifest.json) - contains componentDefinitions, availableColors
  */
-export async function fetchManifest(): Promise<CmsManifest> {
+export async function fetchManifest(resolveEntryId?: string): Promise<CmsManifest> {
 	const pathname = window.location.pathname
 	const pageManifestUrl = getPageManifestUrl(pathname)
 	const globalManifestUrl = '/cms-manifest.json'
 
 	// Fetch both manifests in parallel with cache-busting to bypass CDN/edge caches
-	const cacheBuster = `_t=${Date.now()}`
+	const cacheBuster = new URLSearchParams({ _t: Date.now().toString() })
+	if (resolveEntryId) cacheBuster.set('resolve', resolveEntryId)
 	const [pageResult, globalResult] = await Promise.allSettled([
 		fetchWithTimeout(`${pageManifestUrl}?${cacheBuster}`, { cache: 'no-store' }).then(res => res.ok ? res.json() : null),
-		fetchWithTimeout(`${globalManifestUrl}?${cacheBuster}`, { cache: 'no-store' }).then(res => res.ok ? res.json() : null),
+		fetchWithTimeout(`${globalManifestUrl}?_t=${Date.now()}`, { cache: 'no-store' }).then(res => res.ok ? res.json() : null),
 	])
 
 	const pageManifest = pageResult.status === 'fulfilled' ? pageResult.value : null

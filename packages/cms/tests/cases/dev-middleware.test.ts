@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { discoverCollectionRoutes, enhanceManifestInBackground, invalidateCollectionRoutesCache } from '../../src/dev-middleware'
+import {
+	discoverCollectionRoutes,
+	enhanceManifestInBackground,
+	invalidateCollectionRoutesCache,
+	resolveManifestEntryOnDemand,
+} from '../../src/dev-middleware'
 import { ManifestWriter } from '../../src/manifest-writer'
 import { clearSourceFinderCache } from '../../src/source-finder'
 import type { CmsMarkerOptions, CollectionDefinition, ManifestEntry } from '../../src/types'
@@ -49,7 +54,7 @@ describe('enhanceManifestInBackground — collection text on listing pages', () 
 		await cleanupTempDir(ctx)
 	})
 
-	test('resolves collection text to data file via lookupCollectionText fallback', async () => {
+	test('resolves collection text on demand after the fast manifest pass', async () => {
 		// The literal text does NOT appear in the template — it's fetched dynamically
 		// via getCollection(), so AST/variable lookup won't find it and resolution
 		// must fall through to lookupCollectionText.
@@ -77,8 +82,6 @@ describe('enhanceManifestInBackground — collection text on listing pages', () 
 				id: 'cms-1',
 				tag: 'a',
 				text: 'My News Title',
-				sourcePath: 'src/pages/index.astro',
-				sourceLine: 8,
 			},
 		}
 
@@ -86,6 +89,9 @@ describe('enhanceManifestInBackground — collection text on listing pages', () 
 		manifestWriter.setCollectionDefinitions(defs)
 
 		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		expect(manifestWriter.getPageManifest('/')?.entries['cms-1']?.sourcePath).toBeUndefined()
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
 
 		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
 		expect(entry?.sourcePath).toBe('src/content/news/my-article.mdx')
@@ -97,7 +103,7 @@ describe('enhanceManifestInBackground — collection text on listing pages', () 
 
 	test('resolves JSON data collection text on listing page', async () => {
 		await ctx.writeFile(
-			'src/pages/index.astro',
+			'src/pages/partners.astro',
 			[
 				'---',
 				'import { getCollection } from "astro:content"',
@@ -130,18 +136,24 @@ describe('enhanceManifestInBackground — collection text on listing pages', () 
 		}
 
 		const entries: Record<string, ManifestEntry> = {
-			'cms-1': { id: 'cms-1', tag: 'span', text: 'ACME Corp', sourcePath: 'src/pages/index.astro', sourceLine: 8 },
+			'cms-1': { id: 'cms-1', tag: 'span', text: 'ACME Corp', sourcePath: 'src/pages/partners.astro', sourceLine: 8 },
 		}
 
 		const manifestWriter = new ManifestWriter('cms-manifest.json')
 		manifestWriter.setCollectionDefinitions(defs)
 
 		await enhanceManifestInBackground('/partners', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		const pendingEntry = manifestWriter.getPageManifest('/partners')?.entries['cms-1']
+		expect(pendingEntry?.sourcePath).toBe('src/pages/partners.astro')
+		expect(pendingEntry?.requiresSourceResolution).toBe(true)
+
+		await resolveManifestEntryOnDemand('/partners', 'cms-1', manifestWriter)
 
 		const entry = manifestWriter.getPageManifest('/partners')?.entries['cms-1']
 		expect(entry?.sourcePath).toBe('src/content/partners/acme.json')
 		expect(entry?.sourceSnippet).toContain('ACME Corp')
 		expect(entry?.collectionName).toBe('partners')
+		expect(entry?.requiresSourceResolution).toBeUndefined()
 	})
 
 	test('resolves collection text with .data. expression via field name extraction', async () => {
@@ -220,6 +232,738 @@ describe('enhanceManifestInBackground — collection text on listing pages', () 
 		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
 		expect(entry?.sourcePath).toBe('src/pages/index.astro')
 		expect(entry?.sourceLine).toBeDefined()
+	})
+
+	// A host fallback path must not make an equal static URL look like provenance.
+	test('keeps an unlocated image locked when its URL matches a static page image', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const articles = await getCollection("news")',
+				'---',
+				'{articles.map(article => <img src={article.data.image} alt="" />)}',
+				'<img src="/images/hero.jpg" alt="Static" />',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/one.mdx', '---\ntitle: One\nimage: /images/hero.jpg\n---\n\nBody.')
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: '',
+				sourcePath: 'src/pages/index.astro',
+				imageMetadata: { src: '/images/hero.jpg', alt: '' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.requiresSourceResolution).toBe(true)
+		expect(entry?.collectionName).toBeUndefined()
+		expect(entry?.sourceLine).toBeUndefined()
+		expect(entry?.sourceSnippet).toBeUndefined()
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const resolved = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(resolved?.requiresSourceResolution).toBe(true)
+		expect(resolved?.sourceLine).toBeUndefined()
+		expect(resolved?.sourceSnippet).toBeUndefined()
+	})
+
+	// Without coordinates, one indexed occurrence and none in collection content leaves the
+	// project no other place the URL could have come from — that is a location, not a guess.
+	test('locates an unlocated image whose URL occurs exactly once', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			['---', '---', '<img src="/images/logo.png" alt="Logo" />'].join('\n'),
+		)
+
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: '',
+				sourcePath: 'src/pages/index.astro',
+				imageMetadata: { src: '/images/logo.png', alt: 'Logo' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, undefined, config, manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/pages/index.astro')
+		expect(entry?.sourceLine).toBe(3)
+		expect(entry?.sourceSnippet).toContain('/images/logo.png')
+		expect(entry?.requiresSourceResolution).toBeUndefined()
+	})
+
+	test('keeps an unlocated image locked when its URL occurs in more than one place', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			['---', 'import Hero from "../components/Hero.astro"', '---', '<img src="/images/logo.png" alt="Logo" />', '<Hero />'].join('\n'),
+		)
+		await ctx.writeFile('src/components/Hero.astro', '<img src="/images/logo.png" alt="Also the logo" />')
+
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: '',
+				sourcePath: 'src/pages/index.astro',
+				imageMetadata: { src: '/images/logo.png', alt: 'Logo' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, undefined, config, manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.requiresSourceResolution).toBe(true)
+		expect(entry?.sourceLine).toBeUndefined()
+	})
+
+	test('does not infer a collection image from its runtime URL alone', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const articles = await getCollection("news")',
+				'---',
+				'{articles.map(article => <img src={article.data.image} />)}',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/my-article.mdx', newsArticle)
+
+		const defs = makeNewsDefs([{ slug: 'my-article', sourcePath: 'src/content/news/my-article.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: './hero.jpg',
+				imageMetadata: { src: './hero.jpg', alt: '' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		expect(manifestWriter.getPageManifest('/')?.entries['cms-1']?.sourcePath).toBeUndefined()
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBeUndefined()
+		expect(entry?.collectionName).toBeUndefined()
+	})
+
+	test('leaves ambiguous collection text unresolved', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const articles = await getCollection("news")',
+				'---',
+				'{articles.map(article => <h2>{article.data.title}</h2>)}',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/first.mdx', newsArticle)
+		await ctx.writeFile('src/content/news/second.mdx', newsArticle)
+
+		const defs = makeNewsDefs([
+			{ slug: 'first', sourcePath: 'src/content/news/first.mdx' },
+			{ slug: 'second', sourcePath: 'src/content/news/second.mdx' },
+		])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'h2',
+				text: 'My News Title',
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBeUndefined()
+	})
+
+	test('leaves ambiguous collection images unresolved', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const articles = await getCollection("news")',
+				'---',
+				'{articles.map(article => <img src={article.data.image} />)}',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/first.mdx', newsArticle)
+		await ctx.writeFile('src/content/news/second.mdx', newsArticle)
+
+		const defs = makeNewsDefs([
+			{ slug: 'first', sourcePath: 'src/content/news/first.mdx' },
+			{ slug: 'second', sourcePath: 'src/content/news/second.mdx' },
+		])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: './hero.jpg',
+				imageMetadata: { src: './hero.jpg', alt: '' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBeUndefined()
+	})
+
+	test('defers a slow fallback until a locked entry is requested', async () => {
+		await ctx.writeFile(
+			'src/components/Nav.astro',
+			[
+				'---',
+				'interface Props {',
+				'  items: Array<{ label: string; href: string }>',
+				'}',
+				'const { items } = Astro.props',
+				'---',
+				'<nav>{items.map((item) => <a href={item.href}>{item.label}</a>)}</nav>',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import Nav from "../components/Nav.astro"',
+				'const navItems = [',
+				'  { label: "Home", href: "/" },',
+				'  { label: "About", href: "/about" },',
+				']',
+				'---',
+				'<Nav items={navItems} />',
+			].join('\n'),
+		)
+
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': { id: 'cms-1', tag: 'a', text: 'About' },
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, undefined, config, manifestWriter)
+		expect(manifestWriter.getPageManifest('/')?.entries['cms-1']?.sourcePath).toBeUndefined()
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/pages/index.astro')
+		expect(entry?.sourceSnippet).toContain('label: "About"')
+	})
+
+	// A nav label rendered from a parent's prop array has no source coordinates, exactly like
+	// a listing value does — but the page renders no collection, so a collection entry that
+	// happens to be titled "About" must not become its edit target.
+	test('does not attribute prop-array text to a collection the page never renders', async () => {
+		await ctx.writeFile(
+			'src/components/Nav.astro',
+			[
+				'---',
+				'const { items } = Astro.props',
+				'---',
+				'<nav>{items.map((item) => <a href={item.href}>{item.label}</a>)}</nav>',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import Nav from "../components/Nav.astro"',
+				'const navItems = [{ label: "About", href: "/about" }]',
+				'---',
+				'<Nav items={navItems} />',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/one.mdx', '---\ntitle: About\nimage: ./hero.jpg\n---\n\nBody.')
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': { id: 'cms-1', tag: 'a', text: 'About' },
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		expect(manifestWriter.getPageManifest('/')?.entries['cms-1']?.sourcePath).toBeUndefined()
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/pages/index.astro')
+		expect(entry?.sourceSnippet).toContain('label: "About"')
+	})
+
+	test('prefers a page prop over an equal value from a collection the page renders', async () => {
+		await ctx.writeFile(
+			'src/components/Nav.astro',
+			[
+				'---',
+				'interface Props {',
+				'  items: Array<{ label: string }>',
+				'}',
+				'const { items } = Astro.props',
+				'---',
+				'<nav>{items.map((item) => <a>{item.label}</a>)}</nav>',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'import Nav from "../components/Nav.astro"',
+				'const articles = await getCollection("news")',
+				'const navItems = [{ label: "About" }]',
+				'---',
+				'<Nav items={navItems} />',
+				'<p>{articles.length}</p>',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/one.mdx', '---\ntitle: About\nimage: ./hero.jpg\n---\n\nBody.')
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': { id: 'cms-1', tag: 'a', text: 'About' },
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		expect(manifestWriter.getPageManifest('/')?.entries['cms-1']?.sourcePath).toBeUndefined()
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/pages/index.astro')
+		expect(entry?.sourceSnippet).toContain('label: "About"')
+		expect(entry?.collectionName).toBeUndefined()
+	})
+
+	test('resolves a collection rendered by an imported component on demand', async () => {
+		await ctx.writeFile(
+			'src/components/Listing.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const articles = await getCollection("news")',
+				'---',
+				'{articles.map(article => <h2>{article.data.title}</h2>)}',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			'---\nimport Listing from "../components/Listing.astro"\n---\n<Listing />',
+		)
+		await ctx.writeFile('src/content/news/one.mdx', newsArticle)
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': { id: 'cms-1', tag: 'h2', text: 'My News Title' },
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		expect(manifestWriter.getPageManifest('/')?.entries['cms-1']?.sourcePath).toBeUndefined()
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/content/news/one.mdx')
+		expect(entry?.collectionName).toBe('news')
+	})
+
+	test('follows side-effect modules with namespace collection access', async () => {
+		await ctx.writeFile(
+			'src/content-scope.tsx',
+			[
+				'import * as content from "astro:content"',
+				'export const articles = await content.getCollection("news")',
+				'export const marker = <span>{articles.length}</span>',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			'---\nimport "../content-scope"\n---\n<h2>{Astro.locals.title}</h2>',
+		)
+		await ctx.writeFile('src/content/news/one.mdx', newsArticle)
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': { id: 'cms-1', tag: 'h2', text: 'My News Title' },
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/content/news/one.mdx')
+		expect(entry?.collectionName).toBe('news')
+	})
+
+	test('ignores collection calls in comments when resolving a value match', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			'---\n// await getCollection("news")\nconst value = "unrelated"\n---\n<p>{value}</p>',
+		)
+		await ctx.writeFile('src/content/news/one.mdx', newsArticle)
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': { id: 'cms-1', tag: 'h2', text: 'My News Title' },
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBeUndefined()
+		expect(entry?.collectionName).toBeUndefined()
+	})
+
+	test('ignores local functions named like Astro collection accessors', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'function getCollection(name: string) { return name }',
+				'const unrelated = getCollection("news")',
+				'---',
+				'<h2>{Astro.locals.title}</h2>',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/one.mdx', newsArticle)
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': { id: 'cms-1', tag: 'h2', text: 'My News Title' },
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBeUndefined()
+		expect(entry?.collectionName).toBeUndefined()
+	})
+
+	test('does not add reference metadata from value equality alone', async () => {
+		await ctx.writeFile(
+			'src/components/Nav.astro',
+			'---\nconst { label } = Astro.props\n---\n<a>{label}</a>',
+		)
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'import Nav from "../components/Nav.astro"',
+				'const articles = await getCollection("news")',
+				'---',
+				'<Nav label="About" />',
+				'<p>{articles.length}</p>',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/one.mdx', '---\ntitle: News\nauthor: jane\nimage: ./hero.jpg\n---\n\nBody.')
+		await ctx.writeFile('src/content/authors/jane.mdx', '---\ntitle: About\n---\n\nBio.')
+
+		const defs: Record<string, CollectionDefinition> = {
+			news: {
+				...makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }]).news!,
+				fields: [
+					{ name: 'title', type: 'text', required: true },
+					{ name: 'author', type: 'reference', required: true, collection: 'authors' },
+				],
+			},
+			authors: {
+				name: 'authors',
+				label: 'Authors',
+				path: 'src/content/authors',
+				entryCount: 1,
+				fields: [{ name: 'title', type: 'text', required: true }],
+				fileExtension: 'mdx',
+				entries: [{ slug: 'jane', sourcePath: 'src/content/authors/jane.mdx' }],
+			},
+		}
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': { id: 'cms-1', tag: 'a', text: 'About' },
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.collectionName).toBeUndefined()
+		expect(entry?.referenceCollection).toBeUndefined()
+		expect(entry?.referencedBy).toBeUndefined()
+	})
+
+	test('does not attribute a runtime image from a collection URL match', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const articles = await getCollection("news")',
+				'---',
+				'<img src={Astro.locals.image} alt="Logo" />',
+				'<p>{articles.length}</p>',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/components/Unrelated.astro',
+			'<img src="/images/shared.jpg" alt="Unrelated" />',
+		)
+		await ctx.writeFile('src/content/news/one.mdx', '---\ntitle: News\nimage: /images/shared.jpg\n---\n\nBody.')
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: '',
+				sourcePath: 'src/pages/index.astro',
+				sourceLine: 5,
+				imageMetadata: { src: '/images/shared.jpg', alt: 'Logo' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		const bulk = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(bulk?.sourcePath).toBe('src/pages/index.astro')
+		expect(bulk?.requiresSourceResolution).toBe(true)
+		expect(bulk?.collectionName).toBeUndefined()
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/pages/index.astro')
+		expect(entry?.requiresSourceResolution).toBe(true)
+		expect(entry?.collectionName).toBeUndefined()
+	})
+
+	test('does not attribute an image to a collection the page never renders', async () => {
+		await ctx.writeFile('src/pages/index.astro', '---\n---\n<img src="/images/shared.jpg" alt="logo" />')
+		await ctx.writeFile('src/content/news/one.mdx', '---\ntitle: First\nimage: /images/shared.jpg\n---\n\nBody.')
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: '',
+				sourcePath: 'src/pages/index.astro',
+				sourceLine: 3,
+				imageMetadata: { src: '/images/shared.jpg', alt: 'logo' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.collectionName).toBeUndefined()
+	})
+
+	// A public-dir image referenced from frontmatter renders as a plain URL, so there is no
+	// Astro `/_image?href=` to infer the collection from — the only provenance is the template
+	// expression, which means resolution has to happen on demand.
+	test('resolves a listing image whose src only lives in collection frontmatter', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const articles = await getCollection("news")',
+				'---',
+				'{articles.map(article => <img src={article.data.image} alt="" />)}',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/one.mdx', '---\ntitle: One\nimage: /images/hero.jpg\n---\n\nBody.')
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: '',
+				sourcePath: 'src/pages/index.astro',
+				sourceLine: 5,
+				imageMetadata: { src: '/images/hero.jpg', alt: '' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+
+		// Bulk leaves it pointing at the .map() line, flagged as not yet writable
+		const bulk = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(bulk?.sourcePath).toBe('src/pages/index.astro')
+		expect(bulk?.requiresSourceResolution).toBe(true)
+		expect(bulk?.collectionName).toBe('news')
+		expect(bulk?.collectionFieldName).toBe('image')
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/content/news/one.mdx')
+		expect(entry?.sourceSnippet).toContain('image: /images/hero.jpg')
+		expect(entry?.requiresSourceResolution).toBeUndefined()
+	})
+
+	test('resolves an image read from a direct getEntry binding', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getEntry } from "astro:content"',
+				'const article = await getEntry("news", "one")',
+				'---',
+				'<img src={article.data.image} alt="" />',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/one.mdx', '---\ntitle: One\nimage: /images/hero.jpg\n---\n\nBody.')
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: '',
+				sourcePath: 'src/pages/index.astro',
+				sourceLine: 5,
+				imageMetadata: { src: '/images/hero.jpg', alt: '' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		const bulk = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(bulk?.collectionName).toBe('news')
+		expect(bulk?.collectionFieldName).toBe('image')
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+		expect(manifestWriter.getPageManifest('/')?.entries['cms-1']?.sourcePath).toBe('src/content/news/one.mdx')
+	})
+
+	// Same shape, but the src is destructured (`{image}`) — the previous `.data.` spelling
+	// check would have skipped the collection lookup entirely.
+	test('resolves a listing image whose src expression is destructured', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const articles = await getCollection("news")',
+				'const items = articles.map(article => article.data)',
+				'---',
+				'{items.map(({ image }) => <img src={image} alt="" />)}',
+			].join('\n'),
+		)
+		await ctx.writeFile('src/content/news/one.mdx', '---\ntitle: One\nimage: /images/hero.jpg\n---\n\nBody.')
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: '',
+				sourcePath: 'src/pages/index.astro',
+				sourceLine: 6,
+				imageMetadata: { src: '/images/hero.jpg', alt: '' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		const bulk = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(bulk?.collectionName).toBe('news')
+		expect(bulk?.collectionFieldName).toBe('image')
+
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/content/news/one.mdx')
+		expect(entry?.requiresSourceResolution).toBeUndefined()
+	})
+
+	test('does not resolve an image through an equal non-image collection field', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const articles = await getCollection("news")',
+				'---',
+				'{articles.map(article => <img src={article.data.image} alt="" />)}',
+			].join('\n'),
+		)
+		await ctx.writeFile(
+			'src/content/news/one.mdx',
+			'---\ntitle: /images/rendered.jpg\nimage: /images/authored.jpg\n---\n\nBody.',
+		)
+
+		const defs = makeNewsDefs([{ slug: 'one', sourcePath: 'src/content/news/one.mdx' }])
+		const entries: Record<string, ManifestEntry> = {
+			'cms-1': {
+				id: 'cms-1',
+				tag: 'img',
+				text: '',
+				sourcePath: 'src/pages/index.astro',
+				sourceLine: 5,
+				imageMetadata: { src: '/images/rendered.jpg', alt: '' },
+			},
+		}
+		const manifestWriter = new ManifestWriter('cms-manifest.json')
+		manifestWriter.setCollectionDefinitions(defs)
+
+		await enhanceManifestInBackground('/', entries, {}, undefined, undefined, defs, config, manifestWriter)
+		await resolveManifestEntryOnDemand('/', 'cms-1', manifestWriter)
+
+		const entry = manifestWriter.getPageManifest('/')?.entries['cms-1']
+		expect(entry?.sourcePath).toBe('src/pages/index.astro')
+		expect(entry?.requiresSourceResolution).toBe(true)
+		expect(entry?.collectionName).toBe('news')
+		expect(entry?.collectionFieldName).toBe('image')
 	})
 })
 

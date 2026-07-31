@@ -102,43 +102,71 @@ export function notifyLockedElement(): void {
 }
 
 /**
- * Manifest is built in two phases (fast HTML marking, then background source
- * resolution). Entering edit mode before phase 2 completes can pre-lock elements
- * that later gain a valid sourcePath, leaving stale locks on the DOM.
- *
- * On click, re-check the local snapshot, then re-fetch from the server in case
- * phase 2 finished since the editor took its snapshot. Toggle edit mode once
- * afterwards to make the now-unlocked element editable.
+ * Re-fetch a locked entry with on-demand source resolution, then unlock it when
+ * the server finds a valid sourcePath.
  */
-let inFlightLockedFetch: Promise<unknown> | null = null
-function handleLockedClick(event: Event): void {
-	const target = event.currentTarget as HTMLElement | null
-	const id = target?.getAttribute(CSS.ID_ATTRIBUTE)
-	if (!target || !id) {
+const inFlightLockedFetches = new Map<string, Promise<void>>()
+
+/** The current session's per-element wiring, so a resolved entry can be rewired in place. */
+interface EditSessionContext {
+	editModeSignal: AbortSignal
+	wireElement: (el: HTMLElement, cmsId: string) => void
+}
+
+function entryHasResolvedSource(id: string): boolean {
+	const entry = signals.manifest.value.entries[id]
+	return !!entry?.sourcePath && !entry.requiresSourceResolution
+}
+
+async function resolveLockedEntry(id: string, ctx: EditSessionContext): Promise<void> {
+	if (ctx.editModeSignal.aborted) return
+	if (!entryHasResolvedSource(id)) {
+		try {
+			const fresh = await fetchManifest(id)
+			if (ctx.editModeSignal.aborted) return
+			signals.setManifest(fresh)
+		} catch {
+			return
+		}
+	}
+	if (ctx.editModeSignal.aborted || !entryHasResolvedSource(id)) return
+
+	// The DOM may have been replaced while the fetch was in flight (HMR re-render) —
+	// wire the live node, not the click-time reference.
+	const liveTarget = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${id}"]`)
+	if (!(liveTarget instanceof HTMLElement)) return
+
+	// Rewire just this element in place — restarting the whole session would close
+	// open dialogs and drop focus/caret state on every other element.
+	liveTarget.removeAttribute(CSS.LOCKED_ATTRIBUTE)
+	ctx.wireElement(liveTarget, id)
+	liveTarget.focus()
+}
+
+function handleLockedClick(event: Event, ctx: EditSessionContext): void {
+	const target = event.currentTarget
+	if (!(target instanceof HTMLElement)) {
+		notifyLockedElement()
+		return
+	}
+	// The locked listener stays attached after a successful rewire; ignore it then.
+	if (!target.hasAttribute(CSS.LOCKED_ATTRIBUTE)) return
+	const id = target.getAttribute(CSS.ID_ATTRIBUTE)
+	if (!id) {
 		notifyLockedElement()
 		return
 	}
 
-	if (signals.manifest.value.entries[id]?.sourcePath) {
-		target.removeAttribute(CSS.LOCKED_ATTRIBUTE)
-		return
-	}
-
-	// In-memory signal can lag phase-2 writes. Coalesce concurrent clicks into
-	// one fetch so the dev server doesn't get hammered.
-	if (!inFlightLockedFetch) {
-		inFlightLockedFetch = fetchManifest()
-			.then((fresh) => signals.setManifest(fresh))
-			.catch(() => {})
-			.finally(() => {
-				inFlightLockedFetch = null
-			})
-	}
-	inFlightLockedFetch.then(() => {
-		if (signals.manifest.value.entries[id]?.sourcePath) {
-			target.removeAttribute(CSS.LOCKED_ATTRIBUTE)
+	let resolution = inFlightLockedFetches.get(id)
+	if (!resolution) {
+		resolution = resolveLockedEntry(id, ctx)
+		inFlightLockedFetches.set(id, resolution)
+		const clearResolution = () => {
+			if (inFlightLockedFetches.get(id) === resolution) inFlightLockedFetches.delete(id)
 		}
-	})
+		ctx.editModeSignal.addEventListener('abort', clearResolution, { once: true })
+		void resolution.then(clearResolution, clearResolution)
+	}
 	notifyLockedElement()
 }
 
@@ -240,11 +268,11 @@ export async function startEditMode(
 		return
 	}
 	const savedBgImageEdits = loadBgImageEditsFromStorage()
-	const currentManifest = signals.manifest.value
 
-	getAllCmsElements().forEach(el => {
-		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
-		if (!cmsId) return
+	// Named so a locked entry resolved later can be rewired in place (see resolveLockedEntry).
+	// Reads the manifest signal fresh on each call — resolution updates it mid-session.
+	const wireElement = (el: HTMLElement, cmsId: string): void => {
+		const currentManifest = signals.manifest.value
 
 		// Skip component elements - they should not be contentEditable
 		// Components are marked with data-cms-component-id and are block-level editable
@@ -280,9 +308,14 @@ export async function startEditMode(
 			return
 		}
 
+		// An entry whose coordinates still point at a template expression has no writable
+		// target yet, so it takes the locked path below — the media library would otherwise
+		// happily replace an image whose src lives in a collection file we haven't found.
+		const sourceUnresolved = !manifestEntry?.sourcePath || !!manifestEntry.requiresSourceResolution
+
 		// Check if this is an image element
 		// Image elements open the media library for replacement
-		if (el.hasAttribute(IMAGE_ATTRIBUTE)) {
+		if (el.hasAttribute(IMAGE_ATTRIBUTE) && !sourceUnresolved) {
 			logDebug(config.debug, 'Image element detected:', cmsId)
 			makeElementNonEditable(el)
 			setupImageClickHandler(config, el as HTMLImageElement, cmsId, savedImageEdits[cmsId], onStateChange)
@@ -300,11 +333,11 @@ export async function startEditMode(
 
 		// Without a source path, the writer has nowhere to persist text edits — lock
 		// the element so it can't be typed into and the user gets told why on click.
-		if (!manifestEntry?.sourcePath) {
+		if (sourceUnresolved) {
 			logDebug(config.debug, 'Skipping element without source path:', cmsId)
 			makeElementNonEditable(el)
 			el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
-			el.addEventListener('click', handleLockedClick, { signal: editModeSignal })
+			el.addEventListener('click', event => handleLockedClick(event, sessionCtx), { signal: editModeSignal })
 			return
 		}
 
@@ -476,6 +509,14 @@ export async function startEditMode(
 				}
 			}, TIMING.BLUR_DELAY_MS)
 		})
+	}
+
+	const sessionCtx: EditSessionContext = { editModeSignal, wireElement }
+
+	getAllCmsElements().forEach(el => {
+		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
+		if (!cmsId) return
+		wireElement(el, cmsId)
 	})
 
 	// Check for pending entry navigation (from collections browser cross-page navigation)

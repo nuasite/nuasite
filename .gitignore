@@ -15,5 +15,8 @@
 # env / config
 /docker-compose.override.yaml
 
+# nua generated dev artifacts (CMS sidecar route map, etc.)
+.nua/
+
 # claude
 .claude/agent-canvas

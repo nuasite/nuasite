@@ -30,12 +30,15 @@ export {
 	findFieldInCollectionEntry,
 	findMarkdownSourceLocation,
 	findTextInAnyCollectionFrontmatter,
+	getCollectionsRenderedByPage,
 	lookupCollectionText,
 	parseMarkdownContent,
 } from './collection-finder'
 
 // Snippet utilities (used by html-processor)
 export {
+	applyCollectionSource,
+	buildCollectionReferenceIndex,
 	enhanceManifestWithSourceSnippets,
 	extractCompleteTagSnippet,
 	extractInnerHtmlFromSnippet,

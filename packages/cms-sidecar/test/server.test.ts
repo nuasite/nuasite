@@ -215,6 +215,20 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(authors.entries.every(e => e.pathname === undefined)).toBe(true)
 	})
 
+	test('GET …/entries: an integration-written `.nua/cms/routes.json` overrides the source scan', async () => {
+		const { server, root } = await freshServerFrom('multi-detail-project')
+		// The route map wins over the sidecar's own src/pages scan — this is how config `base`,
+		// i18n prefixes, and trailingSlash (which the scan can't see) reach entry URLs. Here we
+		// give `products` a base the scan would never produce (`/en/produkty`).
+		await fs.mkdir(path.join(root, '.nua', 'cms'), { recursive: true })
+		await fs.writeFile(
+			path.join(root, '.nua', 'cms', 'routes.json'),
+			JSON.stringify({ version: 1, collections: { products: { base: '/en/produkty', perItem: true } } }),
+		)
+		const products = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/products/entries?draft=all'))
+		expect(products.entries.find(e => e.slug === 'desk')?.pathname).toBe('/en/produkty/desk')
+	})
+
 	test('GET …/entries derives pathname from a `cms.pathname` rule, overriding the route guess', async () => {
 		const { server } = await freshServer()
 		// `people` declares `cms: { pathname: [{ field: 'urlFamily' }, { field: 'slug' }] }`.
