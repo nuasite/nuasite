@@ -879,8 +879,11 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			const page = await adapter.list({ limit, cursor: adapterCursor })
 			items.push(...page.items)
 			folders = page.folders
-			if (page.hasMore && page.cursor !== undefined) {
-				const more: MediaListResult = { items, folders, hasMore: true, cursor: encodeMediaCursor({ adapter: page.cursor }) }
+			// An adapter that reports more pages but hands back no cursor cannot be advanced. Stop
+			// here anyway — falling through to the scan would silently drop the rest of its items.
+			if (page.hasMore) {
+				const cursor = page.cursor === undefined ? undefined : encodeMediaCursor({ adapter: page.cursor })
+				const more: MediaListResult = { items, folders, hasMore: true, cursor }
 				return json(more)
 			}
 		}
