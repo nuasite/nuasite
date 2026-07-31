@@ -6,6 +6,8 @@ import type {
 	CollectionEntryInfo,
 	ComponentDefinition,
 	GetRedirectsResponse,
+	MediaListResult,
+	MediaUploadResult,
 } from '@nuasite/cms-types'
 import { afterEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
@@ -60,6 +62,27 @@ async function jsonOf<T>(res: Response): Promise<T> {
 	// we trust the documented wire shape for the asserted body.
 	const value: T = JSON.parse(await res.text())
 	return value
+}
+
+/** PNG magic bytes — the media scan goes by extension, so the payload only has to be a file. */
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/** Write root-relative files into a fixture copy (parent dirs included). */
+async function writeProjectImages(root: string, files: Record<string, Buffer>): Promise<void> {
+	for (const [relative, bytes] of Object.entries(files)) {
+		const target = path.join(root, relative)
+		await fs.mkdir(path.dirname(target), { recursive: true })
+		await fs.writeFile(target, bytes)
+	}
+}
+
+/** Upload through the media adapter and return the served URL. */
+async function uploadPng(server: CmsSidecarServer, filename: string): Promise<string> {
+	const form = new FormData()
+	form.append('file', new File([PNG], filename, { type: 'image/png' }))
+	const result = await jsonOf<MediaUploadResult>(await server.fetch(new Request(`${BASE}/media`, { method: 'POST', body: form })))
+	expect(result.success).toBe(true)
+	return result.url!
 }
 
 describe('cms-sidecar HTTP server (/cms/v1)', () => {
@@ -399,6 +422,59 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		const del = await call(server, 'DELETE', `/media/${encodeURIComponent(uploaded.id!)}`)
 		expect(del.status).toBe(200)
 		expect((await jsonOf<{ success: boolean }>(del)).success).toBe(true)
+	})
+
+	test('media list merges the project scan on ?includeProjectImages, minus the uploads dir', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG, 'src/assets/logo.png': PNG })
+		const uploadedUrl = await uploadPng(server, 'pic.png')
+
+		// Default listing stays adapter-only.
+		const adapterOnly = await jsonOf<MediaListResult>(await call(server, 'GET', '/media'))
+		expect(adapterOnly.items.map(i => i.url)).toEqual([uploadedUrl])
+		expect(adapterOnly.hasMore).toBe(false)
+
+		const merged = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true'))
+		// The upload lives under public/uploads — the scan must not list it a second time.
+		expect(merged.items.map(i => i.url).sort()).toEqual([uploadedUrl, '/assets/hero.png', '/src/assets/logo.png'].sort())
+		expect(merged.hasMore).toBe(false)
+		expect(merged.cursor).toBeUndefined()
+	})
+
+	test('media list paginates across the adapter and the project scan without repeats', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG, 'src/assets/logo.png': PNG })
+		const uploadedUrl = await uploadPng(server, 'pic.png')
+
+		const seen: string[] = []
+		let query = '/media?includeProjectImages=true&limit=1'
+		for (let page = 0; page < 4; page++) {
+			const result = await jsonOf<MediaListResult>(await call(server, 'GET', query))
+			expect(result.items.length).toBe(1)
+			seen.push(...result.items.map(i => i.url))
+			if (!result.hasMore) break
+			expect(result.cursor).toBeDefined()
+			query = `/media?includeProjectImages=true&limit=1&cursor=${encodeURIComponent(result.cursor!)}`
+		}
+		// Adapter page first, then the scan in its stable filename order.
+		expect(seen).toEqual([uploadedUrl, '/assets/hero.png', '/src/assets/logo.png'])
+	})
+
+	test('media list keeps the project scan out of a folder listing', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG })
+		expect((await call(server, 'POST', '/media', { folder: 'photos' })).status).toBe(200)
+
+		const inFolder = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&folder=photos'))
+		expect(inFolder.items).toEqual([])
+		expect(inFolder.hasMore).toBe(false)
+	})
+
+	test('media list rejects a cursor that is not a merge cursor', async () => {
+		const { server } = await freshServer()
+		const res = await call(server, 'GET', '/media?includeProjectImages=true&cursor=0')
+		expect(res.status).toBe(400)
+		expect((await jsonOf<ApiError>(res)).code).toBe('validation')
 	})
 
 	test('media route 501 when no adapter configured', async () => {

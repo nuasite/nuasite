@@ -230,7 +230,13 @@ export interface CmsClient {
 
 	// --- Media (degrades gracefully when the sidecar has no adapter wired: 501). ---
 
-	listMedia(options?: { folder?: string; cursor?: string; limit?: number }): Promise<MediaListResult>
+	/**
+	 * List media. `includeProjectImages` merges the whole-project image scan
+	 * (`public/` + `src/`) into the adapter's own listing behind a composite cursor;
+	 * it is ignored when a `folder` is given, since the scan has no folder structure.
+	 * Needs the sidecar's `media.project-images` feature.
+	 */
+	listMedia(options?: { folder?: string; cursor?: string; limit?: number; includeProjectImages?: boolean }): Promise<MediaListResult>
 	uploadMedia(file: File, context?: MediaContext): Promise<MediaUploadResult>
 	/**
 	 * Build a GET URL for an asset referenced by an entry — an `image`/`file` value
@@ -402,6 +408,7 @@ export function createClient(apiBase: string): CmsClient {
 			if (options.folder !== undefined) params.set('folder', options.folder)
 			if (options.cursor !== undefined) params.set('cursor', options.cursor)
 			if (options.limit !== undefined) params.set('limit', String(options.limit))
+			if (options.includeProjectImages) params.set('includeProjectImages', 'true')
 			const query = params.toString()
 			return request<MediaListResult>(`/media${query === '' ? '' : `?${query}`}`)
 		},
