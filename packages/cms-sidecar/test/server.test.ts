@@ -6,6 +6,10 @@ import type {
 	CollectionEntryInfo,
 	ComponentDefinition,
 	GetRedirectsResponse,
+	MediaItem,
+	MediaListResult,
+	MediaStorageAdapter,
+	MediaUploadResult,
 } from '@nuasite/cms-types'
 import { afterEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
@@ -43,6 +47,22 @@ async function freshServer(): Promise<{ server: CmsSidecarServer; root: string }
 	return freshServerFrom('sample-project')
 }
 
+/**
+ * A fixture copy wired to a caller-supplied media adapter (or none at all). The adapter
+ * is built from the temp root, so a test can point `staticFiles.dir` at a real directory.
+ */
+async function freshServerWithAdapter(
+	makeAdapter: (root: string) => MediaStorageAdapter | undefined,
+): Promise<{ server: CmsSidecarServer; root: string }> {
+	const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cms-sidecar-'))
+	await fs.cp(FIXTURE_ROOT, root, { recursive: true })
+	cleanups.push(root)
+	const nodeFs = createNodeFs(root)
+	const core = createCmsCore(nodeFs, { componentDirs: ['src/components'], media: makeAdapter(root) })
+	const server = createServer({ core, fs: nodeFs, root, coreVersion: '0.42.1' })
+	return { server, root }
+}
+
 const BASE = 'http://sidecar.local/cms/v1'
 
 async function call(server: CmsSidecarServer, method: string, pathSuffix: string, body?: unknown): Promise<Response> {
@@ -60,6 +80,27 @@ async function jsonOf<T>(res: Response): Promise<T> {
 	// we trust the documented wire shape for the asserted body.
 	const value: T = JSON.parse(await res.text())
 	return value
+}
+
+/** PNG magic bytes — the media scan goes by extension, so the payload only has to be a file. */
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/** Write root-relative files into a fixture copy (parent dirs included). */
+async function writeProjectImages(root: string, files: Record<string, Buffer>): Promise<void> {
+	for (const [relative, bytes] of Object.entries(files)) {
+		const target = path.join(root, relative)
+		await fs.mkdir(path.dirname(target), { recursive: true })
+		await fs.writeFile(target, bytes)
+	}
+}
+
+/** Upload through the media adapter and return the served URL. */
+async function uploadPng(server: CmsSidecarServer, filename: string): Promise<string> {
+	const form = new FormData()
+	form.append('file', new File([PNG], filename, { type: 'image/png' }))
+	const result = await jsonOf<MediaUploadResult>(await server.fetch(new Request(`${BASE}/media`, { method: 'POST', body: form })))
+	expect(result.success).toBe(true)
+	return result.url!
 }
 
 describe('cms-sidecar HTTP server (/cms/v1)', () => {
@@ -401,6 +442,71 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect((await jsonOf<{ success: boolean }>(del)).success).toBe(true)
 	})
 
+	test('media list merges the project scan on ?includeProjectImages, minus the uploads dir', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG, 'src/assets/logo.png': PNG })
+		const uploadedUrl = await uploadPng(server, 'pic.png')
+
+		// Default listing stays adapter-only.
+		const adapterOnly = await jsonOf<MediaListResult>(await call(server, 'GET', '/media'))
+		expect(adapterOnly.items.map(i => i.url)).toEqual([uploadedUrl])
+		expect(adapterOnly.hasMore).toBe(false)
+
+		const merged = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true'))
+		// The upload lives under public/uploads — the scan must not list it a second time.
+		expect(merged.items.map(i => i.url).sort()).toEqual([uploadedUrl, '/assets/hero.png', '/src/assets/logo.png'].sort())
+		expect(merged.hasMore).toBe(false)
+		expect(merged.cursor).toBeUndefined()
+	})
+
+	test('media list paginates across the adapter and the project scan without repeats', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG, 'src/assets/logo.png': PNG })
+		const uploadedUrl = await uploadPng(server, 'pic.png')
+
+		const seen: string[] = []
+		let query = '/media?includeProjectImages=true&limit=1'
+		for (let page = 0; page < 4; page++) {
+			const result = await jsonOf<MediaListResult>(await call(server, 'GET', query))
+			expect(result.items.length).toBe(1)
+			seen.push(...result.items.map(i => i.url))
+			if (!result.hasMore) break
+			expect(result.cursor).toBeDefined()
+			query = `/media?includeProjectImages=true&limit=1&cursor=${encodeURIComponent(result.cursor!)}`
+		}
+		// Adapter page first, then the scan in its stable filename order.
+		expect(seen).toEqual([uploadedUrl, '/assets/hero.png', '/src/assets/logo.png'])
+	})
+
+	test('media list keeps the project scan out of a folder listing', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG })
+		expect((await call(server, 'POST', '/media', { folder: 'photos' })).status).toBe(200)
+
+		const inFolder = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&folder=photos'))
+		expect(inFolder.items).toEqual([])
+		expect(inFolder.hasMore).toBe(false)
+	})
+
+	test('media list rejects a cursor that is not a merge cursor', async () => {
+		const { server } = await freshServer()
+		const res = await call(server, 'GET', '/media?includeProjectImages=true&cursor=0')
+		expect(res.status).toBe(400)
+		expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+	})
+
+	test('media list rejects a cursor that decodes to no position at all', async () => {
+		const { server } = await freshServer()
+		// Well-formed base64url JSON, but nothing we ever mint. Answering 200 here would
+		// silently restart the listing at page 1 instead of reporting the bad cursor.
+		for (const payload of ['{}', '[]', '{"foo":1}', '{"v":1}', '{"v":2,"project":0}', '{"project":0}', 'not-json', '"str"', '42']) {
+			const cursor = Buffer.from(payload, 'utf8').toString('base64url')
+			const res = await call(server, 'GET', `/media?includeProjectImages=true&cursor=${encodeURIComponent(cursor)}`)
+			expect({ payload, status: res.status }).toEqual({ payload, status: 400 })
+			expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+		}
+	})
+
 	test('media route 501 when no adapter configured', async () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cms-sidecar-nomedia-'))
 		await fs.cp(FIXTURE_ROOT, root, { recursive: true })
@@ -456,6 +562,171 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		const { server } = await freshServer()
 		expect((await call(server, 'GET', '/asset')).status).toBe(400)
 		expect((await call(server, 'GET', `/asset?path=${encodeURIComponent('/assets/nope.png')}`)).status).toBe(404)
+	})
+})
+
+describe('cms-sidecar merged media listing (?includeProjectImages)', () => {
+	/**
+	 * A third-party adapter reduced to what the merge actually consumes: a caller-supplied
+	 * page and an optional `staticFiles` claim. Nothing touches the filesystem, so the only
+	 * items that can come from `public/`/`src/` are the project scan's.
+	 */
+	function stubAdapter(
+		opts: { page?: Partial<MediaListResult>; staticFilesDir?: string; onList?: (options: unknown) => void } = {},
+	): MediaStorageAdapter {
+		const adapter: MediaStorageAdapter = {
+			async list(options) {
+				opts.onList?.(options)
+				return { items: [], folders: [], hasMore: false, ...opts.page }
+			},
+			async upload() {
+				return { success: false, error: 'read-only stub' }
+			},
+			async delete() {
+				return { success: false, error: 'read-only stub' }
+			},
+		}
+		if (opts.staticFilesDir !== undefined) adapter.staticFiles = { urlPrefix: '/uploads', dir: opts.staticFilesDir }
+		return adapter
+	}
+
+	const UPLOADED: MediaItem = { id: 'up.png', url: '/uploads/up.png', filename: 'up.png', contentType: 'image/png' }
+
+	test('every documented spelling of staticFiles.dir keeps the uploads dir out of the scan', async () => {
+		// The uploads live under the project root, so the scan would see them too. Each
+		// spelling below names the same directory; all of them must exclude it, leaving the
+		// adapter as the single source of `/uploads/up.png`.
+		for (const spelling of ['<root>/public/uploads', '<root>/public/uploads/', 'public/uploads', './public/uploads', '/public/uploads']) {
+			const { server, root } = await freshServerWithAdapter(projectRoot =>
+				stubAdapter({ page: { items: [UPLOADED] }, staticFilesDir: spelling.replace('<root>', projectRoot) })
+			)
+			await writeProjectImages(root, { 'public/uploads/up.png': PNG, 'public/assets/hero.png': PNG })
+
+			const merged = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true'))
+			const urls = merged.items.map(i => i.url)
+			expect({ spelling, listed: urls.filter(u => u === '/uploads/up.png').length }).toEqual({ spelling, listed: 1 })
+			expect(urls).toContain('/assets/hero.png')
+		}
+	})
+
+	test('an adapter without staticFiles excludes nothing and still merges', async () => {
+		const { server, root } = await freshServerWithAdapter(() =>
+			stubAdapter({ page: { items: [{ id: 'r', url: 'https://cdn.example.com/r.png', filename: 'r.png', contentType: 'image/png' }] } })
+		)
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG })
+		const merged = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true'))
+		expect(merged.items.map(i => i.url)).toEqual(['https://cdn.example.com/r.png', '/assets/hero.png'])
+	})
+
+	test('folders stay populated on every page, not just the first', async () => {
+		const folders = [{ name: 'photos', path: 'photos' }]
+		const { server, root } = await freshServerWithAdapter(() => stubAdapter({ page: { folders }, staticFilesDir: '/public/uploads' }))
+		await writeProjectImages(root, { 'public/a.png': PNG, 'public/b.png': PNG, 'public/c.png': PNG })
+
+		const first = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&limit=2'))
+		expect(first.folders).toEqual(folders)
+		expect(first.hasMore).toBe(true)
+		const second = await jsonOf<MediaListResult>(
+			await call(server, 'GET', `/media?includeProjectImages=true&limit=2&cursor=${encodeURIComponent(first.cursor!)}`),
+		)
+		expect(second.hasMore).toBe(false)
+		// Regression: the project phase never calls the adapter, so the folder list has to
+		// ride along in the cursor — a client doing setFolders(page.folders) must not lose it.
+		expect(second.folders).toEqual(folders)
+	})
+
+	test('the flag accepts a bare name, true and 1; false and 0 turn it off; anything else is a 400', async () => {
+		const { server, root } = await freshServerWithAdapter(() => stubAdapter({ staticFilesDir: '/public/uploads' }))
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG })
+
+		for (const query of ['includeProjectImages', 'includeProjectImages=true', 'includeProjectImages=1']) {
+			const res = await call(server, 'GET', `/media?${query}`)
+			expect({ query, status: res.status }).toEqual({ query, status: 200 })
+			expect((await jsonOf<MediaListResult>(res)).items.map(i => i.url)).toEqual(['/assets/hero.png'])
+		}
+		for (const query of ['', 'includeProjectImages=false', 'includeProjectImages=0']) {
+			const res = await call(server, 'GET', `/media${query === '' ? '' : `?${query}`}`)
+			expect({ query, status: res.status }).toEqual({ query, status: 200 })
+			expect((await jsonOf<MediaListResult>(res)).items).toEqual([])
+		}
+		// Silently ignoring these used to drop the project images without a word.
+		for (const query of ['includeProjectImages=TRUE', 'includeProjectImages=yes', 'includeProjectImages=2']) {
+			const res = await call(server, 'GET', `/media?${query}`)
+			expect({ query, status: res.status }).toEqual({ query, status: 400 })
+			expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+		}
+	})
+
+	test('following a merge cursor without the flag (or inside a folder) is a 400, not an empty page', async () => {
+		const { server, root } = await freshServerWithAdapter(() => stubAdapter({ staticFilesDir: '/public/uploads' }))
+		await writeProjectImages(root, { 'public/a.png': PNG, 'public/b.png': PNG, 'public/c.png': PNG })
+		const first = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&limit=2'))
+		const cursor = encodeURIComponent(first.cursor!)
+
+		// The merge cursor is ours; handing it to the adapter yields a silent empty page.
+		for (const query of [`/media?limit=2&cursor=${cursor}`, `/media?includeProjectImages=true&folder=photos&limit=2&cursor=${cursor}`]) {
+			const res = await call(server, 'GET', query)
+			expect({ query, status: res.status }).toEqual({ query, status: 400 })
+			expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+		}
+		// An adapter's own cursor still passes straight through.
+		expect((await call(server, 'GET', '/media?limit=2&cursor=whatever-the-adapter-said')).status).toBe(200)
+	})
+
+	test('an adapter that reports more pages but no cursor stops the merge instead of dropping its items', async () => {
+		let listCalls = 0
+		const adapter = stubAdapter({
+			page: { items: [UPLOADED], hasMore: true },
+			staticFilesDir: '/public/uploads',
+			onList: () => {
+				listCalls++
+			},
+		})
+		const { server, root } = await freshServerWithAdapter(() => adapter)
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG })
+
+		const page = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&limit=10'))
+		expect(listCalls).toBe(1)
+		// Its items survive, and the scan is not reached — falling through would silently
+		// swallow whatever the adapter still had. hasMore stays truthful even though the
+		// adapter gave us nothing to advance with.
+		expect(page.items.map(i => i.url)).toEqual(['/uploads/up.png'])
+		expect(page.hasMore).toBe(true)
+		expect(page.cursor).toBeUndefined()
+	})
+
+	test('paginating a scan full of colliding filenames repeats nothing and drops nothing', async () => {
+		const { server, root } = await freshServerWithAdapter(() => stubAdapter({ staticFilesDir: '/public/uploads' }))
+		const files: Record<string, Buffer> = {}
+		for (const dir of ['a', 'b', 'c', 'd', 'e', 'f']) {
+			files[`public/${dir}/hero.png`] = PNG
+			files[`public/${dir}/logo.png`] = PNG
+		}
+		await writeProjectImages(root, files)
+
+		const seen: string[] = []
+		let query = '/media?includeProjectImages=true&limit=3'
+		for (let page = 0; page < 10; page++) {
+			const result = await jsonOf<MediaListResult>(await call(server, 'GET', query))
+			seen.push(...result.items.map(i => i.url))
+			if (!result.hasMore) break
+			expect(result.cursor).toBeDefined()
+			query = `/media?includeProjectImages=true&limit=3&cursor=${encodeURIComponent(result.cursor!)}`
+		}
+		expect(seen).toEqual([
+			'/a/hero.png',
+			'/b/hero.png',
+			'/c/hero.png',
+			'/d/hero.png',
+			'/e/hero.png',
+			'/f/hero.png',
+			'/a/logo.png',
+			'/b/logo.png',
+			'/c/logo.png',
+			'/d/logo.png',
+			'/e/logo.png',
+			'/f/logo.png',
+		])
 	})
 })
 

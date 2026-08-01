@@ -368,7 +368,13 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 									onClick={() => onSelect(item.url, item.annotation || item.filename || 'Image')}
 								>
 									{item.contentType.startsWith('image/')
-										? <img src={item.url} alt={item.annotation || item.filename} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+										? (
+											<img
+												src={item.thumbnailUrl ?? item.url}
+												alt={item.annotation || item.filename}
+												style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+											/>
+										)
 										: <span style={{ fontSize: 30 }}>{item.contentType === 'application/pdf' ? '📄' : '📎'}</span>}
 									<span style={tileCaption}>{item.filename}</span>
 								</button>
