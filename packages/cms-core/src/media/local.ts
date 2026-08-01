@@ -4,7 +4,15 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 export interface LocalStorageOptions {
-	/** Directory to store media files (relative to project root or absolute). Default: 'public/uploads' */
+	/**
+	 * Directory to store media files. Default: 'public/uploads'.
+	 *
+	 * A relative value is resolved against `process.cwd()`, so pass an absolute path
+	 * whenever the process's working directory is not the project root (e.g. the
+	 * sidecar started with `--root <dir>`) — otherwise the reported
+	 * `staticFiles.dir` points outside the project and consumers cannot tell that
+	 * these files already live under it.
+	 */
 	dir?: string
 	/** URL prefix for serving files. Default: '/uploads' */
 	urlPrefix?: string

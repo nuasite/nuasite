@@ -133,20 +133,52 @@ function parseEntriesQuery(url: URL): EntriesQuery {
 /**
  * Where a merged `GET /media` page continues from. The two sources are listed in
  * phases, never interleaved: the adapter first (its own opaque cursor), then the
- * project scan (an offset into its stable, filename-sorted order). `project` being
+ * project scan (an offset into its stable, total-ordered list). `project` being
  * present is what marks the adapter phase as finished.
+ *
+ * The cursor is self-identifying (`v`), so a caller that loses the
+ * `?includeProjectImages` flag mid-scroll gets a 400 instead of having our private
+ * cursor handed to the adapter, which would parse it as garbage.
  */
 interface MediaCursorState {
 	/** The adapter's own continuation cursor. */
 	adapter?: string
 	/** Offset into the project image scan. */
 	project?: number
+	/**
+	 * The adapter's root folder list, carried so later pages keep reporting it: the
+	 * project phase never calls the adapter, and `folders` describes the listed
+	 * directory rather than the item stream, so a client that does
+	 * `setFolders(page.folders)` must not lose the tree mid-scroll. The list is the
+	 * media root's only (the merge is disabled for `?folder=`), so it stays small.
+	 */
+	folders?: MediaFolderItem[]
 }
+
+const MEDIA_CURSOR_VERSION = 1
 
 function encodeMediaCursor(state: MediaCursorState): string {
-	return Buffer.from(JSON.stringify(state), 'utf8').toString('base64url')
+	return Buffer.from(JSON.stringify({ v: MEDIA_CURSOR_VERSION, ...state }), 'utf8').toString('base64url')
 }
 
+function parseCursorFolders(value: unknown): MediaFolderItem[] | null {
+	if (!Array.isArray(value)) return null
+	const entries: readonly unknown[] = value
+	const folders: MediaFolderItem[] = []
+	for (const entry of entries) {
+		if (typeof entry !== 'object' || entry === null) return null
+		if (!('name' in entry) || typeof entry.name !== 'string') return null
+		if (!('path' in entry) || typeof entry.path !== 'string') return null
+		folders.push({ name: entry.name, path: entry.path })
+	}
+	return folders
+}
+
+/**
+ * Decode a merge cursor. Anything that is not a cursor *we* minted is rejected —
+ * including a well-formed but positionless one (`{}`, `[]`, `{"foo":1}`), which
+ * would otherwise silently restart the listing at page 1.
+ */
 function decodeMediaCursor(raw: string | undefined): { ok: true; state: MediaCursorState } | { ok: false } {
 	if (raw === undefined) return { ok: true, state: {} }
 	let parsed: unknown
@@ -156,6 +188,7 @@ function decodeMediaCursor(raw: string | undefined): { ok: true; state: MediaCur
 		return { ok: false }
 	}
 	if (typeof parsed !== 'object' || parsed === null) return { ok: false }
+	if (!('v' in parsed) || parsed.v !== MEDIA_CURSOR_VERSION) return { ok: false }
 	const state: MediaCursorState = {}
 	if ('adapter' in parsed) {
 		if (typeof parsed.adapter !== 'string') return { ok: false }
@@ -165,20 +198,49 @@ function decodeMediaCursor(raw: string | undefined): { ok: true; state: MediaCur
 		if (typeof parsed.project !== 'number' || !Number.isInteger(parsed.project) || parsed.project < 0) return { ok: false }
 		state.project = parsed.project
 	}
+	if ('folders' in parsed) {
+		const folders = parseCursorFolders(parsed.folders)
+		if (folders === null) return { ok: false }
+		state.folders = folders
+	}
+	// We only ever mint a cursor that carries a position; one without is malformed.
+	if (state.adapter === undefined && state.project === undefined) return { ok: false }
 	return { ok: true, state }
 }
 
 /**
  * The adapter's uploads dir as a root-relative path, so the project scan does not
- * list the uploads twice. `undefined` when the adapter stores nothing locally
- * (S3/Contember) or stores it outside the project root — neither can collide.
+ * list the uploads twice.
+ *
+ * Accepts every spelling {@link MediaStorageAdapter.staticFiles} documents: an
+ * absolute path under the root, a root-relative path with or without a leading
+ * slash, an optional `./` prefix and a trailing slash. A leading slash only means
+ * "absolute filesystem path" when the path actually starts with the root —
+ * otherwise it is root-relative, exactly the rule the `CmsFileSystem` port uses.
+ *
+ * `undefined` when the adapter stores nothing locally (S3/Contember); `''` (no
+ * exclusion) when it claims the whole project root.
  */
 function uploadsDirRelativeToRoot(adapter: MediaStorageAdapter, root: string): string | undefined {
 	const dir = adapter.staticFiles?.dir
 	if (dir === undefined) return undefined
-	if (!dir.startsWith('/')) return dir.replace(/^\.\//, '')
-	const prefix = `${root.replace(/\/+$/, '')}/`
-	return dir.startsWith(prefix) ? dir.slice(prefix.length) : undefined
+	const base = root.replace(/\/+$/, '')
+	const trimmed = dir.replace(/\/+$/, '')
+	if (trimmed === base) return ''
+	if (trimmed.startsWith(`${base}/`)) return trimmed.slice(base.length + 1)
+	return trimmed.replace(/^\.\//, '').replace(/^\/+/, '')
+}
+
+/**
+ * `?includeProjectImages` — present with no value, `true` or `1` enable it; `false`
+ * or `0` disable it. `null` means the caller sent something else, which is a client
+ * error: silently ignoring e.g. `TRUE` would drop the project images without a word.
+ */
+function parseIncludeProjectImages(raw: string | null): boolean | null {
+	if (raw === null) return false
+	if (raw === '' || raw === 'true' || raw === '1') return true
+	if (raw === 'false' || raw === '0') return false
+	return null
 }
 
 // ============================================================================
@@ -858,21 +920,29 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 	}
 
 	/**
-	 * One bounded page over both media sources: the storage adapter (uploads) and
-	 * the project scan (images committed under `public/` and `src/`, e.g. by an
-	 * agent). The adapter is drained first, then the scan tops the page up, so a
-	 * caller that keeps following `cursor` sees every item exactly once.
+	 * One page over both media sources: the storage adapter (uploads) and the project
+	 * scan (images committed under `public/` and `src/`, e.g. by an agent). The two
+	 * are listed in phases, never interleaved — the adapter is drained first, then the
+	 * scan tops the page up — so a caller that keeps following `cursor` sees every
+	 * item exactly once, in the scan's stable total order (filename, then URL).
 	 *
-	 * The scan itself is unpaginated by nature, so it is only run once the adapter
-	 * has no more pages, and its result is always sliced to the remaining room.
+	 * What it costs and what it does not promise:
+	 * - the scan is unpaginated by nature, so it re-walks `public/` and `src/` on
+	 *   every page that reaches the scan phase, plus once at the end of the adapter
+	 *   phase to top that page up;
+	 * - a page holds at most `limit` items as long as the adapter honours `limit`; an
+	 *   over-returning adapter makes it longer. Paging terminates either way, because
+	 *   the scan slice is bounded by the room the adapter left;
+	 * - `folders` is the adapter's, carried through the cursor so that every page —
+	 *   including the scan-only ones, which never call the adapter — reports it.
 	 */
 	async function listMergedMedia(adapter: MediaStorageAdapter, limit: number, rawCursor: string | undefined): Promise<Response> {
 		const decoded = decodeMediaCursor(rawCursor)
 		if (!decoded.ok) return error('validation', 'Invalid media cursor')
-		const { adapter: adapterCursor, project: projectOffset } = decoded.state
+		const { adapter: adapterCursor, project: projectOffset, folders: carriedFolders } = decoded.state
 
 		const items: MediaItem[] = []
-		let folders: MediaFolderItem[] = []
+		let folders: MediaFolderItem[] = carriedFolders ?? []
 
 		// A `project` offset in the cursor means the adapter pages are already spent.
 		if (projectOffset === undefined) {
@@ -882,7 +952,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			// An adapter that reports more pages but hands back no cursor cannot be advanced. Stop
 			// here anyway — falling through to the scan would silently drop the rest of its items.
 			if (page.hasMore) {
-				const cursor = page.cursor === undefined ? undefined : encodeMediaCursor({ adapter: page.cursor })
+				const cursor = page.cursor === undefined ? undefined : encodeMediaCursor({ adapter: page.cursor, folders })
 				const more: MediaListResult = { items, folders, hasMore: true, cursor }
 				return json(more)
 			}
@@ -895,14 +965,21 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 
 		const next = offset + slice.length
 		const hasMore = next < projectImages.length
-		const result: MediaListResult = { items, folders, hasMore, cursor: hasMore ? encodeMediaCursor({ project: next }) : undefined }
+		const result: MediaListResult = {
+			items,
+			folders,
+			hasMore,
+			cursor: hasMore ? encodeMediaCursor({ project: next, folders }) : undefined,
+		}
 		return json(result)
 	}
 
 	/**
-	 * `GET /media` lists the storage adapter alone by default. `?includeProjectImages=true`
-	 * (root only, no `folder`) merges in the project scan behind a composite cursor —
-	 * see `listMergedMedia`. Advertised as the `media.project-images` feature.
+	 * `GET /media` lists the storage adapter alone by default. `?includeProjectImages`
+	 * (bare, or `=true` / `=1`; root only, no `folder`) merges in the project scan behind
+	 * a composite cursor — see `listMergedMedia`. Advertised as the `media.project-images`
+	 * feature. An unrecognised flag value, or a merge cursor followed without the flag,
+	 * is a 400 rather than a silently different listing.
 	 */
 	async function routeMedia(method: string, tail: string[], req: Request, url: URL): Promise<Response> {
 		const adapter = core.media
@@ -917,11 +994,20 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, MAX_LIMIT) : DEFAULT_LIMIT
 			const folder = url.searchParams.get('folder') ?? undefined
 			const cursor = url.searchParams.get('cursor') ?? undefined
-			const rawInclude = url.searchParams.get('includeProjectImages')
+			const includeProjectImages = parseIncludeProjectImages(url.searchParams.get('includeProjectImages'))
+			if (includeProjectImages === null) {
+				return error('validation', 'includeProjectImages accepts no value, "true", "1", "false" or "0"')
+			}
 
 			// The project scan has no folder structure, so it only makes sense at the
 			// media root — inside a folder the adapter stays the only source.
-			if ((rawInclude !== 'true' && rawInclude !== '1') || folder !== undefined) {
+			if (!includeProjectImages || folder !== undefined) {
+				// Our merge cursor means nothing to the adapter, which would parse it as an
+				// offset of NaN and answer with an empty, hasMore:false page — the library
+				// would look empty. Say what actually went wrong instead.
+				if (cursor !== undefined && decodeMediaCursor(cursor).ok) {
+					return error('validation', 'This cursor continues an ?includeProjectImages listing — keep the flag set and drop ?folder when following it')
+				}
 				return json(await adapter.list({ limit, cursor, folder }))
 			}
 			return listMergedMedia(adapter, limit, cursor)

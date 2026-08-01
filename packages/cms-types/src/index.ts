@@ -405,7 +405,20 @@ export interface MediaStorageAdapter {
 	delete(id: string): Promise<{ success: boolean; error?: string }>
 	/** Create an empty folder. Folders are also created implicitly on upload. */
 	createFolder?(folder: string): Promise<{ success: boolean; error?: string }>
-	/** Local filesystem info for direct file serving in dev (bypasses Vite's public dir cache) */
+	/**
+	 * Local filesystem info for direct file serving in dev (bypasses Vite's public dir cache),
+	 * and the marker that tells consumers where inside the project this adapter's files live —
+	 * a project-wide image scan uses it to avoid listing the uploads twice. Omit it when the
+	 * adapter stores nothing on the project's filesystem (S3, Contember).
+	 *
+	 * `dir` may be spelled as an absolute filesystem path (`/srv/site/public/uploads`) or as a
+	 * project-root-relative one, with or without a leading slash (`/public/uploads`,
+	 * `public/uploads`, `./public/uploads`); a trailing slash is ignored. A leading slash counts
+	 * as "absolute" only when the path actually starts with the project root — any other leading
+	 * slash is read as root-relative, the same convention the `CmsFileSystem` port uses. Prefer a
+	 * root-relative spelling whenever the directory is inside the project: an absolute path is
+	 * only recognised as such against the root the consumer was configured with.
+	 */
 	staticFiles?: { urlPrefix: string; dir: string }
 }
 
