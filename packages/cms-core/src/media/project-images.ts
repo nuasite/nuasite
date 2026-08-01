@@ -15,6 +15,12 @@ export interface ListProjectImagesOptions {
  *
  * - `public/` files are served from `/<path-relative-to-public>`.
  * - `src/` files are served from `/<path-relative-to-project-root>`.
+ *
+ * The result is ordered by filename, then by URL — a *total* order, so repeated
+ * calls over an unchanged tree return the exact same sequence. Callers paginate
+ * this list by offset (the sidecar's media cursor), which a partial order would
+ * silently break: the walk pushes into one array from concurrent recursive
+ * `Promise.all` branches, so the input order alone is not reproducible.
  */
 export async function listProjectImages(fs: CmsFileSystem, options?: ListProjectImagesOptions): Promise<MediaItem[]> {
 	const excludeDir = options?.excludeDir ? normalizeDir(options.excludeDir) : null
@@ -33,8 +39,15 @@ export async function listProjectImages(fs: CmsFileSystem, options?: ListProject
 	)
 
 	const items = results.flat()
-	items.sort((a, b) => a.filename.localeCompare(b.filename))
+	// Filename first (that is what the media grid shows), then the URL to break ties:
+	// two `hero.png` in different directories compare equal on the filename alone.
+	items.sort((a, b) => a.filename.localeCompare(b.filename) || compareCodeUnits(a.url, b.url))
 	return items
+}
+
+/** Code-unit comparison: a total order on distinct strings, which `localeCompare` is not. */
+function compareCodeUnits(a: string, b: string): number {
+	return a < b ? -1 : a > b ? 1 : 0
 }
 
 function normalizeDir(dir: string): string {
