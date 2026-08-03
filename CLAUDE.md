@@ -16,9 +16,10 @@ bun run ts:build
 bun run ts:watch
 bun run ts:clean
 
-# Lint (Biome)
+# Lint (oxlint)
 bun run lint
 bun run lint:fix
+bun run lint:deps    # deptective — validates declared vs. used dependencies
 
 # Format (dprint)
 bun run format
@@ -79,7 +80,7 @@ Media storage uses a pluggable adapter pattern (`MediaStorageAdapter`, defined i
 ## Code Style
 
 - **Formatter**: dprint — tabs, 150 char line width, semicolons with ASI
-- **Linter**: Biome — TypeScript/TSX, imports organization enforced
+- **Linter**: oxlint (`.oxlintrc.json`) — `typescript` + `import` plugins; `correctness`/`suspicious` are errors, `style` is a warning. `.astro` files are not linted.
 - **TypeScript**: strict mode, ESNext target, bundler module resolution, `jsx: "react-jsx"` (CMS uses `jsxImportSource: "preact"`)
 - Declarations are emit-only (`emitDeclarationOnly: true`); runtime code is consumed as TypeScript directly via `--conditions=typescript`
 
