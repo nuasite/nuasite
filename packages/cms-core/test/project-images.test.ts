@@ -94,6 +94,23 @@ describe('listProjectImages', () => {
 		expect(items.map(i => i.url)).toEqual(['/assets/hero.png', '/uploads/up.png'])
 	})
 
+	test('the deprecated excludeDir keeps working, with its original semantics', async () => {
+		await write({ 'public/uploads/up.png': PNG, 'public/assets/hero.png': PNG })
+		const cfs = createNodeFs(root)
+		// The spellings that worked before `exclude` existed still work.
+		for (const excludeDir of ['public/uploads', '/public/uploads', 'public/uploads/']) {
+			const items = await listProjectImages(cfs, { excludeDir })
+			expect({ excludeDir, urls: items.map(i => i.url) }).toEqual({ excludeDir, urls: ['/assets/hero.png'] })
+		}
+		// An absolute dir never matched under the old option and must not silently start to,
+		// or the deprecated path would stop being a faithful copy of the old behaviour.
+		const absolute = await listProjectImages(cfs, { excludeDir: `${root}/public/uploads` })
+		expect(absolute.map(i => i.url).sort()).toEqual(['/assets/hero.png', '/uploads/up.png'])
+		// `exclude` wins when both are given.
+		const both = await listProjectImages(cfs, { excludeDir: 'public/assets', exclude: { dir: `${root}/public/uploads`, root } })
+		expect(both.map(i => i.url)).toEqual(['/assets/hero.png'])
+	})
+
 	test('an exclusion naming the project root itself excludes nothing', async () => {
 		await write({ 'public/assets/hero.png': PNG })
 		const cfs = createNodeFs(root)

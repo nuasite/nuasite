@@ -15,6 +15,17 @@ export interface ListProjectImagesOptions {
 	 * without a `root` is exactly the shape that used to exclude nothing at all, silently.
 	 */
 	exclude?: { dir?: string; root: string }
+	/**
+	 * @deprecated Pass `exclude` instead — it carries the project root, so an absolute
+	 * `staticFiles.dir` normalises too.
+	 *
+	 * Honoured with exactly its old semantics, so callers written against it are unaffected:
+	 * root-relative, with an optional leading or trailing slash. An absolute filesystem path
+	 * — what `createLocalStorageAdapter` reports — never excluded anything here and still
+	 * does not; that is the bug `exclude` exists to make unreachable. Ignored when `exclude`
+	 * is present.
+	 */
+	excludeDir?: string
 }
 
 /**
@@ -54,7 +65,11 @@ export function uploadsDirRelativeToRoot(dir: string | undefined, root: string):
 export async function listProjectImages(fs: CmsFileSystem, options?: ListProjectImagesOptions): Promise<MediaItem[]> {
 	// Normalised here rather than by the caller: the scan walks root-relative paths, so only
 	// this function knows what an exclusion has to look like to match one.
-	const normalized = options?.exclude ? uploadsDirRelativeToRoot(options.exclude.dir, options.exclude.root) : undefined
+	// The deprecated `excludeDir` keeps its own, weaker normalisation — it has no root to
+	// resolve against — so callers written against it behave exactly as before.
+	const normalized = options?.exclude
+		? uploadsDirRelativeToRoot(options.exclude.dir, options.exclude.root)
+		: options?.excludeDir?.replace(/^\/+/, '').replace(/\/+$/, '')
 	// `''` — the uploads dir *is* the project root — excludes nothing, like no exclusion at all.
 	const excludeDir = normalized ? normalized : null
 
