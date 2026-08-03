@@ -592,21 +592,20 @@ describe('cms-sidecar merged media listing (?includeProjectImages)', () => {
 
 	const UPLOADED: MediaItem = { id: 'up.png', url: '/uploads/up.png', filename: 'up.png', contentType: 'image/png' }
 
-	test('every documented spelling of staticFiles.dir keeps the uploads dir out of the scan', async () => {
-		// The uploads live under the project root, so the scan would see them too. Each
-		// spelling below names the same directory; all of them must exclude it, leaving the
-		// adapter as the single source of `/uploads/up.png`.
-		for (const spelling of ['<root>/public/uploads', '<root>/public/uploads/', 'public/uploads', './public/uploads', '/public/uploads']) {
-			const { server, root } = await freshServerWithAdapter(projectRoot =>
-				stubAdapter({ page: { items: [UPLOADED] }, staticFilesDir: spelling.replace('<root>', projectRoot) })
-			)
-			await writeProjectImages(root, { 'public/uploads/up.png': PNG, 'public/assets/hero.png': PNG })
+	test('the uploads dir the adapter owns stays out of the scan', async () => {
+		// The uploads live under the project root, so the scan would see them too — the
+		// adapter has to stay their single source. `<root>/public/uploads` is the spelling
+		// createLocalStorageAdapter reports; the full spelling matrix is exercised where the
+		// normalisation lives, in cms-core's project-images tests.
+		const { server, root } = await freshServerWithAdapter(projectRoot =>
+			stubAdapter({ page: { items: [UPLOADED] }, staticFilesDir: path.join(projectRoot, 'public/uploads') })
+		)
+		await writeProjectImages(root, { 'public/uploads/up.png': PNG, 'public/assets/hero.png': PNG })
 
-			const merged = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true'))
-			const urls = merged.items.map(i => i.url)
-			expect({ spelling, listed: urls.filter(u => u === '/uploads/up.png').length }).toEqual({ spelling, listed: 1 })
-			expect(urls).toContain('/assets/hero.png')
-		}
+		const merged = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true'))
+		const urls = merged.items.map(i => i.url)
+		expect(urls.filter(u => u === '/uploads/up.png')).toEqual(['/uploads/up.png'])
+		expect(urls).toContain('/assets/hero.png')
 	})
 
 	test('an adapter without staticFiles excludes nothing and still merges', async () => {

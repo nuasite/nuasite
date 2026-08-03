@@ -5,8 +5,48 @@ import { MIME_BY_EXT, mimeFromExt } from './local'
 const IMAGE_EXTENSIONS = new Set(Object.entries(MIME_BY_EXT).filter(([, mime]) => mime.startsWith('image/')).map(([ext]) => ext))
 
 export interface ListProjectImagesOptions {
-	/** Root-relative directory to exclude (e.g. the media uploads dir), to avoid duplicates. */
+	/**
+	 * The media uploads directory, which the scan must not list a second time.
+	 *
+	 * `dir` is taken in every spelling `MediaStorageAdapter.staticFiles.dir` documents
+	 * and is normalised here (see {@link uploadsDirRelativeToRoot}); `undefined` means the
+	 * adapter stores nothing locally, so nothing is excluded. `root` travels with it
+	 * because an absolute `dir` cannot be interpreted without it — and a `dir` handed over
+	 * without a `root` is exactly the shape that used to exclude nothing at all, silently.
+	 */
+	exclude?: { dir?: string; root: string }
+	/**
+	 * @deprecated Pass `exclude` instead — it carries the project root, so an absolute
+	 * `staticFiles.dir` normalises too.
+	 *
+	 * Honoured with exactly its old semantics, so callers written against it are unaffected:
+	 * root-relative, with an optional leading or trailing slash. An absolute filesystem path
+	 * — what `createLocalStorageAdapter` reports — never excluded anything here and still
+	 * does not; that is the bug `exclude` exists to make unreachable. Ignored when `exclude`
+	 * is present.
+	 */
 	excludeDir?: string
+}
+
+/**
+ * An uploads directory as a root-relative path, in the spelling the scan below walks.
+ *
+ * Accepts every spelling `MediaStorageAdapter.staticFiles.dir` documents: an absolute
+ * path under the root, a root-relative path with or without a leading slash, an optional
+ * `./` prefix and a trailing slash. A leading slash only means "absolute filesystem path"
+ * when the path actually starts with the root — otherwise it is root-relative, exactly
+ * the rule the {@link CmsFileSystem} port uses.
+ *
+ * `undefined` when there is no local directory at all (S3/Contember adapters); `''` (no
+ * exclusion) when it claims the whole project root.
+ */
+export function uploadsDirRelativeToRoot(dir: string | undefined, root: string): string | undefined {
+	if (dir === undefined) return undefined
+	const base = root.replace(/\/+$/, '')
+	const trimmed = dir.replace(/\/+$/, '')
+	if (trimmed === base) return ''
+	if (trimmed.startsWith(`${base}/`)) return trimmed.slice(base.length + 1)
+	return trimmed.replace(/^\.\//, '').replace(/^\/+/, '')
 }
 
 /**
@@ -23,7 +63,15 @@ export interface ListProjectImagesOptions {
  * `Promise.all` branches, so the input order alone is not reproducible.
  */
 export async function listProjectImages(fs: CmsFileSystem, options?: ListProjectImagesOptions): Promise<MediaItem[]> {
-	const excludeDir = options?.excludeDir ? normalizeDir(options.excludeDir) : null
+	// Normalised here rather than by the caller: the scan walks root-relative paths, so only
+	// this function knows what an exclusion has to look like to match one.
+	// The deprecated `excludeDir` keeps its own, weaker normalisation — it has no root to
+	// resolve against — so callers written against it behave exactly as before.
+	const normalized = options?.exclude
+		? uploadsDirRelativeToRoot(options.exclude.dir, options.exclude.root)
+		: options?.excludeDir?.replace(/^\/+/, '').replace(/\/+$/, '')
+	// `''` — the uploads dir *is* the project root — excludes nothing, like no exclusion at all.
+	const excludeDir = normalized ? normalized : null
 
 	const scanDirs: Array<{ dir: string; relativeToRoot: boolean }> = [
 		{ dir: 'public', relativeToRoot: false },
@@ -50,10 +98,6 @@ function compareCodeUnits(a: string, b: string): number {
 	return a < b ? -1 : a > b ? 1 : 0
 }
 
-function normalizeDir(dir: string): string {
-	return dir.replace(/^\/+/, '').replace(/\/+$/, '')
-}
-
 async function scanDirectory(
 	fs: CmsFileSystem,
 	currentDir: string,
@@ -62,7 +106,9 @@ async function scanDirectory(
 	excludeDir: string | null,
 	items: MediaItem[],
 ): Promise<void> {
-	if (excludeDir && normalizeDir(currentDir) === excludeDir) return
+	// `currentDir` is built from `public`/`src` downwards, so it is already in the
+	// normalised spelling `uploadsDirRelativeToRoot` produces.
+	if (excludeDir !== null && currentDir === excludeDir) return
 
 	const entries = await fs.list(currentDir)
 	const subdirs: Promise<void>[] = []

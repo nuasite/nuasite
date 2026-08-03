@@ -124,7 +124,8 @@ export function createDevMiddleware(
 		// One cms-core instance per project root. Structural routes (entry/page/redirect
 		// CRUD, media) delegate to this brain over a node:fs adapter; the media adapter
 		// and component dirs mirror the selection @nuasite/cms makes for the dev server.
-		const cmsFs = createNodeFs(getProjectRoot())
+		const projectRoot = getProjectRoot()
+		const cmsFs = createNodeFs(projectRoot)
 		const core = createCmsCore(cmsFs, {
 			contentDir: config.contentDir,
 			media: options.mediaAdapter,
@@ -149,6 +150,7 @@ export function createDevMiddleware(
 				manifestWriter,
 				core,
 				fs: cmsFs,
+				projectRoot,
 				contentDir: config.contentDir,
 				mediaAdapter: options.mediaAdapter,
 				maxUploadSize: options.maxUploadSize,
