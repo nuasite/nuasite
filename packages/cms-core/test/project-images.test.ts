@@ -1,10 +1,26 @@
-import { createNodeFs, listProjectImages } from '@nuasite/cms-core'
+import { createNodeFs, listProjectImages, uploadsDirRelativeToRoot } from '@nuasite/cms-core'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
 /** PNG magic bytes — the scan goes by extension, so the payload only has to be a file. */
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/**
+ * Every spelling `MediaStorageAdapter.staticFiles.dir` documents, all naming the same
+ * directory. `<root>/…` is what `createLocalStorageAdapter` actually reports — it
+ * `path.resolve`s the configured dir — and it used to be the one spelling that matched
+ * nothing, so the uploads got scanned a second time.
+ */
+const UPLOADS_SPELLINGS = [
+	'<root>/public/uploads',
+	'<root>/public/uploads/',
+	'public/uploads',
+	'./public/uploads',
+	'public/uploads/',
+	'/public/uploads',
+	'/public/uploads/',
+]
 
 describe('listProjectImages', () => {
 	let root: string
@@ -58,15 +74,33 @@ describe('listProjectImages', () => {
 		expect(await listProjectImages(createNodeFs(root))).toEqual([])
 	})
 
-	test('excludeDir drops the uploads directory, in every spelling the port accepts', async () => {
+	test('the exclusion drops the uploads directory, in every spelling staticFiles.dir permits', async () => {
 		await write({ 'public/uploads/up.png': PNG, 'public/assets/hero.png': PNG })
 		const cfs = createNodeFs(root)
-		for (const spelling of ['public/uploads', '/public/uploads', 'public/uploads/', '/public/uploads/']) {
-			const items = await listProjectImages(cfs, { excludeDir: spelling })
+		for (const spelling of UPLOADS_SPELLINGS) {
+			const items = await listProjectImages(cfs, { exclude: { dir: spelling.replace('<root>', root), root } })
+			expect({ spelling, urls: items.map(i => i.url) }).toEqual({ spelling, urls: ['/assets/hero.png'] })
+		}
+		// Without the exclusion the uploads show up — the assertions above are not vacuous.
+		expect((await listProjectImages(cfs)).map(i => i.url).sort()).toEqual(['/assets/hero.png', '/uploads/up.png'])
+	})
+
+	test('an adapter with no local directory excludes nothing', async () => {
+		await write({ 'public/uploads/up.png': PNG, 'public/assets/hero.png': PNG })
+		const cfs = createNodeFs(root)
+		// `dir: undefined` is an S3/Contember adapter: it stores nothing under the root,
+		// so there is nothing for the scan to skip.
+		const items = await listProjectImages(cfs, { exclude: { dir: undefined, root } })
+		expect(items.map(i => i.url)).toEqual(['/assets/hero.png', '/uploads/up.png'])
+	})
+
+	test('an exclusion naming the project root itself excludes nothing', async () => {
+		await write({ 'public/assets/hero.png': PNG })
+		const cfs = createNodeFs(root)
+		for (const dir of [root, `${root}/`]) {
+			const items = await listProjectImages(cfs, { exclude: { dir, root } })
 			expect(items.map(i => i.url)).toEqual(['/assets/hero.png'])
 		}
-		// Without the exclusion the uploads show up — the assertion above is not vacuous.
-		expect((await listProjectImages(cfs)).map(i => i.url).sort()).toEqual(['/assets/hero.png', '/uploads/up.png'])
 	})
 
 	// --- Ordering ---------------------------------------------------------------
@@ -130,5 +164,33 @@ describe('listProjectImages', () => {
 		}
 		expect(seen).toEqual(expected)
 		expect(new Set(seen).size).toBe(seen.length)
+	})
+})
+
+describe('uploadsDirRelativeToRoot', () => {
+	const ROOT = '/srv/site'
+
+	test('normalises every spelling staticFiles.dir permits to the one the scan walks', () => {
+		for (const spelling of UPLOADS_SPELLINGS) {
+			expect({ spelling, relative: uploadsDirRelativeToRoot(spelling.replace('<root>', ROOT), ROOT) })
+				.toEqual({ spelling, relative: 'public/uploads' })
+		}
+	})
+
+	test('a trailing slash on the root does not leak into the result', () => {
+		expect(uploadsDirRelativeToRoot('/srv/site/public/uploads', '/srv/site/')).toBe('public/uploads')
+	})
+
+	test('undefined (no local storage) stays undefined, and the root itself is no exclusion', () => {
+		expect(uploadsDirRelativeToRoot(undefined, ROOT)).toBeUndefined()
+		expect(uploadsDirRelativeToRoot(ROOT, ROOT)).toBe('')
+		expect(uploadsDirRelativeToRoot(`${ROOT}/`, ROOT)).toBe('')
+	})
+
+	test('a path outside the root keeps its shape, minus the root-relative decoration', () => {
+		// A leading slash means "absolute filesystem path" only when the path actually
+		// starts with the root — otherwise it is root-relative, the rule the port uses.
+		expect(uploadsDirRelativeToRoot('/var/media', ROOT)).toBe('var/media')
+		expect(uploadsDirRelativeToRoot('/srv/site-other/uploads', ROOT)).toBe('srv/site-other/uploads')
 	})
 })

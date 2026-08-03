@@ -23,6 +23,8 @@ export interface RouteContext {
 	core: CmsCore
 	/** Raw FileSystem port (for the few helpers that scan the project directly). */
 	fs: CmsFileSystem
+	/** The project root `fs` and `core` are rooted at, for the paths that leave the port. */
+	projectRoot: string
 	contentDir: string
 	mediaAdapter?: MediaStorageAdapter
 	maxUploadSize: number
@@ -272,8 +274,7 @@ const routeMap = new Map<string, RouteHandler>([
 		sendJson(ctx.res, await ctx.mediaAdapter.list({ limit, cursor: params.get('cursor') ?? undefined, folder }))
 	}),
 	custom('GET', 'media/project-images', async (ctx) => {
-		const excludeDir = ctx.mediaAdapter?.staticFiles?.dir
-		const items = await listProjectImages(ctx.fs, { excludeDir })
+		const items = await listProjectImages(ctx.fs, { exclude: { dir: ctx.mediaAdapter?.staticFiles?.dir, root: ctx.projectRoot } })
 		sendJson(ctx.res, { items })
 	}),
 	custom('POST', 'media/upload', async (ctx) => {

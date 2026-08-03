@@ -38,6 +38,7 @@ export {
 	MIME_BY_EXT,
 	mimeFromExt,
 	type S3StorageOptions,
+	uploadsDirRelativeToRoot,
 } from './media/index'
 export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
 export { computePathnameFromSpec, escapeHtml, relativeImportPath, resolvePathnameFromSpec, slugify, slugifyHref } from './shared'

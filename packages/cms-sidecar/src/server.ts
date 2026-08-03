@@ -209,29 +209,6 @@ function decodeMediaCursor(raw: string | undefined): { ok: true; state: MediaCur
 }
 
 /**
- * The adapter's uploads dir as a root-relative path, so the project scan does not
- * list the uploads twice.
- *
- * Accepts every spelling {@link MediaStorageAdapter.staticFiles} documents: an
- * absolute path under the root, a root-relative path with or without a leading
- * slash, an optional `./` prefix and a trailing slash. A leading slash only means
- * "absolute filesystem path" when the path actually starts with the root —
- * otherwise it is root-relative, exactly the rule the `CmsFileSystem` port uses.
- *
- * `undefined` when the adapter stores nothing locally (S3/Contember); `''` (no
- * exclusion) when it claims the whole project root.
- */
-function uploadsDirRelativeToRoot(adapter: MediaStorageAdapter, root: string): string | undefined {
-	const dir = adapter.staticFiles?.dir
-	if (dir === undefined) return undefined
-	const base = root.replace(/\/+$/, '')
-	const trimmed = dir.replace(/\/+$/, '')
-	if (trimmed === base) return ''
-	if (trimmed.startsWith(`${base}/`)) return trimmed.slice(base.length + 1)
-	return trimmed.replace(/^\.\//, '').replace(/^\/+/, '')
-}
-
-/**
  * `?includeProjectImages` — present with no value, `true` or `1` enable it; `false`
  * or `0` disable it. `null` means the caller sent something else, which is a client
  * error: silently ignoring e.g. `TRUE` would drop the project images without a word.
@@ -959,7 +936,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		}
 
 		const offset = projectOffset ?? 0
-		const projectImages = await listProjectImages(fs, { excludeDir: uploadsDirRelativeToRoot(adapter, root) })
+		const projectImages = await listProjectImages(fs, { exclude: { dir: adapter.staticFiles?.dir, root } })
 		const slice = projectImages.slice(offset, offset + Math.max(0, limit - items.length))
 		items.push(...slice)
 
