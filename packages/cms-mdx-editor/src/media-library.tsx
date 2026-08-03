@@ -9,12 +9,83 @@
  * props in the block card. Degrades gracefully when the sidecar has no media
  * adapter (`501`): the gallery shows an "unavailable" hint and the manual-URL path
  * stays usable upstream.
+ *
+ * The listing is paged: each folder is read one `PAGE_SIZE` page at a time and the
+ * rest is pulled in by an explicit "Load more". Search and the type filter run over
+ * the loaded items only, so turning either on drains the remaining pages first —
+ * see `Listing` and the drain effect for how that stays bounded and cancellable.
  */
-import type { MediaFolderItem, MediaItem, MediaTypeFilter } from '@nuasite/cms-types'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import type { MediaFolderItem, MediaItem, MediaListResult, MediaTypeFilter } from '@nuasite/cms-types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isMediaUnavailableError, type MediaContext, type MediaSource } from './media-source'
 
 const VECTOR_TYPES = new Set(['image/svg+xml', 'image/x-icon'])
+
+/**
+ * Items per listing request. Above the server's default of 50 so most folders are
+ * one page, low enough that the first paint does not fetch hundreds of thumbnails.
+ */
+const PAGE_SIZE = 60
+
+/**
+ * Hard cap on the pages followed for one folder. The cursor checks below already
+ * stop a server that repeats or drops its cursor; this is the backstop for one that
+ * keeps minting fresh ones — a client-side infinite loop must not be reachable.
+ */
+const MAX_PAGES = 200
+
+/**
+ * Paging state for one folder. A folder switch replaces the whole object, so its
+ * identity doubles as the request token: a response whose listing is no longer
+ * `listingRef.current` belongs to a folder the user has left and is dropped.
+ */
+interface Listing {
+	folder: string
+	/** Cursor for the next page; `undefined` once the listing is exhausted. */
+	cursor: string | undefined
+	/** Cursors already followed — one coming back means the server is not advancing. */
+	seen: Set<string>
+	pages: number
+	/** A request is in flight for this listing (guards double-clicks and re-entry). */
+	busy: boolean
+	/** The last page failed; the drain stops until the user retries. */
+	failed: boolean
+}
+
+function createListing(folder: string): Listing {
+	return { folder, cursor: undefined, seen: new Set(), pages: 0, busy: false, failed: false }
+}
+
+/**
+ * The cursor to follow after `result`, or `undefined` when the listing ends.
+ * `stalled` marks an end nobody asked for: the page claims more but hands back no
+ * usable cursor (missing, or one already followed), or the page cap is reached.
+ */
+function advance(result: MediaListResult, listing: Listing): { cursor: string | undefined; stalled: boolean } {
+	if (!result.hasMore) return { cursor: undefined, stalled: false }
+	const cursor = result.cursor
+	if (cursor === undefined || listing.seen.has(cursor) || listing.pages >= MAX_PAGES) return { cursor: undefined, stalled: true }
+	listing.seen.add(cursor)
+	return { cursor, stalled: false }
+}
+
+/**
+ * Fold a page's folder list into the one on screen. Every page is supposed to carry
+ * the full list for the listed directory, so after page 1 this is normally a no-op.
+ * Merging rather than replacing keeps the list intact when a page omits it, and
+ * keeps a folder the user just created from being wiped by the next page.
+ */
+function mergeFolders(current: MediaFolderItem[], incoming: MediaFolderItem[]): MediaFolderItem[] {
+	if (incoming.length === 0) return current
+	const merged = new Map(current.map(folder => [folder.path, folder]))
+	let added = false
+	for (const folder of incoming) {
+		if (merged.has(folder.path)) continue
+		merged.set(folder.path, folder)
+		added = true
+	}
+	return added ? [...merged.values()].sort((a, b) => a.name.localeCompare(b.name)) : current
+}
 
 const TYPE_FILTERS: Array<{ value: MediaTypeFilter; label: string }> = [
 	{ value: 'all', label: 'All' },
@@ -109,6 +180,17 @@ const tile: React.CSSProperties = {
 	justifyContent: 'center',
 	gap: 6,
 }
+const emptyPanel: React.CSSProperties = { padding: 32, textAlign: 'center', color: '#a1a1aa' }
+const pagerBar: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	gap: 8,
+	padding: '8px 16px',
+	borderTop: '1px solid #ececed',
+	fontSize: 12,
+	color: '#71717a',
+}
 const tileCaption: React.CSSProperties = {
 	position: 'absolute',
 	left: 0,
@@ -130,38 +212,97 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 	const [currentFolder, setCurrentFolder] = useState('')
 	const [searchQuery, setSearchQuery] = useState('')
 	const [typeFilter, setTypeFilter] = useState<MediaTypeFilter>('all')
+	/** First page of the current folder — the grid is replaced by a placeholder. */
 	const [loading, setLoading] = useState(false)
+	/** A follow-up page — the grid stays on screen underneath. */
+	const [loadingMore, setLoadingMore] = useState(false)
+	const [hasMore, setHasMore] = useState(false)
 	const [unavailable, setUnavailable] = useState(false)
 	const [uploading, setUploading] = useState(false)
 	const [errorMsg, setErrorMsg] = useState<string | null>(null)
 	const [showNewFolder, setShowNewFolder] = useState(false)
 	const [newFolderName, setNewFolderName] = useState('')
 	const fileInputRef = useRef<HTMLInputElement>(null)
-
-	const loadFolder = useMemo(
-		() => async (folder: string) => {
-			setLoading(true)
-			setErrorMsg(null)
-			try {
-				const result = await media.listMedia({ folder: folder || undefined })
-				setItems(result.items)
-				setFolders(result.folders)
-			} catch (err: unknown) {
-				if (isMediaUnavailableError(err)) {
-					setUnavailable(true)
-				} else {
-					setErrorMsg(err instanceof Error ? err.message : 'Failed to load media')
-				}
-			} finally {
-				setLoading(false)
-			}
-		},
-		[media],
-	)
+	const listingRef = useRef<Listing>(createListing(''))
+	const mountedRef = useRef(true)
 
 	useEffect(() => {
-		void loadFolder(currentFolder)
-	}, [loadFolder, currentFolder])
+		mountedRef.current = true
+		return () => {
+			mountedRef.current = false
+		}
+	}, [])
+
+	/**
+	 * Fetch one page for `listing` and append it. Everything that touches state is
+	 * gated on the listing still being the current one and the modal still being
+	 * mounted, so a response that arrives after a folder switch or an unmount is
+	 * dropped instead of landing in the wrong list.
+	 */
+	const loadPage = useCallback(async (listing: Listing) => {
+		if (listing.busy || listingRef.current !== listing) return
+		const first = listing.pages === 0
+		listing.busy = true
+		listing.failed = false
+		if (first) setLoading(true)
+		else setLoadingMore(true)
+		setErrorMsg(null)
+		try {
+			const result = await media.listMedia({ folder: listing.folder || undefined, limit: PAGE_SIZE, cursor: listing.cursor })
+			if (!mountedRef.current || listingRef.current !== listing) return
+			listing.pages += 1
+			setFolders(prev => mergeFolders(prev, result.folders))
+			setItems(prev => (first ? result.items : [...prev, ...result.items]))
+			const next = advance(result, listing)
+			listing.cursor = next.cursor
+			setHasMore(next.cursor !== undefined)
+			if (next.stalled) setErrorMsg('Stopped loading this folder early — some files are not shown.')
+		} catch (err: unknown) {
+			if (!mountedRef.current || listingRef.current !== listing) return
+			listing.failed = true
+			if (isMediaUnavailableError(err)) {
+				setUnavailable(true)
+				setHasMore(false)
+			} else {
+				// Keep the cursor: the pager stays on screen and doubles as a retry.
+				setErrorMsg(err instanceof Error ? err.message : 'Failed to load media')
+			}
+		} finally {
+			listing.busy = false
+			if (mountedRef.current && listingRef.current === listing) {
+				setLoading(false)
+				setLoadingMore(false)
+			}
+		}
+	}, [media])
+
+	// A folder switch starts a brand-new listing; the old one is abandoned mid-flight.
+	useEffect(() => {
+		const listing = createListing(currentFolder)
+		listingRef.current = listing
+		setItems([])
+		setFolders([])
+		setHasMore(false)
+		void loadPage(listing)
+	}, [currentFolder, loadPage])
+
+	const query = searchQuery.trim().toLowerCase()
+	const filterActive = query !== '' || typeFilter !== 'all'
+
+	/**
+	 * Search and the type filter only see what is loaded, so on a paged listing they
+	 * would report "no matches" for a file sitting on page 3. Drain the remaining
+	 * pages while a filter is on — one page per landed page, so the drain is
+	 * interruptible by a folder switch, stops on error and never runs unbounded.
+	 * `items` is the trigger rather than the loading flags: a page always appends
+	 * into a fresh array, whereas the flags can flip back before React re-renders.
+	 */
+	useEffect(() => {
+		if (!filterActive) return
+		const listing = listingRef.current
+		if (listing.busy || listing.failed || listing.cursor === undefined) return
+		void loadPage(listing)
+	}, [filterActive, items, loadPage])
 
 	const navigateToFolder = (folder: string) => {
 		setSearchQuery('')
@@ -224,9 +365,8 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 
 	const filteredItems = useMemo(() => {
 		const byType = typeFilter === 'all' ? items : items.filter(i => matchesTypeFilter(i.contentType, typeFilter))
-		const q = searchQuery.trim().toLowerCase()
-		return q === '' ? byType : byType.filter(i => i.filename.toLowerCase().includes(q))
-	}, [items, typeFilter, searchQuery])
+		return query === '' ? byType : byType.filter(i => i.filename.toLowerCase().includes(query))
+	}, [items, typeFilter, query])
 
 	const breadcrumbs = useMemo(() => {
 		if (!currentFolder) return []
@@ -234,7 +374,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 		return parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') }))
 	}, [currentFolder])
 
-	const showFolders = !searchQuery && typeFilter === 'all'
+	const showFolders = !filterActive
 
 	return (
 		<div style={backdrop} onMouseDown={onClose} data-cms-ui="">
@@ -298,7 +438,9 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 									...btn,
 									padding: '3px 10px',
 									fontSize: 12,
-									...(typeFilter === f.value ? { background: '#2563eb', borderColor: '#2563eb', color: '#fff' } : {}),
+									// Same shorthand as `btn`, not `borderColor` — mixing the two makes React
+									// warn when the selection moves and it has to drop the longhand again.
+									...(typeFilter === f.value ? { background: '#2563eb', border: '1px solid #2563eb', color: '#fff' } : {}),
 								}}
 								onClick={() => setTypeFilter(f.value)}
 							>
@@ -334,11 +476,16 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 				</div>
 
 				{loading
-					? <div style={{ padding: 32, textAlign: 'center', color: '#a1a1aa' }}>Loading…</div>
+					? <div style={emptyPanel}>Loading…</div>
 					: folders.length === 0 && filteredItems.length === 0
 					? (
-						<div style={{ padding: 32, textAlign: 'center', color: '#a1a1aa' }}>
-							{searchQuery || typeFilter !== 'all' ? 'No matching files.' : 'No files yet. Upload one to get started.'}
+						// Never claim "no matches" while more pages are still coming in.
+						<div style={emptyPanel}>
+							{loadingMore
+								? (filterActive ? 'Searching…' : 'Loading…')
+								: filterActive
+								? 'No matching files.'
+								: 'No files yet. Upload one to get started.'}
 						</div>
 					)
 					: (
@@ -351,6 +498,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 										style={tile}
 										onClick={() => navigateToFolder(folder.path)}
 										title={folder.name}
+										data-cms-media-folder={folder.path}
 									>
 										<span style={{ fontSize: 30 }}>📁</span>
 										<span style={{ fontSize: 12, color: '#52525b', maxWidth: '90%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -365,6 +513,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 									type="button"
 									style={tile}
 									title={item.filename}
+									data-cms-media-item={item.id}
 									onClick={() => onSelect(item.url, item.annotation || item.filename || 'Image')}
 								>
 									{item.contentType.startsWith('image/')
@@ -381,6 +530,20 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 							))}
 						</div>
 					)}
+
+				{!loading && hasMore
+					? (
+						<div style={pagerBar}>
+							{loadingMore
+								? <span>{filterActive ? `Searching the whole folder… ${items.length} files scanned` : 'Loading…'}</span>
+								: (
+									<button type="button" style={btn} onClick={() => void loadPage(listingRef.current)}>
+										Load more
+									</button>
+								)}
+						</div>
+					)
+					: null}
 
 				<div style={{ padding: '10px 16px', borderTop: '1px solid #ececed', fontSize: 12, color: '#a1a1aa', textAlign: 'center' }}>
 					Drag and drop a file here to upload{currentFolder ? ` to ${currentFolder}` : ''}.

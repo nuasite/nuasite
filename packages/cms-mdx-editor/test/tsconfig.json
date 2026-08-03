@@ -1,0 +1,14 @@
+{
+	"extends": "../../../tsconfig.settings.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"emitDeclarationOnly": false,
+		"composite": false,
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"types": ["@types/bun", "react", "react-dom"]
+	},
+	"references": [
+		{ "path": "../src" },
+		{ "path": "../../cms-types/src" }
+	]
+}
