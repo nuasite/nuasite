@@ -14,7 +14,7 @@
 		"directory": "packages/llm-enhancements"
 	},
 	"license": "Apache-2.0",
-	"version": "0.48.0",
+	"version": "0.49.0",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
 	"type": "module",
