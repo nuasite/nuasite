@@ -74,7 +74,7 @@ The CMS editor UI is built with **Preact** + **Milkdown** (ProseMirror-based mar
 
 Source finding uses a two-stage pipeline: `@astrojs/compiler` parses `.astro` files into ASTs, then a search index enables fast lookups during editing.
 
-Media storage uses a pluggable adapter pattern (`MediaStorageAdapter`): local filesystem (default), S3/R2 direct, or Contember (R2 + database).
+Media storage uses a pluggable adapter pattern (`MediaStorageAdapter`, defined in `@nuasite/cms-types`). The three implementations live in `packages/cms-core/src/media/` and are re-exported from `@nuasite/cms` as `localMedia()` (filesystem, the default), `s3Media()` (S3/R2 direct), and `contemberMedia()` (R2 + database). Pass one as the `media` option; `packages/cms/src/media/types.ts` is now only a re-export shim.
 
 ## Code Style
 

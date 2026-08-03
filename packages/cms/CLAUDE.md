@@ -33,7 +33,7 @@ Astro hook (`astro:server:setup`) → `html-processor.ts` parses rendered HTML i
 Supporting subsystems:
 
 - **Component Registry** (`component-registry.ts`) — scans `src/components/*.astro`, parses each into an AST via `@astrojs/compiler`, then extracts props from the frontmatter AST via Babel
-- **Collection Scanner** (`collection-scanner.ts`) — auto-detects Astro content collections
+- **Collection Scanner** — auto-detects Astro content collections. Now lives in `@nuasite/cms-core`; `scanCollections` is re-exported from `src/index.ts`, and `src/scan-cache.ts` wraps it with caching
 - **SEO Processor** (`seo-processor.ts`) — extracts title, meta tags, JSON-LD from the HTML AST
 - **Tailwind Colors** (`tailwind-colors.ts`) — parses Tailwind config for color editing
 
@@ -70,13 +70,17 @@ Two delivery modes:
 
 Injected as `<script type="module">` into every dev page.
 
-### Media Storage (`src/media/`)
+### Media Storage (`@nuasite/cms-core`)
 
-Pluggable adapter pattern (`MediaStorageAdapter` interface):
+The adapters moved out of this package — `src/media/types.ts` is now only a re-export shim for the `MediaStorageAdapter` interface, which is defined in `@nuasite/cms-types`. Implementations live in `packages/cms-core/src/media/` and are re-exported from `src/index.ts` under short aliases:
 
-- `local.ts` — filesystem (`public/uploads/`)
-- `s3.ts` — S3/R2 direct
-- `contember.ts` — R2 + database
+| Alias              | Factory                         | File                                                                                      |
+| ------------------ | ------------------------------- | ----------------------------------------------------------------------------------------- |
+| `localMedia()`     | `createLocalStorageAdapter`     | `local.ts` — filesystem (`public/uploads/`)                                               |
+| `s3Media()`        | `createS3StorageAdapter`        | `s3.ts` — S3/R2 direct (loads `@aws-sdk/client-s3` via dynamic import, optional peer dep) |
+| `contemberMedia()` | `createContemberStorageAdapter` | `contember.ts` — R2 + database                                                            |
+
+Only `list`/`upload`/`delete` are required; `createFolder` and `staticFiles` are optional. `staticFiles` lets the dev middleware serve uploads straight from disk, bypassing Vite's public-dir cache (`dev-middleware.ts`). The default is local — see `media ?? (enableCmsApi ? createLocalStorageAdapter() : undefined)` in `src/index.ts`.
 
 ### Vite Plugins (`src/vite-plugin.ts`)
 
