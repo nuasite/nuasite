@@ -78,6 +78,7 @@ const INLINE_STYLE_ELEMENTS = [
 const FORMATTING_BLOCKED_TOAST_COOLDOWN_MS = 3000
 let lastFormattingBlockedToastAt = 0
 let lastLockedToastAt = 0
+let lastUnsupportedPasteToastAt = 0
 
 // Signals listener cleanup on stopEditMode. Aborting removes every listener
 // attached with { signal } in the current edit session in one shot.
@@ -90,6 +91,15 @@ function notifyFormattingBlocked(): void {
 	}
 	lastFormattingBlockedToastAt = now
 	signals.showToast(STRINGS.editor.formattingBlocked, 'info')
+}
+
+function notifyUnsupportedPaste(): void {
+	const now = Date.now()
+	if (now - lastUnsupportedPasteToastAt < FORMATTING_BLOCKED_TOAST_COOLDOWN_MS) {
+		return
+	}
+	lastUnsupportedPasteToastAt = now
+	signals.showToast(STRINGS.editor.unsupportedPaste, 'info')
 }
 
 export function notifyLockedElement(): void {
@@ -146,12 +156,15 @@ function handleLockedClick(event: Event): void {
 export function _resetToastThrottles(): void {
 	lastFormattingBlockedToastAt = 0
 	lastLockedToastAt = 0
+	lastUnsupportedPasteToastAt = 0
 }
 
 // Inline CMS fields are single-line text runs — typed Enter is blocked in `beforeinput`, so
 // pasted/dropped line breaks must collapse the same way instead of smuggling newlines past it.
 // Matches the source writer's normalization: whitespace around a break collapses into one space.
-const LINE_BREAK_RUN = /[ \t]*(?:\r\n|\r|\n)+[ \t]*/g
+// U+2028/U+2029 are line terminators too (ECMAScript and Unicode both treat them as such) and
+// reach the clipboard from PDFs and older Mac apps, so a CRLF-only pattern would let them past.
+const LINE_BREAK_RUN = /[ \t]*[\r\n\u2028\u2029]+[ \t]*/g
 
 export function collapseToSingleLine(text: string): string {
 	return text.replace(LINE_BREAK_RUN, ' ')
@@ -347,7 +360,14 @@ export async function startEditMode(
 			if (!clipboard) return
 			const html = clipboard.getData('text/html')
 			const text = clipboard.getData('text/plain')
+			// Stay prevented even with nothing to insert. Letting an image or file paste fall
+			// through to the browser would drop an <img> into the element, and the source
+			// writer would persist it. Say so rather than appearing to swallow the paste.
 			e.preventDefault()
+			if (!text && !html) {
+				notifyUnsupportedPaste()
+				return
+			}
 			const selection = window.getSelection()
 			const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
 			applyPlainTextInsert(el, text, html, range, !stylingAllowed)

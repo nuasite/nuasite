@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { getEditableTextFromElement } from '../../../src/editor/dom'
-import { collapseToSingleLine, insertPlainTextAtRange, startEditMode, stopEditMode } from '../../../src/editor/editor'
+import { _resetToastThrottles, collapseToSingleLine, insertPlainTextAtRange, startEditMode, stopEditMode } from '../../../src/editor/editor'
+import * as signals from '../../../src/editor/signals'
+import { STRINGS } from '../../../src/editor/strings'
 import type { CmsConfig, CmsManifest } from '../../../src/editor/types'
 
 const mockConfig: CmsConfig = {
@@ -34,6 +36,10 @@ const mockManifest: CmsManifest = {
 
 beforeEach(() => {
 	document.body.innerHTML = ''
+	// Toast throttles are module-level timestamps, so without this a toast raised in one
+	// test suppresses the next test's for 3s of wall clock and assertions become order-dependent.
+	signals.toasts.value = []
+	_resetToastThrottles()
 	Object.defineProperty(window, 'location', {
 		value: { pathname: '/', href: 'http://localhost/' },
 		writable: true,
@@ -247,6 +253,10 @@ test('collapseToSingleLine flattens CRLF, LF and lone CR into single spaces', ()
 	expect(collapseToSingleLine('one\r\ntwo')).toBe('one two')
 	expect(collapseToSingleLine('one\ntwo')).toBe('one two')
 	expect(collapseToSingleLine('one\rtwo')).toBe('one two')
+	// U+2028/U+2029 are line terminators too — clipboards from PDFs and older Mac apps carry them
+	expect(collapseToSingleLine('one\u2028two')).toBe('one two')
+	expect(collapseToSingleLine('one\u2029two')).toBe('one two')
+	expect(collapseToSingleLine('one \u2028\r\n two')).toBe('one two')
 	// Blank lines and the whitespace hugging them collapse to a single space
 	expect(collapseToSingleLine('one\n\n\ntwo')).toBe('one two')
 	expect(collapseToSingleLine('one  \r\n\t two')).toBe('one two')
@@ -321,6 +331,50 @@ test('multi-line CRLF paste into a styleable field produces no <br> markup', asy
 	expect(getEditableTextFromElement(el)).toBe('hello one two')
 	expect(el.innerHTML).not.toContain('<br>')
 	expect(el.innerHTML).not.toContain('<p>')
+})
+
+// A clipboard carrying only an image/file has neither flavor. Falling through to the browser
+// would drop an <img> into the element and the source writer would persist it, so the paste
+// stays prevented — but it must say so rather than looking like it silently failed.
+test('paste with neither text nor HTML stays prevented and explains itself', async () => {
+	document.body.innerHTML = `<p data-cms-id="styleable">hello</p>`
+	await startEditMode(mockConfig, () => {})
+	const el = document.querySelector('[data-cms-id="styleable"]') as HTMLElement
+
+	const event = makeClipboardEvent('', '')
+	el.dispatchEvent(event)
+
+	expect(event.defaultPrevented).toBe(true)
+	expect(el.innerHTML).toBe('hello')
+	expect(signals.toasts.value.map(t => t.message)).toContain(STRINGS.editor.unsupportedPaste)
+})
+
+test('empty paste on a non-styleable element is also prevented and explained', async () => {
+	document.body.innerHTML = `<span data-cms-id="non-styleable">hello</span>`
+	await startEditMode(mockConfig, () => {})
+	const el = document.querySelector('[data-cms-id="non-styleable"]') as HTMLElement
+
+	const event = makeClipboardEvent('', '')
+	el.dispatchEvent(event)
+
+	expect(event.defaultPrevented).toBe(true)
+	expect(el.innerHTML).toBe('hello')
+	expect(signals.toasts.value.map(t => t.message)).toContain(STRINGS.editor.unsupportedPaste)
+})
+
+test('stripping HTML toasts on non-styleable elements but stays quiet on styleable ones', async () => {
+	document.body.innerHTML = `<p data-cms-id="styleable">hello</p><span data-cms-id="non-styleable">hello</span>`
+	await startEditMode(mockConfig, () => {})
+
+	const styleable = document.querySelector('[data-cms-id="styleable"]') as HTMLElement
+	styleable.dispatchEvent(makeClipboardEvent('<b>x</b>', ' x'))
+	// Virtually every clipboard carries a text/html flavor, so toasting here would fire on
+	// every ordinary paste
+	expect(signals.toasts.value.map(t => t.message)).not.toContain(STRINGS.editor.formattingBlocked)
+
+	const nonStyleable = document.querySelector('[data-cms-id="non-styleable"]') as HTMLElement
+	nonStyleable.dispatchEvent(makeClipboardEvent('<b>x</b>', ' x'))
+	expect(signals.toasts.value.map(t => t.message)).toContain(STRINGS.editor.formattingBlocked)
 })
 
 test('stopEditMode detaches the plain-text listeners via AbortController', async () => {
