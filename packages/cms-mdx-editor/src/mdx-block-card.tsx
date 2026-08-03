@@ -11,6 +11,7 @@ import type { ComponentDefinition, ComponentProp } from '@nuasite/cms-types'
 import { useMemo, useState } from 'react'
 import { MDX_EXPR_PREFIX } from './mdx-plugin'
 import { MediaLibrary } from './media-library'
+import { mediaPreviewSrc } from './media-preview'
 import type { MediaContext, MediaSource } from './media-source'
 import { SlotEditor } from './slot-editor'
 
@@ -38,10 +39,6 @@ const HTML_INPUT_TYPES: Record<string, string> = {
 	time: 'time',
 	email: 'email',
 	tel: 'tel',
-}
-
-function looksLikeUrl(value: string): boolean {
-	return value !== '' && /^(https?:\/\/|\/|\.\/)/.test(value)
 }
 
 const card: React.CSSProperties = { border: '1px solid #d4d4d8', borderRadius: 8, background: '#fafafa', margin: '8px 0', fontSize: 13 }
@@ -93,12 +90,13 @@ const browseBtn: React.CSSProperties = {
 
 // ---- typed prop field ----
 
-function PropField({ name, value, propType, editable, hasMedia, onChange, onBrowse }: {
+function PropField({ name, value, propType, editable, hasMedia, previewSrc, onChange, onBrowse }: {
 	name: string
 	value: string
 	propType: string
 	editable: boolean
 	hasMedia: boolean
+	previewSrc: string
 	onChange: (value: string) => void
 	onBrowse: () => void
 }) {
@@ -114,8 +112,8 @@ function PropField({ name, value, propType, editable, hasMedia, onChange, onBrow
 	if (propType === 'image') {
 		return (
 			<div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-				{looksLikeUrl(value)
-					? <img src={value} alt="" style={{ maxHeight: 96, maxWidth: '100%', objectFit: 'contain', borderRadius: 4, alignSelf: 'flex-start' }} />
+				{previewSrc !== ''
+					? <img src={previewSrc} alt="" style={{ maxHeight: 96, maxWidth: '100%', objectFit: 'contain', borderRadius: 4, alignSelf: 'flex-start' }} />
 					: null}
 				<div style={{ display: 'flex', gap: 6 }}>
 					<input
@@ -248,6 +246,7 @@ export function MdxBlockCard({
 										propType={propType}
 										editable={editable}
 										hasMedia={Boolean(media)}
+										previewSrc={propType === 'image' ? mediaPreviewSrc(media, value, mediaContext) : ''}
 										onChange={v => setProp(name, v)}
 										onBrowse={() => setBrowseField(name)}
 									/>

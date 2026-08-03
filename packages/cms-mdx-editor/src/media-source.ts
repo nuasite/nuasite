@@ -23,6 +23,14 @@ export interface MediaSource {
 	listMedia(options?: { folder?: string; cursor?: string; limit?: number }): Promise<MediaListResult>
 	uploadMedia(file: File, context?: MediaUploadContext): Promise<MediaUploadResult>
 	createFolder?(folder: string): Promise<{ success: boolean; error?: string }>
+	/**
+	 * Loadable URL for a repository file at its runtime path (`/uploads/hero.webp`). Optional: a
+	 * host serving the project from the editor's own origin does not need one — see
+	 * {@link mediaPreviewSrc}, which is the only consumer.
+	 */
+	mediaAssetUrl?(path: string): string
+	/** Loadable URL for a path resolved against an entry's source file (`../../assets/hero.webp`). */
+	mediaFileUrl?(collection: string, entry: string, path: string): string
 }
 
 /** Editor-level upload context (the field name is added per call-site). */
