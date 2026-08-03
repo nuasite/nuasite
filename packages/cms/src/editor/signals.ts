@@ -324,7 +324,12 @@ function getPersistablePage(): MarkdownPageEntry | null {
 function persistCurrentDraftIfDirty(): void {
 	const page = getPersistablePage()
 	if (!page) return
-	const snapshot = `${page.filePath} ${JSON.stringify(page.frontmatter)} ${page.content}`
+	// NUL separates the parts because it cannot occur in a path, in JSON.stringify output, or
+	// in editor content — a printable separator would let a shift across the boundary (content
+	// gaining what the path lost) produce the same snapshot and skip a save. Keep it spelled as
+	// the \u0000 escape: a literal NUL byte makes the whole file read as binary, and grep then
+	// silently matches nothing in it.
+	const snapshot = `${page.filePath}\u0000${JSON.stringify(page.frontmatter)}\u0000${page.content}`
 	if (snapshot === lastPersistedSnapshot) return
 	lastPersistedSnapshot = snapshot
 	saveMarkdownDraft(page.filePath, page.frontmatter, page.content)

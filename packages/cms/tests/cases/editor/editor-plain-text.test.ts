@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { insertPlainTextAtRange, startEditMode, stopEditMode } from '../../../src/editor/editor'
+import { getEditableTextFromElement } from '../../../src/editor/dom'
+import { _resetToastThrottles, collapseToSingleLine, insertPlainTextAtRange, startEditMode, stopEditMode } from '../../../src/editor/editor'
+import * as signals from '../../../src/editor/signals'
+import { STRINGS } from '../../../src/editor/strings'
 import type { CmsConfig, CmsManifest } from '../../../src/editor/types'
 
 const mockConfig: CmsConfig = {
@@ -33,6 +36,10 @@ const mockManifest: CmsManifest = {
 
 beforeEach(() => {
 	document.body.innerHTML = ''
+	// Toast throttles are module-level timestamps, so without this a toast raised in one
+	// test suppresses the next test's for 3s of wall clock and assertions become order-dependent.
+	signals.toasts.value = []
+	_resetToastThrottles()
 	Object.defineProperty(window, 'location', {
 		value: { pathname: '/', href: 'http://localhost/' },
 		writable: true,
@@ -163,16 +170,25 @@ test('paste on non-styleable element strips HTML and inserts plain text', async 
 	expect(el.textContent).toBe('hello world')
 })
 
-test('paste on styleable element is NOT intercepted', async () => {
+test('paste on styleable element is intercepted and inserts plain text', async () => {
 	document.body.innerHTML = `<p data-cms-id="styleable">plain body text</p>`
 	await startEditMode(mockConfig, () => {})
 	const el = document.querySelector('[data-cms-id="styleable"]') as HTMLElement
 
-	const event = makeClipboardEvent('<b>bold</b>', 'bold')
+	const range = document.createRange()
+	range.selectNodeContents(el)
+	range.collapse(false)
+	const selection = window.getSelection()!
+	selection.removeAllRanges()
+	selection.addRange(range)
+
+	const event = makeClipboardEvent('<b>bold</b>', ' bold')
 	el.dispatchEvent(event)
 
-	// Our handler isn't attached, so defaultPrevented stays false
-	expect(event.defaultPrevented).toBe(false)
+	// Native paste would insert <div>/<br> for multi-line clipboards, so it is intercepted here too
+	expect(event.defaultPrevented).toBe(true)
+	expect(el.innerHTML).not.toContain('<b>')
+	expect(el.textContent).toBe('plain body text bold')
 })
 
 test('drop on non-styleable element strips HTML and inserts plain text', async () => {
@@ -195,15 +211,24 @@ test('drop on non-styleable element strips HTML and inserts plain text', async (
 	expect(el.textContent).toContain(' world')
 })
 
-test('drop on styleable element is NOT intercepted', async () => {
+test('drop on styleable element is intercepted and strips HTML', async () => {
 	document.body.innerHTML = `<p data-cms-id="styleable">plain body text</p>`
 	await startEditMode(mockConfig, () => {})
 	const el = document.querySelector('[data-cms-id="styleable"]') as HTMLElement
 
-	const event = makeDragEvent('drop', '<b>bold</b>', 'bold')
+	const range = document.createRange()
+	range.selectNodeContents(el)
+	range.collapse(false)
+	const selection = window.getSelection()!
+	selection.removeAllRanges()
+	selection.addRange(range)
+
+	const event = makeDragEvent('drop', '<b>bold</b>', ' bold')
 	el.dispatchEvent(event)
 
-	expect(event.defaultPrevented).toBe(false)
+	expect(event.defaultPrevented).toBe(true)
+	expect(el.innerHTML).not.toContain('<b>')
+	expect(el.textContent).toBe('plain body text bold')
 })
 
 test('drop with HTML-only payload (no text/plain) still dispatches input so editor state resyncs', async () => {
@@ -222,6 +247,134 @@ test('drop with HTML-only payload (no text/plain) still dispatches input so edit
 	expect(event.defaultPrevented).toBe(true)
 	expect(inputFired).toBe(true)
 	expect(el.textContent).toBe('hello')
+})
+
+test('collapseToSingleLine flattens CRLF, LF and lone CR into single spaces', () => {
+	expect(collapseToSingleLine('one\r\ntwo')).toBe('one two')
+	expect(collapseToSingleLine('one\ntwo')).toBe('one two')
+	expect(collapseToSingleLine('one\rtwo')).toBe('one two')
+	// U+2028/U+2029 are line terminators too — clipboards from PDFs and older Mac apps carry them
+	expect(collapseToSingleLine('one\u2028two')).toBe('one two')
+	expect(collapseToSingleLine('one\u2029two')).toBe('one two')
+	expect(collapseToSingleLine('one \u2028\r\n two')).toBe('one two')
+	// Blank lines and the whitespace hugging them collapse to a single space
+	expect(collapseToSingleLine('one\n\n\ntwo')).toBe('one two')
+	expect(collapseToSingleLine('one  \r\n\t two')).toBe('one two')
+	// Single-line text is untouched
+	expect(collapseToSingleLine('one two')).toBe('one two')
+	expect(collapseToSingleLine('')).toBe('')
+})
+
+test('insertPlainTextAtRange collapses pasted line breaks instead of inserting them', () => {
+	document.body.innerHTML = '<div id="target">Hello</div>'
+	const target = document.getElementById('target')!
+	const range = document.createRange()
+	range.selectNodeContents(target)
+	range.collapse(false)
+
+	expect(insertPlainTextAtRange(range, ' one\r\ntwo\nthree')).toBe(true)
+	expect(target.textContent).toBe('Hello one two three')
+	expect(target.textContent).not.toContain('\n')
+	expect(target.textContent).not.toContain('\r')
+})
+
+test('insertPlainTextAtRange turns a bare line break into a space', () => {
+	document.body.innerHTML = '<div id="target">Hello</div>'
+	const target = document.getElementById('target')!
+	const range = document.createRange()
+	range.selectNodeContents(target)
+	range.collapse(false)
+
+	// Collapsing '\n' yields ' ', which is still a meaningful insert
+	expect(insertPlainTextAtRange(range, '\n')).toBe(true)
+	expect(target.textContent).toBe('Hello ')
+})
+
+// Windows clipboards carry \r\n, so multi-line pastes from Word/Notepad/Outlook are the
+// common way line breaks reached the source before paste was intercepted.
+test('multi-line CRLF paste into a non-styleable field writes no newlines', async () => {
+	document.body.innerHTML = `<span data-cms-id="non-styleable">hello</span>`
+	await startEditMode(mockConfig, () => {})
+	const el = document.querySelector('[data-cms-id="non-styleable"]') as HTMLElement
+
+	const range = document.createRange()
+	range.selectNodeContents(el)
+	range.collapse(false)
+	const selection = window.getSelection()!
+	selection.removeAllRanges()
+	selection.addRange(range)
+
+	el.dispatchEvent(makeClipboardEvent('', ' one\r\ntwo\nthree'))
+
+	expect(el.textContent).toBe('hello one two three')
+	expect(getEditableTextFromElement(el)).toBe('hello one two three')
+	expect(el.innerHTML).not.toContain('\n')
+	expect(el.innerHTML).not.toContain('\r')
+})
+
+test('multi-line CRLF paste into a styleable field produces no <br> markup', async () => {
+	document.body.innerHTML = `<p data-cms-id="styleable">hello</p>`
+	await startEditMode(mockConfig, () => {})
+	const el = document.querySelector('[data-cms-id="styleable"]') as HTMLElement
+
+	const range = document.createRange()
+	range.selectNodeContents(el)
+	range.collapse(false)
+	const selection = window.getSelection()!
+	selection.removeAllRanges()
+	selection.addRange(range)
+
+	el.dispatchEvent(makeClipboardEvent('<p>one</p><p>two</p>', ' one\r\ntwo'))
+
+	// getEditableTextFromElement converts <br> and block elements into literal '<br>' —
+	// the markup that used to reach the .astro source verbatim
+	expect(getEditableTextFromElement(el)).toBe('hello one two')
+	expect(el.innerHTML).not.toContain('<br>')
+	expect(el.innerHTML).not.toContain('<p>')
+})
+
+// A clipboard carrying only an image/file has neither flavor. Falling through to the browser
+// would drop an <img> into the element and the source writer would persist it, so the paste
+// stays prevented — but it must say so rather than looking like it silently failed.
+test('paste with neither text nor HTML stays prevented and explains itself', async () => {
+	document.body.innerHTML = `<p data-cms-id="styleable">hello</p>`
+	await startEditMode(mockConfig, () => {})
+	const el = document.querySelector('[data-cms-id="styleable"]') as HTMLElement
+
+	const event = makeClipboardEvent('', '')
+	el.dispatchEvent(event)
+
+	expect(event.defaultPrevented).toBe(true)
+	expect(el.innerHTML).toBe('hello')
+	expect(signals.toasts.value.map(t => t.message)).toContain(STRINGS.editor.unsupportedPaste)
+})
+
+test('empty paste on a non-styleable element is also prevented and explained', async () => {
+	document.body.innerHTML = `<span data-cms-id="non-styleable">hello</span>`
+	await startEditMode(mockConfig, () => {})
+	const el = document.querySelector('[data-cms-id="non-styleable"]') as HTMLElement
+
+	const event = makeClipboardEvent('', '')
+	el.dispatchEvent(event)
+
+	expect(event.defaultPrevented).toBe(true)
+	expect(el.innerHTML).toBe('hello')
+	expect(signals.toasts.value.map(t => t.message)).toContain(STRINGS.editor.unsupportedPaste)
+})
+
+test('stripping HTML toasts on non-styleable elements but stays quiet on styleable ones', async () => {
+	document.body.innerHTML = `<p data-cms-id="styleable">hello</p><span data-cms-id="non-styleable">hello</span>`
+	await startEditMode(mockConfig, () => {})
+
+	const styleable = document.querySelector('[data-cms-id="styleable"]') as HTMLElement
+	styleable.dispatchEvent(makeClipboardEvent('<b>x</b>', ' x'))
+	// Virtually every clipboard carries a text/html flavor, so toasting here would fire on
+	// every ordinary paste
+	expect(signals.toasts.value.map(t => t.message)).not.toContain(STRINGS.editor.formattingBlocked)
+
+	const nonStyleable = document.querySelector('[data-cms-id="non-styleable"]') as HTMLElement
+	nonStyleable.dispatchEvent(makeClipboardEvent('<b>x</b>', ' x'))
+	expect(signals.toasts.value.map(t => t.message)).toContain(STRINGS.editor.formattingBlocked)
 })
 
 test('stopEditMode detaches the plain-text listeners via AbortController', async () => {

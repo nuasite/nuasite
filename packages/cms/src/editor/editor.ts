@@ -78,6 +78,7 @@ const INLINE_STYLE_ELEMENTS = [
 const FORMATTING_BLOCKED_TOAST_COOLDOWN_MS = 3000
 let lastFormattingBlockedToastAt = 0
 let lastLockedToastAt = 0
+let lastUnsupportedPasteToastAt = 0
 
 // Signals listener cleanup on stopEditMode. Aborting removes every listener
 // attached with { signal } in the current edit session in one shot.
@@ -90,6 +91,15 @@ function notifyFormattingBlocked(): void {
 	}
 	lastFormattingBlockedToastAt = now
 	signals.showToast(STRINGS.editor.formattingBlocked, 'info')
+}
+
+function notifyUnsupportedPaste(): void {
+	const now = Date.now()
+	if (now - lastUnsupportedPasteToastAt < FORMATTING_BLOCKED_TOAST_COOLDOWN_MS) {
+		return
+	}
+	lastUnsupportedPasteToastAt = now
+	signals.showToast(STRINGS.editor.unsupportedPaste, 'info')
 }
 
 export function notifyLockedElement(): void {
@@ -146,13 +156,26 @@ function handleLockedClick(event: Event): void {
 export function _resetToastThrottles(): void {
 	lastFormattingBlockedToastAt = 0
 	lastLockedToastAt = 0
+	lastUnsupportedPasteToastAt = 0
+}
+
+// Inline CMS fields are single-line text runs — typed Enter is blocked in `beforeinput`, so
+// pasted/dropped line breaks must collapse the same way instead of smuggling newlines past it.
+// Matches the source writer's normalization: whitespace around a break collapses into one space.
+// U+2028/U+2029 are line terminators too (ECMAScript and Unicode both treat them as such) and
+// reach the clipboard from PDFs and older Mac apps, so a CRLF-only pattern would let them past.
+const LINE_BREAK_RUN = /[ \t]*[\r\n\u2028\u2029]+[ \t]*/g
+
+export function collapseToSingleLine(text: string): string {
+	return text.replace(LINE_BREAK_RUN, ' ')
 }
 
 // Uses the Selection/Range API rather than the deprecated document.execCommand('insertText').
 export function insertPlainTextAtRange(range: Range, text: string): boolean {
-	if (!text) return false
+	const singleLine = collapseToSingleLine(text)
+	if (!singleLine) return false
 	range.deleteContents()
-	const textNode = document.createTextNode(text)
+	const textNode = document.createTextNode(singleLine)
 	range.insertNode(textNode)
 	range.setStartAfter(textNode)
 	range.setEndAfter(textNode)
@@ -164,14 +187,17 @@ export function insertPlainTextAtRange(range: Range, text: string): boolean {
 	return true
 }
 
-function applyPlainTextInsert(el: HTMLElement, text: string, html: string, range: Range | null): void {
+function applyPlainTextInsert(el: HTMLElement, text: string, html: string, range: Range | null, notifyStripped: boolean): void {
 	const inserted = range && text ? insertPlainTextAtRange(range, text) : false
 	// Dispatch even when only HTML was stripped (no plain text to insert) so downstream
 	// state resynchronizes with the intercepted event.
 	if (inserted || html) {
 		el.dispatchEvent(new Event('input', { bubbles: true }))
 	}
-	if (html) notifyFormattingBlocked()
+	// Only elements that forbid styling treat dropped markup as an error worth surfacing —
+	// on styleable elements nearly every clipboard carries a text/html flavor, so a toast
+	// here would fire on every ordinary paste.
+	if (html && notifyStripped) notifyFormattingBlocked()
 }
 
 /**
@@ -325,33 +351,42 @@ export async function startEditMode(
 			}
 		}, { signal: editModeSignal })
 
-		if (!stylingAllowed) {
-			el.addEventListener('paste', (e) => {
-				const clipboard = (e as ClipboardEvent).clipboardData
-				if (!clipboard) return
-				const html = clipboard.getData('text/html')
-				const text = clipboard.getData('text/plain')
-				e.preventDefault()
-				const selection = window.getSelection()
-				const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
-				applyPlainTextInsert(el, text, html, range)
-			}, { signal: editModeSignal })
+		// Paste and drop are intercepted on every editable element, not just the non-styleable
+		// ones: native paste of multi-line content makes the browser insert <div>/<br>, which
+		// `getEditableTextFromElement` turns into literal <br> markup in the source — the exact
+		// line break the `beforeinput` guard above refuses to let anyone type.
+		el.addEventListener('paste', (e) => {
+			const clipboard = (e as ClipboardEvent).clipboardData
+			if (!clipboard) return
+			const html = clipboard.getData('text/html')
+			const text = clipboard.getData('text/plain')
+			// Stay prevented even with nothing to insert. Letting an image or file paste fall
+			// through to the browser would drop an <img> into the element, and the source
+			// writer would persist it. Say so rather than appearing to swallow the paste.
+			e.preventDefault()
+			if (!text && !html) {
+				notifyUnsupportedPaste()
+				return
+			}
+			const selection = window.getSelection()
+			const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+			applyPlainTextInsert(el, text, html, range, !stylingAllowed)
+		}, { signal: editModeSignal })
 
-			el.addEventListener('drop', (e) => {
-				const transfer = (e as DragEvent).dataTransfer
-				if (!transfer) return
-				const html = transfer.getData('text/html')
-				const text = transfer.getData('text/plain')
-				if (!text && !html) return
-				e.preventDefault()
-				let range = getCaretRangeFromPoint((e as DragEvent).clientX, (e as DragEvent).clientY)
-				if (!range) {
-					const selection = window.getSelection()
-					range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
-				}
-				applyPlainTextInsert(el, text, html, range)
-			}, { signal: editModeSignal })
-		}
+		el.addEventListener('drop', (e) => {
+			const transfer = (e as DragEvent).dataTransfer
+			if (!transfer) return
+			const html = transfer.getData('text/html')
+			const text = transfer.getData('text/plain')
+			if (!text && !html) return
+			e.preventDefault()
+			let range = getCaretRangeFromPoint((e as DragEvent).clientX, (e as DragEvent).clientY)
+			if (!range) {
+				const selection = window.getSelection()
+				range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+			}
+			applyPlainTextInsert(el, text, html, range, !stylingAllowed)
+		}, { signal: editModeSignal })
 
 		// Setup color tracking for elements with colorClasses in manifest
 		setupColorTracking(config, el, cmsId, savedColorEdits[cmsId])

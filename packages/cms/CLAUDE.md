@@ -33,7 +33,7 @@ Astro hook (`astro:server:setup`) → `html-processor.ts` parses rendered HTML i
 Supporting subsystems:
 
 - **Component Registry** (`component-registry.ts`) — scans `src/components/*.astro`, parses each into an AST via `@astrojs/compiler`, then extracts props from the frontmatter AST via Babel
-- **Collection Scanner** (`collection-scanner.ts`) — auto-detects Astro content collections
+- **Collection Scanner** — auto-detects Astro content collections. Now lives in `@nuasite/cms-core`; `scanCollections` is re-exported from `src/index.ts`, and `src/scan-cache.ts` wraps it with caching
 - **SEO Processor** (`seo-processor.ts`) — extracts title, meta tags, JSON-LD from the HTML AST
 - **Tailwind Colors** (`tailwind-colors.ts`) — parses Tailwind config for color editing
 
@@ -70,13 +70,28 @@ Two delivery modes:
 
 Injected as `<script type="module">` into every dev page.
 
-### Media Storage (`src/media/`)
+### Media Storage (`@nuasite/cms-core`)
 
-Pluggable adapter pattern (`MediaStorageAdapter` interface):
+The adapters moved out of this package — `src/media/types.ts` is now only a re-export shim for the `MediaStorageAdapter` interface, which is defined in `@nuasite/cms-types`. Implementations live in `packages/cms-core/src/media/` and are re-exported from `src/index.ts` under short aliases:
 
-- `local.ts` — filesystem (`public/uploads/`)
-- `s3.ts` — S3/R2 direct
-- `contember.ts` — R2 + database
+| Alias              | Factory                         | File                                                                                      |
+| ------------------ | ------------------------------- | ----------------------------------------------------------------------------------------- |
+| `localMedia()`     | `createLocalStorageAdapter`     | `local.ts` — filesystem (`public/uploads/`)                                               |
+| `s3Media()`        | `createS3StorageAdapter`        | `s3.ts` — S3/R2 direct (loads `@aws-sdk/client-s3` via dynamic import, optional peer dep) |
+| `contemberMedia()` | `createContemberStorageAdapter` | `contember.ts` — R2 + database                                                            |
+
+Only `list`/`upload`/`delete` are required; `createFolder` and `staticFiles` are optional. The default is local — see `media ?? (enableCmsApi ? createLocalStorageAdapter() : undefined)` in `src/index.ts`.
+
+#### `staticFiles` does two jobs
+
+1. **Direct file serving in dev** — the dev middleware serves uploads straight from disk, bypassing Vite's public-dir cache (`dev-middleware.ts`).
+2. **Marking where the adapter's files live inside the project** — the project-wide image scan (`listProjectImages` in `cms-core`) takes it as `excludeDir` so uploads aren't listed twice: once as media, once as project images. See `media/project-images` in `handlers/api-routes.ts`, and `uploadsDirRelativeToRoot` in the sidecar's `server.ts`.
+
+Because of (2), **omit `staticFiles` entirely when the adapter stores nothing on the project's filesystem** (S3, Contember). Declaring it there would exclude a directory that the scan should have walked.
+
+`dir` may be spelled absolute (`/srv/site/public/uploads`) or root-relative, with or without a leading slash (`/public/uploads`, `public/uploads`, `./public/uploads`); a trailing slash is ignored. A leading slash counts as absolute _only_ when the path actually starts with the project root — any other leading slash reads as root-relative, matching the `CmsFileSystem` port's convention. Prefer the root-relative spelling for directories inside the project.
+
+Related gotcha in `LocalStorageOptions.dir`: a relative value resolves against `process.cwd()`, so pass an absolute path whenever the process isn't started from the project root (e.g. the sidecar run with `--root <dir>`). Otherwise the reported `staticFiles.dir` points outside the project and consumers can't tell those files already live under it.
 
 ### Vite Plugins (`src/vite-plugin.ts`)
 

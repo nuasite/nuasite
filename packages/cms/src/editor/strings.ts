@@ -37,6 +37,7 @@ export const STRINGS = {
 
 	editor: {
 		formattingBlocked: "Formatting isn't available — this text is used as a plain value",
+		unsupportedPaste: "Only text can be pasted here — images and files aren't supported",
 		lockedElement: "This text can't be edited here — no source file is linked to it",
 		markdownNotInManifest: 'Markdown element not found in manifest',
 		noMarkdownPath: 'No markdown file path configured for this element',
