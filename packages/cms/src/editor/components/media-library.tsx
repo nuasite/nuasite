@@ -1,3 +1,4 @@
+import { filterMediaItems } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
 import { useSearchFilter } from '../hooks/useSearchFilter'
@@ -8,22 +9,12 @@ import type { MediaFolderItem, MediaItem, MediaTypeFilter } from '../types'
 import { CloseButton, PrimaryButton } from './modal-shell'
 import { Spinner } from './spinner'
 
-const VECTOR_TYPES = new Set(['image/svg+xml', 'image/x-icon'])
-
 const TYPE_FILTERS: Array<{ value: MediaTypeFilter; label: string }> = [
 	{ value: 'all', label: 'All' },
 	{ value: 'photo', label: 'Photos' },
 	{ value: 'graphic', label: 'Graphics' },
 	{ value: 'document', label: 'Documents' },
 ]
-
-function matchesTypeFilter(contentType: string, filter: MediaTypeFilter): boolean {
-	if (filter === 'all') return true
-	if (filter === 'photo') return contentType.startsWith('image/') && !VECTOR_TYPES.has(contentType)
-	if (filter === 'graphic') return VECTOR_TYPES.has(contentType)
-	if (filter === 'document') return contentType === 'application/pdf'
-	return true
-}
 
 export function MediaLibrary() {
 	const visible = isMediaLibraryOpen.value
@@ -66,7 +57,7 @@ export function MediaLibrary() {
 					: Promise.resolve({ items: [] }),
 			])
 
-			setFolders((uploads as any).folders ?? [])
+			setFolders(uploads.folders ?? [])
 
 			const seen = new Set<string>()
 			const combined: MediaItem[] = []
@@ -203,10 +194,10 @@ export function MediaLibrary() {
 	}
 
 	// Client-side filtering: type filter, then search query
-	const typeFiltered = useMemo(
-		() => typeFilter === 'all' ? allItems : allItems.filter(item => matchesTypeFilter(item.contentType, typeFilter)),
-		[typeFilter, allItems],
-	)
+	// Filtered here rather than over the wire: this gallery loads a folder in one request and keeps
+	// it, so a tab is a view over what is already in hand — no round trip, and nothing to page past.
+	// `filterMediaItems` is the shared definition of a tab, which the paged gallery reads too.
+	const typeFiltered = useMemo(() => filterMediaItems(allItems, typeFilter), [typeFilter, allItems])
 	const filteredItems = useSearchFilter(typeFiltered, searchQuery, item => item.filename)
 
 	// Build breadcrumb segments

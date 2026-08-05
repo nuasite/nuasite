@@ -32,11 +32,13 @@ export {
 	createLocalStorageAdapter,
 	createS3StorageAdapter,
 	getFileExtension,
+	listFilteredMedia,
 	listProjectImages,
 	type ListProjectImagesOptions,
 	type LocalStorageOptions,
 	MIME_BY_EXT,
 	mimeFromExt,
+	parseMediaTypeFilter,
 	type S3StorageOptions,
 	uploadsDirRelativeToRoot,
 } from './media/index'
