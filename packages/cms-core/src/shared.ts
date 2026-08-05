@@ -87,10 +87,19 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
 
 /**
  * Slugify text for URL paths.
- * Lowercases, strips non-word characters, collapses whitespace/underscores to hyphens.
+ * Folds diacritics, lowercases, strips non-word characters, collapses whitespace/underscores
+ * to hyphens. Keeps `/`, so a nested entry path survives — that is the only thing separating
+ * this from `slugifyHref` above.
+ *
+ * The fold matters because this names the file a new entry is written to: `[^\w\s\-/]` alone
+ * deletes diacritics rather than folding them, turning "Vedra jako zdravotní i sociální
+ * problém" into "vedra-jako-zdravotn-i-sociln-problm" — which is what any host deriving a
+ * slug from a Czech title would have to write to disk.
  */
 export function slugify(text: string): string {
 	return text
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
 		.toLowerCase()
 		.trim()
 		.replace(/[^\w\s\-/]/g, '')

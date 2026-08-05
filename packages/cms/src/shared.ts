@@ -1,9 +1,12 @@
 /**
  * Slugify text for URL paths.
- * Lowercases, strips non-word characters, collapses whitespace/underscores to hyphens.
+ * Folds diacritics, lowercases, strips non-word characters, collapses whitespace/underscores
+ * to hyphens. Kept in step with cms-core's `slugify`, which names the file on disk.
  */
 export function slugify(text: string): string {
 	return text
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
 		.toLowerCase()
 		.trim()
 		.replace(/[^\w\s\-/]/g, '')
