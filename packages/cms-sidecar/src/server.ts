@@ -1,4 +1,13 @@
-import { type CmsCore, type CmsFileSystem, listProjectImages, parseProjectCmsConfig, resolvePathnameFromSpec } from '@nuasite/cms-core'
+import {
+	type CmsCore,
+	type CmsFileSystem,
+	listFilteredMedia,
+	listProjectImages,
+	parseMediaTypeFilter,
+	parseProjectCmsConfig,
+	resolvePathnameFromSpec,
+} from '@nuasite/cms-core'
+import { filterMediaItems } from '@nuasite/cms-types'
 import type {
 	CmsConfig,
 	CollectionDefinition,
@@ -9,6 +18,7 @@ import type {
 	MediaItem,
 	MediaListResult,
 	MediaStorageAdapter,
+	MediaTypeFilter,
 	MutationResult,
 } from '@nuasite/cms-types'
 import { hashContent, hashSource, KeyedMutex } from './concurrency'
@@ -48,6 +58,7 @@ export const SIDECAR_FEATURES: readonly string[] = [
 	'redirects.crud',
 	'media',
 	'media.project-images',
+	'media.type-filter',
 	'components',
 	'config',
 ]
@@ -913,7 +924,12 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 	 * - `folders` is the adapter's, carried through the cursor so that every page —
 	 *   including the scan-only ones, which never call the adapter — reports it.
 	 */
-	async function listMergedMedia(adapter: MediaStorageAdapter, limit: number, rawCursor: string | undefined): Promise<Response> {
+	async function listMergedMedia(
+		adapter: MediaStorageAdapter,
+		limit: number,
+		rawCursor: string | undefined,
+		type: MediaTypeFilter,
+	): Promise<Response> {
 		const decoded = decodeMediaCursor(rawCursor)
 		if (!decoded.ok) return error('validation', 'Invalid media cursor')
 		const { adapter: adapterCursor, project: projectOffset, folders: carriedFolders } = decoded.state
@@ -923,20 +939,24 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 
 		// A `project` offset in the cursor means the adapter pages are already spent.
 		if (projectOffset === undefined) {
-			const page = await adapter.list({ limit, cursor: adapterCursor })
+			// Filtered above the adapter, which cannot do it itself — see `listFilteredMedia`. The
+			// cursor it hands back is still one the adapter minted, so the phase resumes normally.
+			const page = await listFilteredMedia(options => adapter.list(options), { limit, cursor: adapterCursor, type })
 			items.push(...page.items)
 			folders = page.folders
 			// An adapter that reports more pages but hands back no cursor cannot be advanced. Stop
 			// here anyway — falling through to the scan would silently drop the rest of its items.
 			if (page.hasMore) {
 				const cursor = page.cursor === undefined ? undefined : encodeMediaCursor({ adapter: page.cursor, folders })
-				const more: MediaListResult = { items, folders, hasMore: true, cursor }
+				const more: MediaListResult = { items, folders, hasMore: true, cursor, appliedType: type }
 				return json(more)
 			}
 		}
 
+		// The scan is one unpaginated list, so its filter is a plain one — and the offset the cursor
+		// carries indexes the *filtered* list, which is stable for as long as the tree is.
 		const offset = projectOffset ?? 0
-		const projectImages = await listProjectImages(fs, { exclude: { dir: adapter.staticFiles?.dir, root } })
+		const projectImages = filterMediaItems(await listProjectImages(fs, { exclude: { dir: adapter.staticFiles?.dir, root } }), type)
 		const slice = projectImages.slice(offset, offset + Math.max(0, limit - items.length))
 		items.push(...slice)
 
@@ -947,6 +967,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			folders,
 			hasMore,
 			cursor: hasMore ? encodeMediaCursor({ project: next, folders }) : undefined,
+			appliedType: type,
 		}
 		return json(result)
 	}
@@ -975,6 +996,10 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			if (includeProjectImages === null) {
 				return error('validation', 'includeProjectImages accepts no value, "true", "1", "false" or "0"')
 			}
+			const type = parseMediaTypeFilter(url.searchParams.get('type'))
+			if (type === null) {
+				return error('validation', 'type accepts "all", "photo", "graphic", "video" or "document"')
+			}
 
 			// The project scan has no folder structure, so it only makes sense at the
 			// media root — inside a folder the adapter stays the only source.
@@ -985,9 +1010,9 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 				if (cursor !== undefined && decodeMediaCursor(cursor).ok) {
 					return error('validation', 'This cursor continues an ?includeProjectImages listing — keep the flag set and drop ?folder when following it')
 				}
-				return json(await adapter.list({ limit, cursor, folder }))
+				return json(await listFilteredMedia(options => adapter.list(options), { limit, cursor, folder, type }))
 			}
-			return listMergedMedia(adapter, limit, cursor)
+			return listMergedMedia(adapter, limit, cursor, type)
 		}
 
 		// POST /media  (multipart upload, or JSON create-folder)
