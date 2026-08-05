@@ -11,15 +11,18 @@
  * stays usable upstream.
  *
  * The listing is paged: each folder is read one `PAGE_SIZE` page at a time and the
- * rest is pulled in by an explicit "Load more". Search and the type filter run over
- * the loaded items only, so turning either on drains the remaining pages first —
- * see `Listing` and the drain effect for how that stays bounded and cancellable.
+ * rest is pulled in by an explicit "Load more".
+ *
+ * The type tabs are a server filter (`?type=`), so switching one starts a fresh
+ * listing rather than narrowing the loaded pages — its first page is already the
+ * answer. Search is not, and an endpoint that does not know `?type=` says so by
+ * omitting `appliedType`; either case falls back to filtering here, which means
+ * draining the remaining pages first so a match on page 3 is not reported missing.
+ * See `Listing` and the drain effect for how that stays bounded and cancellable.
  */
-import type { MediaFolderItem, MediaItem, MediaListResult, MediaTypeFilter } from '@nuasite/cms-types'
+import { filterMediaItems, type MediaFolderItem, type MediaItem, type MediaListResult, type MediaTypeFilter } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isMediaUnavailableError, type MediaContext, type MediaSource } from './media-source'
-
-const VECTOR_TYPES = new Set(['image/svg+xml', 'image/x-icon'])
 
 /**
  * Items per listing request. Above the server's default of 50 so most folders are
@@ -50,6 +53,12 @@ const MAX_PAGES = 200
  */
 interface Listing {
 	folder: string
+	/**
+	 * The tab this listing was requested under. It travels with the listing because the server may
+	 * have filtered by it, which makes the pages — and their cursors — specific to it: switching
+	 * tabs starts a new listing rather than re-filtering the loaded one.
+	 */
+	type: MediaTypeFilter
 	/** Cursor for the next page; `undefined` once the listing is exhausted. */
 	cursor: string | undefined
 	/** Cursors already followed — one coming back means the server is not advancing. */
@@ -61,8 +70,8 @@ interface Listing {
 	failed: boolean
 }
 
-function createListing(folder: string): Listing {
-	return { folder, cursor: undefined, seen: new Set(), pages: 0, busy: false, failed: false }
+function createListing(folder: string, type: MediaTypeFilter): Listing {
+	return { folder, type, cursor: undefined, seen: new Set(), pages: 0, busy: false, failed: false }
 }
 
 /**
@@ -102,14 +111,6 @@ const TYPE_FILTERS: Array<{ value: MediaTypeFilter; label: string }> = [
 	{ value: 'graphic', label: 'Graphics' },
 	{ value: 'document', label: 'Documents' },
 ]
-
-function matchesTypeFilter(contentType: string, filter: MediaTypeFilter): boolean {
-	if (filter === 'all') return true
-	if (filter === 'photo') return contentType.startsWith('image/') && !VECTOR_TYPES.has(contentType)
-	if (filter === 'graphic') return VECTOR_TYPES.has(contentType)
-	if (filter === 'document') return contentType === 'application/pdf'
-	return true
-}
 
 export interface MediaLibraryProps {
 	media: MediaSource
@@ -226,13 +227,23 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 	/** A follow-up page — the grid stays on screen underneath. */
 	const [loadingMore, setLoadingMore] = useState(false)
 	const [hasMore, setHasMore] = useState(false)
+	/** The server said it applied the tab (`appliedType`), so these pages need no filtering here. */
+	const [serverFiltered, setServerFiltered] = useState(false)
+	/**
+	 * How many pages have landed, ever. The drain effect's trigger: it has to re-run once per page,
+	 * and neither `items` nor the loading flags can carry that. A page whose items are the same
+	 * array React already holds re-renders nothing (`Object.is` bails the update out), and a flag
+	 * can flip back before React re-renders at all. A number that only ever goes up cannot do
+	 * either — including across the reset a folder or tab switch performs.
+	 */
+	const [pagesLanded, setPagesLanded] = useState(0)
 	const [unavailable, setUnavailable] = useState(false)
 	const [uploading, setUploading] = useState(false)
 	const [errorMsg, setErrorMsg] = useState<string | null>(null)
 	const [showNewFolder, setShowNewFolder] = useState(false)
 	const [newFolderName, setNewFolderName] = useState('')
 	const fileInputRef = useRef<HTMLInputElement>(null)
-	const listingRef = useRef<Listing>(createListing(''))
+	const listingRef = useRef<Listing>(createListing('', 'all'))
 	const mountedRef = useRef(true)
 
 	useEffect(() => {
@@ -257,9 +268,16 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 		else setLoadingMore(true)
 		setErrorMsg(null)
 		try {
-			const result = await media.listMedia({ folder: listing.folder || undefined, limit: pageSize, cursor: listing.cursor })
+			const result = await media.listMedia({
+				folder: listing.folder || undefined,
+				limit: pageSize,
+				cursor: listing.cursor,
+				type: listing.type,
+			})
 			if (!mountedRef.current || listingRef.current !== listing) return
 			listing.pages += 1
+			setPagesLanded(landed => landed + 1)
+			setServerFiltered(result.appliedType === listing.type)
 			setFolders(prev => mergeFolders(prev, result.folders))
 			setItems(prev => (first ? result.items : [...prev, ...result.items]))
 			const next = advance(result, listing)
@@ -285,33 +303,39 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 		}
 	}, [media])
 
-	// A folder switch starts a brand-new listing; the old one is abandoned mid-flight.
+	// A folder or tab switch starts a brand-new listing; the old one is abandoned mid-flight. The
+	// tab is part of the request, so its pages and cursors belong to it and cannot be reused.
 	useEffect(() => {
-		const listing = createListing(currentFolder)
+		const listing = createListing(currentFolder, typeFilter)
 		listingRef.current = listing
 		setItems([])
 		setFolders([])
 		setHasMore(false)
+		setServerFiltered(false)
 		void loadPage(listing)
-	}, [currentFolder, loadPage])
+	}, [currentFolder, typeFilter, loadPage])
 
 	const query = searchQuery.trim().toLowerCase()
 	const filterActive = query !== '' || typeFilter !== 'all'
+	/** What the loaded pages still have to be narrowed by here, on top of whatever the server did. */
+	const clientFilter = query !== '' || (typeFilter !== 'all' && !serverFiltered)
 
 	/**
-	 * Search and the type filter only see what is loaded, so on a paged listing they
-	 * would report "no matches" for a file sitting on page 3. Drain the remaining
-	 * pages while a filter is on — one page per landed page, so the drain is
-	 * interruptible by a folder switch, stops on error and never runs unbounded.
-	 * `items` is the trigger rather than the loading flags: a page always appends
-	 * into a fresh array, whereas the flags can flip back before React re-renders.
+	 * A filter this side of the wire only sees what is loaded, so on a paged listing it would
+	 * report "no matches" for a file sitting on page 3. Drain the remaining pages while one is
+	 * on — one page per landed page (see `pagesLanded`), so the drain is interruptible by a folder
+	 * switch, stops on error and never runs unbounded.
+	 *
+	 * A tab the server filtered needs none of this: its first page is already the answer, and the
+	 * pager pulls the rest the ordinary way. Only a search, or a tab against an endpoint that does
+	 * not know `?type=`, still drains.
 	 */
 	useEffect(() => {
-		if (!filterActive) return
+		if (!filterActive || !clientFilter) return
 		const listing = listingRef.current
 		if (listing.busy || listing.failed || listing.cursor === undefined) return
 		void loadPage(listing, DRAIN_PAGE_SIZE)
-	}, [filterActive, items, loadPage])
+	}, [filterActive, clientFilter, pagesLanded, loadPage])
 
 	const navigateToFolder = (folder: string) => {
 		setSearchQuery('')
@@ -372,8 +396,10 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 		setShowNewFolder(false)
 	}
 
+	// Applied even when the server already did: it is the same shared predicate, so it is a no-op
+	// on a filtered page, and depending on `serverFiltered` here would only add a way to be wrong.
 	const filteredItems = useMemo(() => {
-		const byType = typeFilter === 'all' ? items : items.filter(i => matchesTypeFilter(i.contentType, typeFilter))
+		const byType = filterMediaItems(items, typeFilter)
 		return query === '' ? byType : byType.filter(i => i.filename.toLowerCase().includes(query))
 	}, [items, typeFilter, query])
 

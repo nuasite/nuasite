@@ -8,7 +8,7 @@
  * sidecar with a folder-less adapter) still satisfies it; the gallery hides the
  * "new folder" affordance when it is absent.
  */
-import type { MediaListResult, MediaUploadResult } from '@nuasite/cms-types'
+import type { MediaListResult, MediaTypeFilter, MediaUploadResult } from '@nuasite/cms-types'
 
 /** Where an upload is filed — mirrors the SDK's `MediaContext`. */
 export interface MediaUploadContext {
@@ -20,7 +20,12 @@ export interface MediaUploadContext {
 }
 
 export interface MediaSource {
-	listMedia(options?: { folder?: string; cursor?: string; limit?: number }): Promise<MediaListResult>
+	/**
+	 * `type` asks the source to filter the page. A source that does not is free to ignore it — the
+	 * gallery reads `MediaListResult.appliedType` to find out, and filters what it loaded when the
+	 * answer came back unfiltered.
+	 */
+	listMedia(options?: { folder?: string; cursor?: string; limit?: number; type?: MediaTypeFilter }): Promise<MediaListResult>
 	uploadMedia(file: File, context?: MediaUploadContext): Promise<MediaUploadResult>
 	createFolder?(folder: string): Promise<{ success: boolean; error?: string }>
 	/**
