@@ -466,9 +466,9 @@ export function MediaLibrary() {
 											{item.contentType.startsWith('image/')
 												? (
 													<img
-														src={item.url}
+														src={item.thumbnailUrl ?? item.url}
 														alt={item.annotation || item.filename}
-														class="w-full h-full object-cover"
+														class="w-full h-full object-contain"
 													/>
 												)
 												: (
