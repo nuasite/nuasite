@@ -254,3 +254,26 @@ export function valueToObject(value: unknown): Record<string, unknown> {
 export function setDraftField(draft: EntryDraft, name: string, value: unknown): EntryDraft {
 	return { ...draft, frontmatter: { ...draft.frontmatter, [name]: value } }
 }
+
+/** No value at all — as opposed to an empty collection or a falsy scalar. */
+function isBlank(value: unknown): boolean {
+	return value === undefined || value === null || value === ''
+}
+
+/**
+ * Required fields left empty, so a form can refuse to write a blank one out.
+ *
+ * `FieldDefinition.required` is INFERRED by cms-core — a field counts as required
+ * when every scanned entry carries it — so this only reports a field holding no
+ * value at all. An empty array or object is a deliberate "nothing here" and passes;
+ * so do `false` and `0`, which are values. Hidden fields are skipped: a form offers
+ * no way to fill them.
+ */
+export function missingRequiredFields(fields: FieldDefinition[], frontmatter: Record<string, unknown>): string[] {
+	return fields.filter(f => f.required && !f.hidden && isBlank(frontmatter[f.name])).map(f => f.name)
+}
+
+/** Phrased for the one-line status slot in the entry forms. */
+export function missingRequiredMessage(missing: string[]): string {
+	return missing.length === 1 ? `“${missing[0]}” is required.` : `Required fields are empty: ${missing.join(', ')}.`
+}

@@ -70,7 +70,12 @@ function renderPropInput(prop: ComponentProp, value: string, onChange: (value: s
 				onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
 				class="w-full px-4 py-2 bg-white/10 border border-white/20 text-[13px] text-white outline-none focus:border-white/40 focus:ring-1 focus:ring-white/10 transition-all rounded-cms-sm"
 			>
-				{!prop.required && <option value="">— None —</option>}
+				{prop.required
+					// An unset required select matches no option, and the browser then shows the
+					// first one as if it had been chosen. Select this placeholder instead, so the
+					// prop reads as unset (`disabled` only stops the user picking it back).
+					? value === '' && <option value="" disabled>— Select —</option>
+					: <option value="">— None —</option>}
 				{unionOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
 			</select>
 		)

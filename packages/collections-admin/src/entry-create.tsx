@@ -7,7 +7,7 @@
  * native draft model as the editor.
  */
 
-import { type CmsClient, CmsClientError, draftForCreate, type EntryDraft, setDraftField } from '@nuasite/cms-client'
+import { type CmsClient, CmsClientError, draftForCreate, type EntryDraft, missingRequiredFields, missingRequiredMessage, setDraftField } from '@nuasite/cms-client'
 import type { CollectionDefinition, FieldDefinition } from '@nuasite/cms-types'
 import { useCallback, useMemo, useState } from 'react'
 import { type EditorContext, FieldEditor } from './field-editor'
@@ -41,6 +41,11 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 			setError('A slug is required.')
 			return
 		}
+		const missing = missingRequiredFields(fields, draft.frontmatter)
+		if (missing.length > 0) {
+			setError(missingRequiredMessage(missing))
+			return
+		}
 		setSubmitting(true)
 		setError(null)
 		try {
@@ -60,7 +65,7 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 		} finally {
 			setSubmitting(false)
 		}
-	}, [client, collection, definition, draft, slug, onCreated])
+	}, [client, collection, definition, draft, fields, slug, onCreated])
 
 	const isData = definition?.type === 'data'
 

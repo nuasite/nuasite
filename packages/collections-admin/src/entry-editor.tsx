@@ -25,6 +25,8 @@ import {
 	draftFromEntry,
 	draftFromServerFrontmatter,
 	type EntryDraft,
+	missingRequiredFields,
+	missingRequiredMessage,
 	setDraftField,
 } from '@nuasite/cms-client'
 import { MdxBodyEditor } from '@nuasite/cms-mdx-editor'
@@ -390,6 +392,14 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 	// Persist the current draft. `force` re-uses the server hash to win a conflict.
 	const persist = useCallback(
 		async (next: EntryDraft, baseHash: string | undefined) => {
+			// Saving is automatic here, so a blank required field would silently write itself
+			// out on the next keystroke. Refuse, and say so — the badge is the only signal
+			// the editor gets that this draft is not reaching disk.
+			const missing = missingRequiredFields(fields, next.frontmatter)
+			if (missing.length > 0) {
+				setStatus({ kind: 'error', message: `Not saved — ${missingRequiredMessage(missing)}` })
+				return
+			}
 			setStatus({ kind: 'saving' })
 			try {
 				const outcome = await client.updateEntry(collection, slug, {
@@ -407,7 +417,7 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 				setStatus({ kind: 'error', message: err instanceof CmsClientError ? err.message : 'Save failed' })
 			}
 		},
-		[client, collection, slug],
+		[client, collection, slug, fields],
 	)
 
 	const scheduleSave = useCallback(

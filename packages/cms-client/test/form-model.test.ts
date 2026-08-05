@@ -6,6 +6,8 @@ import {
 	draftForCreate,
 	draftFromEntry,
 	draftFromServerFrontmatter,
+	missingRequiredFields,
+	missingRequiredMessage,
 	parseWireValue,
 	setDraftField,
 	valueToArray,
@@ -223,5 +225,51 @@ describe('setDraftField', () => {
 		expect(next.frontmatter.a).toBe(2)
 		expect(draft.frontmatter.a).toBe(1)
 		expect(next).not.toBe(draft)
+	})
+})
+
+describe('missingRequiredFields', () => {
+	const field = (name: string, over: Partial<FieldDefinition> = {}): FieldDefinition => ({ name, type: 'text', required: true, ...over })
+
+	test('an untouched required select is the case this exists for', () => {
+		expect(missingRequiredFields([field('topic', { type: 'select', options: ['aktualne'] })], { topic: '' })).toEqual(['topic'])
+	})
+
+	test('a missing key counts the same as an empty one', () => {
+		expect(missingRequiredFields([field('topic')], {})).toEqual(['topic'])
+		expect(missingRequiredFields([field('topic')], { topic: null })).toEqual(['topic'])
+	})
+
+	test('optional fields are never reported', () => {
+		expect(missingRequiredFields([field('perex', { required: false })], { perex: '' })).toEqual([])
+	})
+
+	test('hidden fields are skipped — the form gives no way to fill them', () => {
+		expect(missingRequiredFields([field('authorSlug', { hidden: true })], { authorSlug: '' })).toEqual([])
+	})
+
+	test('falsy values are values: false and 0 pass', () => {
+		expect(missingRequiredFields([field('draft', { type: 'boolean' })], { draft: false })).toEqual([])
+		expect(missingRequiredFields([field('order', { type: 'number' })], { order: 0 })).toEqual([])
+	})
+
+	test('an empty collection is a deliberate "nothing here", not a missing value', () => {
+		expect(missingRequiredFields([field('tags', { type: 'array' })], { tags: [] })).toEqual([])
+		expect(missingRequiredFields([field('meta', { type: 'object' })], { meta: {} })).toEqual([])
+	})
+
+	test('reports every empty field, in schema order', () => {
+		const fields = [field('title'), field('topic'), field('perex', { required: false })]
+		expect(missingRequiredFields(fields, { title: '', topic: '', perex: '' })).toEqual(['title', 'topic'])
+	})
+})
+
+describe('missingRequiredMessage', () => {
+	test('names a single field', () => {
+		expect(missingRequiredMessage(['topic'])).toBe('“topic” is required.')
+	})
+
+	test('lists several', () => {
+		expect(missingRequiredMessage(['title', 'topic'])).toBe('Required fields are empty: title, topic.')
 	})
 })

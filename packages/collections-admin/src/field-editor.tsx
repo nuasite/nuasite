@@ -8,7 +8,7 @@
  * widgets reach the sidecar through the injected `EditorContext`.
  */
 
-import { blankValue, type CmsClient, coerceInput, valueToArray, valueToBoolean, valueToInput, valueToObject } from '@nuasite/cms-client'
+import { blankValue, type CmsClient, coerceInput, valueToArray, valueToBoolean, valueToDateInput, valueToInput, valueToObject } from '@nuasite/cms-client'
 import { MdxBodyEditor } from '@nuasite/cms-mdx-editor'
 import type { CmsListStyle, ComponentDefinition, FieldDefinition, FieldType } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -174,8 +174,8 @@ function DateWidget({ field, value, onChange }: { field: FieldDefinition; value:
 		<input
 			type={DATE_INPUT_TYPE[field.type] ?? 'date'}
 			className="nua-cadmin-input"
-			value={valueToInput(value)}
-			onChange={e => onChange(e.target.value)}
+			value={valueToDateInput(value, field.type)}
+			onChange={e => onChange(coerceInput(field.type, e.target.value))}
 		/>
 	)
 }
@@ -206,7 +206,13 @@ function SelectWidget({ field, value, onChange }: { field: FieldDefinition; valu
 	const current = valueToInput(value)
 	return (
 		<select className="nua-cadmin-input" value={current} onChange={e => onChange(e.target.value)}>
-			{field.required ? null : <option value="">— none —</option>}
+			{field.required
+				// An unset required select matches no option, and the browser then displays the
+				// first real one as if it had been chosen — so a new entry looks filled in while
+				// the draft still holds ''. React selects this placeholder instead (`disabled`
+				// only blocks the user from picking it back, not the value sync).
+				? current === '' ? <option value="" disabled>— select —</option> : null
+				: <option value="">— none —</option>}
 			{options.map(opt => (
 				<option key={opt} value={opt}>
 					{opt}
