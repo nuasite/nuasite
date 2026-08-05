@@ -72,6 +72,7 @@ export {
 	createS3StorageAdapter,
 	getFileExtension,
 	isUnsafeFolder,
+	listFilteredMedia,
 	listProjectImages,
 	type ListProjectImagesOptions,
 	type LocalStorageOptions,
@@ -81,6 +82,7 @@ export {
 	mediaErrorStatus,
 	MIME_BY_EXT,
 	mimeFromExt,
+	parseMediaTypeFilter,
 	type S3StorageOptions,
 	uploadsDirRelativeToRoot,
 } from './media/index'
