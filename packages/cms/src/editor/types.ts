@@ -358,6 +358,11 @@ export interface MarkdownEditorState {
 export interface MediaItem {
 	id: string
 	url: string
+	/**
+	 * A browser-loadable preview, when the source can offer one cheaper than the original —
+	 * a CDN transform for a hosted asset. `url` stays the value that goes into the content.
+	 */
+	thumbnailUrl?: string
 	filename: string
 	annotation?: string
 	contentType: string
