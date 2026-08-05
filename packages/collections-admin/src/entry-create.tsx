@@ -7,7 +7,15 @@
  * native draft model as the editor.
  */
 
-import { type CmsClient, CmsClientError, draftForCreate, type EntryDraft, missingRequiredFields, missingRequiredMessage, setDraftField } from '@nuasite/cms-client'
+import {
+	type CmsClient,
+	CmsClientError,
+	draftForCreate,
+	type EntryDraft,
+	missingRequiredFields,
+	missingRequiredMessage,
+	setDraftField,
+} from '@nuasite/cms-client'
 import type { CollectionDefinition, FieldDefinition } from '@nuasite/cms-types'
 import { useCallback, useMemo, useState } from 'react'
 import { type EditorContext, FieldEditor } from './field-editor'

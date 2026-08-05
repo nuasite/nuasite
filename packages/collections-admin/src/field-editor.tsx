@@ -8,7 +8,16 @@
  * widgets reach the sidecar through the injected `EditorContext`.
  */
 
-import { blankValue, type CmsClient, coerceInput, valueToArray, valueToBoolean, valueToDateInput, valueToInput, valueToObject } from '@nuasite/cms-client'
+import {
+	blankValue,
+	type CmsClient,
+	coerceInput,
+	valueToArray,
+	valueToBoolean,
+	valueToDateInput,
+	valueToInput,
+	valueToObject,
+} from '@nuasite/cms-client'
 import { MdxBodyEditor } from '@nuasite/cms-mdx-editor'
 import type { CmsListStyle, ComponentDefinition, FieldDefinition, FieldType } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
