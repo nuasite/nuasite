@@ -22,6 +22,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 /** The `limit` the gallery is expected to ask for (`PAGE_SIZE`). */
 const PAGE_SIZE = 60
+/** The bigger `limit` a filter's drain asks for (`DRAIN_PAGE_SIZE`). */
+const DRAIN_PAGE_SIZE = 200
 /** Mirrors the gallery's `MAX_PAGES` backstop. */
 const MAX_PAGES = 200
 
@@ -466,5 +468,43 @@ describe('MediaLibrary — filtering a paged listing', () => {
 
 		await typeInto(searchBox(host), '')
 		expect(folderPaths(host)).toEqual(['photos'])
+	})
+
+	test('a filtered listing with no matches says so even when the folder tree is not empty', async () => {
+		// The empty check used to count `folders`, which a filter hides — so a folder in the tree
+		// sent this down the grid branch and rendered an empty one: a few pixels of padding where
+		// the panel belongs.
+		const fake = fakeSource({ '': paginate([[mediaItem('a.png')]], [{ name: 'photos', path: 'photos' }]) })
+		const host = await mount({ media: fake.source })
+
+		await typeInto(searchBox(host), 'nothing-like-this')
+
+		expect(itemIds(host)).toEqual([])
+		expect(folderPaths(host)).toEqual([])
+		expect(host.textContent).toContain('No matching files')
+	})
+
+	test('says it is still searching, rather than showing an empty grid, while a folder tree drains', async () => {
+		const fake = fakeSource({ '': paginate([[mediaItem('a.png')], [mediaItem('b.png')]], [{ name: 'photos', path: 'photos' }]) })
+		fake.hold(2)
+		const host = await mount({ media: fake.source })
+
+		await typeInto(searchBox(host), 'b.png')
+		expect(itemIds(host)).toEqual([])
+		expect(host.textContent).toContain('Searching…')
+
+		fake.release()
+		await settle()
+		expect(itemIds(host)).toEqual(['b.png'])
+	})
+
+	test('drains with a bigger page than the one the first paint asks for', async () => {
+		const fake = fakeSource({ '': paginate([[mediaItem('a.png')], [mediaItem('b.png')]]) })
+		const host = await mount({ media: fake.source })
+		expect(fake.calls[0]?.limit).toBe(PAGE_SIZE)
+
+		await clickLabelled(host, 'Photos')
+
+		expect(fake.calls[1]).toEqual({ folder: undefined, cursor: '1', limit: DRAIN_PAGE_SIZE })
 	})
 })

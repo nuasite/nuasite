@@ -28,6 +28,15 @@ const VECTOR_TYPES = new Set(['image/svg+xml', 'image/x-icon'])
 const PAGE_SIZE = 60
 
 /**
+ * Items per request while a filter is draining the folder. The filter runs over loaded
+ * items only, so turning one on pulls every remaining page — at `PAGE_SIZE` that is one
+ * round trip per 60 files, and against the hosted BFF each of those makes the sidecar
+ * re-walk the project for its image scan. 200 is the tightest cap on the way (the BFF's),
+ * so asking for more only gets clamped.
+ */
+const DRAIN_PAGE_SIZE = 200
+
+/**
  * Hard cap on the pages followed for one folder. The cursor checks below already
  * stop a server that repeats or drops its cursor; this is the backstop for one that
  * keeps minting fresh ones — a client-side infinite loop must not be reachable.
@@ -239,7 +248,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 	 * mounted, so a response that arrives after a folder switch or an unmount is
 	 * dropped instead of landing in the wrong list.
 	 */
-	const loadPage = useCallback(async (listing: Listing) => {
+	const loadPage = useCallback(async (listing: Listing, pageSize = PAGE_SIZE) => {
 		if (listing.busy || listingRef.current !== listing) return
 		const first = listing.pages === 0
 		listing.busy = true
@@ -248,7 +257,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 		else setLoadingMore(true)
 		setErrorMsg(null)
 		try {
-			const result = await media.listMedia({ folder: listing.folder || undefined, limit: PAGE_SIZE, cursor: listing.cursor })
+			const result = await media.listMedia({ folder: listing.folder || undefined, limit: pageSize, cursor: listing.cursor })
 			if (!mountedRef.current || listingRef.current !== listing) return
 			listing.pages += 1
 			setFolders(prev => mergeFolders(prev, result.folders))
@@ -301,7 +310,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 		if (!filterActive) return
 		const listing = listingRef.current
 		if (listing.busy || listing.failed || listing.cursor === undefined) return
-		void loadPage(listing)
+		void loadPage(listing, DRAIN_PAGE_SIZE)
 	}, [filterActive, items, loadPage])
 
 	const navigateToFolder = (folder: string) => {
@@ -374,7 +383,13 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 		return parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') }))
 	}, [currentFolder])
 
-	const showFolders = !filterActive
+	/**
+	 * Folders are hidden while a filter is on — a filter describes files, and a folder cannot
+	 * match one. The empty check below reads this rather than `folders`, or a filtered listing
+	 * with no matches but a folder in the tree would take the grid branch and render an empty
+	 * one: a few pixels of padding where the "Searching…" panel belongs.
+	 */
+	const visibleFolders = filterActive ? [] : folders
 
 	return (
 		<div style={backdrop} onMouseDown={onClose} data-cms-ui="">
@@ -477,7 +492,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 
 				{loading
 					? <div style={emptyPanel}>Loading…</div>
-					: folders.length === 0 && filteredItems.length === 0
+					: visibleFolders.length === 0 && filteredItems.length === 0
 					? (
 						// Never claim "no matches" while more pages are still coming in.
 						<div style={emptyPanel}>
@@ -490,23 +505,21 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 					)
 					: (
 						<div style={grid}>
-							{showFolders
-								? folders.map(folder => (
-									<button
-										key={folder.path}
-										type="button"
-										style={tile}
-										onClick={() => navigateToFolder(folder.path)}
-										title={folder.name}
-										data-cms-media-folder={folder.path}
-									>
-										<span style={{ fontSize: 30 }}>📁</span>
-										<span style={{ fontSize: 12, color: '#52525b', maxWidth: '90%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-											{folder.name}
-										</span>
-									</button>
-								))
-								: null}
+							{visibleFolders.map(folder => (
+								<button
+									key={folder.path}
+									type="button"
+									style={tile}
+									onClick={() => navigateToFolder(folder.path)}
+									title={folder.name}
+									data-cms-media-folder={folder.path}
+								>
+									<span style={{ fontSize: 30 }}>📁</span>
+									<span style={{ fontSize: 12, color: '#52525b', maxWidth: '90%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+										{folder.name}
+									</span>
+								</button>
+							))}
 							{filteredItems.map(item => (
 								<button
 									key={item.id}
@@ -521,7 +534,9 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 											<img
 												src={item.thumbnailUrl ?? item.url}
 												alt={item.annotation || item.filename}
-												style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+												// `contain`, not `cover`: this grid exists to tell one asset from another, and a
+												// square crop of a wide photo throws away the part that identifies it.
+												style={{ width: '100%', height: '100%', objectFit: 'contain' }}
 											/>
 										)
 										: <span style={{ fontSize: 30 }}>{item.contentType === 'application/pdf' ? '📄' : '📎'}</span>}
