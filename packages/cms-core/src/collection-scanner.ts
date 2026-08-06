@@ -696,7 +696,13 @@ function applyParsedFieldLayout(field: FieldDefinition, pf: ParsedField): void {
 function applyParsedFieldOverrides(field: FieldDefinition, pf: ParsedField): void {
 	if (pf.type) {
 		field.type = pf.type
-		if (pf.options) field.options = pf.options
+		// Parsed options only ever come from a declared `(z|n).enum([…])`, so they are a
+		// closed set — unlike the options `mergeFieldObservations` infers from the entries
+		// it happened to see, which stay open to free text.
+		if (pf.options) {
+			field.options = pf.options
+			field.optionsClosed = true
+		}
 	}
 	if (pf.itemType) field.itemType = pf.itemType
 	if (pf.hints) field.hints = pf.hints
@@ -731,7 +737,10 @@ function parsedFieldToFieldDefinition(pf: ParsedField): FieldDefinition {
 		type: pf.type ?? (pf.fields ? 'object' : 'text'),
 		required: pf.required,
 	}
-	if (pf.options) fd.options = pf.options
+	if (pf.options) {
+		fd.options = pf.options
+		fd.optionsClosed = true
+	}
 	if (pf.itemType) fd.itemType = pf.itemType
 	if (pf.hints) fd.hints = pf.hints
 	if (pf.astroImage) fd.astroImage = true

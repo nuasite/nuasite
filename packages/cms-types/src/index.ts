@@ -70,6 +70,18 @@ export interface FieldDefinition {
 	defaultValue?: unknown
 	/** Options for 'select' type fields */
 	options?: string[]
+	/**
+	 * The `options` are a *closed* set the field is declared with (`z.enum([…])` /
+	 * `n.enum([…])`), not suggestions. Editors must refuse to write a value outside the
+	 * list. Absent (the default) means the options were inferred from existing entries and
+	 * are only a convenience — free text stays valid there, otherwise one typo in the data
+	 * would become the schema.
+	 *
+	 * Closedness governs *new writes* only: a value already stored in an entry (older data,
+	 * a renamed enum member) must still be offered and must never be rewritten just because
+	 * the editor opened the entry.
+	 */
+	optionsClosed?: boolean
 	/** Item type for 'array' fields */
 	itemType?: FieldType
 	/** Nested fields for 'object' type */
