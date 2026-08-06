@@ -330,7 +330,9 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		const { server } = await freshServer()
 		const res = await call(server, 'POST', '/collections/blog/entries', {
 			slug: 'new-post',
-			frontmatter: { title: 'New Post', date: '2024-06-01', draft: false },
+			// The fixture's `blog` schema declares all six fields required (none `.optional()`),
+			// and cms-core enforces that on write — a partial frontmatter would come back 400.
+			frontmatter: { title: 'New Post', date: '2024-06-01', draft: false, cover: './new-post.jpg', tags: ['intro'], author: 'jane-doe' },
 			body: '# New Post\n\nBody.',
 		})
 		expect(res.status).toBe(200)

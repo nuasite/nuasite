@@ -355,6 +355,61 @@ function isIndexStyleGlobPattern(pattern: string): boolean {
 }
 
 // ============================================================================
+// Required-field validation
+// ============================================================================
+
+/**
+ * No value at all — as opposed to an empty collection or a falsy scalar.
+ *
+ * `false` and `0` are values and pass. `[]` and `{}` are a deliberate "nothing here"
+ * and pass too. Deliberately identical to the editor-side check so the two sides can
+ * never disagree about what "empty" means.
+ */
+function isBlank(value: unknown): boolean {
+	return value === undefined || value === null || value === ''
+}
+
+/**
+ * Names of the collection's **schema-declared** required fields left empty by `frontmatter`.
+ *
+ * Note on where `required` comes from — this reads the content config, never the
+ * scanner, and that is the whole point. `scanCollections` *infers* `required` as
+ * "the field is present in every scanned entry" (`mergeFieldObservations` in
+ * `collection-scanner.ts`), so a collection holding a single entry marks everything
+ * that entry happens to carry as required. Enforcing that as a hard invariant would
+ * make such a collection impossible to extend — a second entry with a different set
+ * of fields could never be written. Schema `required` has no such problem:
+ * `applyParsedConfig` filters the scanned fields down to the schema's names and
+ * `applyParsedFieldOverrides` then assigns `field.required = pf.required`
+ * unconditionally, so `.optional()` → `false` and everything else → `true`.
+ *
+ * A collection absent from `content.config.ts` therefore yields `[]` — nobody declared
+ * anything required there, so there is nothing to enforce and the write goes through.
+ *
+ * Only top-level fields are checked. Nested object/array members are left alone: a
+ * required key *inside* an object says nothing about whether that object was meant to
+ * be filled in at all, and rejecting on it would block partial edits.
+ *
+ * `hidden` fields are skipped — the form offers no way to fill them in.
+ */
+async function missingRequiredFields(deps: EntryOpsDeps, collection: string, frontmatter: Record<string, unknown>): Promise<string[]> {
+	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+	const parsedCollection = parsed.get(collection)
+	if (!parsedCollection) return []
+
+	return parsedCollection.fields
+		.filter(field => field.required && !field.layout?.hidden && isBlank(frontmatter[field.name]))
+		.map(field => field.name)
+}
+
+/** Name the offending fields — the text reaches the UI verbatim, where "validation failed" would be useless. */
+function missingRequiredMessage(missing: string[]): string {
+	return missing.length === 1
+		? `Field "${missing[0]}" is required`
+		: `Required fields are empty: ${missing.join(', ')}`
+}
+
+// ============================================================================
 // Entry CRUD
 // ============================================================================
 
@@ -410,6 +465,14 @@ export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): 
 	if (!allowedExtensions.includes(ext)) {
 		return { success: false, error: `Invalid file extension "${ext}". Allowed: ${allowedExtensions.join(', ')}` }
 	}
+	// Hard invariant, ahead of every path that could touch the disk — the markdown and
+	// the data branch below both write exactly `{ ...frontmatter }`, so one check covers
+	// `.md`/`.mdx` frontmatter and `.json`/`.yaml`/`.yml` data files alike.
+	const missing = await missingRequiredFields(deps, collection, frontmatter)
+	if (missing.length > 0) {
+		return { success: false, error: missingRequiredMessage(missing) }
+	}
+
 	const isData = ext === 'json' || ext === 'yaml' || ext === 'yml'
 	const layout = isData ? 'flat' : await detectCollectionMarkdownLayout(deps, collection)
 	const collectionDir = await resolveCollectionDir(deps, collection)
@@ -448,7 +511,15 @@ export async function updateEntry(deps: EntryOpsDeps, input: UpdateEntryInput): 
 		if (isDataFile(sourcePath)) {
 			const raw = await deps.fs.readFile(sourcePath)
 			const existing = sourcePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)
-			const merged = { ...(existing ?? {}), ...input.frontmatter }
+			const merged: Record<string, unknown> = { ...(existing ?? {}), ...input.frontmatter }
+
+			// Validate the merged result, not the incoming patch: a patch that omits a
+			// required field is fine when the file already carries it, and a patch that
+			// blanks one must be rejected even though the field itself is present.
+			const missing = await missingRequiredFields(deps, input.collection, merged)
+			if (missing.length > 0) {
+				return { success: false, error: missingRequiredMessage(missing) }
+			}
 
 			const output = sourcePath.endsWith('.json')
 				? JSON.stringify(merged, null, 2) + '\n'
@@ -461,6 +532,13 @@ export async function updateEntry(deps: EntryOpsDeps, input: UpdateEntryInput): 
 			const mergedFrontmatter: Record<string, unknown> = {
 				...existing.frontmatter,
 				...input.frontmatter,
+			}
+
+			// Same rule as the data branch: the merged frontmatter is what lands on disk,
+			// so that is what gets validated.
+			const missing = await missingRequiredFields(deps, input.collection, mergedFrontmatter)
+			if (missing.length > 0) {
+				return { success: false, error: missingRequiredMessage(missing) }
 			}
 
 			let finalContent = input.body ?? existing.content
