@@ -250,7 +250,7 @@ function parseIncludeProjectImages(raw: string | null): boolean | null {
 /**
  * Project a scanned `CollectionEntryInfo` down to the requested `fields`.
  *
- * - absent: light header (slug/title/draft/pathname/sourcePath), never the body.
+ * - absent: light header (slug/title/draft/pathname/previewPathname/sourcePath), never the body.
  * - `*`: all frontmatter (via `data`), still no body.
  * - `a,b`: those frontmatter keys (plus the always-present slug/sourcePath).
  *
@@ -264,6 +264,7 @@ function projectEntry(entry: CollectionEntryInfo, fields: string | undefined): C
 		if (entry.title !== undefined) projected.title = entry.title
 		if (entry.draft !== undefined) projected.draft = entry.draft
 		if (entry.pathname !== undefined) projected.pathname = entry.pathname
+		if (entry.previewPathname !== undefined) projected.previewPathname = entry.previewPathname
 		if (entry.data !== undefined) projected.data = entry.data
 		return projected
 	}
@@ -273,6 +274,7 @@ function projectEntry(entry: CollectionEntryInfo, fields: string | undefined): C
 		if (entry.title !== undefined) projected.title = entry.title
 		if (entry.draft !== undefined) projected.draft = entry.draft
 		if (entry.pathname !== undefined) projected.pathname = entry.pathname
+		if (entry.previewPathname !== undefined) projected.previewPathname = entry.previewPathname
 		return projected
 	}
 
@@ -293,6 +295,9 @@ function projectEntry(entry: CollectionEntryInfo, fields: string | undefined): C
 				break
 			case 'pathname':
 				if (entry.pathname !== undefined) projected.pathname = entry.pathname
+				break
+			case 'previewPathname':
+				if (entry.previewPathname !== undefined) projected.previewPathname = entry.previewPathname
 				break
 			default: {
 				const value = entry.data?.[key]
@@ -504,6 +509,42 @@ function entryPathname(route: CollectionRoute, slug: string): string {
 	if (!route.perItem) return route.base || '/'
 	// A root-level `[slug]` route has base `/`; joining naively would double the slash.
 	return `${route.base === '/' ? '' : route.base}/${slug}`
+}
+
+/**
+ * Tag one scanned entry with the page it lives at. This is the sidecar's half of the same
+ * rule `buildCollectionManifestPages` applies in `@nuasite/cms`'s dev middleware — the two
+ * surfaces must answer "where does this entry live?" identically, or the dash and the
+ * preview disagree about a collection:
+ *
+ * - a `fragment` collection owns no page, so the *whole* chain is suppressed rather than
+ *   just its route-prefix arm. An already-present pathname is no better: it can only have
+ *   come from the page that renders the fragment, which belongs to that page. The
+ *   collection's `previewOf` travels as `previewPathname` instead — a preview target, never
+ *   a URL the entry claims.
+ * - otherwise: an already-resolved pathname wins, then the declarative `cms.pathname` rule
+ *   (authoritative — it composes the URL from fields, e.g. topic/urlFamily + slug, matching
+ *   the site's forward resolver, so an entry whose URL segment differs from its filename
+ *   slug still opens the right page), then the discovered route prefix + slug.
+ *
+ * Entries are copied rather than mutated, and only when something actually changes, so the
+ * cached scan keeps its own identity.
+ */
+function entryWithPageUrl(def: CollectionDefinition, entry: CollectionEntryInfo, route: CollectionRoute | undefined): CollectionEntryInfo {
+	// The fragment short-circuit sits above every pathname source, so a source added below
+	// can never fabricate a URL for a collection that has no page.
+	if (def.fragment) {
+		if (entry.pathname === undefined && entry.previewPathname === def.previewOf) return entry
+		const { pathname: _pathname, previewPathname: _previewPathname, ...rest } = entry
+		const projected: CollectionEntryInfo = { ...rest }
+		if (def.previewOf !== undefined) projected.previewPathname = def.previewOf
+		return projected
+	}
+	if (entry.pathname !== undefined) return entry
+	const fromSpec = resolvePathnameFromSpec(def, entry.data)
+	if (fromSpec !== undefined) return { ...entry, pathname: fromSpec }
+	if (route !== undefined) return { ...entry, pathname: entryPathname(route, entry.slug) }
+	return entry
 }
 
 // ============================================================================
@@ -728,22 +769,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		// pathname on any fs error — better absent than wrong.
 		const routes = await resolveCollectionRoutes(fs).catch(() => new Map<string, CollectionRoute>())
 		const route = routes.get(collection)
-		const all = (def.entries ?? []).map(e => {
-			if (e.pathname !== undefined) return e
-			// A declarative `cms.pathname` rule is authoritative: derive the entry's
-			// URL from its fields (e.g. topic/urlFamily + slug), matching the site's
-			// forward resolver. This is what lets an entry whose URL segment differs
-			// from its filename slug — people stored as `<role>__<slug>.md` served at
-			// `/<family>/<slug>`, or the same slug under two topic prefixes — resolve
-			// to the correct page in the editor iframe instead of a guessed
-			// `<route-prefix>/<filename-slug>`.
-			const fromSpec = resolvePathnameFromSpec(def, e.data)
-			if (fromSpec !== undefined) return { ...e, pathname: fromSpec }
-			// No rule: fall back to the discovered route prefix + slug (unchanged
-			// behavior for collections that don't declare `cms.pathname`).
-			if (route !== undefined) return { ...e, pathname: entryPathname(route, e.slug) }
-			return e
-		})
+		const all = (def.entries ?? []).map(e => entryWithPageUrl(def, e, route))
 		const filtered = filterByDraft(all, query.draft)
 
 		const offset = decodeCursor(query.cursor)

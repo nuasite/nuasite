@@ -11,7 +11,7 @@ import type {
 	MediaStorageAdapter,
 	MediaUploadResult,
 } from '@nuasite/cms-types'
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -564,6 +564,88 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		const { server } = await freshServer()
 		expect((await call(server, 'GET', '/asset')).status).toBe(400)
 		expect((await call(server, 'GET', `/asset?path=${encodeURIComponent('/assets/nope.png')}`)).status).toBe(404)
+	})
+})
+
+/**
+ * A collection rendered as a fragment of other pages (tips, testimonials, tags) owns no
+ * page, so the sidecar must not compose `<route-prefix>/<slug>` for it — the dash would
+ * show, and open, URLs nobody serves. Same rule as `buildCollectionManifestPages` in
+ * `@nuasite/cms`'s dev middleware; these tests are its sidecar-side twin.
+ */
+describe('cms-sidecar — a fragment collection is served without a fabricated URL', () => {
+	// The fixture carries a deliberate `fragment` + `pathname` conflict (`tags`), which the
+	// config parser reports on every scan. Silenced so the block's output stays readable.
+	let warnSpy: { mockRestore(): void } | undefined
+	beforeEach(() => {
+		warnSpy = spyOn(console, 'warn').mockImplementation(() => {})
+	})
+	afterEach(() => {
+		warnSpy?.mockRestore()
+		warnSpy = undefined
+	})
+
+	async function entriesOf(collection: string, query = ''): Promise<CollectionEntryInfo[]> {
+		const { server } = await freshServerFrom('fragment-project')
+		const list = await jsonOf<EntriesListResult>(await call(server, 'GET', `/collections/${collection}/entries?draft=all${query}`))
+		return list.entries
+	}
+
+	test('a per-item route prefix never reaches a fragment collection', async () => {
+		// `tips` is enumerated by `/aktualne/[slug].astro`'s getStaticPaths, so the route
+		// resolver maps it page-per-item — but the pages that route makes belong to `articles`.
+		const entries = await entriesOf('tips')
+		expect(entries.map(e => e.slug).sort()).toEqual(['pozice-1', 'pozice-2'])
+		expect(entries.every(e => e.pathname === undefined)).toBe(true)
+		expect(JSON.stringify(entries)).not.toContain('/aktualne/pozice-1')
+	})
+
+	test('previewOf travels as previewPathname, never as the entry pathname', async () => {
+		const entry = (await entriesOf('tips')).find(e => e.slug === 'pozice-1')
+		expect(entry?.previewPathname).toBe('/aktualne')
+		expect(entry?.pathname).toBeUndefined()
+	})
+
+	test('a fragment on a static listing page does not inherit that page as its URL', async () => {
+		// `testimonials` is read by `/reference.astro`; the shared-page fallback would hand
+		// every entry `/reference`, which is the listing's URL and not the testimonial's.
+		const entries = await entriesOf('testimonials')
+		expect(entries.map(e => e.slug)).toEqual(['jana'])
+		expect(entries[0]?.pathname).toBeUndefined()
+		// No `previewOf` declared → nothing invented in its place either.
+		expect(entries[0]?.previewPathname).toBeUndefined()
+	})
+
+	test('a `cms.pathname` rule on a fragment collection yields no spec-derived URL', async () => {
+		// The parser drops the rule as a conflict, so the spec arm cannot fire — asserted
+		// end-to-end here because it is the one pathname source the fragment check sits above
+		// rather than replaces.
+		const entries = await entriesOf('tags')
+		expect(entries.map(e => e.slug)).toEqual(['prace'])
+		expect(entries[0]?.pathname).toBeUndefined()
+		expect(JSON.stringify(entries)).not.toContain('/stitky/prace')
+	})
+
+	test('previewPathname survives the ?fields=* projection', async () => {
+		const entry = (await entriesOf('tips', '&fields=*')).find(e => e.slug === 'pozice-1')
+		expect(entry?.previewPathname).toBe('/aktualne')
+		expect(entry?.pathname).toBeUndefined()
+	})
+
+	test('GET /collections marks the collection itself, so "no page" is distinguishable from "no route"', async () => {
+		const { server } = await freshServerFrom('fragment-project')
+		const defs = await jsonOf<CollectionDefinition[]>(await call(server, 'GET', '/collections'))
+		expect(defs.find(d => d.name === 'tips')?.fragment).toBe(true)
+		expect(defs.find(d => d.name === 'tips')?.previewOf).toBe('/aktualne')
+		expect(defs.find(d => d.name === 'articles')?.fragment).toBeUndefined()
+	})
+
+	test('regression: a non-fragment collection still gets the route-prefix fallback', async () => {
+		// `articles` is driven page-per-item by the same `[slug]` detail as `tips`, and keeps
+		// its `<prefix>/<slug>` URL. Its stray `previewOf` (no `fragment`) stays inert.
+		const entries = await entriesOf('articles')
+		expect(entries.map(e => e.pathname)).toEqual(['/aktualne/prvni-clanek'])
+		expect(entries[0]?.previewPathname).toBeUndefined()
 	})
 })
 
