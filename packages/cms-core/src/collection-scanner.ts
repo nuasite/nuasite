@@ -68,6 +68,32 @@ function normalizeFieldName(name: string): string {
 	return name.toLowerCase().replace(/[_-]/g, '')
 }
 
+/** Fallback order for an entry's browse title when the collection declares no `titleField`. */
+const TITLE_FALLBACK_FIELDS = ['title', 'name', 'label'] as const
+
+/**
+ * Derive the title an entry is listed under in the CMS browser and reference pickers.
+ *
+ * A declared `titleField` (`defineCmsCollection({ cms: { titleField } })`) wins outright —
+ * including over a present `title` — so a collection can name its own headline field.
+ * Otherwise the first non-empty string among `title` → `name` → `label` is used, and the
+ * caller falls back to the slug when nothing matches.
+ *
+ * Both the markdown branch (frontmatter) and the data branch (JSON/YAML) go through here,
+ * so the two can't drift apart again the way they had.
+ */
+function deriveEntryTitle(data: Record<string, unknown>, titleField?: string): string | undefined {
+	if (titleField) {
+		const declared = data[titleField]
+		return typeof declared === 'string' && declared !== '' ? declared : undefined
+	}
+	for (const key of TITLE_FALLBACK_FIELDS) {
+		const value = data[key]
+		if (typeof value === 'string' && value !== '') return value
+	}
+	return undefined
+}
+
 /**
  * Observed values for a single field across multiple files
  */
@@ -416,8 +442,11 @@ async function buildCollectionDefinition(
 			sourcePath: path.join(sourceBasePath, source.relPath),
 		}
 		if (frontmatter) {
-			if (typeof frontmatter.title === 'string') {
-				entryInfo.title = frontmatter.title
+			// No `titleField` here: the content config isn't parsed yet at scan time,
+			// so a declared field is applied later in `applyParsedConfig`.
+			const title = deriveEntryTitle(frontmatter)
+			if (title !== undefined) {
+				entryInfo.title = title
 			}
 			if (typeof frontmatter.draft === 'boolean' && frontmatter.draft) {
 				entryInfo.draft = true
@@ -483,7 +512,10 @@ async function buildDataCollectionDefinition(
 		}
 		if (!data || typeof data !== 'object') continue
 
-		const title = typeof data.name === 'string' ? data.name : typeof data.title === 'string' ? data.title : undefined
+		// Shared with the markdown branch, so `title` wins over `name` here too — a
+		// deliberate change from the old `name`-first order; declare `titleField` to
+		// pin a different field.
+		const title = deriveEntryTitle(data)
 		entryInfos.push({
 			slug: source.slug,
 			title,
@@ -611,7 +643,26 @@ function applyParsedConfig(
 		if (parsedColl.layout) def.layout = parsedColl.layout
 		// Declarative page-URL rule from `defineCmsCollection({ cms: { pathname } })`.
 		if (parsedColl.pathname) def.pathname = parsedColl.pathname
+		// Declarative entry-title source from `defineCmsCollection({ cms: { titleField } })`.
+		// The scan derived titles by fallback; re-derive them from the declared field.
+		if (parsedColl.titleField) {
+			def.titleField = parsedColl.titleField
+			applyCollectionTitleField(def, parsedColl.titleField)
+		}
 	}
+}
+
+/**
+ * Re-derive every entry's title from the collection's declared `titleField` and restore
+ * the title ordering `assembleCollectionDefinition` established — the scan sorted on the
+ * fallback titles, which the declared field just replaced. A later `orderBy` still wins.
+ */
+function applyCollectionTitleField(def: CollectionDefinition, titleField: string): void {
+	if (!def.entries) return
+	for (const entry of def.entries) {
+		entry.title = entry.data ? deriveEntryTitle(entry.data, titleField) : undefined
+	}
+	def.entries.sort((a, b) => (a.title ?? a.slug).localeCompare(b.title ?? b.slug))
 }
 
 /** Map a parsed field's layout hints onto the field definition (sidebar → position). */

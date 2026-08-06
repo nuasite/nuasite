@@ -148,6 +148,11 @@ export interface CollectionLayout {
 	sections?: CollectionLayoutSection[]
 	/** Declarative rule for composing each entry's page URL from its frontmatter fields. */
 	pathname?: PathnameSpec
+	/**
+	 * Field name an entry is listed under in the CMS browser and reference pickers.
+	 * Overrides the `title` → `name` → `label` fallback chain.
+	 */
+	titleField?: string
 }
 
 /** Per-entry metadata for collection browsing */
@@ -200,6 +205,12 @@ export interface CollectionDefinition {
 	 * highest-priority source for an entry's `pathname` in the manifest.
 	 */
 	pathname?: PathnameSpec
+	/**
+	 * Field an entry's browse title is read from, from
+	 * `defineCmsCollection({ cms: { titleField } })`. When present it wins over the
+	 * `title` → `name` → `label` fallback chain used otherwise.
+	 */
+	titleField?: string
 }
 
 /** Represents a content collection entry (markdown file) */

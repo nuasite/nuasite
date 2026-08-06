@@ -54,6 +54,8 @@ export interface ParsedCollection {
 	layout?: CollectionLayout
 	/** Declarative page-URL rule from a `defineCmsCollection({ cms: { pathname } })` block. */
 	pathname?: PathnameSpec
+	/** Declarative entry-title source from a `defineCmsCollection({ cms: { titleField } })` block. */
+	titleField?: string
 }
 
 export type ParsedConfig = Map<string, ParsedCollection>
@@ -238,6 +240,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 		)
 		const layout = cmsProperty?.type === 'ObjectProperty' ? parseCmsLayout(cmsProperty.value, bindings) : undefined
 		const pathname = cmsProperty?.type === 'ObjectProperty' ? parseCmsPathname(cmsProperty.value, bindings) : undefined
+		const titleField = cmsProperty?.type === 'ObjectProperty' ? parseCmsTitleField(cmsProperty.value, bindings) : undefined
 
 		const schemaProperty = decl.properties.find(
 			p =>
@@ -253,6 +256,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				loaderBase,
 				layout,
 				pathname,
+				titleField,
 			})
 			continue
 		}
@@ -267,6 +271,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				loaderBase,
 				layout,
 				pathname,
+				titleField,
 			})
 			continue
 		}
@@ -278,6 +283,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 			loaderBase,
 			layout,
 			pathname,
+			titleField,
 		})
 	}
 
@@ -370,6 +376,25 @@ function parseCmsPathname(node: t.Node, bindings: Bindings): PathnameSpec | unde
 		if (segment) spec.push(segment)
 	}
 	return spec.length > 0 ? spec : undefined
+}
+
+/**
+ * Parse a `cms: { titleField: 'heading' }` block into the field name an entry's
+ * browse title is read from. Same shape-tolerant contract as {@link parseCmsPathname}:
+ * a non-string or empty value yields undefined, which leaves the fallback chain in place.
+ */
+function parseCmsTitleField(node: t.Node, bindings: Bindings): string | undefined {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type !== 'ObjectExpression') return undefined
+
+	const titleFieldProp = resolved.properties.find(
+		p => p.type === 'ObjectProperty' && propertyKeyName(p.key) === 'titleField',
+	)
+	if (!titleFieldProp || titleFieldProp.type !== 'ObjectProperty') return undefined
+
+	const value = resolveExpression(titleFieldProp.value, bindings)
+	if (value.type !== 'StringLiteral' || value.value === '') return undefined
+	return value.value
 }
 
 /** Parse one `{ field, map? }` or `{ literal }` segment object. */
