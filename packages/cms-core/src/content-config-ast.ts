@@ -687,6 +687,15 @@ function analyzeBaseCall(node: t.CallExpression, field: ParsedField, bindings: B
 				field.options = options
 			}
 		}
+		// `n.enum([…], { label, help, … })` — the value list takes the first argument, so
+		// layout hints ride in the second one; every other marker carries them in the first.
+		// A bare `z.enum([…], { message })` is unaffected: Zod's params share no key with the
+		// layout shape, so nothing is picked up.
+		const hintsArg = node.arguments[1]
+		if (hintsArg?.type === 'ObjectExpression') {
+			const layout = parseFieldLayoutFromObject(hintsArg)
+			if (layout) field.layout = layout
+		}
 		return
 	}
 

@@ -44,3 +44,20 @@ describe('defineCmsCollection — runtime config normalization', () => {
 		expect((result as { type?: string }).type).toBe('content_layer')
 	})
 })
+
+describe('n.enum — layout hints are editor-only', () => {
+	// The hints exist purely for the scanner to read out of the config source; they must not
+	// reach the Zod schema, or a label would start deciding which values an entry may hold.
+	test('accepts and rejects exactly the same values with and without hints', () => {
+		const values = ['zpravy', 'tipy'] as const
+		const bare = n.enum([...values])
+		const hinted = n.enum([...values], { label: 'Rubrika', help: 'Kam článek patří', group: 'Meta', sidebar: true })
+
+		for (const value of ['zpravy', 'tipy', 'zruseno', '', 'Rubrika']) {
+			expect(hinted.safeParse(value).success).toBe(bare.safeParse(value).success)
+		}
+		expect(hinted.safeParse('tipy').success).toBe(true)
+		expect(hinted.safeParse('zruseno').success).toBe(false)
+		expect(hinted.options).toEqual(bare.options)
+	})
+})
