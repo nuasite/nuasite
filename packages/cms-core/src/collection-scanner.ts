@@ -643,6 +643,12 @@ function applyParsedConfig(
 		if (parsedColl.layout) def.layout = parsedColl.layout
 		// Declarative page-URL rule from `defineCmsCollection({ cms: { pathname } })`.
 		if (parsedColl.pathname) def.pathname = parsedColl.pathname
+		// `defineCmsCollection({ cms: { fragment, previewOf } })`: the collection is rendered
+		// inside other pages and owns no URL. Consumers must not invent one for its entries.
+		if (parsedColl.fragment) {
+			def.fragment = parsedColl.fragment
+			if (parsedColl.previewOf) def.previewOf = parsedColl.previewOf
+		}
 		// Declarative entry-title source from `defineCmsCollection({ cms: { titleField } })`.
 		// The scan derived titles by fallback; re-derive them from the declared field.
 		if (parsedColl.titleField) {

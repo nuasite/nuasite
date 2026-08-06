@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { discoverCollectionRoutes, enhanceManifestInBackground, invalidateCollectionRoutesCache } from '../../src/dev-middleware'
+import {
+	buildCollectionManifestPages,
+	discoverCollectionRoutes,
+	enhanceManifestInBackground,
+	invalidateCollectionRoutesCache,
+} from '../../src/dev-middleware'
 import { ManifestWriter } from '../../src/manifest-writer'
 import { clearSourceFinderCache } from '../../src/source-finder'
 import type { CmsMarkerOptions, CollectionDefinition, ManifestEntry } from '../../src/types'
@@ -268,5 +273,151 @@ describe('discoverCollectionRoutes — dynamic route detection', () => {
 
 		const routes = await discoverCollectionRoutes()
 		expect(routes.get('team')).toBeUndefined()
+	})
+})
+
+describe('buildCollectionManifestPages — fragment collections own no URL', () => {
+	/** A collection keyed as `name` with one entry per slug. */
+	function makeDef(
+		name: string,
+		slugs: string[],
+		overrides: Partial<CollectionDefinition> = {},
+	): CollectionDefinition {
+		return {
+			name,
+			label: name,
+			path: `src/content/${name}`,
+			entryCount: slugs.length,
+			fields: [{ name: 'title', type: 'text', required: true }],
+			fileExtension: 'md',
+			entries: slugs.map(slug => ({ slug, title: slug, sourcePath: `src/content/${name}/${slug}.md` })),
+			...overrides,
+		}
+	}
+
+	test('a fragment collection keeps pathname undefined even under a discovered route prefix', () => {
+		const def = makeDef('kratceZNezisku', ['pozice-1'], { fragment: true })
+		const routes = new Map<string, string | true>([['kratceZNezisku', '/aktualne/']])
+
+		const { collectionDefinitions, entryPages } = buildCollectionManifestPages({ kratceZNezisku: def }, routes)
+
+		expect(collectionDefinitions['kratceZNezisku']?.entries?.[0]?.pathname).toBeUndefined()
+		// …and it contributes no page, so nothing claims `/aktualne/pozice-1`.
+		expect(entryPages).toEqual([])
+	})
+
+	test('a fragment collection drops the pathname addPage() left from the page that rendered it', () => {
+		// `tags` renders inside `/burza-prace`; manifest-writer's addPage() stamped that URL
+		// onto the entry. It is the listing page's URL, not the tag's.
+		const def = makeDef('tags', ['prace'], { fragment: true })
+		def.entries![0]!.pathname = '/burza-prace'
+
+		const { collectionDefinitions, entryPages } = buildCollectionManifestPages({ tags: def }, new Map())
+
+		expect(collectionDefinitions['tags']?.entries?.[0]?.pathname).toBeUndefined()
+		expect(entryPages).toEqual([])
+		// The scanned definition is left alone — only the response copy is projected.
+		expect(def.entries![0]!.pathname).toBe('/burza-prace')
+	})
+
+	test('a fragment collection ignores a frontmatter-declared site path', () => {
+		const def = makeDef('testimonials', ['jana'], { fragment: true })
+		def.entries![0]!.data = { title: 'Jana', urlPath: '/reference/jana' }
+
+		const { collectionDefinitions, entryPages } = buildCollectionManifestPages({ testimonials: def }, new Map([['testimonials', true as const]]))
+
+		expect(collectionDefinitions['testimonials']?.entries?.[0]?.pathname).toBeUndefined()
+		expect(entryPages).toEqual([])
+	})
+
+	test('previewOf becomes the entry preview target without claiming the target page', () => {
+		const fragment = makeDef('kratceZNezisku', ['pozice-1'], { fragment: true, previewOf: '/aktualne' })
+		const articles = makeDef('articles', ['prvni-clanek'])
+		const routes = new Map<string, string | true>([['kratceZNezisku', '/aktualne/'], ['articles', '/aktualne/']])
+
+		const { collectionDefinitions, entryPages } = buildCollectionManifestPages(
+			{ kratceZNezisku: fragment, articles },
+			routes,
+		)
+
+		const entry = collectionDefinitions['kratceZNezisku']?.entries?.[0]
+		expect(entry?.previewPathname).toBe('/aktualne')
+		expect(entry?.pathname).toBeUndefined()
+
+		// `/aktualne` is a real page of the site: it must reach the manifest from the
+		// filesystem page scan, never as a page contributed by this entry.
+		expect(entryPages.map(p => p.pathname)).toEqual(['/aktualne/prvni-clanek'])
+
+		// Same merge the manifest middleware does: discovered pages first, entry pages on top.
+		const pageMap = new Map<string, { pathname: string; title?: string }>([['/aktualne', { pathname: '/aktualne' }]])
+		for (const page of entryPages) pageMap.set(page.pathname, page)
+		expect(pageMap.get('/aktualne')).toEqual({ pathname: '/aktualne' })
+	})
+
+	test('previewOf without fragment is not surfaced on entries', () => {
+		const def = makeDef('articles', ['prvni-clanek'], { previewOf: '/aktualne' })
+
+		const { collectionDefinitions } = buildCollectionManifestPages({ articles: def }, new Map())
+
+		expect(collectionDefinitions['articles']?.entries?.[0]?.previewPathname).toBeUndefined()
+	})
+
+	test('regression: a collection without fragment still gets the route-prefix fallback', () => {
+		// Post-issue-01 shape: the config key (`kratceZNezisku`) survives the merge with its
+		// scanned directory (`kratce-z-nezisku`), and that key is what
+		// discoverCollectionRoutes() matched in `getCollection('kratceZNezisku')`.
+		const def = makeDef('kratceZNezisku', ['pozice-1', 'pozice-2'], { path: 'src/content/kratce-z-nezisku' })
+		const routes = new Map<string, string | true>([['kratceZNezisku', '/aktualne/']])
+
+		const { collectionDefinitions, entryPages } = buildCollectionManifestPages({ kratceZNezisku: def }, routes)
+
+		expect(collectionDefinitions['kratceZNezisku']?.entries?.map(e => e.pathname)).toEqual([
+			'/aktualne/pozice-1',
+			'/aktualne/pozice-2',
+		])
+		expect(entryPages).toEqual([
+			{ pathname: '/aktualne/pozice-1', title: 'pozice-1' },
+			{ pathname: '/aktualne/pozice-2', title: 'pozice-2' },
+		])
+	})
+
+	test('regression: the fallback order (spec → addPage → declared path → prefix) is unchanged', () => {
+		const spec = makeDef('events', ['expo'], { pathname: [{ literal: 'akce' }, { field: 'slug' }] })
+		spec.entries![0]!.data = { slug: 'expo', urlPath: '/ignored' }
+		spec.entries![0]!.pathname = '/also-ignored'
+
+		const rendered = makeDef('news', ['hello'])
+		rendered.entries![0]!.pathname = '/blog/hello'
+
+		const declared = makeDef('partners', ['acme'])
+		declared.entries![0]!.data = { urlPath: '/o-nas/acme' }
+
+		const prefixed = makeDef('team', ['jana'])
+
+		const routes = new Map<string, string | true>([
+			['events', '/events/'],
+			['news', '/news/'],
+			['partners', true as const],
+			['team', '/tym/'],
+		])
+
+		const { collectionDefinitions } = buildCollectionManifestPages({ events: spec, news: rendered, partners: declared, team: prefixed }, routes)
+
+		expect(collectionDefinitions['events']?.entries?.[0]?.pathname).toBe('/akce/expo')
+		expect(collectionDefinitions['news']?.entries?.[0]?.pathname).toBe('/blog/hello')
+		expect(collectionDefinitions['partners']?.entries?.[0]?.pathname).toBe('/o-nas/acme')
+		expect(collectionDefinitions['team']?.entries?.[0]?.pathname).toBe('/tym/jana')
+	})
+
+	test('regression: an unrouted collection gets no pathname at all', () => {
+		const def = makeDef('settings', ['general'])
+		def.entries![0]!.data = { url: 'https://example.com' }
+
+		const { collectionDefinitions, entryPages } = buildCollectionManifestPages({ settings: def }, new Map())
+
+		expect(collectionDefinitions['settings']?.entries?.[0]?.pathname).toBeUndefined()
+		expect(entryPages).toEqual([])
+		// Nothing to patch → the definition passes through by identity.
+		expect(collectionDefinitions['settings']).toBe(def)
 	})
 })

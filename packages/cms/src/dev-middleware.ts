@@ -177,58 +177,12 @@ export function createDevMiddleware(
 				pageMap.set(pagePath, { pathname: pagePath })
 			}
 
-			// 2. Add collection entry pages from collection definitions,
-			//    pre-populating pathnames so the collections browser can redirect to
-			//    detail pages without visiting them first. Prefer the entry's own
-			//    declared URL (urlPath/permalink/…) from frontmatter, which is
-			//    correct even when the collection is served under a *dynamic* route
-			//    prefix (e.g. `[topic]/[slug]`) that discoverCollectionRoutes can't
-			//    map to a static prefix. Fall back to the discovered static route
-			//    prefix + slug. We build patched copies rather than mutating the
-			//    originals so that heuristic pathnames don't persist if the route
-			//    file is later removed.
+			// 2. Add collection entry pages from collection definitions.
 			const collectionDefs = manifestWriter.getCollectionDefinitions()
 			const collectionRoutes = await discoverCollectionRoutes()
-			const responseCollectionDefs: Record<string, CollectionDefinition> = {}
-
-			for (const [name, def] of Object.entries(collectionDefs)) {
-				const routeInfo = collectionRoutes.get(def.name)
-				const routePrefix = typeof routeInfo === 'string' ? routeInfo : undefined
-				// Whether any page route renders this collection. The heuristic fallbacks
-				// below (a frontmatter-declared site path, or the discovered route prefix)
-				// only apply to routed collections — otherwise a declared `cms.pathname`
-				// spec whose fields are missing for an entry would fabricate a URL from an
-				// unrelated frontmatter field (e.g. a data collection's own `url`).
-				const routed = routeInfo !== undefined
-
-				// A declarative `cms.pathname` rule is the highest-priority source: it wins
-				// over the rendered-route pathname (addPage set entry.pathname to the page
-				// URL). resolvePathnameFromSpec is the same resolver manifest-writer uses at
-				// build, so dev-preview and the built manifest agree on the entry's URL.
-				const resolvePathname = (entry: CollectionEntryInfo): string | undefined =>
-					resolvePathnameFromSpec(def, entry.data)
-						?? entry.pathname
-						?? (routed ? declaredSitePathFromData(entry.data) : undefined)
-						?? (routePrefix ? `${routePrefix}${entry.slug}` : undefined)
-
-				// Build patched copies rather than mutating the originals so heuristic
-				// pathnames don't persist if the route file is later removed. Only patch
-				// entries whose resolved pathname differs from what they already have.
-				const patchedEntries = def.entries?.map(e => {
-					const pathname = resolvePathname(e)
-					return pathname && pathname !== e.pathname ? { ...e, pathname } : e
-				})
-				const changed = patchedEntries?.some((e, i) => e !== def.entries![i]) ?? false
-				responseCollectionDefs[name] = changed ? { ...def, entries: patchedEntries! } : def
-
-				const entries = responseCollectionDefs[name].entries
-				if (entries) {
-					for (const entry of entries) {
-						if (entry.pathname) {
-							pageMap.set(entry.pathname, { pathname: entry.pathname, title: entry.title })
-						}
-					}
-				}
+			const { collectionDefinitions: responseCollectionDefs, entryPages } = buildCollectionManifestPages(collectionDefs, collectionRoutes)
+			for (const page of entryPages) {
+				pageMap.set(page.pathname, page)
 			}
 
 			// 3. Overlay visited pages (they have SEO titles)
@@ -787,6 +741,87 @@ export async function discoverCollectionRoutes(): Promise<Map<string, Collection
 	await walk(pagesDir, '/', false)
 	collectionRoutesCache = routes
 	return routes
+}
+
+/** One page of the dev manifest's `pages` list, as contributed by a collection entry. */
+interface EntryPage {
+	pathname: string
+	title?: string
+}
+
+/**
+ * Project the scanned collection definitions for the dev manifest response: resolve each
+ * entry's page URL, and report which pages those entries contribute to the manifest's
+ * `pages` list. Pathnames are pre-populated so the collections browser can redirect to a
+ * detail page without visiting it first. The entry's own declared URL
+ * (urlPath/permalink/…) is preferred over the discovered static route prefix, because it
+ * is correct even when the collection is served under a *dynamic* prefix (e.g.
+ * `[topic]/[slug]`) that `discoverCollectionRoutes` can't map to a static one.
+ *
+ * Definitions are copied rather than mutated so heuristic pathnames don't persist if the
+ * route file is later removed.
+ */
+export function buildCollectionManifestPages(
+	collectionDefs: Record<string, CollectionDefinition>,
+	collectionRoutes: Map<string, CollectionRouteInfo>,
+): { collectionDefinitions: Record<string, CollectionDefinition>; entryPages: EntryPage[] } {
+	const collectionDefinitions: Record<string, CollectionDefinition> = {}
+	const entryPages: EntryPage[] = []
+
+	for (const [name, def] of Object.entries(collectionDefs)) {
+		const routeInfo = collectionRoutes.get(def.name)
+		const routePrefix = typeof routeInfo === 'string' ? routeInfo : undefined
+		// Whether any page route renders this collection. The heuristic fallbacks below (a
+		// frontmatter-declared site path, or the discovered route prefix) only apply to
+		// routed collections — otherwise a declared `cms.pathname` spec whose fields are
+		// missing for an entry would fabricate a URL from an unrelated frontmatter field
+		// (e.g. a data collection's own `url`).
+		const routed = routeInfo !== undefined
+
+		// A `fragment` collection is rendered inside other pages and has no page of its own,
+		// so every source below would fabricate a URL that 404s — including `entry.pathname`,
+		// which `addPage()` set to whichever page happened to render the fragment. It gets
+		// `previewOf` instead, which is a preview target and not a URL of its own.
+		// Otherwise: a declarative `cms.pathname` rule is the highest-priority source — it wins
+		// over the rendered-route pathname. resolvePathnameFromSpec is the same resolver
+		// manifest-writer uses at build, so dev-preview and the built manifest agree.
+		const resolvePathname = (entry: CollectionEntryInfo): string | undefined =>
+			def.fragment
+				? undefined
+				: resolvePathnameFromSpec(def, entry.data)
+					?? entry.pathname
+					?? (routed ? declaredSitePathFromData(entry.data) : undefined)
+					?? (routePrefix ? `${routePrefix}${entry.slug}` : undefined)
+
+		// Only patch entries whose resolved pathname/preview target differs from what they
+		// already have, so unchanged definitions keep their identity.
+		const previewPathname = def.fragment ? def.previewOf : undefined
+		const patchedEntries = def.entries?.map(e => {
+			const pathname = resolvePathname(e)
+			if (pathname === e.pathname && previewPathname === e.previewPathname) return e
+			const { pathname: _oldPathname, previewPathname: _oldPreview, ...rest } = e
+			const patched: CollectionEntryInfo = { ...rest }
+			if (pathname) patched.pathname = pathname
+			if (previewPathname) patched.previewPathname = previewPathname
+			return patched
+		})
+		const changed = patchedEntries?.some((e, i) => e !== def.entries![i]) ?? false
+		const projected = changed ? { ...def, entries: patchedEntries! } : def
+		collectionDefinitions[name] = projected
+
+		// A fragment collection contributes no pages: its `previewOf` page belongs to
+		// whatever really renders it, and an entry must never shadow that page in the
+		// manifest. Entries of a fragment collection have no pathname anyway — the `continue`
+		// keeps that a property of the collection rather than of the resolver.
+		if (projected.fragment) continue
+		for (const entry of projected.entries ?? []) {
+			if (entry.pathname) {
+				entryPages.push({ pathname: entry.pathname, title: entry.title })
+			}
+		}
+	}
+
+	return { collectionDefinitions, entryPages }
 }
 
 function mediaMimeFromExt(ext: string): string {
