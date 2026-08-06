@@ -938,6 +938,49 @@ async function scanDataCollection(
 }
 
 /**
+ * Normalize a glob loader `base` (`./src/content/x`, `src/content/x/`) into a
+ * root-relative path comparable with a collection definition's `path`.
+ */
+function normalizeBasePath(basePath: string): string {
+	return path.normalize(basePath.replace(/^\.[/\\]+/, '')).replace(/[/\\]+$/, '')
+}
+
+/**
+ * A loader pattern that selects the whole base directory rather than a slice of it:
+ * no subdirectory or filename prefix. `*`, `*.md`, `*.{md,mdx}` and `**\/*.md` qualify;
+ * `otazky/*.md` and `otazky-*.md` do not, because they pick a subset.
+ */
+const WHOLE_DIRECTORY_PATTERN = /^(?:\*\*[/\\])*\*(?:\.(?:\{([^{}/\\]*)\}|([A-Za-z0-9]+)))?$/
+
+/**
+ * Does a config-declared glob loader cover everything the directory scan already found?
+ * Beyond the pattern shape, the extensions have to line up too — `*.mdx` over a directory
+ * of `.md` files is a narrower selection, so it stays its own (child) collection.
+ */
+function patternCoversWholeCollection(pattern: string, definition: CollectionDefinition): boolean {
+	const match = pattern.trim().replace(/^\.[/\\]+/, '').match(WHOLE_DIRECTORY_PATTERN)
+	if (!match) return false
+
+	const [, braceGroup, singleExtension] = match
+	// A bare `*` / `**/*` takes whatever the directory holds.
+	if (braceGroup === undefined && singleExtension === undefined) return true
+
+	const patternExtensions = new Set(
+		(braceGroup !== undefined ? braceGroup.split(',') : [singleExtension!])
+			.map(ext => ext.trim().replace(/^\./, '').toLowerCase())
+			.filter(Boolean),
+	)
+	const scannedExtensions = new Set(
+		(definition.entries ?? []).map(entry => path.extname(entry.sourcePath).slice(1).toLowerCase()).filter(Boolean),
+	)
+	if (scannedExtensions.size === 0) return false
+	for (const ext of scannedExtensions) {
+		if (!patternExtensions.has(ext)) return false
+	}
+	return true
+}
+
+/**
  * Scan all collections in the content directory.
  *
  * `contentDir` is a root-relative directory (default `src/content`); all I/O is
@@ -974,9 +1017,38 @@ export async function scanCollections(
 
 	// Post-scan: apply schema-driven field config, detect references, derived fields, and ordering
 	const parsed = await parseContentConfig(fs, parseCache)
+
+	// Where the directory scan put each collection, so a config-declared loader base can be
+	// matched back to the definition that already covers that directory.
+	const scannedNameByBasePath = new Map<string, string>()
+	for (const [name, definition] of Object.entries(collections)) {
+		scannedNameByBasePath.set(normalizeBasePath(definition.path), name)
+	}
+	/** Scanned collections re-keyed under their config name: scanned key -> config key. */
+	const rekeyedScannedNames = new Map<string, string>()
+
 	for (const [collectionName, parsedCollection] of parsed) {
 		if (collections[collectionName]) continue
 		if (!parsedCollection.loaderBase || !parsedCollection.loaderPattern) continue
+
+		// Same collection, different key (`heroSlides` over `content/hero-slides`): the loader
+		// base is a directory the scan already covered and the pattern selects all of it. Re-key
+		// the scanned definition instead of adding a second copy — entries and inferred fields
+		// survive, and the config key wins because `applyParsedConfig`, references and
+		// `defineCmsCollection` all key by it.
+		const scannedName = scannedNameByBasePath.get(normalizeBasePath(parsedCollection.loaderBase))
+		const scannedDefinition = scannedName ? collections[scannedName] : undefined
+		if (scannedName && scannedDefinition && patternCoversWholeCollection(parsedCollection.loaderPattern, scannedDefinition)) {
+			delete collections[scannedName]
+			scannedDefinition.name = collectionName
+			for (const other of Object.values(collections)) {
+				if (other.parentCollection === scannedName) other.parentCollection = collectionName
+			}
+			collections[collectionName] = scannedDefinition
+			rekeyedScannedNames.set(scannedName, collectionName)
+			continue
+		}
+
 		let definition: CollectionDefinition | null
 		try {
 			definition = await scanGlobCollection(fs, collectionName, parsedCollection.loaderBase, parsedCollection.loaderPattern, contentDir)
@@ -988,8 +1060,9 @@ export async function scanCollections(
 		// Nest under the collection that owns the shared base directory (e.g. jsem-otazky -> jsem),
 		// so the CMS browser can group it under its parent page instead of listing it flat.
 		const baseName = parsedCollection.loaderBase.replace(/[/\\]+$/, '').split(/[/\\]/).pop()
-		if (baseName && baseName !== collectionName && collections[baseName]) {
-			definition.parentCollection = baseName
+		const parentName = !baseName ? undefined : collections[baseName] ? baseName : rekeyedScannedNames.get(baseName)
+		if (parentName && parentName !== collectionName) {
+			definition.parentCollection = parentName
 		}
 		collections[collectionName] = definition
 	}
