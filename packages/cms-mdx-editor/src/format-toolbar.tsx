@@ -88,6 +88,18 @@ export interface FormatToolbarProps {
 	onInsertComponent?: () => void
 }
 
+// The toolbar root is the header of the body editor's flex column (`mdx-body-editor`):
+// it must keep its height while the prose pane below it scrolls, otherwise the flex
+// line would squash the bar (the pane has `flex-basis: 0`, so it absorbs no shrink).
+// The in-flow popovers below the bar live in here too, so they never get clipped.
+//
+// `position: sticky` is the belt-and-braces half: inert when the wrapper caps the
+// height (nothing scrolls above the toolbar), but it keeps the toolbar in view in a
+// host that scrolls an ancestor itself, and in the nested slot editor, which scrolls
+// inside the body editor's pane. It sits here and not on `bar` because a sticky
+// element is constrained to its parent's box — this root is the only box taller than
+// the bar, so on `bar` itself the property would never do anything.
+const toolbarRoot: React.CSSProperties = { flexShrink: 0, position: 'sticky', top: 0, zIndex: 1 }
 const bar: React.CSSProperties = {
 	display: 'flex',
 	flexWrap: 'wrap',
@@ -171,7 +183,7 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 	}
 
 	return (
-		<div>
+		<div style={toolbarRoot}>
 			<div style={bar}>
 				<Btn active={formats.bold} title="Bold" onClick={() => editor?.action(callCommand(toggleStrongCommand.key))} style={{ fontWeight: 700 }}>B</Btn>
 				<Btn
