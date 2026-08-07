@@ -127,8 +127,14 @@ export const n = {
 	object: <T extends z.ZodRawShape>(shape: T) => z.object(shape),
 	/** Array schema */
 	array: <T extends z.ZodTypeAny>(schema: T) => z.array(schema),
-	/** Enum schema */
-	enum: <U extends string, T extends [U, ...U[]]>(values: T) => z.enum(values),
+	/**
+	 * Enum schema — a closed option list, rendered as a select.
+	 *
+	 * Takes layout hints as a *second* argument (the value list occupies the first),
+	 * so a closed list can still carry a `label`/`help` like every other marker.
+	 * They configure the editor only; no Zod validation is applied.
+	 */
+	enum: <U extends string, T extends [U, ...U[]]>(values: T, _hints?: LayoutHints) => z.enum(values),
 	/** Coerce namespace — parses input into the target type */
 	coerce: {
 		date: () => withOrderBy(z.coerce.date()),

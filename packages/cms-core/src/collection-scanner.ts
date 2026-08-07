@@ -68,6 +68,32 @@ function normalizeFieldName(name: string): string {
 	return name.toLowerCase().replace(/[_-]/g, '')
 }
 
+/** Fallback order for an entry's browse title when the collection declares no `titleField`. */
+const TITLE_FALLBACK_FIELDS = ['title', 'name', 'label'] as const
+
+/**
+ * Derive the title an entry is listed under in the CMS browser and reference pickers.
+ *
+ * A declared `titleField` (`defineCmsCollection({ cms: { titleField } })`) wins outright —
+ * including over a present `title` — so a collection can name its own headline field.
+ * Otherwise the first non-empty string among `title` → `name` → `label` is used, and the
+ * caller falls back to the slug when nothing matches.
+ *
+ * Both the markdown branch (frontmatter) and the data branch (JSON/YAML) go through here,
+ * so the two can't drift apart again the way they had.
+ */
+function deriveEntryTitle(data: Record<string, unknown>, titleField?: string): string | undefined {
+	if (titleField) {
+		const declared = data[titleField]
+		return typeof declared === 'string' && declared !== '' ? declared : undefined
+	}
+	for (const key of TITLE_FALLBACK_FIELDS) {
+		const value = data[key]
+		if (typeof value === 'string' && value !== '') return value
+	}
+	return undefined
+}
+
 /**
  * Observed values for a single field across multiple files
  */
@@ -416,8 +442,11 @@ async function buildCollectionDefinition(
 			sourcePath: path.join(sourceBasePath, source.relPath),
 		}
 		if (frontmatter) {
-			if (typeof frontmatter.title === 'string') {
-				entryInfo.title = frontmatter.title
+			// No `titleField` here: the content config isn't parsed yet at scan time,
+			// so a declared field is applied later in `applyParsedConfig`.
+			const title = deriveEntryTitle(frontmatter)
+			if (title !== undefined) {
+				entryInfo.title = title
 			}
 			if (typeof frontmatter.draft === 'boolean' && frontmatter.draft) {
 				entryInfo.draft = true
@@ -483,7 +512,10 @@ async function buildDataCollectionDefinition(
 		}
 		if (!data || typeof data !== 'object') continue
 
-		const title = typeof data.name === 'string' ? data.name : typeof data.title === 'string' ? data.title : undefined
+		// Shared with the markdown branch, so `title` wins over `name` here too — a
+		// deliberate change from the old `name`-first order; declare `titleField` to
+		// pin a different field.
+		const title = deriveEntryTitle(data)
 		entryInfos.push({
 			slug: source.slug,
 			title,
@@ -611,7 +643,32 @@ function applyParsedConfig(
 		if (parsedColl.layout) def.layout = parsedColl.layout
 		// Declarative page-URL rule from `defineCmsCollection({ cms: { pathname } })`.
 		if (parsedColl.pathname) def.pathname = parsedColl.pathname
+		// `defineCmsCollection({ cms: { fragment, previewOf } })`: the collection is rendered
+		// inside other pages and owns no URL. Consumers must not invent one for its entries.
+		if (parsedColl.fragment) {
+			def.fragment = parsedColl.fragment
+			if (parsedColl.previewOf) def.previewOf = parsedColl.previewOf
+		}
+		// Declarative entry-title source from `defineCmsCollection({ cms: { titleField } })`.
+		// The scan derived titles by fallback; re-derive them from the declared field.
+		if (parsedColl.titleField) {
+			def.titleField = parsedColl.titleField
+			applyCollectionTitleField(def, parsedColl.titleField)
+		}
 	}
+}
+
+/**
+ * Re-derive every entry's title from the collection's declared `titleField` and restore
+ * the title ordering `assembleCollectionDefinition` established — the scan sorted on the
+ * fallback titles, which the declared field just replaced. A later `orderBy` still wins.
+ */
+function applyCollectionTitleField(def: CollectionDefinition, titleField: string): void {
+	if (!def.entries) return
+	for (const entry of def.entries) {
+		entry.title = entry.data ? deriveEntryTitle(entry.data, titleField) : undefined
+	}
+	def.entries.sort((a, b) => (a.title ?? a.slug).localeCompare(b.title ?? b.slug))
 }
 
 /** Map a parsed field's layout hints onto the field definition (sidebar → position). */
@@ -639,7 +696,13 @@ function applyParsedFieldLayout(field: FieldDefinition, pf: ParsedField): void {
 function applyParsedFieldOverrides(field: FieldDefinition, pf: ParsedField): void {
 	if (pf.type) {
 		field.type = pf.type
-		if (pf.options) field.options = pf.options
+		// Parsed options only ever come from a declared `(z|n).enum([…])`, so they are a
+		// closed set — unlike the options `mergeFieldObservations` infers from the entries
+		// it happened to see, which stay open to free text.
+		if (pf.options) {
+			field.options = pf.options
+			field.optionsClosed = true
+		}
 	}
 	if (pf.itemType) field.itemType = pf.itemType
 	if (pf.hints) field.hints = pf.hints
@@ -674,7 +737,10 @@ function parsedFieldToFieldDefinition(pf: ParsedField): FieldDefinition {
 		type: pf.type ?? (pf.fields ? 'object' : 'text'),
 		required: pf.required,
 	}
-	if (pf.options) fd.options = pf.options
+	if (pf.options) {
+		fd.options = pf.options
+		fd.optionsClosed = true
+	}
 	if (pf.itemType) fd.itemType = pf.itemType
 	if (pf.hints) fd.hints = pf.hints
 	if (pf.astroImage) fd.astroImage = true
@@ -938,6 +1004,49 @@ async function scanDataCollection(
 }
 
 /**
+ * Normalize a glob loader `base` (`./src/content/x`, `src/content/x/`) into a
+ * root-relative path comparable with a collection definition's `path`.
+ */
+function normalizeBasePath(basePath: string): string {
+	return path.normalize(basePath.replace(/^\.[/\\]+/, '')).replace(/[/\\]+$/, '')
+}
+
+/**
+ * A loader pattern that selects the whole base directory rather than a slice of it:
+ * no subdirectory or filename prefix. `*`, `*.md`, `*.{md,mdx}` and `**\/*.md` qualify;
+ * `otazky/*.md` and `otazky-*.md` do not, because they pick a subset.
+ */
+const WHOLE_DIRECTORY_PATTERN = /^(?:\*\*[/\\])*\*(?:\.(?:\{([^{}/\\]*)\}|([A-Za-z0-9]+)))?$/
+
+/**
+ * Does a config-declared glob loader cover everything the directory scan already found?
+ * Beyond the pattern shape, the extensions have to line up too — `*.mdx` over a directory
+ * of `.md` files is a narrower selection, so it stays its own (child) collection.
+ */
+function patternCoversWholeCollection(pattern: string, definition: CollectionDefinition): boolean {
+	const match = pattern.trim().replace(/^\.[/\\]+/, '').match(WHOLE_DIRECTORY_PATTERN)
+	if (!match) return false
+
+	const [, braceGroup, singleExtension] = match
+	// A bare `*` / `**/*` takes whatever the directory holds.
+	if (braceGroup === undefined && singleExtension === undefined) return true
+
+	const patternExtensions = new Set(
+		(braceGroup !== undefined ? braceGroup.split(',') : [singleExtension!])
+			.map(ext => ext.trim().replace(/^\./, '').toLowerCase())
+			.filter(Boolean),
+	)
+	const scannedExtensions = new Set(
+		(definition.entries ?? []).map(entry => path.extname(entry.sourcePath).slice(1).toLowerCase()).filter(Boolean),
+	)
+	if (scannedExtensions.size === 0) return false
+	for (const ext of scannedExtensions) {
+		if (!patternExtensions.has(ext)) return false
+	}
+	return true
+}
+
+/**
  * Scan all collections in the content directory.
  *
  * `contentDir` is a root-relative directory (default `src/content`); all I/O is
@@ -974,9 +1083,38 @@ export async function scanCollections(
 
 	// Post-scan: apply schema-driven field config, detect references, derived fields, and ordering
 	const parsed = await parseContentConfig(fs, parseCache)
+
+	// Where the directory scan put each collection, so a config-declared loader base can be
+	// matched back to the definition that already covers that directory.
+	const scannedNameByBasePath = new Map<string, string>()
+	for (const [name, definition] of Object.entries(collections)) {
+		scannedNameByBasePath.set(normalizeBasePath(definition.path), name)
+	}
+	/** Scanned collections re-keyed under their config name: scanned key -> config key. */
+	const rekeyedScannedNames = new Map<string, string>()
+
 	for (const [collectionName, parsedCollection] of parsed) {
 		if (collections[collectionName]) continue
 		if (!parsedCollection.loaderBase || !parsedCollection.loaderPattern) continue
+
+		// Same collection, different key (`heroSlides` over `content/hero-slides`): the loader
+		// base is a directory the scan already covered and the pattern selects all of it. Re-key
+		// the scanned definition instead of adding a second copy — entries and inferred fields
+		// survive, and the config key wins because `applyParsedConfig`, references and
+		// `defineCmsCollection` all key by it.
+		const scannedName = scannedNameByBasePath.get(normalizeBasePath(parsedCollection.loaderBase))
+		const scannedDefinition = scannedName ? collections[scannedName] : undefined
+		if (scannedName && scannedDefinition && patternCoversWholeCollection(parsedCollection.loaderPattern, scannedDefinition)) {
+			delete collections[scannedName]
+			scannedDefinition.name = collectionName
+			for (const other of Object.values(collections)) {
+				if (other.parentCollection === scannedName) other.parentCollection = collectionName
+			}
+			collections[collectionName] = scannedDefinition
+			rekeyedScannedNames.set(scannedName, collectionName)
+			continue
+		}
+
 		let definition: CollectionDefinition | null
 		try {
 			definition = await scanGlobCollection(fs, collectionName, parsedCollection.loaderBase, parsedCollection.loaderPattern, contentDir)
@@ -988,8 +1126,9 @@ export async function scanCollections(
 		// Nest under the collection that owns the shared base directory (e.g. jsem-otazky -> jsem),
 		// so the CMS browser can group it under its parent page instead of listing it flat.
 		const baseName = parsedCollection.loaderBase.replace(/[/\\]+$/, '').split(/[/\\]/).pop()
-		if (baseName && baseName !== collectionName && collections[baseName]) {
-			definition.parentCollection = baseName
+		const parentName = !baseName ? undefined : collections[baseName] ? baseName : rekeyedScannedNames.get(baseName)
+		if (parentName && parentName !== collectionName) {
+			definition.parentCollection = parentName
 		}
 		collections[collectionName] = definition
 	}

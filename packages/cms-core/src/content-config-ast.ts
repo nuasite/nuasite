@@ -54,6 +54,12 @@ export interface ParsedCollection {
 	layout?: CollectionLayout
 	/** Declarative page-URL rule from a `defineCmsCollection({ cms: { pathname } })` block. */
 	pathname?: PathnameSpec
+	/** Declarative entry-title source from a `defineCmsCollection({ cms: { titleField } })` block. */
+	titleField?: string
+	/** The collection owns no page, from a `defineCmsCollection({ cms: { fragment } })` block. */
+	fragment?: true
+	/** Preview target of a fragment collection, from a `defineCmsCollection({ cms: { previewOf } })` block. */
+	previewOf?: string
 }
 
 export type ParsedConfig = Map<string, ParsedCollection>
@@ -237,7 +243,22 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				&& propertyKeyName(p.key) === 'cms',
 		)
 		const layout = cmsProperty?.type === 'ObjectProperty' ? parseCmsLayout(cmsProperty.value, bindings) : undefined
-		const pathname = cmsProperty?.type === 'ObjectProperty' ? parseCmsPathname(cmsProperty.value, bindings) : undefined
+		const declaredPathname = cmsProperty?.type === 'ObjectProperty' ? parseCmsPathname(cmsProperty.value, bindings) : undefined
+		const titleField = cmsProperty?.type === 'ObjectProperty' ? parseCmsTitleField(cmsProperty.value, bindings) : undefined
+		const fragment = cmsProperty?.type === 'ObjectProperty' ? parseCmsFragment(cmsProperty.value, bindings) : undefined
+		const previewOf = cmsProperty?.type === 'ObjectProperty' ? parseCmsPreviewOf(cmsProperty.value, bindings) : undefined
+
+		// `fragment` (no page of its own) and `pathname` (compose the entry's page URL)
+		// contradict each other. Report it rather than silently preferring one — over this
+		// channel because `cms-core` can't reach the ErrorCollector in `@nuasite/cms` and must
+		// not grow a dependency on it; `warnOnPathnameCollisions` in collection-scanner.ts warns
+		// the same way. `fragment` wins, and the warning says so.
+		if (fragment && declaredPathname) {
+			console.warn(
+				`[cms] collection "${collectionName}": \`cms.fragment\` and \`cms.pathname\` are mutually exclusive — a fragment collection has no page of its own, so the \`pathname\` rule is ignored`,
+			)
+		}
+		const pathname = fragment ? undefined : declaredPathname
 
 		const schemaProperty = decl.properties.find(
 			p =>
@@ -253,6 +274,9 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				loaderBase,
 				layout,
 				pathname,
+				titleField,
+				fragment,
+				previewOf,
 			})
 			continue
 		}
@@ -267,6 +291,9 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 				loaderBase,
 				layout,
 				pathname,
+				titleField,
+				fragment,
+				previewOf,
 			})
 			continue
 		}
@@ -278,6 +305,9 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 			loaderBase,
 			layout,
 			pathname,
+			titleField,
+			fragment,
+			previewOf,
 		})
 	}
 
@@ -370,6 +400,62 @@ function parseCmsPathname(node: t.Node, bindings: Bindings): PathnameSpec | unde
 		if (segment) spec.push(segment)
 	}
 	return spec.length > 0 ? spec : undefined
+}
+
+/**
+ * Parse a `cms: { titleField: 'heading' }` block into the field name an entry's
+ * browse title is read from. Same shape-tolerant contract as {@link parseCmsPathname}:
+ * a non-string or empty value yields undefined, which leaves the fallback chain in place.
+ */
+function parseCmsTitleField(node: t.Node, bindings: Bindings): string | undefined {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type !== 'ObjectExpression') return undefined
+
+	const titleFieldProp = resolved.properties.find(
+		p => p.type === 'ObjectProperty' && propertyKeyName(p.key) === 'titleField',
+	)
+	if (!titleFieldProp || titleFieldProp.type !== 'ObjectProperty') return undefined
+
+	const value = resolveExpression(titleFieldProp.value, bindings)
+	if (value.type !== 'StringLiteral' || value.value === '') return undefined
+	return value.value
+}
+
+/**
+ * Parse a `cms: { fragment: true }` block — the collection declaring it owns no page.
+ * Only the literal `true` counts; anything else (including `fragment: false`) leaves the
+ * collection routed as usual.
+ */
+function parseCmsFragment(node: t.Node, bindings: Bindings): true | undefined {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type !== 'ObjectExpression') return undefined
+
+	const fragmentProp = resolved.properties.find(
+		p => p.type === 'ObjectProperty' && propertyKeyName(p.key) === 'fragment',
+	)
+	if (!fragmentProp || fragmentProp.type !== 'ObjectProperty') return undefined
+
+	const value = resolveExpression(fragmentProp.value, bindings)
+	return value.type === 'BooleanLiteral' && value.value ? true : undefined
+}
+
+/**
+ * Parse a `cms: { previewOf: '/aktualne' }` block into the page a fragment collection is
+ * previewed on. Same shape-tolerant contract as {@link parseCmsTitleField}; a non-string
+ * or empty value yields undefined, leaving the entries without a preview target.
+ */
+function parseCmsPreviewOf(node: t.Node, bindings: Bindings): string | undefined {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type !== 'ObjectExpression') return undefined
+
+	const previewOfProp = resolved.properties.find(
+		p => p.type === 'ObjectProperty' && propertyKeyName(p.key) === 'previewOf',
+	)
+	if (!previewOfProp || previewOfProp.type !== 'ObjectProperty') return undefined
+
+	const value = resolveExpression(previewOfProp.value, bindings)
+	if (value.type !== 'StringLiteral' || value.value === '') return undefined
+	return value.value
 }
 
 /** Parse one `{ field, map? }` or `{ literal }` segment object. */
@@ -600,6 +686,15 @@ function analyzeBaseCall(node: t.CallExpression, field: ParsedField, bindings: B
 				field.type = 'select'
 				field.options = options
 			}
+		}
+		// `n.enum([…], { label, help, … })` — the value list takes the first argument, so
+		// layout hints ride in the second one; every other marker carries them in the first.
+		// A bare `z.enum([…], { message })` is unaffected: Zod's params share no key with the
+		// layout shape, so nothing is picked up.
+		const hintsArg = node.arguments[1]
+		if (hintsArg?.type === 'ObjectExpression') {
+			const layout = parseFieldLayoutFromObject(hintsArg)
+			if (layout) field.layout = layout
 		}
 		return
 	}

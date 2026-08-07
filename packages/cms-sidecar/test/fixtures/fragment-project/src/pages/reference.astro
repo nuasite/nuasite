@@ -1,0 +1,10 @@
+---
+import { getCollection } from 'astro:content'
+
+const testimonials = await getCollection('testimonials')
+---
+
+<h1>Reference</h1>
+<ul>
+	{testimonials.map((t) => <li>{t.data.title}</li>)}
+</ul>

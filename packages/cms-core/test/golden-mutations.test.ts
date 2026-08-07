@@ -53,12 +53,21 @@ describe('cms-core mutations — committed golden output (proven byte-parity wit
 		const res = await core.createEntry({
 			collection: 'blog',
 			slug: 'new-post',
-			frontmatter: { title: 'New Post', date: '2024-06-01', draft: false, tags: ['alpha', 'beta'] },
+			// `blog` is declared in the fixture's content config with no `.optional()` field,
+			// so every one of its six keys has to be here — cms-core rejects the write otherwise.
+			frontmatter: {
+				title: 'New Post',
+				date: '2024-06-01',
+				draft: false,
+				cover: './new-post.jpg',
+				tags: ['alpha', 'beta'],
+				author: 'jane-doe',
+			},
 			body: '# New Post\n\nBody here.',
 		})
 		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/new-post.md' })
 		expect(await readFile(root, 'src/content/blog/new-post.md')).toBe(
-			"---\ntitle: New Post\ndate: '2024-06-01'\ndraft: false\ntags:\n  - alpha\n  - beta\n---\n# New Post\n\nBody here.",
+			"---\ntitle: New Post\ndate: '2024-06-01'\ndraft: false\ncover: ./new-post.jpg\ntags:\n  - alpha\n  - beta\nauthor: jane-doe\n---\n# New Post\n\nBody here.",
 		)
 	})
 
@@ -102,7 +111,12 @@ describe('cms-core mutations — committed golden output (proven byte-parity wit
 	test('updateEntry (.mdx with component) injects the component import resolved internally', async () => {
 		const { core, root } = await freshCore()
 		const mdxRel = 'src/content/blog/with-hero.mdx'
-		await fs.writeFile(path.join(root, mdxRel), '---\ntitle: With Hero\n---\n# placeholder\n')
+		// Full `blog` frontmatter: this update only rewrites the body, but cms-core validates
+		// the merged result, so the seeded file has to satisfy the schema's required fields.
+		await fs.writeFile(
+			path.join(root, mdxRel),
+			"---\ntitle: With Hero\ndate: '2024-02-01'\ndraft: false\ncover: ./hero.jpg\ntags:\n  - intro\nauthor: jane-doe\n---\n# placeholder\n",
+		)
 
 		const res = await core.updateEntry({ collection: 'blog', slug: 'with-hero', body: '# Post\n\n<Hero title="Hi" />' })
 		expect(res.success).toBe(true)

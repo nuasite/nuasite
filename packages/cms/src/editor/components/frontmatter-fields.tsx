@@ -678,6 +678,7 @@ export function SchemaFrontmatterField({
 					}))}
 					onChange={(v) => onChange(v)}
 					required={field.required}
+					optionsClosed={field.optionsClosed}
 				/>
 			)
 

@@ -47,8 +47,33 @@ export interface MdxBodyEditorProps {
 	allowComponents?: boolean
 }
 
-const wrapper: React.CSSProperties = { border: '1px solid #d4d4d8', borderRadius: 6, background: '#fff' }
-const editorHost: React.CSSProperties = { padding: '8px 12px', minHeight: 240, outline: 'none' }
+// The editor owns its scrolling instead of growing without bound and pushing the
+// toolbar off the top of whatever the host happens to scroll: the wrapper is a
+// capped-height flex column, the toolbar is its non-shrinking header (see
+// `format-toolbar`), and only the prose pane below it scrolls.
+//
+// `maxHeight` is a cap, never a height — a short body still collapses to its natural
+// size. `minHeight` replaces the old `editorHost` floor so an empty editor stays a
+// usable click target; it is deliberately on the wrapper, leaving `editorHost` free to
+// shrink below its content (that is what makes the inner scroll work).
+//
+// `overflow: hidden` does not clip any of the popovers/pickers: the toolbar's link/
+// image/youtube popovers render in flow inside the non-shrinking toolbar, and the
+// component picker and media library are `position: fixed` overlays, whose containing
+// block is the viewport — an `overflow` ancestor does not clip those. (Keep this true:
+// adding `transform`/`filter`/`contain` here would turn the wrapper into their
+// containing block and they *would* get clipped.)
+const wrapper: React.CSSProperties = {
+	border: '1px solid #d4d4d8',
+	borderRadius: 6,
+	background: '#fff',
+	display: 'flex',
+	flexDirection: 'column',
+	minHeight: 240,
+	maxHeight: 'max(70vh, 320px)',
+	overflow: 'hidden',
+}
+const editorHost: React.CSSProperties = { padding: '8px 12px', flex: 1, minHeight: 0, overflowY: 'auto', outline: 'none' }
 
 // Milkdown's commonmark/gfm presets give the document structure but no typography; a host's
 // CSS reset (e.g. Tailwind preflight) then flattens headings/lists to body text inside the

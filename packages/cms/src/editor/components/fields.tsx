@@ -8,6 +8,7 @@ import { cn } from '../lib/cn'
 import { uploadMedia } from '../markdown-api'
 import { config, showToast } from '../signals'
 import { STRINGS } from '../strings'
+import { buildClosedComboBoxOptions, COMBOBOX_SELECT_LABEL, type ComboBoxOption, resolveComboBoxCommit } from './field-utils'
 
 // ============================================================================
 // Field Label
@@ -831,43 +832,70 @@ export interface ComboBoxFieldProps {
 	label: string
 	value: string | undefined
 	placeholder?: string
-	options: Array<{ value: string; label: string; description?: string }>
+	options: ComboBoxOption[]
 	onChange: (value: string) => void
 	isDirty?: boolean
 	onReset?: () => void
 	required?: boolean
+	/**
+	 * The options are a declared enum rather than values inferred from existing entries.
+	 * Typing then only filters the list; a value outside it is never written back.
+	 */
+	optionsClosed?: boolean
 }
 
-export function ComboBoxField({ label, value, placeholder, options, onChange, isDirty, onReset, required }: ComboBoxFieldProps) {
-	const [query, setQuery] = useState('')
+export function ComboBoxField({ label, value, placeholder, options, onChange, isDirty, onReset, required, optionsClosed }: ComboBoxFieldProps) {
+	// `null` while the input just shows the stored value, a string once the user types into
+	// it. A closed field needs the two kept apart: its text filters without becoming a value.
+	const [query, setQuery] = useState<string | null>(null)
 	const [isOpen, setIsOpen] = useState(false)
 	const [highlightedIndex, setHighlightedIndex] = useState(-1)
 	const inputRef = useRef<HTMLInputElement>(null)
 	const listRef = useRef<HTMLDivElement>(null)
 
-	const filtered = useSearchFilter(options, query, o => `${o.label} ${o.value}`)
+	const current = value ?? ''
+	const listOptions = useMemo(
+		() => optionsClosed ? buildClosedComboBoxOptions(options, current, !!required) : options,
+		[optionsClosed, options, current, required],
+	)
+	const filtered = useSearchFilter(listOptions, query ?? '', o => `${o.label} ${o.value}`)
+
+	/** Write the text left in the input, but only when this field is allowed to hold it. */
+	const commitTyped = useCallback((typed: string | null) => {
+		const next = resolveComboBoxCommit({ query: typed, current, options: options.map(o => o.value), closed: !!optionsClosed, required })
+		if (next !== null && next !== current) onChange(next)
+	}, [current, options, optionsClosed, required, onChange])
 
 	const handleInput = useCallback((e: Event) => {
 		const v = (e.target as HTMLInputElement).value
 		setQuery(v)
-		onChange(v)
+		// Suggested options: the typed text is the value. Closed options: it is only a filter,
+		// and `commitTyped` decides on blur/Enter whether it may be written.
+		if (!optionsClosed) onChange(v)
 		setIsOpen(true)
 		setHighlightedIndex(-1)
-	}, [onChange])
+	}, [onChange, optionsClosed])
 
 	const selectOption = useCallback((optValue: string) => {
 		onChange(optValue)
-		setQuery('')
+		setQuery(null)
 		setIsOpen(false)
 	}, [onChange])
 
-	const closeDropdown = useCallback(() => setIsOpen(false), [])
+	const closeDropdown = useCallback(() => {
+		setIsOpen(false)
+		setQuery(null)
+	}, [])
 
 	const handleKeyDown = useCallback((e: KeyboardEvent) => {
 		if (e.key === 'Enter') {
 			e.preventDefault()
 			if (isOpen && highlightedIndex >= 0 && filtered[highlightedIndex]) {
 				selectOption(filtered[highlightedIndex]!.value)
+			} else {
+				commitTyped(query)
+				setQuery(null)
+				setIsOpen(false)
 			}
 			return
 		}
@@ -879,7 +907,7 @@ export function ComboBoxField({ label, value, placeholder, options, onChange, is
 			e.preventDefault()
 			setHighlightedIndex(i => Math.max(i - 1, 0))
 		}
-	}, [isOpen, filtered, highlightedIndex, selectOption])
+	}, [isOpen, filtered, highlightedIndex, selectOption, commitTyped, query])
 
 	// Scroll highlighted item into view
 	useEffect(() => {
@@ -897,12 +925,22 @@ export function ComboBoxField({ label, value, placeholder, options, onChange, is
 			<input
 				ref={inputRef}
 				type="text"
-				value={value ?? ''}
-				placeholder={placeholder}
+				value={query ?? current}
+				// A required closed field with nothing stored prompts for a pick instead of
+				// showing a sample value, which would read as if the field were filled in.
+				placeholder={optionsClosed && required && current === '' ? COMBOBOX_SELECT_LABEL : placeholder}
 				required={required}
 				onInput={handleInput}
 				onFocus={() => setIsOpen(true)}
-				onBlur={() => setTimeout(closeDropdown, 150)}
+				onBlur={() => {
+					// Picking an option preventDefaults its mousedown, so blur only runs when
+					// focus really left — the moment unusable text has to go back to the value.
+					const typed = query
+					setTimeout(() => {
+						commitTyped(typed)
+						closeDropdown()
+					}, 150)
+				}}
 				onKeyDown={handleKeyDown}
 				autocomplete="off"
 				class={cn(
@@ -938,11 +976,11 @@ export function ComboBoxField({ label, value, placeholder, options, onChange, is
 						data-cms-ui
 					>
 						<span class="block truncate font-medium">
-							<HighlightMatch text={opt.label} query={query} />
+							<HighlightMatch text={opt.label} query={query ?? ''} />
 						</span>
 						{opt.description && (
 							<span class="block truncate text-white/40">
-								<HighlightMatch text={opt.description} query={query} />
+								<HighlightMatch text={opt.description} query={query ?? ''} />
 							</span>
 						)}
 					</button>

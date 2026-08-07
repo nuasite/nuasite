@@ -70,6 +70,18 @@ export interface FieldDefinition {
 	defaultValue?: unknown
 	/** Options for 'select' type fields */
 	options?: string[]
+	/**
+	 * The `options` are a *closed* set the field is declared with (`z.enum([…])` /
+	 * `n.enum([…])`), not suggestions. Editors must refuse to write a value outside the
+	 * list. Absent (the default) means the options were inferred from existing entries and
+	 * are only a convenience — free text stays valid there, otherwise one typo in the data
+	 * would become the schema.
+	 *
+	 * Closedness governs *new writes* only: a value already stored in an entry (older data,
+	 * a renamed enum member) must still be offered and must never be rewritten just because
+	 * the editor opened the entry.
+	 */
+	optionsClosed?: boolean
 	/** Item type for 'array' fields */
 	itemType?: FieldType
 	/** Nested fields for 'object' type */
@@ -148,6 +160,24 @@ export interface CollectionLayout {
 	sections?: CollectionLayoutSection[]
 	/** Declarative rule for composing each entry's page URL from its frontmatter fields. */
 	pathname?: PathnameSpec
+	/**
+	 * Field name an entry is listed under in the CMS browser and reference pickers.
+	 * Overrides the `title` → `name` → `label` fallback chain.
+	 */
+	titleField?: string
+	/**
+	 * The collection has no page of its own — its entries are rendered as fragments of
+	 * other pages (teasers, tags, testimonials). Suppresses every heuristic that would
+	 * otherwise invent an entry URL, so entries keep `pathname: undefined` instead of
+	 * pointing at a route that doesn't exist. Mutually exclusive with `pathname`.
+	 */
+	fragment?: true
+	/**
+	 * Pathname of a page a `fragment` collection is rendered into (e.g. `/aktualne`),
+	 * used as the entries' preview target. Never a URL claim: the page keeps belonging
+	 * to whatever really renders it. Ignored without `fragment`.
+	 */
+	previewOf?: string
 }
 
 /** Per-entry metadata for collection browsing */
@@ -158,6 +188,12 @@ export interface CollectionEntryInfo {
 	draft?: boolean
 	/** URL pathname of the rendered page for this entry */
 	pathname?: string
+	/**
+	 * Where to preview an entry that has no page of its own — the `previewOf` page of a
+	 * `fragment` collection. Deliberately separate from `pathname`: the entry is shown
+	 * on that page but does not own it.
+	 */
+	previewPathname?: string
 	/** Full entry data for data collections (JSON/YAML) */
 	data?: Record<string, unknown>
 }
@@ -200,6 +236,24 @@ export interface CollectionDefinition {
 	 * highest-priority source for an entry's `pathname` in the manifest.
 	 */
 	pathname?: PathnameSpec
+	/**
+	 * Field an entry's browse title is read from, from
+	 * `defineCmsCollection({ cms: { titleField } })`. When present it wins over the
+	 * `title` → `name` → `label` fallback chain used otherwise.
+	 */
+	titleField?: string
+	/**
+	 * The collection has no page of its own, from `defineCmsCollection({ cms: { fragment } })`.
+	 * Entries keep `pathname: undefined` — no route prefix, declared site path or rendered
+	 * page may fabricate one.
+	 */
+	fragment?: true
+	/**
+	 * Page a `fragment` collection renders into, from
+	 * `defineCmsCollection({ cms: { previewOf } })`. Surfaces on entries as
+	 * `previewPathname`; never claims the page as the entry's own.
+	 */
+	previewOf?: string
 }
 
 /** Represents a content collection entry (markdown file) */
