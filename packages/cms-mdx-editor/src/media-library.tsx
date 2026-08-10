@@ -173,7 +173,23 @@ const btn: React.CSSProperties = {
 	whiteSpace: 'nowrap',
 }
 const primaryBtn: React.CSSProperties = { ...btn, background: '#2563eb', borderColor: '#2563eb', color: '#fff' }
-const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, padding: 16, overflowY: 'auto' }
+// `gridAutoRows: max-content` is load-bearing, not tidying. This grid is BOTH the modal's
+// scrolling pane and the grid, so the flex layout hands it a definite height — and an
+// implicit `auto` row then takes an equal share of that height instead of sizing to its
+// items, because a tile's `aspect-ratio` height does not contribute to track sizing. The
+// tiles still resolved to a square from their width, so every one of them overflowed a row
+// a third of its height and painted over its neighbours (a 780px pane gave 10 rows of 66px
+// to 175px tiles). Sizing rows to their content decouples them from the pane's height.
+// `align-content` does not help — measured. The sibling library in `@nuasite/cms` avoids
+// this by keeping the scroller and the grid as separate elements.
+const grid: React.CSSProperties = {
+	display: 'grid',
+	gridTemplateColumns: 'repeat(4, 1fr)',
+	gridAutoRows: 'max-content',
+	gap: 10,
+	padding: 16,
+	overflowY: 'auto',
+}
 const tile: React.CSSProperties = {
 	position: 'relative',
 	aspectRatio: '1 / 1',
