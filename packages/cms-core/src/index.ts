@@ -71,4 +71,14 @@ export {
 export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
 export { describeIssue, type LiveIssue, type LiveParseResult, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port'
 export { acceptsMissing, firstAcceptedEntry, governsPath, pointAt, type ProbePoint, rejectsValueAt } from './schema-probe'
-export { computePathnameFromSpec, escapeHtml, relativeImportPath, resolvePathnameFromSpec, slugify, slugifyHref } from './shared'
+export {
+	applyDerivedTransform,
+	computeDerivedFieldUpdates,
+	computePathnameFromSpec,
+	type DerivedFieldSpec,
+	escapeHtml,
+	relativeImportPath,
+	resolvePathnameFromSpec,
+	slugify,
+	slugifyHref,
+} from './shared'

@@ -1,3 +1,5 @@
+import type { DerivedTransform } from '@nuasite/cms-types'
+
 /**
  * Slugify text for URL paths.
  * Folds diacritics, lowercases, strips non-word characters, collapses whitespace/underscores
@@ -27,6 +29,28 @@ export function slugifyHref(text: string): string {
 		.replace(/[^\w\s-]/g, '')
 		.replace(/[\s_]+/g, '-')
 		.replace(/^-+|-+$/g, '')
+}
+
+/**
+ * Apply a derived field's named transform to its source value.
+ *
+ * A byte-for-byte mirror of `applyDerivedTransform` in `@nuasite/cms-core`'s `shared.ts`,
+ * for the same reason `slugify`/`slugifyHref` are mirrored above: this module is bundled
+ * into the browser editor, and `@nuasite/cms-core`'s entry point pulls in `node:fs`.
+ * `tests/cases/editor/derived-fields.test.ts` runs both implementations over the same table
+ * and fails the moment they disagree.
+ *
+ * `slug` keeps `/` because `slugify` names files on disk — see the note on cms-core's copy.
+ */
+export function applyDerivedTransform(value: string, transform: DerivedTransform | undefined): string {
+	switch (transform) {
+		case 'copy':
+			return value
+		case 'slug':
+			return slugify(value)
+		default:
+			return slugifyHref(value)
+	}
 }
 
 /**

@@ -3,8 +3,10 @@ import type * as t from '@babel/types'
 import {
 	type CollectionLayout,
 	type CollectionLayoutSection,
+	type DerivedTransform,
 	type FieldHints,
 	type FieldType,
+	isDerivedTransform,
 	isFieldType,
 	type PathnameSegment,
 	type PathnameSpec,
@@ -43,6 +45,10 @@ export interface ParsedFieldLayout {
 	width?: 'full' | 'half'
 	order?: number
 	hidden?: boolean
+	/** Name of the field this one is computed from (`n.text({ derivedFrom: 'category' })`). */
+	derivedFrom?: string
+	/** Named transform for the derived value; absent means `slugifyHref`. */
+	derivedTransform?: DerivedTransform
 }
 
 export interface ParsedCollection {
@@ -998,7 +1004,45 @@ function parseFieldLayoutFromObject(obj: t.ObjectExpression): ParsedFieldLayout 
 			case 'hidden':
 				if (value.type === 'BooleanLiteral') layout.hidden = value.value
 				break
+			case 'derivedFrom':
+				parseDerivedFromValue(value, layout)
+				break
 		}
 	}
 	return Object.keys(layout).length > 0 ? layout : undefined
+}
+
+/**
+ * Read a `derivedFrom` option in either authoring form:
+ *
+ * ```ts
+ * n.text({ derivedFrom: 'category' })                                // → slugifyHref
+ * n.text({ derivedFrom: { field: 'category', transform: 'slug' } })
+ * ```
+ *
+ * `field` is mandatory in the object form — without a source there is nothing to derive
+ * from, so the whole declaration is dropped. An unknown `transform` name is ignored rather
+ * than rejected: the field keeps deriving, on the default transform, instead of silently
+ * dropping out of the recompute because of a typo.
+ */
+function parseDerivedFromValue(value: t.ObjectProperty['value'], layout: ParsedFieldLayout): void {
+	if (value.type === 'StringLiteral') {
+		if (value.value) layout.derivedFrom = value.value
+		return
+	}
+	if (value.type !== 'ObjectExpression') return
+
+	let field: string | undefined
+	let transform: DerivedTransform | undefined
+	for (const prop of value.properties) {
+		if (prop.type !== 'ObjectProperty') continue
+		const key = propertyKeyName(prop.key)
+		if (prop.value.type !== 'StringLiteral') continue
+		if (key === 'field') field = prop.value.value
+		else if (key === 'transform' && isDerivedTransform(prop.value.value)) transform = prop.value.value
+	}
+
+	if (!field) return
+	layout.derivedFrom = field
+	if (transform) layout.derivedTransform = transform
 }

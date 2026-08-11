@@ -6,7 +6,7 @@ import { type ParseCache, parseContentConfig } from '../content-config-ast'
 import { blankRequiredFields, newRepeaterItem, type RepeaterItemField } from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
 import { mimeFromExt } from '../media/local'
-import { isPlainRecord, relativeImportPath, slugify } from '../shared'
+import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared'
 
 /** Frontmatter file extensions that hold markdown content (vs. pure data files). */
 const MARKDOWN_EXTENSIONS = ['md', 'mdx'] as const
@@ -315,6 +315,55 @@ function isIndexStyleGlobPattern(pattern: string): boolean {
 }
 
 // ============================================================================
+// Derived-field recompute
+// ============================================================================
+
+/**
+ * Recompute the collection's **declared** derived fields from `frontmatter`, returning the
+ * frontmatter that should actually be written.
+ *
+ * This lives here — under every write path — on purpose. The recompute used to exist only in
+ * the preview editor's form state (`computeDerivedUpdates` in `@nuasite/cms`), so anything
+ * writing through the sidecar, the dash or an agent left derived fields holding whatever the
+ * previous value was. The editor keeps its copy for instant in-form feedback; this one is
+ * authoritative.
+ *
+ * Rules, all shared with `missingRequiredFields` and enforced by running *before* it:
+ *
+ * - The input is the **merged** frontmatter (what lands on disk), never the incoming patch —
+ *   so an update touching only the source field still refreshes the derived one.
+ * - A missing or non-string source leaves the derived value untouched; see
+ *   `computeDerivedFieldUpdates`.
+ * - Only `derivedFrom` **declared in the content config** is recomputed. The scanner's
+ *   `detectDerivedHrefFields` guess deliberately stays out of the write path: it is a
+ *   heuristic over at most three sampled values, and letting it overwrite files would turn a
+ *   coincidence into data loss. Declaring the field opts into the recompute.
+ *
+ * Reads the config the same way `missingRequiredFields` does (`parseContentConfig` +
+ * `deps.parseCache`), so no new dependency enters `EntryOpsDeps`.
+ */
+async function applyDerivedFields(
+	deps: EntryOpsDeps,
+	collection: string,
+	frontmatter: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+	const parsedCollection = parsed.get(collection)
+	if (!parsedCollection) return frontmatter
+
+	const updates = computeDerivedFieldUpdates(
+		parsedCollection.fields.map(field => ({
+			name: field.name,
+			derivedFrom: field.layout?.derivedFrom,
+			derivedTransform: field.layout?.derivedTransform,
+		})),
+		frontmatter,
+	)
+	if (Object.keys(updates).length === 0) return frontmatter
+	return { ...frontmatter, ...updates }
+}
+
+// ============================================================================
 // Required-field validation
 // ============================================================================
 
@@ -409,10 +458,15 @@ export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): 
 	if (!allowedExtensions.includes(ext)) {
 		return { success: false, error: `Invalid file extension "${ext}". Allowed: ${allowedExtensions.join(', ')}` }
 	}
+	// Derived fields first: a required-but-visible derived field must be judged on the value
+	// it is about to be given, not on the hole the caller left. `resolved` is what both
+	// branches below serialize, so the markdown and the data file agree by construction.
+	const resolved = await applyDerivedFields(deps, collection, frontmatter)
+
 	// Hard invariant, ahead of every path that could touch the disk — the markdown and
-	// the data branch below both write exactly `{ ...frontmatter }`, so one check covers
+	// the data branch below both write exactly `{ ...resolved }`, so one check covers
 	// `.md`/`.mdx` frontmatter and `.json`/`.yaml`/`.yml` data files alike.
-	const missing = await missingRequiredFields(deps, collection, frontmatter)
+	const missing = await missingRequiredFields(deps, collection, resolved)
 	if (missing.length > 0) {
 		return { success: false, error: missingRequiredMessage(missing) }
 	}
@@ -427,10 +481,10 @@ export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): 
 	let fileContent: string
 	if (isData) {
 		fileContent = ext === 'json'
-			? JSON.stringify({ ...frontmatter }, null, 2) + '\n'
-			: yaml.stringify({ ...frontmatter })
+			? JSON.stringify({ ...resolved }, null, 2) + '\n'
+			: yaml.stringify({ ...resolved })
 	} else {
-		fileContent = serializeFrontmatter({ ...frontmatter }, body)
+		fileContent = serializeFrontmatter({ ...resolved }, body)
 	}
 
 	if (await deps.fs.exists(sourcePath)) {
@@ -457,17 +511,22 @@ export async function updateEntry(deps: EntryOpsDeps, input: UpdateEntryInput): 
 			const existing = sourcePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)
 			const merged: Record<string, unknown> = { ...(existing ?? {}), ...input.frontmatter }
 
+			// Recompute from the merged result, so a patch that carries only the source field
+			// still refreshes the derived one. Ahead of the required check for the same reason
+			// as in `createEntry`.
+			const resolved = await applyDerivedFields(deps, input.collection, merged)
+
 			// Validate the merged result, not the incoming patch: a patch that omits a
 			// required field is fine when the file already carries it, and a patch that
 			// blanks one must be rejected even though the field itself is present.
-			const missing = await missingRequiredFields(deps, input.collection, merged)
+			const missing = await missingRequiredFields(deps, input.collection, resolved)
 			if (missing.length > 0) {
 				return { success: false, error: missingRequiredMessage(missing) }
 			}
 
 			const output = sourcePath.endsWith('.json')
-				? JSON.stringify(merged, null, 2) + '\n'
-				: yaml.stringify(merged)
+				? JSON.stringify(resolved, null, 2) + '\n'
+				: yaml.stringify(resolved)
 			await deps.fs.writeFile(sourcePath, output)
 		} else {
 			const raw = await deps.fs.readFile(sourcePath)
@@ -478,9 +537,11 @@ export async function updateEntry(deps: EntryOpsDeps, input: UpdateEntryInput): 
 				...input.frontmatter,
 			}
 
-			// Same rule as the data branch: the merged frontmatter is what lands on disk,
-			// so that is what gets validated.
-			const missing = await missingRequiredFields(deps, input.collection, mergedFrontmatter)
+			// Same rule as the data branch: recompute the derived fields off the merged
+			// frontmatter, then validate what is actually going to disk.
+			const resolvedFrontmatter = await applyDerivedFields(deps, input.collection, mergedFrontmatter)
+
+			const missing = await missingRequiredFields(deps, input.collection, resolvedFrontmatter)
 			if (missing.length > 0) {
 				return { success: false, error: missingRequiredMessage(missing) }
 			}
@@ -494,7 +555,7 @@ export async function updateEntry(deps: EntryOpsDeps, input: UpdateEntryInput): 
 				finalContent = ensureMdxImports(finalContent, sourcePath, componentDefinitions)
 			}
 
-			await deps.fs.writeFile(sourcePath, serializeFrontmatter(mergedFrontmatter, finalContent))
+			await deps.fs.writeFile(sourcePath, serializeFrontmatter(resolvedFrontmatter, finalContent))
 		}
 
 		return { success: true, sourcePath }

@@ -46,6 +46,25 @@ export function isFieldType(value: string): value is FieldType {
 	return (FIELD_TYPES as readonly string[]).includes(value)
 }
 
+/**
+ * Named transforms a derived field may apply to its source value. A fixed set, not
+ * arbitrary functions: the content config is read *statically* through its AST, so a
+ * function value could never be evaluated — only a name can cross that boundary.
+ *
+ * - `slugifyHref` — `slugifyHref()`, the default: `"Aktuálně z nezisku"` → `"/aktualne-z-nezisku"`.
+ * - `slug` — `slugify()`, same fold without the leading slash: `"aktualne-z-nezisku"`.
+ * - `copy` — identity, the source value 1:1.
+ */
+export const DERIVED_TRANSFORMS = ['slugifyHref', 'slug', 'copy'] as const
+
+/** Named transform applied to a derived field's source value. */
+export type DerivedTransform = (typeof DERIVED_TRANSFORMS)[number]
+
+/** Runtime guard: whether a string names a known `DerivedTransform`. */
+export function isDerivedTransform(value: string): value is DerivedTransform {
+	return (DERIVED_TRANSFORMS as readonly string[]).includes(value)
+}
+
 /** Editor hints for enhanced field rendering (extracted from `n.*()` options in content config) */
 export interface FieldHints {
 	min?: number | string
@@ -104,8 +123,16 @@ export interface FieldDefinition {
 	collection?: string
 	/** Hide from the editor UI (e.g. derived/computed fields) */
 	hidden?: boolean
-	/** Source field name this field is derived from (e.g. categoryHref derived from category) */
+	/**
+	 * Source field name this field is derived from (e.g. categoryHref derived from category).
+	 *
+	 * Stays a plain string even though the authoring syntax also accepts
+	 * `{ field, transform }` — the dash and other consumers already read this key, and the
+	 * transform rides alongside in `derivedTransform` instead of reshaping the wire model.
+	 */
 	derivedFrom?: string
+	/** Transform applied to the source value when recomputing. Absent means `slugifyHref`. */
+	derivedTransform?: DerivedTransform
 	/** Editor hints for enhanced field rendering */
 	hints?: FieldHints
 	/** True when the field uses Astro's `image()` schema (entry-relative paths through astro:assets). */

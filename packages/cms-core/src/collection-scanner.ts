@@ -681,6 +681,16 @@ function applyParsedFieldLayout(field: FieldDefinition, pf: ParsedField): void {
 	if (layout.width !== undefined) field.width = layout.width
 	if (layout.order !== undefined) field.order = layout.order
 	if (layout.sidebar) field.position = 'sidebar'
+	if (layout.derivedFrom) {
+		// A declared derivation beats `detectDerivedHrefFields`: that pass runs after this one
+		// and skips any field already carrying `derivedFrom`, so the config wins by construction.
+		field.derivedFrom = layout.derivedFrom
+		if (layout.derivedTransform) field.derivedTransform = layout.derivedTransform
+		// The value is computed on every write, so hand-editing it makes no sense — hide it
+		// unless the author explicitly asked for the opposite.
+		field.hidden = layout.hidden ?? true
+		return
+	}
 	if (layout.hidden) field.hidden = true
 }
 
