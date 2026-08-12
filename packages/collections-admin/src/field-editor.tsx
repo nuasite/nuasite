@@ -261,7 +261,15 @@ function ReferenceWidget({ field, value, onChange, ctx }: FieldEditorProps) {
 	// No target collection, or the lookup failed → fall back to a free-text slug
 	// input rather than blocking the editor.
 	if (!target || failed) {
-		return <input type="text" className="nua-cadmin-input" value={current} placeholder="entry slug" onChange={e => onChange(coerceInput('reference', e.target.value))} />
+		return (
+			<input
+				type="text"
+				className="nua-cadmin-input"
+				value={current}
+				placeholder="entry slug"
+				onChange={e => onChange(coerceInput('reference', e.target.value))}
+			/>
+		)
 	}
 	if (slugs === null) {
 		return <div className="nua-cadmin-field-loading">Loading {target}…</div>
