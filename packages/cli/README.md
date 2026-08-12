@@ -3,7 +3,7 @@
 `@nuasite/cli` is the cli tool that powers [Astro](https://astro.build/) projects updated by
 [Nua Site](https://www.nuasite.com). It wraps `astro build`, `astro dev`, and
 `astro preview` with the Nua defaults and adds project-level commands
-(`init`, `clean`, `migrate`).
+(`check`, `init`, `clean`, `migrate`).
 
 ## Install
 
@@ -57,6 +57,27 @@ Specifically it:
 
 After running, follow the printed next-steps: `bun install`, review the
 config, and run `nua dev`.
+
+### `nua check`
+
+Validates the content collections without building the site:
+
+```bash
+nua check           # exit 1 on errors
+nua check --json    # machine-readable report
+nua check --strict  # warnings fail too
+```
+
+It reads `src/content.config.ts`, walks every collection's entries and reports
+frontmatter that does not parse, values that do not match a declared field type
+(`order: ""` where the schema wants a number), missing required fields, and
+`reference()` values pointing at no entry.
+
+Use it instead of a full build when you only need to know whether the content is
+still valid: `astro build` validates the same things but costs the whole render
+and stops at the first bad entry, while this reports every problem in one pass —
+under a second on a 1500-entry site. A dangling reference is a warning, because
+it builds green and then renders nothing.
 
 ### `nua clean`
 

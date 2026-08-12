@@ -1,3 +1,4 @@
+export { checkContent, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check'
 export { scanCollections } from './collection-scanner'
 export { scanComponentDefinitions } from './component-registry'
 export {

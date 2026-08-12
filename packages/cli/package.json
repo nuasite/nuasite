@@ -23,7 +23,8 @@
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"dependencies": {
-		"@nuasite/cms": "workspace:*"
+		"@nuasite/cms": "workspace:*",
+		"@nuasite/cms-core": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/bun": "catalog:build"
