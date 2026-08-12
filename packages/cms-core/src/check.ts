@@ -25,6 +25,9 @@ export interface CheckFinding {
 	code: string
 	/** Root-relative path of the file the finding is about. */
 	file: string
+	/** 1-based position in that file, when the underlying parser reports one. */
+	line?: number
+	column?: number
 	field?: string
 	message: string
 }
@@ -255,7 +258,9 @@ export function formatCheckReport(report: CheckReport): string {
 	for (const [file, findings] of byFile) {
 		lines.push(file)
 		for (const finding of findings) {
-			lines.push(`  ${finding.severity === 'error' ? 'error' : 'warn '}  ${finding.message}  [${finding.code}]`)
+			// eslint's shape: position, severity, message, rule. Familiar, and greppable by column.
+			const at = finding.line === undefined ? '' : `${finding.line}:${finding.column ?? 0}`
+			lines.push(`  ${at.padEnd(8)}${(finding.severity === 'error' ? 'error' : 'warn').padEnd(6)} ${finding.message}  [${finding.code}]`)
 		}
 	}
 	return lines.join('\n')

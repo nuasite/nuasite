@@ -23,6 +23,8 @@
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"dependencies": {
+		"@astrojs/compiler": "^3.0.1",
+		"@jridgewell/trace-mapping": "^0.3.31",
 		"@nuasite/cms": "workspace:*",
 		"@nuasite/cms-core": "workspace:*"
 	},

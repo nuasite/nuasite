@@ -1,12 +1,15 @@
 import { checkContent, type CheckReport, createNodeFs, formatCheckReport } from '@nuasite/cms-core'
 import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
+import { checkCode } from './check-code'
 
 export interface CheckOptions {
 	cwd: string
 	json: boolean
 	/** Treat warnings as failures too. Off by default: a dangling reference builds fine. */
 	strict: boolean
+	/** Skip the code syntax pass — content only. */
+	contentOnly: boolean
 }
 
 const ASTRO_CONFIG_NAMES = ['astro.config.ts', 'astro.config.mts', 'astro.config.mjs', 'astro.config.js']
@@ -53,15 +56,24 @@ export async function check(options: CheckOptions): Promise<number> {
 		return 1
 	}
 
-	const reports = await Promise.all(
-		roots.map(async root => prefixed(await checkContent(createNodeFs(path.join(options.cwd, root))), root)),
-	)
+	const reports = await Promise.all(roots.map(async root => {
+		const absolute = path.join(options.cwd, root)
+		const content = prefixed(await checkContent(createNodeFs(absolute)), root)
+		if (options.contentOnly) return { ...content, files: 0 }
+		const code = await checkCode(absolute)
+		return {
+			...content,
+			findings: [...content.findings, ...code.findings.map(finding => ({ ...finding, file: path.join(root, finding.file) }))],
+			files: code.files,
+		}
+	}))
 
 	const report: CheckReport = {
 		findings: reports.flatMap(one => one.findings),
 		collections: reports.reduce((total, one) => total + one.collections, 0),
 		entries: reports.reduce((total, one) => total + one.entries, 0),
 	}
+	const sourceFiles = reports.reduce((total, one) => total + one.files, 0)
 
 	const errors = report.findings.filter(finding => finding.severity === 'error').length
 	const warnings = report.findings.length - errors
@@ -72,7 +84,8 @@ export async function check(options: CheckOptions): Promise<number> {
 		const formatted = formatCheckReport(report)
 		if (formatted) console.log(formatted + '\n')
 		const where = roots.length === 1 && roots[0] === '.' ? '' : ` in ${roots.join(', ')}`
-		const counts = `${report.collections} collection(s), ${report.entries} entries${where}`
+		const code = options.contentOnly ? '' : `, ${sourceFiles} source file(s)`
+		const counts = `${report.collections} collection(s), ${report.entries} entries${code}${where}`
 		console.log(errors === 0 && warnings === 0 ? `${counts} — no problems found` : `${counts} — ${errors} error(s), ${warnings} warning(s)`)
 	}
 

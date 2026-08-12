@@ -25,7 +25,7 @@ function printUsage() {
 	console.log('  build              Run astro build with the Nua defaults')
 	console.log('  dev                Run astro dev with the Nua defaults')
 	console.log('  preview            Run astro preview with the Nua defaults')
-	console.log('  check              Validate the content collections (no build). --json, --strict')
+	console.log('  check              Validate collections and parse the source (no build). --json, --strict, --content-only')
 	console.log('  init               Convert a standard Astro project to use Nua')
 	console.log('  clean              Eject to a standard Astro project (remove @nuasite/* deps)')
 	console.log('  migrate <target>   Run a content migration. Targets: astro-image')
@@ -44,6 +44,7 @@ if (command && ['build', 'dev', 'preview'].includes(command)) {
 					cwd: process.cwd(),
 					json: args.includes('--json'),
 					strict: args.includes('--strict'),
+					contentOnly: args.includes('--content-only'),
 				}),
 			)
 			break

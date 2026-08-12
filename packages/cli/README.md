@@ -63,9 +63,10 @@ config, and run `nua dev`.
 Validates the content collections without building the site:
 
 ```bash
-nua check           # exit 1 on errors
-nua check --json    # machine-readable report
-nua check --strict  # warnings fail too
+nua check                 # exit 1 on errors
+nua check --json          # machine-readable report
+nua check --strict        # warnings fail too
+nua check --content-only  # skip the source parse
 ```
 
 Run it anywhere in the project: with no `astro.config.*` in the current directory
@@ -76,6 +77,13 @@ It reads `src/content.config.ts`, walks every collection's entries and reports
 frontmatter that does not parse, values that do not match a declared field type
 (`order: ""` where the schema wants a number), missing required fields, and
 `reference()` values pointing at no entry.
+
+It then parses the project's own `.astro`, `.ts` and `.tsx` — each `.astro` through
+`@astrojs/compiler` and then the emitted TypeScript, which is the same two steps a
+build takes before it renders anything. That catches the syntax error that kills a
+build in `Building static entrypoints`, and reports it at its line in the `.astro`
+source rather than in generated code. It is a syntax check, not a type check: a
+wrong prop type still needs `astro check` or a build.
 
 Use it instead of a full build when you only need to know whether the content is
 still valid: `astro build` validates the same things but costs the whole render
