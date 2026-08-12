@@ -112,7 +112,22 @@ describe('draftForCreate / blankValue', () => {
 		expect(blankValue('array')).toEqual([])
 		expect(blankValue('object')).toEqual({})
 		expect(blankValue('text')).toBe('')
-		expect(blankValue('number')).toBe('')
+		expect(blankValue('number')).toBeUndefined()
+		expect(blankValue('year')).toBeUndefined()
+	})
+
+	// An untouched optional number used to be seeded with '', which the collection schema
+	// rejects — one such entry fails `astro sync` and with it the whole site build.
+	test('omits untouched optional numeric fields instead of writing an empty string', () => {
+		const fields: FieldDefinition[] = [
+			{ name: 'title', type: 'text', required: true },
+			{ name: 'order', type: 'number', required: false },
+			{ name: 'founded', type: 'year', required: false },
+		]
+		const draft = draftForCreate(fields)
+		expect(draft.frontmatter.order).toBeUndefined()
+		expect(draft.frontmatter.founded).toBeUndefined()
+		expect(JSON.parse(JSON.stringify(draft.frontmatter))).toEqual({ title: '' })
 	})
 })
 

@@ -113,8 +113,11 @@ export function blankValue(type: FieldType): unknown {
 		case 'datetime':
 		case 'time':
 		case 'month':
-			// Seed temporal fields empty (not ''), so an untouched optional date is omitted on
-			// create instead of writing `date: ''` (which `z.coerce.date()` rejects as invalid).
+		case 'number':
+		case 'year':
+			// Seed temporal and numeric fields empty (not ''), so an untouched optional field is
+			// omitted on create instead of writing `date: ''` / `order: ''` — both of which the
+			// collection schema rejects, and a rejected entry fails the whole site build.
 			return undefined
 		default:
 			return ''
