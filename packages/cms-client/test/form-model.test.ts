@@ -114,6 +114,15 @@ describe('draftForCreate / blankValue', () => {
 		expect(blankValue('text')).toBe('')
 		expect(blankValue('number')).toBeUndefined()
 		expect(blankValue('year')).toBeUndefined()
+		expect(blankValue('select')).toBeUndefined()
+		expect(blankValue('reference')).toBeUndefined()
+	})
+
+	test('coerceInput maps a cleared select/reference to undefined', () => {
+		expect(coerceInput('select', '')).toBeUndefined()
+		expect(coerceInput('select', 'expert')).toBe('expert')
+		expect(coerceInput('reference', '')).toBeUndefined()
+		expect(coerceInput('reference', 'some-slug')).toBe('some-slug')
 	})
 
 	// An untouched optional number used to be seeded with '', which the collection schema
@@ -123,10 +132,14 @@ describe('draftForCreate / blankValue', () => {
 			{ name: 'title', type: 'text', required: true },
 			{ name: 'order', type: 'number', required: false },
 			{ name: 'founded', type: 'year', required: false },
+			{ name: 'role', type: 'select', required: false, options: ['expert', 'author'] },
+			{ name: 'author', type: 'reference', required: false, collection: 'people' },
 		]
 		const draft = draftForCreate(fields)
 		expect(draft.frontmatter.order).toBeUndefined()
 		expect(draft.frontmatter.founded).toBeUndefined()
+		expect(draft.frontmatter.role).toBeUndefined()
+		expect(draft.frontmatter.author).toBeUndefined()
 		expect(JSON.parse(JSON.stringify(draft.frontmatter))).toEqual({ title: '' })
 	})
 })

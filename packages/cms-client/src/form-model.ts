@@ -115,9 +115,11 @@ export function blankValue(type: FieldType): unknown {
 		case 'month':
 		case 'number':
 		case 'year':
-			// Seed temporal and numeric fields empty (not ''), so an untouched optional field is
-			// omitted on create instead of writing `date: ''` / `order: ''` — both of which the
-			// collection schema rejects, and a rejected entry fails the whole site build.
+		case 'select':
+		case 'reference':
+			// Seed empty (not '') everything whose schema rejects an empty string: an untouched
+			// optional field is then omitted on create rather than written as `date: ''`,
+			// `order: ''` or `role: ''`. A single rejected entry fails the whole site build.
 			return undefined
 		default:
 			return ''
@@ -169,6 +171,10 @@ export function coerceInput(type: FieldType, raw: string): unknown {
 			// Empty → undefined so a cleared optional date is omitted rather than written as
 			// `''` (which `z.coerce.date()` turns into an Invalid Date and rejects).
 			return raw.trim() === '' ? undefined : raw
+		case 'select':
+		case 'reference':
+			// The "— none —" option carries '', which `z.enum()` rejects just like a blank date.
+			return raw === '' ? undefined : raw
 		default:
 			return raw
 	}
