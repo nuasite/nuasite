@@ -79,6 +79,16 @@ and stops at the first bad entry, while this reports every problem in one pass �
 under a second on a 1500-entry site. A dangling reference is a warning, because
 it builds green and then renders nothing.
 
+`check` is new in 0.51.0. Most projects do not depend on `@nuasite/cli` directly
+— it arrives through `@nuasite/nua`, which pins it exactly — so a project on an
+older `@nuasite/nua` has an older `nua` and answers `Unknown command: check`
+until it bumps. To run it regardless of what the project pins, and from a plain
+shell where `node_modules/.bin` is not on `PATH`:
+
+```bash
+bunx @nuasite/cli@latest check
+```
+
 ### `nua clean`
 
 Ejects your project from the Nua toolchain back to a standard Astro setup:
