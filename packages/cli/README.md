@@ -68,6 +68,10 @@ nua check --json    # machine-readable report
 nua check --strict  # warnings fail too
 ```
 
+Run it anywhere in the project: with no `astro.config.*` in the current directory
+it checks every `packages/*` that has one, so a monorepo root works too — which is
+where `bun run build` typically builds something else entirely.
+
 It reads `src/content.config.ts`, walks every collection's entries and reports
 frontmatter that does not parse, values that do not match a declared field type
 (`order: ""` where the schema wants a number), missing required fields, and

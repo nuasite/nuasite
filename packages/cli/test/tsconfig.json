@@ -1,0 +1,12 @@
+{
+	"extends": "../../../tsconfig.settings.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"emitDeclarationOnly": false,
+		"composite": false
+	},
+	"references": [
+		{ "path": "../src" },
+		{ "path": "../../cms-core/src" }
+	]
+}
