@@ -63,5 +63,5 @@ export {
 	uploadsDirRelativeToRoot,
 } from './media/index'
 export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
-export type { LiveIssue, LiveParseResult, LiveSchema, LiveSchemas } from './schema-port'
+export { describeIssue, type LiveIssue, type LiveParseResult, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port'
 export { computePathnameFromSpec, escapeHtml, relativeImportPath, resolvePathnameFromSpec, slugify, slugifyHref } from './shared'

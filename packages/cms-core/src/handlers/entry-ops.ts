@@ -1,6 +1,6 @@
 import type { CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
 import yaml from 'yaml'
-import { resolveAssetCandidates } from '../asset-paths'
+import { assetBaseDir, resolveAssetCandidates } from '../asset-paths'
 import { scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig } from '../content-config-ast'
 import { blankRequiredFields } from '../editor-write-model'
@@ -122,9 +122,7 @@ export async function getEntryAsset(deps: EntryOpsDeps, collection: string, slug
 	if (assetPath.startsWith('/')) return readAsset(deps, resolveAssetCandidates(undefined, assetPath))
 	const sourcePath = await resolveEntryPath(deps, collection, slug)
 	if (!sourcePath) return null
-	const lastSlash = sourcePath.lastIndexOf('/')
-	const baseDir = lastSlash >= 0 ? sourcePath.slice(0, lastSlash) : ''
-	return readAsset(deps, resolveAssetCandidates(baseDir, assetPath))
+	return readAsset(deps, resolveAssetCandidates(assetBaseDir(sourcePath), assetPath))
 }
 
 /**

@@ -7,6 +7,12 @@
  * that the CMS happily serves.
  */
 
+/** The directory a relative asset value in `file`'s frontmatter resolves against. */
+export function assetBaseDir(file: string): string {
+	const lastSlash = file.lastIndexOf('/')
+	return lastSlash >= 0 ? file.slice(0, lastSlash) : ''
+}
+
 /** Join `rel` onto `base` segments, applying `.`/`..`; `null` on traversal above root. */
 export function normalizeSegments(base: string[], rel: string): string | null {
 	const out = base.slice()
