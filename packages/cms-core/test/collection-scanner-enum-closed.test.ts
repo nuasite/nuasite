@@ -69,6 +69,57 @@ export const collections = { posts }
 		expect(field?.optionsClosed).toBe(true)
 	})
 
+	// An enum list hoisted into a `const` (the spelling a project reaches for once two
+	// collections share the list) declares exactly the same closed set as an inline array.
+	test('an enum list held in a same-file `const` is just as closed', async () => {
+		await write({
+			'src/content/posts/a.md': '---\ntitle: A\nrubrika: zpravy\n---\n',
+			'src/content/posts/b.md': '---\ntitle: B\nrubrika: tipy\n---\n',
+			'src/content.config.ts': `import { defineCmsCollection, n } from '@nuasite/cms'
+import { glob } from 'astro/loaders'
+const RUBRIKY = ['zpravy', 'tipy'] as const
+const posts = defineCmsCollection({
+	loader: glob({ pattern: '*.md', base: './src/content/posts' }),
+	schema: n.object({ title: n.text(), rubrika: n.enum(RUBRIKY) }),
+})
+export const collections = { posts }
+`,
+		})
+
+		const field = (await scanCollections(createNodeFs(root)))['posts']?.fields.find(f => f.name === 'rubrika')
+		expect(field?.type).toBe('select')
+		expect(field?.options).toEqual(['zpravy', 'tipy'])
+		expect(field?.optionsClosed).toBe(true)
+	})
+
+	// The dangerous half of resolving `const` lists: a list composed from a shared base cannot
+	// be read whole from the source alone. Closing it around the members we did read would
+	// reject the values the others carry, so the field has to stay open — the same open,
+	// inferred select a collection with no schema at all gets.
+	test('an enum list we cannot read whole is not closed around the part we could', async () => {
+		await write({
+			'src/content/posts/a.md': '---\ntitle: A\nrubrika: zpravy\n---\n',
+			'src/content/posts/b.md': '---\ntitle: B\nrubrika: zpravy\n---\n',
+			'src/content/posts/c.md': '---\ntitle: C\nrubrika: tipy\n---\n',
+			'src/content/posts/d.md': '---\ntitle: D\nrubrika: tipy\n---\n',
+			'src/content.config.ts': `import { defineCmsCollection, n } from '@nuasite/cms'
+import { glob } from 'astro/loaders'
+const BASE = ['zpravy', 'tipy']
+const RUBRIKY = [...BASE, 'blog'] as const
+const posts = defineCmsCollection({
+	loader: glob({ pattern: '*.md', base: './src/content/posts' }),
+	schema: n.object({ title: n.text(), rubrika: n.enum(RUBRIKY) }),
+})
+export const collections = { posts }
+`,
+		})
+
+		const field = (await scanCollections(createNodeFs(root)))['posts']?.fields.find(f => f.name === 'rubrika')
+		expect(field?.type).toBe('select')
+		expect(field?.options).toEqual(['tipy', 'zpravy'])
+		expect(field?.optionsClosed).toBeUndefined()
+	})
+
 	// The enum's options win over whatever the entries hold — including a value the schema
 	// dropped. The stale value is not added back as an option, but it is not erased from the
 	// entry either; keeping it out of the list is exactly what makes it show as `(current)`.

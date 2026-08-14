@@ -48,6 +48,8 @@ export interface ParsedFieldLayout {
 export interface ParsedCollection {
 	name: string
 	fields: ParsedField[]
+	/** `fields` is known to be incomplete — a spread or computed key in the schema was skipped. */
+	partialFields?: true
 	loaderPattern?: string
 	loaderBase?: string
 	/** Declarative form layout from a `defineCmsCollection({ cms: { … } })` block. */
@@ -103,19 +105,113 @@ type Bindings = Map<string, t.Node>
 
 /**
  * Follow `Identifier` references through same-file `const` bindings until reaching
- * a non-Identifier node. Cycle-safe via the visited set. Returns the original node
- * unchanged when the identifier is unbound or already visited.
+ * a non-Identifier node, seeing through type-only wrappers (`as const`, `satisfies`,
+ * `!`) on the way — they change nothing about the value a schema declares. Cycle-safe
+ * via the visited set. Returns the node it stopped on — the peeled original when the
+ * identifier is unbound or already visited.
  */
 function resolveExpression(node: t.Node, bindings: Bindings, visited: Set<string> = new Set()): t.Node {
 	let current: t.Node = node
-	while (current.type === 'Identifier') {
+	for (;;) {
+		if (
+			current.type === 'TSAsExpression'
+			|| current.type === 'TSSatisfiesExpression'
+			|| current.type === 'TSNonNullExpression'
+			|| current.type === 'TSTypeAssertion'
+		) {
+			current = current.expression
+			continue
+		}
+		if (current.type !== 'Identifier') return current
 		if (visited.has(current.name)) return current
 		visited.add(current.name)
 		const next = bindings.get(current.name)
 		if (!next) return current
 		current = next
 	}
-	return current
+}
+
+function isAstNode(value: unknown): value is t.Node {
+	return typeof value === 'object' && value !== null && 'type' in value && typeof value.type === 'string'
+}
+
+/** Visit `node` and everything beneath it, finding children by shape — no @babel/traverse dependency. */
+function walkNodes(node: t.Node, visit: (n: t.Node) => void): void {
+	visit(node)
+	const children: unknown[] = Object.values(node)
+	for (const child of children) {
+		if (Array.isArray(child)) {
+			for (const item of child) {
+				if (isAstNode(item)) walkNodes(item, visit)
+			}
+		} else if (isAstNode(child)) {
+			walkNodes(child, visit)
+		}
+	}
+}
+
+/** Record every name a binding construct introduces, destructuring patterns included. */
+function declaredPatternNames(node: t.Node, record: (name: string) => void): void {
+	switch (node.type) {
+		case 'Identifier':
+			record(node.name)
+			return
+		case 'ObjectPattern':
+			for (const prop of node.properties) declaredPatternNames(prop.type === 'RestElement' ? prop.argument : prop.value, record)
+			return
+		case 'ArrayPattern':
+			for (const el of node.elements) {
+				if (el) declaredPatternNames(el, record)
+			}
+			return
+		case 'AssignmentPattern':
+			declaredPatternNames(node.left, record)
+			return
+		case 'RestElement':
+			declaredPatternNames(node.argument, record)
+			return
+	}
+}
+
+/**
+ * Names the file declares more than once, anywhere.
+ *
+ * `bindings` is module-scope only, so a same-named local — a `const` inside the schema
+ * callback, a parameter — is invisible to it and an identifier would resolve to the
+ * module-level declaration instead: the wrong option list, the wrong type, the wrong
+ * `required` flag. Modelling scopes properly is a bigger job than this parser wants, so
+ * a name declared twice is simply not resolved and the field degrades as it did before.
+ */
+function shadowedNames(ast: t.File): Set<string> {
+	const seen = new Set<string>()
+	const shadowed = new Set<string>()
+	const record = (name: string): void => {
+		if (seen.has(name)) shadowed.add(name)
+		seen.add(name)
+	}
+
+	walkNodes(ast, node => {
+		switch (node.type) {
+			case 'VariableDeclarator':
+				declaredPatternNames(node.id, record)
+				return
+			case 'FunctionDeclaration':
+			case 'FunctionExpression':
+			case 'ArrowFunctionExpression':
+				for (const param of node.params) declaredPatternNames(param, record)
+				if (node.type !== 'ArrowFunctionExpression' && node.id) record(node.id.name)
+				return
+			case 'ClassDeclaration':
+				if (node.id) record(node.id.name)
+				return
+			case 'ImportSpecifier':
+			case 'ImportDefaultSpecifier':
+			case 'ImportNamespaceSpecifier':
+				record(node.local.name)
+				return
+		}
+	})
+	return shadowed
 }
 
 /**
@@ -219,6 +315,10 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 		}
 	}
 
+	// A name the file declares twice cannot be resolved to one binding without a scope
+	// model, so drop it and let the fields that mention it stay untyped.
+	for (const name of shadowedNames(ast)) bindings.delete(name)
+
 	// Unify both styles: inline `name: defineCollection({...})` and the
 	// `const x = defineCollection({...}); collections = { name: x }` reference form.
 	const collectionObjects = new Map<string, t.ObjectExpression>(inlineCollections)
@@ -301,6 +401,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 		result.set(collectionName, {
 			name: collectionName,
 			fields: parseSchemaFields(schemaObject, bindings),
+			...(hasSkippedMembers(schemaObject) ? { partialFields: true as const } : {}),
 			loaderPattern,
 			loaderBase,
 			layout,
@@ -359,6 +460,23 @@ function parseLayoutSection(node: t.Node): CollectionLayoutSection | null {
 	}
 	if (title === undefined || fields.length === 0) return null
 	return collapsed ? { title, fields, collapsed } : { title, fields }
+}
+
+/**
+ * The complete option list of an `enum([…])` array, or null when any member is unreadable.
+ *
+ * All-or-nothing on purpose: these options become a *closed* set downstream, so reading
+ * `[...BASE, 'blog']` as just `['blog']` would lock the field to the one member we
+ * understood — every existing entry invalid, and the editor refusing to write the values
+ * the schema does allow. A list we cannot read whole leaves the field open instead.
+ */
+function readEnumOptions(node: t.ArrayExpression): string[] | null {
+	const options: string[] = []
+	for (const el of node.elements) {
+		if (el?.type !== 'StringLiteral') return null
+		options.push(el.value)
+	}
+	return options.length > 0 ? options : null
 }
 
 /** Collect string-literal elements from an array expression. */
@@ -584,6 +702,18 @@ function parseSchemaFields(schemaObject: t.ObjectExpression, bindings: Bindings)
 }
 
 /**
+ * Whether members of the schema object were skipped, leaving the field list short.
+ *
+ * A spread (`n.object({ ...base, order: n.number() })`) or a computed key contributes real
+ * fields that never make it into `fields`. The difference matters to anything that treats
+ * the list as exhaustive: an incomplete list is not the same as an empty one, and reading
+ * it as complete turns a legitimate config into a page of warnings.
+ */
+function hasSkippedMembers(schemaObject: t.ObjectExpression): boolean {
+	return schemaObject.properties.some(prop => prop.type !== 'ObjectProperty' || !propertyKeyName(prop.key))
+}
+
+/**
  * Walk a field's value expression. Each layer is either a wrapper method call
  * (`.optional()`, `.default()`, `.nullable()`, `.nullish()`, `.orderBy(...)`)
  * or the base call (`n.image()`, `image()`, `z.enum([...])`, `n.array(reference(...))`).
@@ -592,7 +722,7 @@ function parseSchemaFields(schemaObject: t.ObjectExpression, bindings: Bindings)
  * patterns like `cs: TestimonialTranslation` and `en: TestimonialTranslation.optional()`
  * are followed back to their defining call.
  */
-function analyzeFieldExpression(node: t.Node, field: ParsedField, bindings: Bindings): void {
+function analyzeFieldExpression(node: t.Node, field: ParsedField, bindings: Bindings, helpers: Set<string> = new Set()): void {
 	let current: t.Node | null = resolveExpression(node, bindings)
 	while (current) {
 		if (current.type !== 'CallExpression') return
@@ -602,9 +732,33 @@ function analyzeFieldExpression(node: t.Node, field: ParsedField, bindings: Bind
 			return
 		}
 
+		// `tag: optionalTag()` — continue into what the helper returns, so both its type and
+		// the `.optional()` it hides reach the field.
+		if (current.callee.type === 'Identifier') {
+			const returned = sameFileHelperReturn(current, bindings, helpers)
+			if (returned) analyzeFieldExpression(returned, field, bindings, helpers)
+			return
+		}
+
 		if (current.callee.type !== 'MemberExpression') return
 		const property = current.callee.property
 		const methodName = property.type === 'Identifier' ? property.name : ''
+
+		// `n.text().array()` — the postfix spelling of `n.array(n.text())`. Without this the
+		// walk steps into the receiver and stamps the *element* type on the list itself.
+		if (methodName === 'array') {
+			const item: ParsedField = { name: '__item__', required: true }
+			analyzeFieldExpression(current.callee.object, item, bindings, helpers)
+			// Keep an array of references flat, exactly as the `n.array(reference())` branch does.
+			if (item.reference) {
+				field.reference = { target: item.reference.target, isArray: true }
+				return
+			}
+			field.type = 'array'
+			if (item.type) field.itemType = item.type
+			if (item.fields) field.fields = item.fields
+			return
+		}
 
 		if (WRAPPER_METHODS.has(methodName)) {
 			field.required = false
@@ -616,6 +770,28 @@ function analyzeFieldExpression(node: t.Node, field: ParsedField, bindings: Bind
 
 		current = resolveExpression(current.callee.object, bindings)
 	}
+}
+
+/**
+ * The expression a same-file zero-argument helper returns, for field values written as
+ * `tag: optionalTag()`. Cycle-safe via `seen`. A helper taking arguments, or one imported
+ * from another module, resolves to null — its body is not here to read, and guessing at a
+ * type the schema may not declare is worse than leaving the field untyped.
+ */
+function sameFileHelperReturn(call: t.CallExpression, bindings: Bindings, seen: Set<string>): t.Node | null {
+	if (call.callee.type !== 'Identifier' || call.arguments.length > 0) return null
+	if (seen.has(call.callee.name)) return null
+	seen.add(call.callee.name)
+
+	const fn = resolveExpression(call.callee, bindings)
+	if (fn.type !== 'ArrowFunctionExpression' && fn.type !== 'FunctionExpression') return null
+	if (fn.params.length > 0) return null
+
+	if (fn.body.type !== 'BlockStatement') return fn.body
+	for (const stmt of fn.body.body) {
+		if (stmt.type === 'ReturnStatement' && stmt.argument) return stmt.argument
+	}
+	return null
 }
 
 /**
@@ -660,8 +836,9 @@ function analyzeBaseCall(node: t.CallExpression, field: ParsedField, bindings: B
 	const fn = callee.property.name
 
 	// n.image(), n.url(), n.text(...), etc. — semantic field types from @nuasite/cms.
-	// FIELD_HELPER_TYPES gates to the helper subset (excludes boolean/select/array/object/
-	// reference, which are inferred elsewhere); isFieldType narrows `fn` to FieldType.
+	// FIELD_HELPER_TYPES gates to the helper subset (excludes select/array/object/reference,
+	// inferred below, and boolean, which `z` declares the same way); isFieldType narrows
+	// `fn` to FieldType.
 	if (ns === 'n' && FIELD_HELPER_TYPES.has(fn) && isFieldType(fn)) {
 		field.type = fn
 		const firstArg = node.arguments[0]
@@ -674,18 +851,20 @@ function analyzeBaseCall(node: t.CallExpression, field: ParsedField, bindings: B
 		return
 	}
 
+	// (z|n).boolean()  →  checkbox. Not in FIELD_HELPER_TYPES because that gate is `n`-only,
+	// and a plain `z.boolean()` declares the very same field.
+	if ((ns === 'z' || ns === 'n') && fn === 'boolean') {
+		field.type = 'boolean'
+		return
+	}
+
 	// (z|n).enum([...])  →  select with options
 	if ((ns === 'z' || ns === 'n') && fn === 'enum') {
-		const arg = node.arguments[0]
-		if (arg?.type === 'ArrayExpression') {
-			const options: string[] = []
-			for (const el of arg.elements) {
-				if (el?.type === 'StringLiteral') options.push(el.value)
-			}
-			if (options.length > 0) {
-				field.type = 'select'
-				field.options = options
-			}
+		const arg = node.arguments[0] ? resolveExpression(node.arguments[0], bindings) : undefined
+		const options = arg?.type === 'ArrayExpression' ? readEnumOptions(arg) : null
+		if (options) {
+			field.type = 'select'
+			field.options = options
 		}
 		// `n.enum([…], { label, help, … })` — the value list takes the first argument, so
 		// layout hints ride in the second one; every other marker carries them in the first.

@@ -278,6 +278,55 @@ withTempDir('collection-scanner: n.xxx type detection', (getCtx) => {
 	})
 })
 
+withTempDir('collection-scanner: declared boolean fields', (getCtx) => {
+	// A declared `n.boolean()`/`z.boolean()` has to reach the form as a toggle. Inference alone
+	// only gets there when an entry already carries a real boolean, so a field holding a stray
+	// string used to fall back to a free text input.
+	test('a declared boolean is a toggle even when the entry data says otherwise', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['posts'])
+
+		await writeContentConfig(
+			ctx,
+			'posts',
+			`    title: z.string(),\n    draft: n.boolean(),\n    featured: z.boolean(),\n    archived: n.boolean().optional(),`,
+			`import { n } from '@nuasite/cms'`,
+		)
+
+		await ctx.writeFile('src/content/posts/post-1.md', `---\ntitle: Hello\ndraft: "yes"\nfeatured: true\narchived: false\n---\nContent`)
+
+		const result = await scanCollections(createNodeFs(process.cwd()))
+		const fields = result['posts']!.fields
+
+		expect(fields.find((f: FieldDefinition) => f.name === 'draft')?.type).toBe('boolean')
+		expect(fields.find((f: FieldDefinition) => f.name === 'featured')?.type).toBe('boolean')
+
+		const archived = fields.find((f: FieldDefinition) => f.name === 'archived')
+		expect(archived?.type).toBe('boolean')
+		expect(archived?.required).toBe(false)
+	})
+
+	// The other way a type reaches a field definition: a nested field no entry fills in yet is
+	// built straight from the parsed schema, whose fallback is a text input.
+	test('a nested declared boolean with no entry data yet is still a toggle', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['posts'])
+
+		await writeContentConfig(
+			ctx,
+			'posts',
+			`    title: z.string(),\n    meta: n.object({ note: z.string(), archived: n.boolean() }),`,
+			`import { n } from '@nuasite/cms'`,
+		)
+
+		await ctx.writeFile('src/content/posts/post-1.md', `---\ntitle: Hello\nmeta:\n  note: x\n---\nContent`)
+
+		const result = await scanCollections(createNodeFs(process.cwd()))
+		const meta = result['posts']!.fields.find((f: FieldDefinition) => f.name === 'meta')
+		expect(meta?.fields?.find((f: FieldDefinition) => f.name === 'archived')?.type).toBe('boolean')
+	})
+})
+
 withTempDir('collection-scanner: Astro image() callback schema', (getCtx) => {
 	test('detects image() inside `({ image }) => z.object({...})` schema', async () => {
 		const ctx = getCtx()
