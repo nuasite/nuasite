@@ -26,3 +26,21 @@ export interface LiveSchema {
 
 /** Keyed by collection name. A collection missing from here has no live schema and is skipped. */
 export type LiveSchemas = Record<string, LiveSchema>
+
+/**
+ * Render an issue as a finding's `field` and `message`.
+ *
+ * Shared so the two live checkers phrase the same rejection identically — they report
+ * different actions but the same schema verdict, and a reader comparing them should not
+ * have to wonder whether a wording difference means something.
+ */
+export function describeIssue(issue: LiveIssue): { field?: string; message: string } {
+	if (issue.path.length === 0) return { message: issue.message }
+	const field = issue.path.join('.')
+	return { field, message: `${field}: ${issue.message}` }
+}
+
+/** A collection's live schema, if it has one. Guards against inherited `Object.prototype` keys. */
+export function schemaFor(schemas: LiveSchemas, collection: string): LiveSchema | undefined {
+	return Object.hasOwn(schemas, collection) ? schemas[collection] : undefined
+}

@@ -10,7 +10,7 @@
 import type { CheckFinding } from './check'
 import type { LoadedCollections } from './check-entries'
 import type { ParsedConfig } from './content-config-ast'
-import type { LiveSchemas } from './schema-port'
+import { describeIssue, type LiveParseResult, type LiveSchemas, schemaFor } from './schema-port'
 
 export interface LiveCheckInput {
 	config: ParsedConfig
@@ -24,6 +24,38 @@ export interface LiveCheckInput {
  * Entries whose frontmatter did not parse are skipped — `check.ts` already reports those,
  * and there is nothing to hand a schema.
  */
-export function checkAgainstSchemas(_input: LiveCheckInput): Promise<CheckFinding[]> {
-	throw new Error('checkAgainstSchemas is not implemented yet')
+export async function checkAgainstSchemas(input: LiveCheckInput): Promise<CheckFinding[]> {
+	const findings: CheckFinding[] = []
+
+	for (const collection of input.collections.values()) {
+		const schema = schemaFor(input.schemas, collection.name)
+		// No live schema for this collection means no opinion, not a pass.
+		if (!schema) continue
+
+		for (const entry of collection.entries) {
+			if (entry.frontmatter === undefined) continue
+
+			let result: LiveParseResult
+			try {
+				result = await schema.safeParse(entry.frontmatter)
+			} catch (error) {
+				// An injected schema that throws must not take down a report of real problems.
+				findings.push({
+					severity: 'error',
+					code: 'entry/schema-rejected',
+					file: entry.file,
+					message: `The collection schema threw while validating this entry: ${error instanceof Error ? error.message : String(error)}`,
+				})
+				continue
+			}
+			if (result.success) continue
+
+			// Every issue, not just the first — reporting the whole entry in one pass is the point.
+			for (const issue of result.issues) {
+				findings.push({ severity: 'error', code: 'entry/schema-rejected', file: entry.file, ...describeIssue(issue) })
+			}
+		}
+	}
+
+	return findings
 }
