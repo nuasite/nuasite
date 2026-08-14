@@ -66,7 +66,8 @@ Validates the content collections without building the site:
 nua check                 # exit 1 on errors
 nua check --json          # machine-readable report
 nua check --strict        # warnings fail too
-nua check --content-only  # skip the source parse
+nua check --content-only  # skip the source parse (and the live schema rules)
+nua check --no-live       # skip the live schema rules only
 ```
 
 Run it anywhere in the project: with no `astro.config.*` in the current directory
@@ -90,6 +91,35 @@ still valid: `astro build` validates the same things but costs the whole render
 and stops at the first bad entry, while this reports every problem in one pass —
 under a second on a 1500-entry site. A dangling reference is a warning, because
 it builds green and then renders nothing.
+
+#### Live schema rules
+
+Unless you pass `--no-live` or `--content-only`, `check` also imports your
+`src/content.config.ts` and validates against the **real** Zod schemas, using the
+project's own `astro/zod`. That adds two things the static rules cannot give you:
+
+- `entry/schema-rejected` — every entry the build would reject, including what a
+  plain `z.string().min(3)`, a union, a coercion or a refinement says. This is the
+  verdict `astro sync` gives, without the build.
+- `cms/empty-write` — the writes the CMS editor is about to make, parsed before
+  anyone makes them: creating a new entry in a collection, and clicking "+ Add" in
+  a repeater. A required field the editor cannot fill is a schema that breaks the
+  build the first time an editor touches it. Where the simulation cannot run,
+  `cms/empty-write-unchecked` says so rather than passing silently.
+
+Two limits are worth knowing:
+
+- The `astro:content` stub used to import the config accepts the same shapes
+  `reference()` does, but not the lookup that follows it, and `image()` accepts
+  anything — a build resolves those, an import cannot. So the live schema never
+  reports a dangling reference or a missing image; the static rules
+  (`entry/dangling-reference`, `entry/missing-asset`) are what cover those.
+- Live rules run only when the command resolves to **one** Astro project. The
+  `astro:content` stub is process-global, so in a multi-root run one project's
+  schemas would judge the others. Run the check inside each project to get them.
+
+Whenever the live rules do not run, the report says why — one line in the human
+output, and a `liveSchemas` field (`"ran"` or the reason) in `--json`.
 
 `check` is new in 0.51.0. Most projects do not depend on `@nuasite/cli` directly
 — it arrives through `@nuasite/nua`, which pins it exactly — so a project on an
