@@ -10,6 +10,7 @@
 import path from 'node:path'
 import yaml from 'yaml'
 import type { ParsedCollection, ParsedConfig } from './content-config-ast'
+import type { CollectionKind } from './editor-write-model'
 import type { CmsFileSystem } from './fs/types'
 
 export interface LoadedEntry {
@@ -76,6 +77,18 @@ export function parseEntry(file: string, raw: string): { frontmatter: Record<str
 	} catch (error) {
 		return { error: error instanceof Error ? error.message.split('\n')[0]! : String(error) }
 	}
+}
+
+/**
+ * Whether a collection holds markdown entries or plain data files.
+ *
+ * Decides what a create writes, so it reads the entries on disk first and only falls back to
+ * the loader pattern for a collection that has none yet.
+ */
+export function collectionKind(collection: LoadedCollection, loaderPattern: string | undefined): CollectionKind {
+	const extensions = collection.entries.map(entry => path.extname(entry.file))
+	if (extensions.length > 0) return extensions.some(extension => extension === '.md' || extension === '.mdx') ? 'markdown' : 'data'
+	return loaderPattern === undefined || /\bmdx?\b/.test(loaderPattern) ? 'markdown' : 'data'
 }
 
 /** Every declared collection's files, read and parsed. Reports nothing — the callers judge. */

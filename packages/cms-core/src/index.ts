@@ -1,6 +1,7 @@
 export { resolveAssetCandidates } from './asset-paths'
 export { checkContent, type CheckContentOptions, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check'
 export {
+	collectionKind,
 	entryStem,
 	loadCollections,
 	type LoadedCollection,
@@ -25,7 +26,9 @@ export {
 export { createCmsCore } from './core'
 export type { CmsCore, CmsCoreOptions } from './core'
 export {
+	applyCreateRouteFields,
 	blankRequiredFields,
+	type CollectionKind,
 	defaultValueForNewEntry,
 	isBlankFieldValue,
 	newEntryFrontmatter,

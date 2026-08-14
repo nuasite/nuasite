@@ -59,7 +59,8 @@ export function defaultValueForNewEntry(field: WriteModelField, today: () => Dat
  * The frontmatter the editor holds when "create entry" opens, before the user types.
  *
  * `title` is excluded because the create form carries it in its own header field, and
- * hidden fields are excluded because the form cannot fill them in.
+ * hidden fields are excluded because the form cannot fill them in. Neither is missing from
+ * the finished entry — see `applyCreateRouteFields`, which is what puts `title` back.
  */
 export function newEntryFrontmatter(fields: WriteModelField[], today?: () => Date): Record<string, unknown> {
 	const frontmatter: Record<string, unknown> = {}
@@ -68,6 +69,29 @@ export function newEntryFrontmatter(fields: WriteModelField[], today?: () => Dat
 		frontmatter[field.name] = defaultValueForNewEntry(field, today)
 	}
 	return frontmatter
+}
+
+/** Whether the create route treats a collection's files as markdown entries or as plain data. */
+export type CollectionKind = 'markdown' | 'data'
+
+/**
+ * The last step of a create: what the server adds before the file is written.
+ *
+ * A markdown entry gets the title from the form — which refuses to be blank — plus today's
+ * date, and the form's own frontmatter wins over both (`handlers/api-routes.ts`). A data
+ * entry is written verbatim, with the title already among its fields.
+ *
+ * Anything predicting a create has to apply this. Stopping at the editor's payload predicts
+ * an entry with no title, and then reports a required `title` as broken on every project.
+ */
+export function applyCreateRouteFields(
+	frontmatter: Record<string, unknown>,
+	kind: CollectionKind,
+	today: () => Date = () => new Date(),
+): Record<string, unknown> {
+	const title = 'Untitled'
+	if (kind === 'data') return { title, ...frontmatter }
+	return { title, date: today().toISOString().split('T')[0], ...frontmatter }
 }
 
 /**
