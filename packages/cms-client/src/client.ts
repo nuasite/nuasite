@@ -19,6 +19,7 @@ import type {
 	CollectionEntryInfo,
 	ComponentDefinition,
 	MediaListResult,
+	MediaTypeFilter,
 	MediaUploadResult,
 	MutationResult,
 } from '@nuasite/cms-types'
@@ -235,8 +236,14 @@ export interface CmsClient {
 	 * (`public/` + `src/`) into the adapter's own listing behind a composite cursor;
 	 * it is ignored when a `folder` is given, since the scan has no folder structure.
 	 * Needs the sidecar's `media.project-images` feature.
+	 *
+	 * `type` asks the server to filter the page, which an endpoint that does not know the parameter
+	 * simply ignores. Read `appliedType` on the result rather than assuming: absent means the page
+	 * came back unfiltered and the caller still has to filter (and page) for itself.
 	 */
-	listMedia(options?: { folder?: string; cursor?: string; limit?: number; includeProjectImages?: boolean }): Promise<MediaListResult>
+	listMedia(
+		options?: { folder?: string; cursor?: string; limit?: number; type?: MediaTypeFilter; includeProjectImages?: boolean },
+	): Promise<MediaListResult>
 	uploadMedia(file: File, context?: MediaContext): Promise<MediaUploadResult>
 	/**
 	 * Build a GET URL for an asset referenced by an entry — an `image`/`file` value
@@ -408,6 +415,7 @@ export function createClient(apiBase: string): CmsClient {
 			if (options.folder !== undefined) params.set('folder', options.folder)
 			if (options.cursor !== undefined) params.set('cursor', options.cursor)
 			if (options.limit !== undefined) params.set('limit', String(options.limit))
+			if (options.type !== undefined && options.type !== 'all') params.set('type', options.type)
 			if (options.includeProjectImages) params.set('includeProjectImages', 'true')
 			const query = params.toString()
 			return request<MediaListResult>(`/media${query === '' ? '' : `?${query}`}`)

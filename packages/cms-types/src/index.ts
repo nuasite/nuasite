@@ -442,6 +442,16 @@ export interface MediaListResult {
 	folders: MediaFolderItem[]
 	hasMore: boolean
 	cursor?: string
+	/**
+	 * The type filter the server applied to this page, present only when it applied one.
+	 *
+	 * A gallery reads this instead of asking whether the endpoint supports `?type=`: absent means
+	 * the page is unfiltered, so the gallery has to filter what it loaded and keep pulling pages to
+	 * find matches further down the listing. Present means the page is already the answer. An
+	 * endpoint that does not know the parameter therefore degrades to exactly the old behaviour
+	 * rather than silently dropping the filter.
+	 */
+	appliedType?: MediaTypeFilter
 }
 
 export interface MediaUploadResult {
@@ -692,3 +702,9 @@ export interface CmsManifest {
 	/** Component names allowed in the MDX component picker (undefined = all) */
 	mdxComponents?: string[]
 }
+
+/**
+ * The one runtime export of this package: the meaning of `MediaTypeFilter`, which both a server
+ * filtering a page and a client filtering one it was handed unfiltered have to read the same way.
+ */
+export { filterMediaItems, matchesMediaType } from './media-type-filter'

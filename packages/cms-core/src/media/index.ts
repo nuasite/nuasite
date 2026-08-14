@@ -2,3 +2,4 @@ export { type ContemberStorageOptions, createContemberStorageAdapter } from './c
 export { createLocalStorageAdapter, getFileExtension, type LocalStorageOptions, MIME_BY_EXT, mimeFromExt } from './local'
 export { listProjectImages, type ListProjectImagesOptions, uploadsDirRelativeToRoot } from './project-images'
 export { createS3StorageAdapter, type S3StorageOptions } from './s3'
+export { listFilteredMedia, parseMediaTypeFilter } from './type-filter'

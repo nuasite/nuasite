@@ -1,5 +1,6 @@
 import type { CmsCore, CmsFileSystem } from '@nuasite/cms-core'
-import { listProjectImages } from '@nuasite/cms-core'
+import { listFilteredMedia, listProjectImages, parseMediaTypeFilter } from '@nuasite/cms-core'
+import { filterMediaItems } from '@nuasite/cms-types'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { getProjectRoot } from '../config'
@@ -271,11 +272,24 @@ const routeMap = new Map<string, RouteHandler>([
 		const parsedLimit = parseInt(params.get('limit') ?? '50', 10)
 		const limit = Number.isNaN(parsedLimit) || parsedLimit < 1 ? 50 : Math.min(parsedLimit, 1000)
 		const folder = params.get('folder') ?? undefined
-		sendJson(ctx.res, await ctx.mediaAdapter.list({ limit, cursor: params.get('cursor') ?? undefined, folder }))
+		const type = parseMediaTypeFilter(params.get('type'))
+		if (type === null) {
+			sendError(ctx.res, 'type accepts "all", "photo", "graphic", "video" or "document"')
+			return
+		}
+		const adapter = ctx.mediaAdapter
+		sendJson(ctx.res, await listFilteredMedia(options => adapter.list(options), { limit, cursor: params.get('cursor') ?? undefined, folder, type }))
 	}),
 	custom('GET', 'media/project-images', async (ctx) => {
+		const params = getQuery(ctx)
+		const type = parseMediaTypeFilter(params.get('type'))
+		if (type === null) {
+			sendError(ctx.res, 'type accepts "all", "photo", "graphic", "video" or "document"')
+			return
+		}
 		const items = await listProjectImages(ctx.fs, { exclude: { dir: ctx.mediaAdapter?.staticFiles?.dir, root: ctx.projectRoot } })
-		sendJson(ctx.res, { items })
+		// Unpaged, so the filter is the whole story here — the caller never has to drain.
+		sendJson(ctx.res, { items: filterMediaItems(items, type), appliedType: type })
 	}),
 	custom('POST', 'media/upload', async (ctx) => {
 		const contentType = ctx.req.headers['content-type'] ?? ''
