@@ -1,7 +1,9 @@
 import type { CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
 import yaml from 'yaml'
+import { resolveAssetCandidates } from '../asset-paths'
 import { scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig } from '../content-config-ast'
+import { blankRequiredFields } from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
 import { mimeFromExt } from '../media/local'
 import { isPlainRecord, relativeImportPath, slugify } from '../shared'
@@ -82,46 +84,6 @@ async function resolveEntryPath(deps: EntryOpsDeps, collection: string, slug: st
 		if (await deps.fs.exists(candidate)) return candidate
 	}
 	return null
-}
-
-/**
- * Resolve a stored asset value (as it appears in frontmatter) to candidate on-disk
- * paths, root-relative, in priority order. Handles the shapes that actually occur:
- *
- * - **Leading `/`** — a runtime URL (`/assets/x.jpeg`, `/uploads/x.webp`). Astro
- *   serves the `public/` dir at the site root, so try `public/<path>` first, then
- *   `<path>` from the project root (assets kept outside `public/`). `baseDir` is
- *   irrelevant, so these resolve without an owning entry.
- * - **Relative** (`../../src/assets/x.webp`, `./x.png`, `x.png`) — an Astro
- *   `image()` value, resolved against `baseDir` (the entry's directory), honoring
- *   `.`/`..`.
- *
- * Returns `[]` when the path climbs above the project root, or is relative with no `baseDir`.
- */
-function resolveAssetCandidates(baseDir: string | undefined, rel: string): string[] {
-	if (rel.startsWith('/')) {
-		const fromRoot = normalizeSegments([], rel)
-		if (fromRoot === null || fromRoot === '') return []
-		return [`public/${fromRoot}`, fromRoot]
-	}
-	if (baseDir === undefined) return []
-	const joined = normalizeSegments(baseDir.split('/').filter(Boolean), rel)
-	return joined === null ? [] : [joined]
-}
-
-/** Join `rel` onto `base` segments, applying `.`/`..`; `null` on traversal above root. */
-function normalizeSegments(base: string[], rel: string): string | null {
-	const out = base.slice()
-	for (const seg of rel.replace(/^\/+/, '').split('/')) {
-		if (seg === '' || seg === '.') continue
-		if (seg === '..') {
-			if (out.length === 0) return null
-			out.pop()
-			continue
-		}
-		out.push(seg)
-	}
-	return out.join('/')
 }
 
 /** First existing candidate read as bytes + content type, or `null` when none exist. */
@@ -359,18 +321,10 @@ function isIndexStyleGlobPattern(pattern: string): boolean {
 // ============================================================================
 
 /**
- * No value at all — as opposed to an empty collection or a falsy scalar.
- *
- * `false` and `0` are values and pass. `[]` and `{}` are a deliberate "nothing here"
- * and pass too. Deliberately identical to the editor-side check so the two sides can
- * never disagree about what "empty" means.
- */
-function isBlank(value: unknown): boolean {
-	return value === undefined || value === null || value === ''
-}
-
-/**
  * Names of the collection's **schema-declared** required fields left empty by `frontmatter`.
+ *
+ * The predicate itself lives in `editor-write-model.ts`, shared with the content check —
+ * see there for which fields the guard deliberately does not cover.
  *
  * Note on where `required` comes from — this reads the content config, never the
  * scanner, and that is the whole point. `scanCollections` *infers* `required` as
@@ -385,21 +339,13 @@ function isBlank(value: unknown): boolean {
  *
  * A collection absent from `content.config.ts` therefore yields `[]` — nobody declared
  * anything required there, so there is nothing to enforce and the write goes through.
- *
- * Only top-level fields are checked. Nested object/array members are left alone: a
- * required key *inside* an object says nothing about whether that object was meant to
- * be filled in at all, and rejecting on it would block partial edits.
- *
- * `hidden` fields are skipped — the form offers no way to fill them in.
  */
 async function missingRequiredFields(deps: EntryOpsDeps, collection: string, frontmatter: Record<string, unknown>): Promise<string[]> {
 	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
 	const parsedCollection = parsed.get(collection)
 	if (!parsedCollection) return []
 
-	return parsedCollection.fields
-		.filter(field => field.required && !field.layout?.hidden && isBlank(frontmatter[field.name]))
-		.map(field => field.name)
+	return blankRequiredFields(parsedCollection.fields, frontmatter)
 }
 
 /** Name the offending fields — the text reaches the UI verbatim, where "validation failed" would be useless. */

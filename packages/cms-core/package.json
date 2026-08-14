@@ -23,6 +23,11 @@
 			"types": "./src/index.ts",
 			"import": "./src/index.ts",
 			"default": "./src/index.ts"
+		},
+		"./editor-write-model": {
+			"types": "./src/editor-write-model.ts",
+			"import": "./src/editor-write-model.ts",
+			"default": "./src/editor-write-model.ts"
 		}
 	},
 	"dependencies": {

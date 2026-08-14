@@ -1,4 +1,16 @@
-export { checkContent, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check'
+export { resolveAssetCandidates } from './asset-paths'
+export { checkContent, type CheckContentOptions, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check'
+export {
+	entryStem,
+	loadCollections,
+	type LoadedCollection,
+	type LoadedCollections,
+	type LoadedEntry,
+	normalizeBase,
+	parseEntry,
+} from './check-entries'
+export { checkAgainstSchemas, type LiveCheckInput } from './check-live'
+export { checkEditorWrites, type WriteCheckInput } from './check-write'
 export { scanCollections } from './collection-scanner'
 export { scanComponentDefinitions } from './component-registry'
 export {
@@ -12,6 +24,15 @@ export {
 } from './content-config-ast'
 export { createCmsCore } from './core'
 export type { CmsCore, CmsCoreOptions } from './core'
+export {
+	blankRequiredFields,
+	defaultValueForNewEntry,
+	isBlankFieldValue,
+	newEntryFrontmatter,
+	omitEmptyOnCreate,
+	type RequiredGuardField,
+	type WriteModelField,
+} from './editor-write-model'
 export { globToRegExp } from './fs/glob'
 export { createNodeFs } from './fs/node-fs'
 export type { CmsFileSystem } from './fs/types'
@@ -42,4 +63,5 @@ export {
 	uploadsDirRelativeToRoot,
 } from './media/index'
 export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
+export type { LiveIssue, LiveParseResult, LiveSchema, LiveSchemas } from './schema-port'
 export { computePathnameFromSpec, escapeHtml, relativeImportPath, resolvePathnameFromSpec, slugify, slugifyHref } from './shared'

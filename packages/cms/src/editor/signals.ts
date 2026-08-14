@@ -1,3 +1,4 @@
+import { defaultValueForNewEntry } from '@nuasite/cms-core/editor-write-model'
 import { batch, computed, effect, type Signal, signal } from '@preact/signals'
 import { slugifyHref } from '../shared'
 import { fetchManifest, getMarkdownContent } from './api'
@@ -1067,20 +1068,12 @@ export function openMarkdownEditorForNewPage(
 
 /**
  * Get a sensible default value for a field based on its type definition.
+ *
+ * Delegates to `@nuasite/cms-core` so `nua check`, which predicts this write, cannot
+ * drift from what the editor really does.
  */
 function getDefaultForFieldType(field: FieldDefinition): unknown {
-	switch (field.type) {
-		case 'boolean':
-			return false
-		case 'number':
-			return 0
-		case 'array':
-			return []
-		case 'date':
-			return new Date().toISOString().split('T')[0]
-		default:
-			return ''
-	}
+	return defaultValueForNewEntry(field)
 }
 
 // ============================================================================
