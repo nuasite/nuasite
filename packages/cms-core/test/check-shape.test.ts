@@ -99,7 +99,7 @@ describe('cms/required-drift', () => {
 			field: 'people.nickname',
 			message: 'The editor treats "people.nickname" as required and refuses to save it blank, but the schema accepts an entry without it.',
 			hint:
-				'Either the schema should require it, or the config should show the parser that it is optional. A field schema reached through an import or an alias hides its `.optional()`/`.default()` from the parser, which then reads the field as required — write the chain inline instead.',
+				'Either the schema should require it, or the config should show the parser that it is optional. Wrapping a field schema in a helper call (`field.image(z.string().optional())`) or reaching it through an import hides the `.optional()` from the parser, which then reads the field as required — put the wrapper outside, as `field.image(z.string()).optional()`.',
 		}])
 	})
 
