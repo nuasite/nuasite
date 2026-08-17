@@ -3,7 +3,7 @@ import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths'
 import { scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig } from '../content-config-ast'
-import { blankRequiredFields } from '../editor-write-model'
+import { blankRequiredFields, newRepeaterItem, type RepeaterItemField } from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
 import { mimeFromExt } from '../media/local'
 import { isPlainRecord, relativeImportPath, slugify } from '../shared'
@@ -605,6 +605,40 @@ async function writeEntryFrontmatter(
 	await deps.fs.writeFile(loaded.sourcePath, serializeFrontmatter(loaded.frontmatter, loaded.body))
 }
 
+/**
+ * The item fields a repeater declares in `content.config.ts`, or `[]` when it declares none.
+ *
+ * Only top-level repeaters are resolved, which is the only shape `addArrayItem` is called for.
+ */
+async function repeaterItemFields(deps: EntryOpsDeps, collection: string, field: string): Promise<RepeaterItemField[]> {
+	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+	const declared = parsed.get(collection)?.fields.find(candidate => candidate.name === field)
+	if (!declared || declared.type !== 'array' || declared.itemType !== 'object') return []
+	return (declared.fields ?? []).map(item => ({
+		name: item.name,
+		type: item.type,
+		required: item.required,
+		hidden: item.layout?.hidden,
+	}))
+}
+
+/**
+ * Seed the required keys a client left out of an appended item.
+ *
+ * The backstop for the "+ Add" hole. Both first-party editors now send a seeded item, but this
+ * path is reachable by any client — an older editor, a script, the HTTP API directly — and an
+ * item missing a required key is frontmatter the next build refuses. Whatever the client did
+ * send wins: this only adds keys, never rewrites a value someone chose.
+ */
+function seedItem(value: unknown, fields: RepeaterItemField[]): unknown {
+	if (fields.length === 0 || typeof value !== 'object' || value === null || Array.isArray(value)) return value
+	const item: Record<string, unknown> = { ...value }
+	for (const [key, seeded] of Object.entries(newRepeaterItem(fields))) {
+		if (!Object.hasOwn(item, key) || item[key] === undefined) item[key] = seeded
+	}
+	return item
+}
+
 export async function addArrayItem(deps: EntryOpsDeps, input: AddArrayItemInput): Promise<MutationResult> {
 	const loaded = await loadEntryFrontmatter(deps, input.collection, input.slug)
 	if (!loaded) {
@@ -619,7 +653,7 @@ export async function addArrayItem(deps: EntryOpsDeps, input: AddArrayItemInput)
 
 	const index = input.index ?? array.length
 	const clamped = Math.max(0, Math.min(index, array.length))
-	array.splice(clamped, 0, input.value)
+	array.splice(clamped, 0, seedItem(input.value, await repeaterItemFields(deps, input.collection, input.field)))
 	loaded.frontmatter[input.field] = array
 
 	try {

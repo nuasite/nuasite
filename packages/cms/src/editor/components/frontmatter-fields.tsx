@@ -1,3 +1,4 @@
+import { newRepeaterItem } from '@nuasite/cms-core/editor-write-model'
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { cn } from '../lib/cn'
@@ -821,7 +822,14 @@ function ArrayOfObjectsField({ label, items, onChange, itemFields }: ArrayOfObje
 	}
 
 	const handleAddItem = () => {
-		// Use the first item's keys as template
+		// Built in cms-core so `nua check`, which predicts this write, cannot drift from it. Seeds
+		// the required keys and leaves optional ones out — an item written without a required key
+		// breaks the next build, and `''` in an optional url or array field breaks it too.
+		if (itemFields) {
+			onChange([...items, newRepeaterItem(itemFields)])
+			return
+		}
+		// No schema for the item: the first item's keys, blanked, is all there is to go on.
 		const template = items.length > 0
 			? Object.fromEntries(Object.keys(items[0]!).map(k => [k, '']))
 			: { name: '' }

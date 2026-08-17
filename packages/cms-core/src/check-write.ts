@@ -15,15 +15,23 @@
  *   Where `blankRequiredFields` says the write guard in `handlers/entry-ops.ts` would reject
  *   the create before it reaches disk, there is no finding to make — with the exception of
  *   `hidden` fields, which that guard skips.
- * - **"+ Add" in a repeater** — an object-array field gains a blank item. Nothing guards
- *   this path (`addArrayItem` does not consult the required-field check), so a required
- *   key inside the item is a live break.
+ * - **"+ Add" in a repeater** — an object-array field gains an item built by `newRepeaterItem`,
+ *   which seeds the keys the config declares required and omits the rest. What survives is a
+ *   required key the config does not know about: `addArrayItem` seeds from the same config the
+ *   editor renders from, so neither can supply a key neither can see.
  */
 
 import type { CheckFinding } from './check'
 import { collectionKind, isPlainObject, type LoadedCollection, type LoadedCollections, type LoadedEntry } from './check-entries'
 import type { ParsedConfig, ParsedField } from './content-config-ast'
-import { applyCreateRouteFields, blankRequiredFields, newEntryFrontmatter, omitEmptyOnCreate, type WriteModelField } from './editor-write-model'
+import {
+	applyCreateRouteFields,
+	blankRequiredFields,
+	newEntryFrontmatter,
+	newRepeaterItem,
+	omitEmptyOnCreate,
+	type WriteModelField,
+} from './editor-write-model'
 import { describeIssue, type LiveIssue, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port'
 import { firstAcceptedEntry } from './schema-probe'
 
@@ -100,11 +108,11 @@ function hintFor(action: WriteAction, found: ReturnType<typeof valueAt>): string
 		} and nothing makes the editor change it before saving. Either the schema accepts that value, or mark the field \`hidden\` so the write omits it and let \`.default(…)\` supply one.`
 	}
 	if (!found.present) {
-		return '"+ Add" appends an item with no keys, so every key inside it arrives absent. `.optional()` or `.default(…)` on the inner field accepts that; `.nullable()` does not — it accepts `null`, not absence.'
+		return 'The appended item does not carry this key — "+ Add" seeds only the item fields the config declares required. Declaring it required there is what makes the editor seed it; if it is not required, `.optional()` or `.default(…)` says so to the schema, and `.nullable()` does not — it accepts `null`, not absence.'
 	}
-	return `"+ Add" fills a new item's keys with ${
+	return `The appended item carries ${
 		JSON.stringify(found.value)
-	}, and the item is written the moment it is appended. The inner field has to accept that value.`
+	} for this key, and it is written the moment "+ Add" is clicked. \`.default(…)\` on the inner field is the way out: the parser then reads the field as optional, so the item leaves the key out and the schema supplies the value itself.`
 }
 
 /** One rejected write, phrased as the editorial action that causes it. `action` reads as the subject of the sentence. */
@@ -132,15 +140,24 @@ const throwFinding = (action: string, threw: string): CheckFinding => ({
 })
 
 /**
- * The blank item each editor appends to a repeater — two different writes, both real.
+ * The item "+ Add" appends to a repeater.
  *
- * `collections-admin` appends `blankValue('object')`, an object with no keys. The in-page
- * editor copies the first item's keys with every value set to `''`, and invents `{ name: '' }`
- * when there is no item to copy (`ArrayOfObjectsField.handleAddItem` in `@nuasite/cms`).
- * "+ Add" is an update, not a create, so `omitEmptyOnCreate` never runs and those `''` really
- * reach disk — which is the failure `{}` alone cannot predict.
+ * Where the schema declares the item's fields, both the editor and `addArrayItem` build it with
+ * `newRepeaterItem` — required keys seeded, optional ones omitted — so there is one shape to
+ * predict and it comes from the same function the editors call.
+ *
+ * Where the schema declares nothing, the editors have nothing to build from and fall back to
+ * what they can see: `collections-admin` appends an object with no keys, and the in-page editor
+ * copies the first item's keys with every value set to `''`, inventing `{ name: '' }` when there
+ * is no item to copy (`ArrayOfObjectsField.handleAddItem` in `@nuasite/cms`). "+ Add" is an
+ * update, not a create, so `omitEmptyOnCreate` never runs and those `''` really reach disk —
+ * which is the failure `{}` alone cannot predict.
  */
-function blankItemsFor(current: unknown[]): unknown[] {
+function blankItemsFor(field: ParsedField, current: unknown[], today?: () => Date): unknown[] {
+	const itemFields = field.fields ?? []
+	if (itemFields.length > 0) {
+		return [newRepeaterItem(itemFields.map(item => ({ ...toWriteModelField(item), required: item.required })), today)]
+	}
 	if (current.length === 0) return [{}, { name: '' }]
 	const first = current[0]
 	// A non-object first item means the in-page repeater is not what renders this field; fall
@@ -247,7 +264,7 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 			// Both shapes are the same user action, so the dedup key is too: where they fail
 			// identically the report says it once — in the words of the keyless item, which is
 			// simulated first — and a failure only one of them causes still names "+ Add".
-			for (const item of blankItemsFor(existing)) {
+			for (const item of blankItemsFor(field, existing, input.today)) {
 				const written = { ...seed, [field.name]: [...existing, item] }
 				const verdict = await parseWrite(schema, written)
 				if ('threw' in verdict) {

@@ -33,7 +33,9 @@ export {
 	defaultValueForNewEntry,
 	isBlankFieldValue,
 	newEntryFrontmatter,
+	newRepeaterItem,
 	omitEmptyOnCreate,
+	type RepeaterItemField,
 	type RequiredGuardField,
 	type WriteModelField,
 } from './editor-write-model'

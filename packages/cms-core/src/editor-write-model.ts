@@ -71,6 +71,36 @@ export function newEntryFrontmatter(fields: WriteModelField[], today?: () => Dat
 	return frontmatter
 }
 
+/** An item field, which needs its `required` flag as well — that is what decides whether it is seeded. */
+export interface RepeaterItemField extends WriteModelField {
+	required: boolean
+}
+
+/**
+ * The item "+ Add" appends to a repeater.
+ *
+ * Required fields are seeded with their type's blank; optional ones are left out entirely.
+ * That split is the whole point, and both halves were bugs:
+ *
+ * - Appending `{}` (or an item missing a required key) writes frontmatter the schema rejects,
+ *   and unlike a create there is no guard in front of it — the item reaches disk on the click.
+ *   Across five production sites this was 13 of 14 build-breaking findings.
+ * - Seeding an *optional* field with `''` breaks schemas that would have been happy with the
+ *   key absent — an optional `z.string().url()` or an optional array both refuse `''`. A key
+ *   the schema declared optional is by definition safe to omit, so omitting is never wrong.
+ *
+ * Hidden fields are skipped for the same reason as everywhere else: nothing can fill them in.
+ * A hidden *required* item field is therefore still missing, and `cms/empty-write` reports it.
+ */
+export function newRepeaterItem(fields: RepeaterItemField[], today?: () => Date): Record<string, unknown> {
+	const item: Record<string, unknown> = {}
+	for (const field of fields) {
+		if (!field.required || field.hidden) continue
+		item[field.name] = defaultValueForNewEntry(field, today)
+	}
+	return item
+}
+
 /** Whether the create route treats a collection's files as markdown entries or as plain data. */
 export type CollectionKind = 'markdown' | 'data'
 
