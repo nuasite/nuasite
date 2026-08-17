@@ -19,7 +19,7 @@ import {
 	valueToObject,
 } from '@nuasite/cms-client'
 import { MdxBodyEditor } from '@nuasite/cms-mdx-editor'
-import type { CmsListStyle, ComponentDefinition, FieldDefinition, FieldType } from '@nuasite/cms-types'
+import { type CmsListStyle, type ComponentDefinition, type FieldDefinition, type FieldType, newRepeaterItem } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MediaPicker } from './media-picker'
 
@@ -317,9 +317,13 @@ function ArrayWidget({ field, value, onChange, ctx }: FieldEditorProps) {
 		},
 		[items, onChange],
 	)
+	// An object item is built from the schema (`newRepeaterItem` in cms-types, shared with every
+	// other editor and with `nua check`): required keys seeded, optional ones left out. Appending
+	// a bare `{}` writes frontmatter the next build refuses.
 	const addItem = useCallback(() => {
-		onChange([...items, blankValue(itemType)])
-	}, [items, itemType, onChange])
+		const seeded = itemType === 'object' && field.fields ? newRepeaterItem(field.fields) : blankValue(itemType)
+		onChange([...items, seeded])
+	}, [items, itemType, field.fields, onChange])
 
 	return (
 		<div className="nua-cadmin-array">

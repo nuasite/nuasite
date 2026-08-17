@@ -692,3 +692,17 @@ export interface CmsManifest {
 	/** Component names allowed in the MDX component picker (undefined = all) */
 	mdxComponents?: string[]
 }
+
+// ============================================================================
+// Field value rules — see `field-values.ts` for why they live in this package
+// ============================================================================
+
+export {
+	blankRequiredFields,
+	defaultValueForNewEntry,
+	isBlankFieldValue,
+	newRepeaterItem,
+	type RepeaterItemField,
+	type RequiredGuardField,
+	type WriteModelField,
+} from './field-values'
