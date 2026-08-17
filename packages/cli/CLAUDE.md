@@ -62,6 +62,11 @@ What they cannot see: the stub reproduces `reference()`'s shape but not the look
 accepts anything, so a dangling reference and a missing image are invisible to the live schema.
 `entry/dangling-reference` and `entry/missing-asset` in `cms-core` cover those, and must keep doing so.
 
+Both rules attach a `hint` — the remedy, kept out of `message` because it is a proposal rather than something the
+checker observed. It is decided by looking up the issue's path in the record that was actually parsed, not by reading
+zod's issue code: a missing key and a rejected `''` both arrive as `invalid_type`, and they have opposite remedies.
+Getting that backwards is worse than no hint at all, so a new hint needs a test pinning which case it lands on.
+
 ## Key Entry Point
 
 `src/index.ts` is both the library export and the CLI binary entry (`bin.nua` in package.json).

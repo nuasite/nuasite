@@ -1,4 +1,4 @@
-import { checkContent, createNodeFs } from '@nuasite/cms-core'
+import { checkContent, createNodeFs, formatCheckReport } from '@nuasite/cms-core'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -354,5 +354,75 @@ export const collections = { events }
 
 		const report = await check()
 		expect(report.findings).toEqual([])
+	})
+})
+
+// A hint is a proposal, not an observation. It has to be told apart from the finding above it
+// at a glance, or a reader takes "mark the field `hidden`" for something the checker saw.
+describe('formatCheckReport', () => {
+	test('renders a hint indented under its finding, and nothing extra without one', () => {
+		const report = {
+			collections: 1,
+			entries: 0,
+			findings: [
+				{ severity: 'error' as const, code: 'cms/empty-write', file: 'src/content.config.ts', message: 'Broken.', hint: 'Try this.' },
+				{ severity: 'warning' as const, code: 'entry/unknown-key', file: 'src/content.config.ts', message: 'Odd.' },
+			],
+		}
+
+		expect(formatCheckReport(report)).toBe(
+			[
+				'src/content.config.ts',
+				'          error  Broken.  [cms/empty-write]',
+				'                → Try this.',
+				'          warn   Odd.  [entry/unknown-key]',
+			].join('\n'),
+		)
+	})
+})
+
+describe('formatCheckReport hint runs', () => {
+	const finding = (message: string, hint?: string, file = 'a.ts') => ({
+		severity: 'error' as const,
+		code: 'cms/empty-write',
+		file,
+		message,
+		...(hint === undefined ? {} : { hint }),
+	})
+
+	test('an unbroken run of one remedy prints it once, and a different one interrupts the run', () => {
+		const report = {
+			collections: 1,
+			entries: 0,
+			findings: [finding('One.', 'Same.'), finding('Two.', 'Same.'), finding('Three.', 'Other.'), finding('Four.', 'Same.')],
+		}
+
+		expect(formatCheckReport(report).split('\n').filter(line => line.includes('→'))).toEqual([
+			'                → Same.',
+			'                → Other.',
+			'                → Same.',
+		])
+	})
+
+	// Suppressing across the boundary would open a file's block with a bare finding whose
+	// remedy is only printed under some earlier file the reader may not have read.
+	test('a run does not carry across a file boundary', () => {
+		const report = {
+			collections: 1,
+			entries: 0,
+			findings: [finding('One.', 'Same.', 'a.ts'), finding('Two.', 'Same.', 'b.ts')],
+		}
+
+		expect(formatCheckReport(report).split('\n').filter(line => line.includes('→'))).toHaveLength(2)
+	})
+
+	test('a finding with no hint breaks the run, so the next repeat is printed again', () => {
+		const report = {
+			collections: 1,
+			entries: 0,
+			findings: [finding('One.', 'Same.'), finding('Two.'), finding('Three.', 'Same.')],
+		}
+
+		expect(formatCheckReport(report).split('\n').filter(line => line.includes('→'))).toHaveLength(2)
 	})
 })

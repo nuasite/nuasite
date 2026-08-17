@@ -56,8 +56,58 @@ async function parseWrite(schema: LiveSchema, value: unknown): Promise<WriteVerd
 	}
 }
 
+/** Which editorial action a rejection came from — the two have different remedies, so the hint has to know. */
+type WriteAction = 'create' | 'add'
+
+/**
+ * The value the simulated write carries at `path`, if it carries one.
+ *
+ * The remedy hinges entirely on this. A key the write omits is fixed by making the schema
+ * accept its absence; a key the write fills with a value the schema refuses cannot be, and
+ * suggesting `.optional()` there would send the reader down a dead end. Reading the record we
+ * actually parsed is what tells the two apart — the issue's own code cannot, since a rejected
+ * `''` and a missing key both arrive as `invalid_type`.
+ */
+function valueAt(record: unknown, path: (string | number)[]): { present: false } | { present: true; value: unknown } {
+	let current: unknown = record
+	for (const segment of path) {
+		if (Array.isArray(current)) {
+			const index = typeof segment === 'number' ? segment : Number(segment)
+			if (!Number.isInteger(index) || index < 0 || index >= current.length) return { present: false }
+			current = current[index]
+			continue
+		}
+		if (!isPlainObject(current) || !Object.hasOwn(current, String(segment))) return { present: false }
+		current = current[String(segment)]
+	}
+	return current === undefined ? { present: false } : { present: true, value: current }
+}
+
+/**
+ * What to change, given which action wrote the value and whether it wrote one at all.
+ *
+ * `.nullable()` is called out by name in both absent cases because it is the wrong answer that
+ * looks right: it accepts `null`, the editor writes no key at all, and the check keeps failing.
+ */
+function hintFor(action: WriteAction, found: ReturnType<typeof valueAt>): string {
+	if (action === 'create') {
+		if (!found.present) {
+			return 'The create form leaves an untouched field out of the write entirely. `.optional()` or `.default(…)` accepts a missing key; `.nullable()` does not — it accepts `null`, not absence.'
+		}
+		return `The create form starts this field at ${
+			JSON.stringify(found.value)
+		} and nothing makes the editor change it before saving. Either the schema accepts that value, or mark the field \`hidden\` so the write omits it and let \`.default(…)\` supply one.`
+	}
+	if (!found.present) {
+		return '"+ Add" appends an item with no keys, so every key inside it arrives absent. `.optional()` or `.default(…)` on the inner field accepts that; `.nullable()` does not — it accepts `null`, not absence.'
+	}
+	return `"+ Add" fills a new item's keys with ${
+		JSON.stringify(found.value)
+	}, and the item is written the moment it is appended. The inner field has to accept that value.`
+}
+
 /** One rejected write, phrased as the editorial action that causes it. `action` reads as the subject of the sentence. */
-function rejectionFinding(action: string, issue: LiveIssue): CheckFinding {
+function rejectionFinding(action: string, issue: LiveIssue, kind: WriteAction, written: Record<string, unknown>): CheckFinding {
 	const { field, message } = describeIssue(issue)
 	const finding: CheckFinding = {
 		severity: 'error',
@@ -66,6 +116,7 @@ function rejectionFinding(action: string, issue: LiveIssue): CheckFinding {
 		message: `${action} produces a write the schema rejects. ${message}`,
 	}
 	if (field !== undefined) finding.field = field
+	finding.hint = hintFor(kind, valueAt(written, issue.path))
 	return finding
 }
 
@@ -75,6 +126,8 @@ const throwFinding = (action: string, threw: string): CheckFinding => ({
 	code: 'cms/empty-write',
 	file: CONFIG_FILE,
 	message: `${action} produces a write the schema throws on: ${threw}`,
+	hint:
+		'A schema that throws instead of returning an issue is usually a refinement reading a field this write does not carry. Guard it against a missing value — `astro sync` runs the same schema over the same record.',
 })
 
 /**
@@ -142,6 +195,8 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 				field: name,
 				message:
 					`Could not check what creating a new entry in "${name}" writes: its schema is not readable from the content config, so there are no fields to predict the write from.`,
+				hint:
+					'Write the field types inline in the content config rather than importing the shape from another module — the prediction reads the config source, and a schema assembled elsewhere leaves it nothing to read.',
 			})
 			continue
 		}
@@ -170,7 +225,7 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 			for (const issue of createVerdict.issues) {
 				const top = issue.path[0]
 				if (typeof top === 'string' && guarded.has(top)) continue
-				report(createKey, rejectionFinding(createAction, issue))
+				report(createKey, rejectionFinding(createAction, issue, 'create', created))
 			}
 		}
 
@@ -183,7 +238,8 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 			const key = `${name} add:${field.name}`
 			if (!seed) {
 				// A simulation that could not run must never read as a pass.
-				const reason = entries.some(entry => entry.frontmatter !== undefined)
+				const hasEntries = entries.some(entry => entry.frontmatter !== undefined)
+				const reason = hasEntries
 					? 'no existing entry passes the schema, so there is no valid record to add an item to'
 					: 'the collection has no entry to add an item to'
 				report(key, {
@@ -192,6 +248,9 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 					file: CONFIG_FILE,
 					field: field.name,
 					message: `Could not check what "+ Add" on "${name}.${field.name}" writes: ${reason}.`,
+					hint: hasEntries
+						? `Fix the \`entry/schema-rejected\` findings in "${name}" and run this again — the prediction needs one entry the schema accepts.`
+						: `Add one entry to "${name}" and run this again.`,
 				})
 				continue
 			}
@@ -203,12 +262,13 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 			// identically the report says it once — in the words of the keyless item, which is
 			// simulated first — and a failure only one of them causes still names "+ Add".
 			for (const item of blankItemsFor(existing)) {
-				const verdict = await parseWrite(schema, { ...seed, [field.name]: [...existing, item] })
+				const written = { ...seed, [field.name]: [...existing, item] }
+				const verdict = await parseWrite(schema, written)
 				if ('threw' in verdict) {
 					report(key, throwFinding(action, verdict.threw))
 					continue
 				}
-				for (const issue of verdict.issues) report(key, rejectionFinding(action, issue))
+				for (const issue of verdict.issues) report(key, rejectionFinding(action, issue, 'add', written))
 			}
 		}
 	}

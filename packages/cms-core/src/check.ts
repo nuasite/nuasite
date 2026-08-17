@@ -34,6 +34,14 @@ export interface CheckFinding {
 	column?: number
 	field?: string
 	message: string
+	/**
+	 * What to change to make the finding go away, when there is a specific answer.
+	 *
+	 * Separate from `message` because it is a different kind of claim: the message states
+	 * what the checker observed, the hint proposes an edit it cannot verify. Rules add one
+	 * only where the remedy follows from the evidence — never as a restatement.
+	 */
+	hint?: string
 }
 
 export interface CheckReport {
@@ -359,10 +367,16 @@ export function formatCheckReport(report: CheckReport): string {
 	const lines: string[] = []
 	for (const [file, findings] of byFile) {
 		lines.push(file)
+		// One remedy usually covers a run of findings — five missing fields in one collection get the
+		// same sentence. Printed once per run, and reset per file so a block never opens without it.
+		let lastHint: string | undefined
 		for (const finding of findings) {
 			// eslint's shape: position, severity, message, rule. Familiar, and greppable by column.
 			const at = finding.line === undefined ? '' : `${finding.line}:${finding.column ?? 0}`
 			lines.push(`  ${at.padEnd(8)}${(finding.severity === 'error' ? 'error' : 'warn').padEnd(6)} ${finding.message}  [${finding.code}]`)
+			// Indented under its finding, so the proposal never reads as another observation.
+			if (finding.hint !== undefined && finding.hint !== lastHint) lines.push(`  ${' '.repeat(14)}→ ${finding.hint}`)
+			lastHint = finding.hint
 		}
 	}
 	return lines.join('\n')

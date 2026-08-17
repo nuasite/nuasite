@@ -81,6 +81,20 @@ const inputOf = (collections: Record<string, CollectionSpec>, schemas: LiveSchem
 	return { config, collections: loaded, schemas, today }
 }
 
+/**
+ * The remedies the findings carry, pinned by name.
+ *
+ * Which one a finding gets is the load-bearing part: `.optional()` fixes a key the write omits
+ * and does nothing for a key it fills with a rejected value, so a hint attached to the wrong
+ * case sends the reader down a dead end more confidently than no hint at all.
+ */
+const ABSENT_ON_CREATE =
+	'The create form leaves an untouched field out of the write entirely. `.optional()` or `.default(…)` accepts a missing key; `.nullable()` does not — it accepts `null`, not absence.'
+const ABSENT_ON_ADD =
+	'"+ Add" appends an item with no keys, so every key inside it arrives absent. `.optional()` or `.default(…)` on the inner field accepts that; `.nullable()` does not — it accepts `null`, not absence.'
+const THROWN =
+	'A schema that throws instead of returning an issue is usually a refinement reading a field this write does not carry. Guard it against a missing value — `astro sync` runs the same schema over the same record.'
+
 // Every other rule here judges content that already exists. This one runs before the mistake:
 // it predicts the editor's next write and asks the real schema whether it would take it.
 describe('checkEditorWrites', () => {
@@ -101,6 +115,7 @@ describe('checkEditorWrites', () => {
 			file: 'src/content.config.ts',
 			field: 'stats.1.label',
 			message: 'Clicking "+ Add" on "people.stats" produces a write the schema rejects. stats.1.label: Required',
+			hint: ABSENT_ON_ADD,
 		}])
 	})
 
@@ -127,6 +142,32 @@ describe('checkEditorWrites', () => {
 			file: 'src/content.config.ts',
 			field: 'order',
 			message: 'Creating a new entry in "people" produces a write the schema rejects. order: Required',
+			hint: ABSENT_ON_CREATE,
+		}])
+	})
+
+	// The other half of the hint's job. A number pre-fills with 0, which survives the empty filter,
+	// so the key is present and `.optional()` is the wrong answer — the remedy has to be the other one.
+	test('a rejected value the create form does write gets the remedy for a present key, not for a missing one', async () => {
+		const input = inputOf(
+			{ team: { fields: [fieldOf('order', { type: 'number', required: false })] } },
+			{
+				team: schemaOf(value =>
+					isRecord(value) && typeof value.order === 'number' && value.order < 1
+						? [{ path: ['order'], message: 'Too small: expected number to be >=1' }]
+						: []
+				),
+			},
+		)
+
+		expect(await checkEditorWrites(input)).toEqual([{
+			severity: 'error',
+			code: 'cms/empty-write',
+			file: 'src/content.config.ts',
+			field: 'order',
+			message: 'Creating a new entry in "team" produces a write the schema rejects. order: Too small: expected number to be >=1',
+			hint:
+				'The create form starts this field at 0 and nothing makes the editor change it before saving. Either the schema accepts that value, or mark the field `hidden` so the write omits it and let `.default(…)` supply one.',
 		}])
 	})
 
@@ -198,6 +239,7 @@ describe('checkEditorWrites', () => {
 			code: 'cms/empty-write',
 			file: 'src/content.config.ts',
 			message: 'Creating a new entry in "people" produces a write the schema throws on: undefined is not an object',
+			hint: THROWN,
 		}])
 	})
 
@@ -217,6 +259,7 @@ describe('checkEditorWrites', () => {
 			code: 'cms/empty-write',
 			file: 'src/content.config.ts',
 			message: 'Clicking "+ Add" on "people.stats" produces a write the schema throws on: undefined is not an object',
+			hint: THROWN,
 		}])
 	})
 
@@ -259,6 +302,9 @@ describe('checkEditorWrites', () => {
 			file: 'src/content.config.ts',
 			field: 'stats.1.order',
 			message: 'Clicking "+ Add" on "people.stats" produces a write the schema rejects. stats.1.order: Expected number, received string',
+			// Deliberately not ABSENT_ON_ADD: the write carries `''` here, so `.optional()` would
+			// change nothing. This contrast is what the hint exists to draw.
+			hint: '"+ Add" fills a new item\'s keys with "", and the item is written the moment it is appended. The inner field has to accept that value.',
 		}])
 	})
 
@@ -353,6 +399,8 @@ describe('checkEditorWrites', () => {
 			field: 'stats',
 			message:
 				'Could not check what "+ Add" on "people.stats" writes: no existing entry passes the schema, so there is no valid record to add an item to.',
+			// An unchecked finding's remedy is to unblock the check, not to change the schema.
+			hint: 'Fix the `entry/schema-rejected` findings in "people" and run this again — the prediction needs one entry the schema accepts.',
 		}])
 	})
 
@@ -378,6 +426,8 @@ describe('checkEditorWrites', () => {
 			field: 'people',
 			message:
 				'Could not check what creating a new entry in "people" writes: its schema is not readable from the content config, so there are no fields to predict the write from.',
+			hint:
+				'Write the field types inline in the content config rather than importing the shape from another module — the prediction reads the config source, and a schema assembled elsewhere leaves it nothing to read.',
 		}])
 	})
 

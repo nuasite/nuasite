@@ -107,6 +107,14 @@ project's own `astro/zod`. That adds two things the static rules cannot give you
   build the first time an editor touches it. Where the simulation cannot run,
   `cms/empty-write-unchecked` says so rather than passing silently.
 
+These findings carry a `hint` — a `→` line under the finding in human output, a
+`hint` field in `--json` — saying what to change. It is derived from the write
+itself, not guessed from the error: a key the editor omits is fixed by
+`.optional()` or `.default(…)` (and _not_ by `.nullable()`, which accepts `null`
+but still wants the key), while a key the editor fills with a rejected value
+cannot be, and gets the other remedy. A run of findings sharing one hint prints it
+once.
+
 Two limits are worth knowing:
 
 - The `astro:content` stub used to import the config accepts the same shapes
