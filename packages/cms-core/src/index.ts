@@ -11,6 +11,7 @@ export {
 	parseEntry,
 } from './check-entries'
 export { checkAgainstSchemas, type LiveCheckInput } from './check-live'
+export { checkFieldShapes, type ShapeCheckInput } from './check-shape'
 export { checkEditorWrites, type WriteCheckInput } from './check-write'
 export { scanCollections } from './collection-scanner'
 export { scanComponentDefinitions } from './component-registry'
@@ -67,4 +68,5 @@ export {
 } from './media/index'
 export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
 export { describeIssue, type LiveIssue, type LiveParseResult, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port'
+export { acceptsMissing, firstAcceptedEntry, governsPath, pointAt, type ProbePoint, rejectsValueAt } from './schema-probe'
 export { computePathnameFromSpec, escapeHtml, relativeImportPath, resolvePathnameFromSpec, slugify, slugifyHref } from './shared'

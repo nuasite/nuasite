@@ -15,10 +15,11 @@
 import { assetBaseDir, resolveAssetCandidates } from './asset-paths'
 import { isPlainObject, loadCollections, type LoadedEntry } from './check-entries'
 import { checkAgainstSchemas } from './check-live'
+import { checkFieldShapes } from './check-shape'
 import { checkEditorWrites } from './check-write'
 import { parseContentConfig, type ParsedCollection, type ParsedField } from './content-config-ast'
 import type { CmsFileSystem } from './fs/types'
-import type { LiveSchemas } from './schema-port'
+import { type LiveSchemas, schemaFor } from './schema-port'
 import { computePathnameFromSpec } from './shared'
 
 export type CheckSeverity = 'error' | 'warning'
@@ -271,6 +272,12 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 		const typedFields = collection.fields.filter(field => field.type !== undefined || field.required || field.reference)
 		const declared = new Set(collection.fields.map(field => field.name))
 		const loadedEntries = collections.get(name)?.entries ?? []
+		// `required` is the parser's *default* — it means "no `.optional()` was visible", which is
+		// not the same as "the schema insists". A field schema behind an import hides its wrapper
+		// and turns that default into an error on content the build accepts. Where the real schema
+		// is in hand it answers the question properly, via `entry/schema-rejected`, and the drift
+		// itself is reported once against the config by `cms/required-drift`.
+		const schemaOwnsRequired = options.schemas !== undefined && schemaFor(options.schemas, name) !== undefined
 
 		for (const entry of loadedEntries) {
 			entries++
@@ -284,7 +291,7 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 				const value = entry.frontmatter[field.name]
 
 				if (value === undefined || value === null) {
-					if (field.required) {
+					if (field.required && !schemaOwnsRequired) {
 						findings.push({
 							severity: 'error',
 							code: 'entry/missing-required',
@@ -347,7 +354,7 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 
 	if (options.schemas) {
 		const input = { config, collections, schemas: options.schemas }
-		findings.push(...await checkAgainstSchemas(input), ...await checkEditorWrites(input))
+		findings.push(...await checkAgainstSchemas(input), ...await checkEditorWrites(input), ...await checkFieldShapes(input))
 	}
 
 	return { findings, collections: config.size, entries }

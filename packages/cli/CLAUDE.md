@@ -45,8 +45,11 @@ CLI wrapper that proxies `build`/`dev`/`preview` to `astro` and adds project-lev
 ### Live schema rules
 
 With the project's real schemas in hand, `checkContent` also reports `entry/schema-rejected` (what the build would
-reject — refinements, unions, `.min()`, everything the AST rules stay silent on) and `cms/empty-write` (the writes
-the CMS editor would make when creating an entry or clicking "+ Add" in a repeater).
+reject — refinements, unions, `.min()`, everything the AST rules stay silent on), `cms/empty-write` (the writes
+the CMS editor would make when creating an entry or clicking "+ Add" in a repeater), and the two drift rules in
+`cms-core`'s `check-shape.ts` (`cms/required-drift`, `cms/field-degraded` — where the parser's picture of a field
+and the schema's disagree). It also stops reporting `entry/missing-required` for a collection whose real schema it
+has: `required` there is only the parser's default, and the schema answers the question properly.
 
 Getting them costs an import of the project's config, so three rules govern when they run:
 

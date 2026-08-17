@@ -106,6 +106,16 @@ project's own `astro/zod`. That adds two things the static rules cannot give you
   a repeater. A required field the editor cannot fill is a schema that breaks the
   build the first time an editor touches it. Where the simulation cannot run,
   `cms/empty-write-unchecked` says so rather than passing silently.
+- `cms/required-drift` and `cms/field-degraded` — the two places the editor's
+  picture of a field and the build's picture come apart. The editor is built from
+  what the config parser could read, so a field schema behind an import loses its
+  `.optional()` (the editor then refuses to save it blank) and loses its type (the
+  editor then renders a text input the schema will not accept). Both are proved by
+  asking the schema, never by assuming the parser's silence means something.
+
+Having the real schema also makes `entry/missing-required` stand down for that
+collection: `required` is only what the parser could see, and `entry/schema-rejected`
+knows what the build actually insists on.
 
 These findings carry a `hint` — a `→` line under the finding in human output, a
 `hint` field in `--json` — saying what to change. It is derived from the write

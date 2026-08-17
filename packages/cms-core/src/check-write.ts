@@ -25,6 +25,7 @@ import { collectionKind, isPlainObject, type LoadedCollection, type LoadedCollec
 import type { ParsedConfig, ParsedField } from './content-config-ast'
 import { applyCreateRouteFields, blankRequiredFields, newEntryFrontmatter, omitEmptyOnCreate, type WriteModelField } from './editor-write-model'
 import { describeIssue, type LiveIssue, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port'
+import { firstAcceptedEntry } from './schema-probe'
 
 export interface WriteCheckInput {
 	config: ParsedConfig
@@ -148,23 +149,6 @@ function blankItemsFor(current: unknown[]): unknown[] {
 	return [{}, template]
 }
 
-/**
- * The first entry the schema already accepts — the record the editor is really sitting on
- * when "+ Add" is clicked.
- *
- * It has to be an accepted one: seeding from a record the schema already rejects would blame
- * the added item for the entry's own pre-existing problems, which `check-live.ts` reports. An
- * entry the schema throws on is not accepted either, and `check-live.ts` reports that too.
- */
-async function firstAcceptedFrontmatter(schema: LiveSchema, entries: LoadedEntry[]): Promise<Record<string, unknown> | undefined> {
-	for (const entry of entries) {
-		if (!entry.frontmatter) continue
-		const verdict = await parseWrite(schema, entry.frontmatter)
-		if ('issues' in verdict && verdict.issues.length === 0) return entry.frontmatter
-	}
-	return undefined
-}
-
 export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFinding[]> {
 	const findings: CheckFinding[] = []
 	const seen = new Set<string>()
@@ -232,7 +216,9 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 		const repeaters = collection.fields.filter(field => field.type === 'array' && field.itemType === 'object')
 		if (repeaters.length === 0) continue
 
-		const seed = await firstAcceptedFrontmatter(schema, entries)
+		// The record the editor is really sitting on when "+ Add" is clicked. Shared with the shape
+		// rules so both mean the same thing by it.
+		const seed = await firstAcceptedEntry(schema, entries)
 
 		for (const field of repeaters) {
 			const key = `${name} add:${field.name}`

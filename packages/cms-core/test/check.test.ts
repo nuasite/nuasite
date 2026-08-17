@@ -41,6 +41,23 @@ export const collections = { people${extra ? ', articles' : ''} }
 
 	const check = () => checkContent(createNodeFs(root))
 
+	// `required` is what the parser assumed, not what the schema said. Where the real schema is
+	// available it answers properly, and this default must not keep failing content the build takes.
+	test('a required field the parser assumed is not reported as missing once a live schema is in hand', async () => {
+		await write({
+			'src/content.config.ts': config('n.object({ title: n.text(), nickname: sharedField })'),
+			'src/content/people/ada.md': '---\ntitle: Ada\n---\n',
+		})
+
+		const withoutSchema = await check()
+		expect(withoutSchema.findings.map(finding => finding.code)).toContain('entry/missing-required')
+
+		const withSchema = await checkContent(createNodeFs(root), {
+			schemas: { people: { safeParse: async () => ({ success: true }) } },
+		})
+		expect(withSchema.findings.map(finding => finding.code)).not.toContain('entry/missing-required')
+	})
+
 	test('a clean project reports nothing', async () => {
 		await write({
 			'src/content/people/ada.md': '---\nname: Ada\norder: 1\n---\n',
