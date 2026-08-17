@@ -41,6 +41,8 @@ export const collections = { people${extra ? ', articles' : ''} }
 
 	const check = () => checkContent(createNodeFs(root))
 
+	const acceptEverything = { people: { safeParse: async () => ({ success: true as const }) } }
+
 	// `required` is what the parser assumed, not what the schema said. Where the real schema is
 	// available it answers properly, and this default must not keep failing content the build takes.
 	test('a required field the parser assumed is not reported as missing once a live schema is in hand', async () => {
@@ -52,10 +54,23 @@ export const collections = { people${extra ? ', articles' : ''} }
 		const withoutSchema = await check()
 		expect(withoutSchema.findings.map(finding => finding.code)).toContain('entry/missing-required')
 
-		const withSchema = await checkContent(createNodeFs(root), {
-			schemas: { people: { safeParse: async () => ({ success: true }) } },
-		})
+		const withSchema = await checkContent(createNodeFs(root), { schemas: acceptEverything })
 		expect(withSchema.findings.map(finding => finding.code)).not.toContain('entry/missing-required')
+	})
+
+	// A type name is not a type. `n.date()` is `z.preprocess(toISODate, z.string())` with no
+	// validation, so `date: ''` builds — and this rule called it a broken date on a production site.
+	test('a type the parser read is not enforced over the schema once a live schema is in hand', async () => {
+		await write({
+			'src/content.config.ts': config('n.object({ title: n.text(), date: n.date() })'),
+			'src/content/people/ada.md': "---\ntitle: Ada\ndate: ''\n---\n",
+		})
+
+		const withoutSchema = await check()
+		expect(withoutSchema.findings.map(finding => finding.code)).toContain('entry/field-type')
+
+		const withSchema = await checkContent(createNodeFs(root), { schemas: acceptEverything })
+		expect(withSchema.findings.map(finding => finding.code)).not.toContain('entry/field-type')
 	})
 
 	test('a clean project reports nothing', async () => {

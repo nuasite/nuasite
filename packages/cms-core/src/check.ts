@@ -272,12 +272,19 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 		const typedFields = collection.fields.filter(field => field.type !== undefined || field.required || field.reference)
 		const declared = new Set(collection.fields.map(field => field.name))
 		const loadedEntries = collections.get(name)?.entries ?? []
-		// `required` is the parser's *default* — it means "no `.optional()` was visible", which is
-		// not the same as "the schema insists". A field schema behind an import hides its wrapper
-		// and turns that default into an error on content the build accepts. Where the real schema
-		// is in hand it answers the question properly, via `entry/schema-rejected`, and the drift
-		// itself is reported once against the config by `cms/required-drift`.
-		const schemaOwnsRequired = options.schemas !== undefined && schemaFor(options.schemas, name) !== undefined
+		/**
+		 * Whether the real schema is available to judge this collection's entries.
+		 *
+		 * When it is, `entry/missing-required` and `entry/field-type` stand down: both infer a rule
+		 * from the config's *surface* and are wrong wherever the surface and the schema differ.
+		 * `required` is only "no `.optional()` was visible" — a field schema wrapped in a helper call
+		 * hides it. And a type name does not fix a type: `n.date()` is
+		 * `z.preprocess(toISODate, z.string())` with no validation, so `date: ''` is legal content
+		 * that this rule called a broken date. Both produced build-failing errors on production sites
+		 * that build. `entry/schema-rejected` answers properly, and `cms/required-drift` reports the
+		 * disagreement itself, once, against the config rather than once per entry.
+		 */
+		const schemaJudgesEntries = options.schemas !== undefined && schemaFor(options.schemas, name) !== undefined
 
 		for (const entry of loadedEntries) {
 			entries++
@@ -291,7 +298,7 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 				const value = entry.frontmatter[field.name]
 
 				if (value === undefined || value === null) {
-					if (field.required && !schemaOwnsRequired) {
+					if (field.required && !schemaJudgesEntries) {
 						findings.push({
 							severity: 'error',
 							code: 'entry/missing-required',
@@ -303,7 +310,7 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 					continue
 				}
 
-				const mismatch = field.type === undefined ? null : typeMismatch(field, value)
+				const mismatch = field.type === undefined || schemaJudgesEntries ? null : typeMismatch(field, value)
 				if (mismatch) {
 					findings.push({ severity: 'error', code: 'entry/field-type', file, field: field.name, message: `${field.name}: ${mismatch}` })
 					continue
