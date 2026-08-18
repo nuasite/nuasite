@@ -15,6 +15,7 @@ import {
 	missingRequiredFields,
 	missingRequiredMessage,
 	setDraftField,
+	slugify,
 } from '@nuasite/cms-client'
 import type { CollectionDefinition, FieldDefinition } from '@nuasite/cms-types'
 import { useCallback, useMemo, useState } from 'react'
@@ -44,8 +45,10 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 	}, [])
 
 	const submit = useCallback(async () => {
-		const trimmed = slug.trim()
-		if (trimmed === '') {
+		// The sidecar slugifies whatever it receives, so send what it will actually write —
+		// otherwise `onCreated` opens a slug that does not exist ("My Entry" → `my-entry`).
+		const normalized = slugify(slug)
+		if (normalized === '') {
 			setError('A slug is required.')
 			return
 		}
@@ -58,13 +61,13 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 		setError(null)
 		try {
 			const result = await client.createEntry(collection, {
-				slug: trimmed,
+				slug: normalized,
 				frontmatter: draft.frontmatter,
 				body: draft.body,
 				fileExtension: definition?.fileExtension,
 			})
 			if (result.success) {
-				onCreated(trimmed)
+				onCreated(normalized)
 			} else {
 				setError(result.error ?? 'Could not create the entry.')
 			}

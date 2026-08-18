@@ -706,3 +706,9 @@ export {
 	type RequiredGuardField,
 	type WriteModelField,
 } from './field-values'
+
+// ============================================================================
+// Slug derivation — see `slug.ts` for why the server and the clients share it
+// ============================================================================
+
+export { nextFreeSlug, slugify } from './slug'
