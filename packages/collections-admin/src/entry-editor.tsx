@@ -22,9 +22,10 @@ import {
 	type CmsClient,
 	CmsClientError,
 	type CmsConflict,
+	createEntrySaver,
 	draftFromEntry,
-	draftFromServerFrontmatter,
 	type EntryDraft,
+	type EntrySaveOutcome,
 	missingRequiredFields,
 	missingRequiredMessage,
 	setDraftField,
@@ -323,9 +324,8 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 	// bodies; degrades to an empty list against an older sidecar (no /config).
 	const [listStyles, setListStyles] = useState<CmsListStyle[]>([])
 
-	// `baseHash` is the optimistic-concurrency token. It starts undefined (GET
-	// exposes no hash) and is adopted from each successful `MutationResult.sourceHash`.
-	const baseHashRef = useRef<string | undefined>(undefined)
+	// Owns the `baseHash` token and the `409` protocol; this editor only decides *when* to save.
+	const saver = useMemo(() => createEntrySaver(client, collection, slug), [client, collection, slug])
 	const draftRef = useRef<EntryDraft | null>(null)
 	draftRef.current = draft
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -337,7 +337,7 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 	// Load the entry → build the native draft.
 	useEffect(() => {
 		let active = true
-		baseHashRef.current = undefined
+		saver.reset()
 		setDraft(null)
 		setLoadError(null)
 		setStatus({ kind: 'idle' })
@@ -353,7 +353,7 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 			active = false
 			if (timerRef.current) clearTimeout(timerRef.current)
 		}
-	}, [client, collection, slug, fields])
+	}, [client, collection, slug, fields, saver])
 
 	// Load component definitions for the MDX editor (once per client; mdx only).
 	useEffect(() => {
@@ -389,9 +389,10 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 		}
 	}, [client, isMdx])
 
-	// Persist the current draft. `force` re-uses the server hash to win a conflict.
+	// Persist the current draft. `attempt` runs the actual write — a plain save, or the
+	// force-over that resolves a conflict — and this maps its outcome onto the status badge.
 	const persist = useCallback(
-		async (next: EntryDraft, baseHash: string | undefined) => {
+		async (next: EntryDraft, attempt: (draft: EntryDraft) => Promise<EntrySaveOutcome>) => {
 			// Saving is automatic here, so a blank required field would silently write itself
 			// out on the next keystroke. Refuse, and say so — the badge is the only signal
 			// the editor gets that this draft is not reaching disk.
@@ -401,33 +402,22 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 				return
 			}
 			setStatus({ kind: 'saving' })
-			try {
-				const outcome = await client.updateEntry(collection, slug, {
-					frontmatter: next.frontmatter,
-					body: next.body,
-					baseHash,
-				})
-				if (outcome.status === 'conflict') {
-					setStatus({ kind: 'conflict', conflict: outcome.conflict })
-					return
-				}
-				if (outcome.result.sourceHash !== undefined) baseHashRef.current = outcome.result.sourceHash
-				setStatus({ kind: 'saved' })
-			} catch (err: unknown) {
-				setStatus({ kind: 'error', message: err instanceof CmsClientError ? err.message : 'Save failed' })
-			}
+			const outcome = await attempt(next)
+			if (outcome.status === 'conflict') setStatus({ kind: 'conflict', conflict: outcome.conflict })
+			else if (outcome.status === 'error') setStatus({ kind: 'error', message: outcome.message })
+			else setStatus({ kind: 'saved' })
 		},
-		[client, collection, slug, fields],
+		[fields],
 	)
 
 	const scheduleSave = useCallback(
 		(next: EntryDraft) => {
 			if (timerRef.current) clearTimeout(timerRef.current)
 			timerRef.current = setTimeout(() => {
-				void persist(next, baseHashRef.current)
+				void persist(next, saver.save)
 			}, SAVE_DEBOUNCE_MS)
 		},
-		[persist],
+		[persist, saver],
 	)
 
 	const onField = useCallback(
@@ -460,17 +450,16 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 
 	const resolveUseServer = useCallback(() => {
 		if (status.kind !== 'conflict') return
-		const adopted = draftFromServerFrontmatter(status.conflict.serverFrontmatter, status.conflict.serverBody, fields)
-		baseHashRef.current = status.conflict.serverHash
-		setDraft(adopted)
+		setDraft(saver.adoptServer(status.conflict, fields))
 		setStatus({ kind: 'saved' })
-	}, [status, fields])
+	}, [status, fields, saver])
 
 	const resolveUseOurs = useCallback(() => {
 		if (status.kind !== 'conflict') return
 		const current = draftRef.current
-		if (current) void persist(current, status.conflict.serverHash)
-	}, [status, persist])
+		const { conflict } = status
+		if (current) void persist(current, draft => saver.overwrite(draft, conflict))
+	}, [status, persist, saver])
 
 	const dismissConflict = useCallback(() => {
 		if (status.kind === 'conflict') setStatus({ kind: 'idle' })

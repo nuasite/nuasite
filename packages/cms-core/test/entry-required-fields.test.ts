@@ -347,6 +347,45 @@ export const collections = { articles, products }
 		expect(emptied.success).toBe(true)
 	})
 
+	// A field factory is one declaration reused across collections, so the `.optional()` it
+	// applies is as real as an inline one. While the parser could not see into the helper the
+	// guard read the field as required and refused writes the schema accepts.
+	test('an `.optional()` hidden inside a same-file helper is not enforced either', async () => {
+		const config = `import { n } from '@nuasite/cms'
+import { defineCollection } from 'astro:content'
+
+const optionalTag = () => n.enum(['news', 'tips']).optional()
+
+const notes = defineCollection({
+	schema: n.object({
+		title: n.text(),
+		tag: optionalTag(),
+	}),
+})
+
+export const collections = { notes }
+`
+		await write({ 'src/content.config.ts': config, 'src/content/notes/first.md': '---\ntitle: First\ntag: news\n---\n' })
+
+		// Premise: the helper's `.optional()` reaches the parsed field.
+		expect(parseConfigSource(config).get('notes')!.fields.find(f => f.name === 'tag')).toMatchObject({
+			type: 'select',
+			options: ['news', 'tips'],
+			required: false,
+		})
+
+		const created = await core().createEntry({ collection: 'notes', slug: 'second', frontmatter: { title: 'Second' } })
+		expect(created.success).toBe(true)
+
+		const emptied = await core().updateEntry({ collection: 'notes', slug: 'first', frontmatter: { tag: '' } })
+		expect(emptied.success).toBe(true)
+
+		// The sibling the helper does not touch is still guarded.
+		const blanked = await core().updateEntry({ collection: 'notes', slug: 'first', frontmatter: { title: '' } })
+		expect(blanked.success).toBe(false)
+		expect(blanked.error).toContain('title')
+	})
+
 	// ------------------------------------------------------------------
 	// AC6 — empty array / empty object / `false` / `0` are values
 	// ------------------------------------------------------------------

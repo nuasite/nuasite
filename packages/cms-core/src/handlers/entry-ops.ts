@@ -1,7 +1,9 @@
 import type { CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
 import yaml from 'yaml'
+import { assetBaseDir, resolveAssetCandidates } from '../asset-paths'
 import { scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig } from '../content-config-ast'
+import { blankRequiredFields, newRepeaterItem, type RepeaterItemField } from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
 import { mimeFromExt } from '../media/local'
 import { isPlainRecord, relativeImportPath, slugify } from '../shared'
@@ -84,46 +86,6 @@ async function resolveEntryPath(deps: EntryOpsDeps, collection: string, slug: st
 	return null
 }
 
-/**
- * Resolve a stored asset value (as it appears in frontmatter) to candidate on-disk
- * paths, root-relative, in priority order. Handles the shapes that actually occur:
- *
- * - **Leading `/`** — a runtime URL (`/assets/x.jpeg`, `/uploads/x.webp`). Astro
- *   serves the `public/` dir at the site root, so try `public/<path>` first, then
- *   `<path>` from the project root (assets kept outside `public/`). `baseDir` is
- *   irrelevant, so these resolve without an owning entry.
- * - **Relative** (`../../src/assets/x.webp`, `./x.png`, `x.png`) — an Astro
- *   `image()` value, resolved against `baseDir` (the entry's directory), honoring
- *   `.`/`..`.
- *
- * Returns `[]` when the path climbs above the project root, or is relative with no `baseDir`.
- */
-function resolveAssetCandidates(baseDir: string | undefined, rel: string): string[] {
-	if (rel.startsWith('/')) {
-		const fromRoot = normalizeSegments([], rel)
-		if (fromRoot === null || fromRoot === '') return []
-		return [`public/${fromRoot}`, fromRoot]
-	}
-	if (baseDir === undefined) return []
-	const joined = normalizeSegments(baseDir.split('/').filter(Boolean), rel)
-	return joined === null ? [] : [joined]
-}
-
-/** Join `rel` onto `base` segments, applying `.`/`..`; `null` on traversal above root. */
-function normalizeSegments(base: string[], rel: string): string | null {
-	const out = base.slice()
-	for (const seg of rel.replace(/^\/+/, '').split('/')) {
-		if (seg === '' || seg === '.') continue
-		if (seg === '..') {
-			if (out.length === 0) return null
-			out.pop()
-			continue
-		}
-		out.push(seg)
-	}
-	return out.join('/')
-}
-
 /** First existing candidate read as bytes + content type, or `null` when none exist. */
 async function readAsset(deps: EntryOpsDeps, candidates: string[]): Promise<EntryAsset | null> {
 	for (const candidate of candidates) {
@@ -160,9 +122,7 @@ export async function getEntryAsset(deps: EntryOpsDeps, collection: string, slug
 	if (assetPath.startsWith('/')) return readAsset(deps, resolveAssetCandidates(undefined, assetPath))
 	const sourcePath = await resolveEntryPath(deps, collection, slug)
 	if (!sourcePath) return null
-	const lastSlash = sourcePath.lastIndexOf('/')
-	const baseDir = lastSlash >= 0 ? sourcePath.slice(0, lastSlash) : ''
-	return readAsset(deps, resolveAssetCandidates(baseDir, assetPath))
+	return readAsset(deps, resolveAssetCandidates(assetBaseDir(sourcePath), assetPath))
 }
 
 /**
@@ -359,18 +319,10 @@ function isIndexStyleGlobPattern(pattern: string): boolean {
 // ============================================================================
 
 /**
- * No value at all — as opposed to an empty collection or a falsy scalar.
- *
- * `false` and `0` are values and pass. `[]` and `{}` are a deliberate "nothing here"
- * and pass too. Deliberately identical to the editor-side check so the two sides can
- * never disagree about what "empty" means.
- */
-function isBlank(value: unknown): boolean {
-	return value === undefined || value === null || value === ''
-}
-
-/**
  * Names of the collection's **schema-declared** required fields left empty by `frontmatter`.
+ *
+ * The predicate itself lives in `editor-write-model.ts`, shared with the content check —
+ * see there for which fields the guard deliberately does not cover.
  *
  * Note on where `required` comes from — this reads the content config, never the
  * scanner, and that is the whole point. `scanCollections` *infers* `required` as
@@ -385,21 +337,13 @@ function isBlank(value: unknown): boolean {
  *
  * A collection absent from `content.config.ts` therefore yields `[]` — nobody declared
  * anything required there, so there is nothing to enforce and the write goes through.
- *
- * Only top-level fields are checked. Nested object/array members are left alone: a
- * required key *inside* an object says nothing about whether that object was meant to
- * be filled in at all, and rejecting on it would block partial edits.
- *
- * `hidden` fields are skipped — the form offers no way to fill them in.
  */
 async function missingRequiredFields(deps: EntryOpsDeps, collection: string, frontmatter: Record<string, unknown>): Promise<string[]> {
 	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
 	const parsedCollection = parsed.get(collection)
 	if (!parsedCollection) return []
 
-	return parsedCollection.fields
-		.filter(field => field.required && !field.layout?.hidden && isBlank(frontmatter[field.name]))
-		.map(field => field.name)
+	return blankRequiredFields(parsedCollection.fields, frontmatter)
 }
 
 /** Name the offending fields — the text reaches the UI verbatim, where "validation failed" would be useless. */
@@ -661,6 +605,40 @@ async function writeEntryFrontmatter(
 	await deps.fs.writeFile(loaded.sourcePath, serializeFrontmatter(loaded.frontmatter, loaded.body))
 }
 
+/**
+ * The item fields a repeater declares in `content.config.ts`, or `[]` when it declares none.
+ *
+ * Only top-level repeaters are resolved, which is the only shape `addArrayItem` is called for.
+ */
+async function repeaterItemFields(deps: EntryOpsDeps, collection: string, field: string): Promise<RepeaterItemField[]> {
+	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+	const declared = parsed.get(collection)?.fields.find(candidate => candidate.name === field)
+	if (!declared || declared.type !== 'array' || declared.itemType !== 'object') return []
+	return (declared.fields ?? []).map(item => ({
+		name: item.name,
+		type: item.type,
+		required: item.required,
+		hidden: item.layout?.hidden,
+	}))
+}
+
+/**
+ * Seed the required keys a client left out of an appended item.
+ *
+ * The backstop for the "+ Add" hole. Both first-party editors now send a seeded item, but this
+ * path is reachable by any client — an older editor, a script, the HTTP API directly — and an
+ * item missing a required key is frontmatter the next build refuses. Whatever the client did
+ * send wins: this only adds keys, never rewrites a value someone chose.
+ */
+function seedItem(value: unknown, fields: RepeaterItemField[]): unknown {
+	if (fields.length === 0 || typeof value !== 'object' || value === null || Array.isArray(value)) return value
+	const item: Record<string, unknown> = { ...value }
+	for (const [key, seeded] of Object.entries(newRepeaterItem(fields))) {
+		if (!Object.hasOwn(item, key) || item[key] === undefined) item[key] = seeded
+	}
+	return item
+}
+
 export async function addArrayItem(deps: EntryOpsDeps, input: AddArrayItemInput): Promise<MutationResult> {
 	const loaded = await loadEntryFrontmatter(deps, input.collection, input.slug)
 	if (!loaded) {
@@ -675,7 +653,7 @@ export async function addArrayItem(deps: EntryOpsDeps, input: AddArrayItemInput)
 
 	const index = input.index ?? array.length
 	const clamped = Math.max(0, Math.min(index, array.length))
-	array.splice(clamped, 0, input.value)
+	array.splice(clamped, 0, seedItem(input.value, await repeaterItemFields(deps, input.collection, input.field)))
 	loaded.frontmatter[input.field] = array
 
 	try {

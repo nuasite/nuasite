@@ -1,4 +1,5 @@
 import { type Editor, editorViewCtx } from '@milkdown/core'
+import { omitEmptyOnCreate } from '@nuasite/cms-core/editor-write-model'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { resolveCreateRedirectUrl, slugify } from '../../shared'
 import { updateMarkdownPage } from '../api'
@@ -221,14 +222,12 @@ export function MarkdownEditorOverlay() {
 			await flushPendingEntries()
 			const isData = opts.collectionDefinition.type === 'data'
 
-			// Build frontmatter — for data collections include all fields; for markdown exclude title
-			const frontmatter: Record<string, unknown> = {}
-			for (const [key, value] of Object.entries(currentPage.frontmatter)) {
-				if (!isData && key === 'title') continue
-				if (value !== undefined && value !== '') {
-					frontmatter[key] = value
-				}
-			}
+			// Build frontmatter — for data collections include all fields; for markdown exclude title.
+			// The empty-value filter lives in cms-core so `nua check` predicts this write exactly.
+			const withTitle = Object.fromEntries(
+				Object.entries(currentPage.frontmatter).filter(([key]) => isData || key !== 'title'),
+			)
+			const frontmatter = omitEmptyOnCreate(withTitle)
 
 			const result = await createMarkdownPage(config.value, {
 				collection: opts.collectionName,

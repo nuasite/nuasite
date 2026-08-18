@@ -86,26 +86,10 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
 }
 
 /**
- * Slugify text for URL paths.
- * Folds diacritics, lowercases, strips non-word characters, collapses whitespace/underscores
- * to hyphens. Keeps `/`, so a nested entry path survives — that is the only thing separating
- * this from `slugifyHref` above.
- *
- * The fold matters because this names the file a new entry is written to: `[^\w\s\-/]` alone
- * deletes diacritics rather than folding them, turning "Vedra jako zdravotní i sociální
- * problém" into "vedra-jako-zdravotn-i-sociln-problm" — which is what any host deriving a
- * slug from a Czech title would have to write to disk.
+ * Re-exported from `@nuasite/cms-types` so the server and every client slugify identically —
+ * a host deriving a slug locally is predicting this write. See `cms-types/src/slug.ts`.
  */
-export function slugify(text: string): string {
-	return text
-		.normalize('NFD')
-		.replace(/[\u0300-\u036f]/g, '')
-		.toLowerCase()
-		.trim()
-		.replace(/[^\w\s\-/]/g, '')
-		.replace(/[\s_]+/g, '-')
-		.replace(/^[-/]+|[-/]+$/g, '')
-}
+export { slugify } from '@nuasite/cms-types'
 
 /**
  * Escape HTML special characters to prevent injection.

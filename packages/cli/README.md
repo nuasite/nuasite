@@ -66,7 +66,8 @@ Validates the content collections without building the site:
 nua check                 # exit 1 on errors
 nua check --json          # machine-readable report
 nua check --strict        # warnings fail too
-nua check --content-only  # skip the source parse
+nua check --content-only  # skip the source parse (and the live schema rules)
+nua check --no-live       # skip the live schema rules only
 ```
 
 Run it anywhere in the project: with no `astro.config.*` in the current directory
@@ -90,6 +91,55 @@ still valid: `astro build` validates the same things but costs the whole render
 and stops at the first bad entry, while this reports every problem in one pass —
 under a second on a 1500-entry site. A dangling reference is a warning, because
 it builds green and then renders nothing.
+
+#### Live schema rules
+
+Unless you pass `--no-live` or `--content-only`, `check` also imports your
+`src/content.config.ts` and validates against the **real** Zod schemas, using the
+project's own `astro/zod`. That adds two things the static rules cannot give you:
+
+- `entry/schema-rejected` — every entry the build would reject, including what a
+  plain `z.string().min(3)`, a union, a coercion or a refinement says. This is the
+  verdict `astro sync` gives, without the build.
+- `cms/empty-write` — the writes the CMS editor is about to make, parsed before
+  anyone makes them: creating a new entry in a collection, and clicking "+ Add" in
+  a repeater. A required field the editor cannot fill is a schema that breaks the
+  build the first time an editor touches it. Where the simulation cannot run,
+  `cms/empty-write-unchecked` says so rather than passing silently. What is left
+  after `newRepeaterItem` seeds the item is a required key the config does not
+  declare, or one whose type has no blank the schema takes (a required enum).
+- `cms/required-drift` and `cms/field-degraded` — the two places the editor's
+  picture of a field and the build's picture come apart. The editor is built from
+  what the config parser could read, so a field schema behind an import loses its
+  `.optional()` (the editor then refuses to save it blank) and loses its type (the
+  editor then renders a text input the schema will not accept). Both are proved by
+  asking the schema, never by assuming the parser's silence means something.
+
+Having the real schema also makes `entry/missing-required` stand down for that
+collection: `required` is only what the parser could see, and `entry/schema-rejected`
+knows what the build actually insists on.
+
+These findings carry a `hint` — a `→` line under the finding in human output, a
+`hint` field in `--json` — saying what to change. It is derived from the write
+itself, not guessed from the error: a key the editor omits is fixed by
+`.optional()` or `.default(…)` (and _not_ by `.nullable()`, which accepts `null`
+but still wants the key), while a key the editor fills with a rejected value
+cannot be, and gets the other remedy. A run of findings sharing one hint prints it
+once.
+
+Two limits are worth knowing:
+
+- The `astro:content` stub used to import the config accepts the same shapes
+  `reference()` does, but not the lookup that follows it, and `image()` accepts
+  anything — a build resolves those, an import cannot. So the live schema never
+  reports a dangling reference or a missing image; the static rules
+  (`entry/dangling-reference`, `entry/missing-asset`) are what cover those.
+- Live rules run only when the command resolves to **one** Astro project. The
+  `astro:content` stub is process-global, so in a multi-root run one project's
+  schemas would judge the others. Run the check inside each project to get them.
+
+Whenever the live rules do not run, the report says why — one line in the human
+output, and a `liveSchemas` field (`"ran"` or the reason) in `--json`.
 
 `check` is new in 0.51.0. Most projects do not depend on `@nuasite/cli` directly
 — it arrives through `@nuasite/nua`, which pins it exactly — so a project on an

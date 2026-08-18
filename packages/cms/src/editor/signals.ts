@@ -1,3 +1,4 @@
+import { newEntryFrontmatter } from '@nuasite/cms-core/editor-write-model'
 import { batch, computed, effect, type Signal, signal } from '@preact/signals'
 import { slugifyHref } from '../shared'
 import { fetchManifest, getMarkdownContent } from './api'
@@ -1034,17 +1035,9 @@ export function openMarkdownEditorForNewPage(
 	collectionName: string,
 	collectionDefinition: CollectionDefinition,
 ): void {
-	// Build initial frontmatter from field definitions
-	const initialFrontmatter: Record<string, unknown> = {}
-	for (const field of collectionDefinition.fields) {
-		if (field.name === 'title') continue // title handled separately via the header
-		if (field.hidden) continue // derived fields are auto-computed
-		if (field.defaultValue !== undefined) {
-			initialFrontmatter[field.name] = field.defaultValue
-		} else {
-			initialFrontmatter[field.name] = getDefaultForFieldType(field)
-		}
-	}
+	// Built in cms-core so `nua check`, which predicts this write, cannot drift from it.
+	// It skips `title` (the header field owns it) and hidden fields (nothing can fill them in).
+	const initialFrontmatter = newEntryFrontmatter(collectionDefinition.fields)
 
 	markdownEditorState.value = {
 		isOpen: true,
@@ -1062,24 +1055,6 @@ export function openMarkdownEditorForNewPage(
 			collectionName,
 			collectionDefinition,
 		},
-	}
-}
-
-/**
- * Get a sensible default value for a field based on its type definition.
- */
-function getDefaultForFieldType(field: FieldDefinition): unknown {
-	switch (field.type) {
-		case 'boolean':
-			return false
-		case 'number':
-			return 0
-		case 'array':
-			return []
-		case 'date':
-			return new Date().toISOString().split('T')[0]
-		default:
-			return ''
 	}
 }
 
