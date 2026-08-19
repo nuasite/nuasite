@@ -673,6 +673,115 @@ select.nua-cadmin-input:focus {
 	display: none;
 }
 
+/* --- Reference combobox --- */
+
+.nua-cadmin-combobox {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.nua-cadmin-combobox-control {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.nua-cadmin-combobox-input {
+	padding-right: 28px;
+}
+
+.nua-cadmin-combobox-clear {
+	position: absolute;
+	right: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--nua-cadmin-muted);
+	font-size: 15px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.nua-cadmin-combobox-clear:hover {
+	background: var(--nua-cadmin-border);
+	color: var(--nua-cadmin-fg);
+}
+
+.nua-cadmin-combobox-list {
+	position: absolute;
+	z-index: 20;
+	top: calc(100% + 4px);
+	left: 0;
+	right: 0;
+	max-height: 260px;
+	margin: 0;
+	padding: 4px;
+	overflow-y: auto;
+	list-style: none;
+	border: 1px solid var(--nua-cadmin-border);
+	border-radius: 6px;
+	background: var(--nua-cadmin-bg);
+	box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.nua-cadmin-combobox-option {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	padding: 6px 8px;
+	border-radius: 4px;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.nua-cadmin-combobox-option.is-active {
+	background: var(--nua-cadmin-bg-subtle);
+}
+
+.nua-cadmin-combobox-option[aria-selected='true'] .nua-cadmin-combobox-option-label {
+	font-weight: 600;
+	color: var(--nua-cadmin-accent);
+}
+
+.nua-cadmin-combobox-option-label {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.nua-cadmin-combobox-option-slug {
+	flex-shrink: 0;
+	max-width: 45%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--nua-cadmin-muted);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+}
+
+.nua-cadmin-combobox-empty,
+.nua-cadmin-combobox-more {
+	padding: 6px 8px;
+	color: var(--nua-cadmin-muted);
+	font-size: 12px;
+	font-style: italic;
+}
+
+.nua-cadmin-combobox-hint {
+	color: var(--nua-cadmin-muted);
+	font-size: 12px;
+}
+
 /* --- Editor layout --- */
 
 .nua-cadmin-editor {

@@ -20,7 +20,7 @@ import {
 } from '@nuasite/cms-client'
 import { MdxBodyEditor } from '@nuasite/cms-mdx-editor'
 import { type CmsListStyle, type ComponentDefinition, type FieldDefinition, type FieldType, newRepeaterItem } from '@nuasite/cms-types'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { MediaPicker } from './media-picker'
 
 /** Markdown fields use the rich editor with no component blocks (plain prose + media). */
@@ -233,34 +233,337 @@ function SelectWidget({ field, value, onChange }: { field: FieldDefinition; valu
 }
 
 // ============================================================================
-// Reference widget — picks an entry from the target collection.
+// Reference widget — searchable combobox over the target collection.
 // ============================================================================
+
+/** One lookup page — the sidecar's own ceiling, so a big collection needs few round trips. */
+const REFERENCE_PAGE_SIZE = 1000
+/** Ceiling on options held in memory (~1MB of strings, ~1ms to filter — measured). */
+const REFERENCE_MAX_OPTIONS = 20_000
+/** Rows the dropdown renders at once; the rest is reachable by typing. */
+const REFERENCE_VISIBLE_MATCHES = 100
+/** How long a loaded list is reused before a newly mounted picker refreshes it. */
+const REFERENCE_TTL_MS = 30_000
+
+interface ReferenceOption {
+	slug: string
+	title?: string
+	/** Lowercased "title slug", precomputed so filtering does no work per keystroke. */
+	search: string
+}
+
+/** What the widgets render. Options are usable from the first page onward. */
+interface ReferenceSnapshot {
+	options: ReferenceOption[]
+	/** Nothing to show yet — the first page has not landed. */
+	loading: boolean
+	/** Usable, but later pages are still arriving. */
+	paging: boolean
+	/** `REFERENCE_MAX_OPTIONS` cut the paging short — some entries are unreachable. */
+	truncated: boolean
+	/** The lookup failed with nothing loaded; the widget falls back to free text. */
+	failed: boolean
+}
+
+const EMPTY_SNAPSHOT: ReferenceSnapshot = { options: [], loading: true, paging: false, truncated: false, failed: false }
+
+interface ReferenceStore {
+	client: CmsClient
+	getSnapshot: () => ReferenceSnapshot
+	subscribe: (onChange: () => void) => () => void
+}
+
+function toOption(entry: { slug: string; title?: string }): ReferenceOption {
+	const option: ReferenceOption = { slug: entry.slug, search: `${entry.title ?? ''} ${entry.slug}`.toLowerCase() }
+	if (entry.title !== undefined) option.title = entry.title
+	return option
+}
+
+/**
+ * Per-collection option source, shared by every picker on the form (an array of 20
+ * references must not page the collection 20 times).
+ *
+ * Loading is progressive: each page is published as it lands, so the picker is
+ * usable after one round trip no matter how many pages the collection needs. A
+ * *refresh* of an already-loaded list publishes only at the end — the list must
+ * not shrink under a user who is reading it.
+ */
+function createReferenceStore(client: CmsClient, collection: string): ReferenceStore {
+	let snapshot = EMPTY_SNAPSHOT
+	let loadedAt = 0
+	let running = false
+	const subscribers = new Set<() => void>()
+
+	const publish = (next: Partial<ReferenceSnapshot>) => {
+		snapshot = { ...snapshot, ...next }
+		for (const notify of subscribers) notify()
+	}
+
+	const load = async () => {
+		if (running) return
+		running = true
+		const refresh = snapshot.options.length > 0
+		const options: ReferenceOption[] = []
+		let cursor: string | undefined
+		try {
+			for (;;) {
+				const page = await client.getEntries(collection, { fields: 'slug,title', draft: 'all', limit: REFERENCE_PAGE_SIZE, cursor })
+				for (const entry of page.entries) options.push(toOption(entry))
+				const complete = !page.hasMore || page.cursor === undefined
+				const truncated = !complete && options.length >= REFERENCE_MAX_OPTIONS
+				if (!refresh || complete || truncated) {
+					publish({ options: [...options], loading: false, paging: !complete && !truncated, truncated, failed: false })
+				}
+				if (complete || truncated) break
+				cursor = page.cursor
+			}
+			loadedAt = Date.now()
+		} catch {
+			// A refresh that fails keeps the list it already had; only a cold load fails.
+			publish({ loading: false, paging: false, failed: !refresh })
+		} finally {
+			running = false
+		}
+	}
+
+	return {
+		client,
+		getSnapshot: () => snapshot,
+		subscribe(onChange) {
+			subscribers.add(onChange)
+			// Kick off on the first subscriber, and again once the list has gone stale —
+			// entries created elsewhere should appear the next time a picker opens.
+			if (!running && (loadedAt === 0 || Date.now() - loadedAt > REFERENCE_TTL_MS)) void load()
+			return () => {
+				subscribers.delete(onChange)
+			}
+		},
+	}
+}
+
+const referenceStores = new Map<string, ReferenceStore>()
+
+function referenceStoreFor(client: CmsClient, collection: string): ReferenceStore {
+	const existing = referenceStores.get(collection)
+	// A different client means a different sidecar; its entries are not ours.
+	if (existing && existing.client === client) return existing
+	const store = createReferenceStore(client, collection)
+	referenceStores.set(collection, store)
+	return store
+}
+
+/** Subscribes to the shared per-collection store; re-renders as pages land. */
+function useReferenceOptions(client: CmsClient, collection: string | undefined): ReferenceSnapshot {
+	const store = collection === undefined || collection === '' ? null : referenceStoreFor(client, collection)
+	const subscribe = useCallback((onChange: () => void) => store?.subscribe(onChange) ?? (() => {}), [store])
+	const getSnapshot = useCallback(() => store?.getSnapshot() ?? EMPTY_SNAPSHOT, [store])
+	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
+/** What the user reads: the entry title when it says more than the slug does. */
+function optionLabel(option: ReferenceOption): string {
+	const title = option.title?.trim()
+	return title === undefined || title === '' ? option.slug : title
+}
+
+/**
+ * Match position of every term in "title slug", or `null` when a term is absent.
+ * Lower is better; a slug that *starts* with the query sorts ahead of a mid-word hit.
+ */
+function rankOption(option: ReferenceOption, terms: string[]): number | null {
+	let score = 0
+	for (const term of terms) {
+		const at = option.search.indexOf(term)
+		if (at < 0) return null
+		score += at
+	}
+	const first = terms[0] ?? ''
+	return option.slug.toLowerCase().startsWith(first) ? score : score + 1000
+}
+
+/** Options matching every whitespace-separated term of `query`, best match first. */
+function filterOptions(options: ReferenceOption[], query: string): ReferenceOption[] {
+	const terms = query.toLowerCase().split(/\s+/).filter(term => term !== '')
+	if (terms.length === 0) return options
+	const scored: { option: ReferenceOption; score: number }[] = []
+	for (const option of options) {
+		const score = rankOption(option, terms)
+		if (score !== null) scored.push({ option, score })
+	}
+	scored.sort((a, b) => a.score - b.score)
+	return scored.map(entry => entry.option)
+}
+
+/**
+ * Type-to-search picker over the loaded entries. A plain `<select>` is unusable
+ * once a collection has more than a screenful of entries.
+ *
+ * The list needs no virtualization: it renders at most `REFERENCE_VISIBLE_MATCHES`
+ * rows whatever the collection size, and narrowing happens by typing.
+ */
+function ReferenceCombobox(
+	{ target, snapshot, value, onChange }: {
+		target: string
+		snapshot: ReferenceSnapshot
+		value: string
+		onChange: (slug: string) => void
+	},
+) {
+	const { options, paging, truncated } = snapshot
+	const [open, setOpen] = useState(false)
+	const [query, setQuery] = useState('')
+	const [active, setActive] = useState(0)
+	const rootRef = useRef<HTMLDivElement>(null)
+	const listRef = useRef<HTMLUListElement>(null)
+	const listId = useId()
+
+	const selected = options.find(option => option.slug === value)
+	const matches = useMemo(() => filterOptions(options, query), [options, query])
+	const shown = matches.slice(0, REFERENCE_VISIBLE_MATCHES)
+	const hidden = matches.length - shown.length
+
+	// Close on an outside click. The input's own blur is not enough: it fires before
+	// a click on an option lands, and would take the option away first.
+	useEffect(() => {
+		if (!open) return
+		const onPointerDown = (event: PointerEvent) => {
+			if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+		}
+		document.addEventListener('pointerdown', onPointerDown)
+		return () => document.removeEventListener('pointerdown', onPointerDown)
+	}, [open])
+
+	// Keep the highlighted row visible while arrowing through a long list.
+	useEffect(() => {
+		if (!open) return
+		listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' })
+	}, [active, open])
+
+	const commit = (slug: string) => {
+		onChange(slug)
+		setQuery('')
+		setActive(0)
+		setOpen(false)
+	}
+
+	// Opening lands on the current selection, so arrowing starts where the user is.
+	const openList = () => {
+		const index = options.findIndex(option => option.slug === value)
+		setActive(index < 0 ? 0 : index)
+		setQuery('')
+		setOpen(true)
+	}
+
+	const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+			event.preventDefault()
+			if (!open) {
+				openList()
+				return
+			}
+			const last = shown.length - 1
+			setActive(current => event.key === 'ArrowDown' ? Math.min(current + 1, last) : Math.max(current - 1, 0))
+			return
+		}
+		if (event.key === 'Enter' && open) {
+			const choice = shown[active]
+			if (choice) {
+				event.preventDefault()
+				commit(choice.slug)
+			}
+			return
+		}
+		if (event.key === 'Escape' && open) {
+			// Stop here: an ancestor may read Escape as "close the editor".
+			event.stopPropagation()
+			setQuery('')
+			setOpen(false)
+		}
+	}
+
+	const missing = value !== '' && selected === undefined
+
+	return (
+		<div className="nua-cadmin-combobox" ref={rootRef}>
+			<div className="nua-cadmin-combobox-control">
+				<input
+					type="text"
+					className="nua-cadmin-input nua-cadmin-combobox-input"
+					role="combobox"
+					aria-expanded={open}
+					aria-controls={listId}
+					aria-autocomplete="list"
+					aria-activedescendant={open && shown[active] !== undefined ? `${listId}-${active}` : undefined}
+					autoComplete="off"
+					value={open ? query : (selected ? optionLabel(selected) : value)}
+					placeholder={`Search ${target}…`}
+					onFocus={openList}
+					onChange={event => {
+						setQuery(event.target.value)
+						setActive(0)
+						setOpen(true)
+					}}
+					onKeyDown={onKeyDown}
+				/>
+				{value !== ''
+					? (
+						<button
+							type="button"
+							className="nua-cadmin-combobox-clear"
+							title="Clear reference"
+							aria-label="Clear reference"
+							onClick={() => commit('')}
+						>
+							×
+						</button>
+					)
+					: null}
+			</div>
+			{open
+				? (
+					<ul className="nua-cadmin-combobox-list" id={listId} role="listbox" ref={listRef}>
+						{shown.length === 0 && !paging ? <li className="nua-cadmin-combobox-empty">No entry matches “{query}”</li> : null}
+						{shown.map((option, index) => {
+							const label = optionLabel(option)
+							return (
+								<li
+									key={option.slug}
+									id={`${listId}-${index}`}
+									role="option"
+									aria-selected={option.slug === value}
+									data-active={index === active}
+									className={`nua-cadmin-combobox-option${index === active ? ' is-active' : ''}`}
+									// mousedown, not click: the input blurs on click and the row would be gone.
+									onMouseDown={event => {
+										event.preventDefault()
+										commit(option.slug)
+									}}
+									onMouseEnter={() => setActive(index)}
+								>
+									<span className="nua-cadmin-combobox-option-label">{label}</span>
+									{label === option.slug ? null : <span className="nua-cadmin-combobox-option-slug">{option.slug}</span>}
+								</li>
+							)
+						})}
+						{hidden > 0 ? <li className="nua-cadmin-combobox-more">+{hidden} more — keep typing to narrow</li> : null}
+						{paging ? <li className="nua-cadmin-combobox-more">Loading more entries…</li> : null}
+					</ul>
+				)
+				: null}
+			{missing ? <div className="nua-cadmin-combobox-hint">“{value}” is not an entry of {target}</div> : null}
+			{truncated ? <div className="nua-cadmin-combobox-hint">Showing the first {options.length} entries of {target}</div> : null}
+		</div>
+	)
+}
 
 function ReferenceWidget({ field, value, onChange, ctx }: FieldEditorProps) {
 	const target = field.collection
-	const [slugs, setSlugs] = useState<string[] | null>(null)
-	const [failed, setFailed] = useState(false)
+	const snapshot = useReferenceOptions(ctx.client, target)
 	const current = valueToInput(value)
 
-	useEffect(() => {
-		if (!target) return
-		let active = true
-		ctx.client.getEntries(target, { fields: 'slug,title', draft: 'all', limit: 200 }).then(
-			result => {
-				if (active) setSlugs(result.entries.map(e => e.slug))
-			},
-			() => {
-				if (active) setFailed(true)
-			},
-		)
-		return () => {
-			active = false
-		}
-	}, [ctx.client, target])
-
-	// No target collection, or the lookup failed → fall back to a free-text slug
-	// input rather than blocking the editor.
-	if (!target || failed) {
+	// No target collection, or the lookup failed outright → fall back to a free-text
+	// slug input rather than blocking the editor.
+	if (target === undefined || target === '' || snapshot.failed) {
 		return (
 			<input
 				type="text"
@@ -271,22 +574,19 @@ function ReferenceWidget({ field, value, onChange, ctx }: FieldEditorProps) {
 			/>
 		)
 	}
-	if (slugs === null) {
+	// Only the very first page is worth waiting for; the rest streams in behind the UI.
+	if (snapshot.loading) {
 		return <div className="nua-cadmin-field-loading">Loading {target}…</div>
 	}
 	return (
-		<select className="nua-cadmin-input" value={current} onChange={e => onChange(coerceInput('reference', e.target.value))}>
-			<option value="">— none —</option>
-			{slugs.map(slug => (
-				<option key={slug} value={slug}>
-					{slug}
-				</option>
-			))}
-			{current !== '' && !slugs.includes(current) ? <option value={current}>{current} (current)</option> : null}
-		</select>
+		<ReferenceCombobox
+			target={target}
+			snapshot={snapshot}
+			value={current}
+			onChange={slug => onChange(coerceInput('reference', slug))}
+		/>
 	)
 }
-
 // ============================================================================
 // Array repeater — recurses the item widget.
 // ============================================================================
