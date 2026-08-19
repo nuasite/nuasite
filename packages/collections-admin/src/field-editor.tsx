@@ -12,6 +12,7 @@ import {
 	blankValue,
 	type CmsClient,
 	coerceInput,
+	loadAllEntries,
 	valueToArray,
 	valueToBoolean,
 	valueToDateInput,
@@ -236,14 +237,10 @@ function SelectWidget({ field, value, onChange }: { field: FieldDefinition; valu
 // Reference widget — searchable combobox over the target collection.
 // ============================================================================
 
-/** One lookup page — the sidecar's own ceiling, so a big collection needs few round trips. */
-const REFERENCE_PAGE_SIZE = 1000
 /** Ceiling on options held in memory (~1MB of strings, ~1ms to filter — measured). */
 const REFERENCE_MAX_OPTIONS = 20_000
 /** Rows the dropdown renders at once; the rest is reachable by typing. */
 const REFERENCE_VISIBLE_MATCHES = 100
-/** How long a loaded list is reused before a newly mounted picker refreshes it. */
-const REFERENCE_TTL_MS = 30_000
 
 interface ReferenceOption {
 	slug: string
@@ -268,7 +265,6 @@ interface ReferenceSnapshot {
 const EMPTY_SNAPSHOT: ReferenceSnapshot = { options: [], loading: true, paging: false, truncated: false, failed: false }
 
 interface ReferenceStore {
-	client: CmsClient
 	getSnapshot: () => ReferenceSnapshot
 	subscribe: (onChange: () => void) => () => void
 }
@@ -290,7 +286,6 @@ function toOption(entry: { slug: string; title?: string }): ReferenceOption {
  */
 function createReferenceStore(client: CmsClient, collection: string): ReferenceStore {
 	let snapshot = EMPTY_SNAPSHOT
-	let loadedAt = 0
 	let running = false
 	const subscribers = new Set<() => void>()
 
@@ -302,38 +297,36 @@ function createReferenceStore(client: CmsClient, collection: string): ReferenceS
 	const load = async () => {
 		if (running) return
 		running = true
+		// A refresh publishes only when it completes: the list must not shrink, nor jump
+		// back to "loading more", under someone who is reading it.
 		const refresh = snapshot.options.length > 0
 		const options: ReferenceOption[] = []
-		let cursor: string | undefined
 		try {
-			for (;;) {
-				const page = await client.getEntries(collection, { fields: 'slug,title', draft: 'all', limit: REFERENCE_PAGE_SIZE, cursor })
-				for (const entry of page.entries) options.push(toOption(entry))
-				const complete = !page.hasMore || page.cursor === undefined
-				const truncated = !complete && options.length >= REFERENCE_MAX_OPTIONS
-				if (!refresh || complete || truncated) {
-					publish({ options: [...options], loading: false, paging: !complete && !truncated, truncated, failed: false })
-				}
-				if (complete || truncated) break
-				cursor = page.cursor
-			}
-			loadedAt = Date.now()
+			const result = await loadAllEntries(client, collection, 'slug,title', REFERENCE_MAX_OPTIONS, (page, more) => {
+				for (const entry of page) options.push(toOption(entry))
+				if (!refresh) publish({ options: [...options], loading: false, paging: more, truncated: false, failed: false })
+			})
+			publish({ options, loading: false, paging: false, truncated: result.truncated, failed: false })
 		} catch {
-			// A refresh that fails keeps the list it already had; only a cold load fails.
-			publish({ loading: false, paging: false, failed: !refresh })
+			// Whatever already landed stays usable — a page that fails half way through must
+			// not throw away the pages that succeeded. It is a partial list, though, and says
+			// so: silently presenting it as the whole collection is the bug this widget exists
+			// to fix. Only a load with nothing at all to show falls back to free text.
+			publish({ loading: false, paging: false, truncated: !refresh && options.length > 0, failed: snapshot.options.length === 0 })
 		} finally {
 			running = false
 		}
 	}
 
 	return {
-		client,
 		getSnapshot: () => snapshot,
 		subscribe(onChange) {
+			const first = subscribers.size === 0
 			subscribers.add(onChange)
-			// Kick off on the first subscriber, and again once the list has gone stale —
-			// entries created elsewhere should appear the next time a picker opens.
-			if (!running && (loadedAt === 0 || Date.now() - loadedAt > REFERENCE_TTL_MS)) void load()
+			// Load for the first picker, and reload whenever a picker mounts after the last
+			// one went away: an entry created elsewhere in the admin must be referenceable as
+			// soon as the user comes back. Siblings mounting together join the load in flight.
+			if (first && !running) void load()
 			return () => {
 				subscribers.delete(onChange)
 			}
@@ -341,14 +334,23 @@ function createReferenceStore(client: CmsClient, collection: string): ReferenceS
 	}
 }
 
-const referenceStores = new Map<string, ReferenceStore>()
+/**
+ * Stores per client, then per collection. Keying by collection name alone would make two
+ * clients (two sidecars, same collection names) evict each other's store on every render,
+ * and a store that changes identity every render resubscribes and reloads forever.
+ */
+const referenceStores = new WeakMap<CmsClient, Map<string, ReferenceStore>>()
 
 function referenceStoreFor(client: CmsClient, collection: string): ReferenceStore {
-	const existing = referenceStores.get(collection)
-	// A different client means a different sidecar; its entries are not ours.
-	if (existing && existing.client === client) return existing
+	let byCollection = referenceStores.get(client)
+	if (!byCollection) {
+		byCollection = new Map()
+		referenceStores.set(client, byCollection)
+	}
+	const existing = byCollection.get(collection)
+	if (existing) return existing
 	const store = createReferenceStore(client, collection)
-	referenceStores.set(collection, store)
+	byCollection.set(collection, store)
 	return store
 }
 
@@ -418,7 +420,14 @@ function ReferenceCombobox(
 	const listId = useId()
 
 	const selected = options.find(option => option.slug === value)
-	const matches = useMemo(() => filterOptions(options, query), [options, query])
+	// The current selection leads the unfiltered list. Without it, a selection sitting past
+	// row `REFERENCE_VISIBLE_MATCHES` would be highlighted but never rendered — arrows and
+	// Enter would act on a row that is not there.
+	const matches = useMemo(() => {
+		const filtered = filterOptions(options, query)
+		if (selected === undefined || query.trim() !== '') return filtered
+		return [selected, ...filtered.filter(option => option !== selected)]
+	}, [options, query, selected])
 	const shown = matches.slice(0, REFERENCE_VISIBLE_MATCHES)
 	const hidden = matches.length - shown.length
 
@@ -446,10 +455,9 @@ function ReferenceCombobox(
 		setOpen(false)
 	}
 
-	// Opening lands on the current selection, so arrowing starts where the user is.
+	// Opening lands on row 0 — which is the current selection, since `matches` leads with it.
 	const openList = () => {
-		const index = options.findIndex(option => option.slug === value)
-		setActive(index < 0 ? 0 : index)
+		setActive(0)
 		setQuery('')
 		setOpen(true)
 	}
@@ -481,7 +489,9 @@ function ReferenceCombobox(
 		}
 	}
 
-	const missing = value !== '' && selected === undefined
+	// Only once the whole collection has landed can a value be called missing; before that
+	// the entry may simply be on a page that has not arrived.
+	const missing = value !== '' && selected === undefined && !paging
 
 	return (
 		<div className="nua-cadmin-combobox" ref={rootRef}>
@@ -498,6 +508,11 @@ function ReferenceCombobox(
 					value={open ? query : (selected ? optionLabel(selected) : value)}
 					placeholder={`Search ${target}…`}
 					onFocus={openList}
+					// Committing and Escape both leave the input focused, so a second click
+					// fires no focus event — without this the field cannot be reopened.
+					onMouseDown={() => {
+						if (!open) openList()
+					}}
 					onChange={event => {
 						setQuery(event.target.value)
 						setActive(0)
@@ -551,7 +566,13 @@ function ReferenceCombobox(
 				)
 				: null}
 			{missing ? <div className="nua-cadmin-combobox-hint">“{value}” is not an entry of {target}</div> : null}
-			{truncated ? <div className="nua-cadmin-combobox-hint">Showing the first {options.length} entries of {target}</div> : null}
+			{truncated
+				? (
+					<div className="nua-cadmin-combobox-hint">
+						Showing the first {options.length} {options.length === 1 ? 'entry' : 'entries'} of {target}
+					</div>
+				)
+				: null}
 		</div>
 	)
 }

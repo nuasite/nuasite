@@ -47,16 +47,16 @@ function entriesFrom(slugs: string[]): PagedEntry[] {
  * observed mid-load.
  */
 function gatedClient(pages: string[][], seen: GetEntriesOptions[] = []) {
-	const gates: Array<() => void> = []
+	const gates: Array<(fail?: boolean) => void> = []
 	let served = 0
 	const client = {
 		getEntries: (_collection: string, options: GetEntriesOptions = {}): Promise<CmsEntriesListResult> => {
 			seen.push(options)
 			const index = served++
 			const last = index === pages.length - 1
-			return new Promise<CmsEntriesListResult>(resolve => {
-				gates.push(() =>
-					resolve({
+			return new Promise<CmsEntriesListResult>((resolve, reject) => {
+				gates.push(fail =>
+					fail ? reject(new Error('page failed')) : resolve({
 						entries: entriesFrom(pages[index] ?? []),
 						hasMore: !last,
 						...(last ? {} : { cursor: String(index + 1) }),
@@ -65,11 +65,11 @@ function gatedClient(pages: string[][], seen: GetEntriesOptions[] = []) {
 			})
 		},
 	} as unknown as CmsClient
-	/** Land the oldest pending page and let React flush. */
-	const release = async () => {
+	/** Land (or fail) the oldest pending page and let React flush. */
+	const release = async (fail = false) => {
 		const gate = gates.shift()
 		await act(async () => {
-			gate?.()
+			gate?.(fail)
 		})
 	}
 	return { client, release }
@@ -85,11 +85,17 @@ function setInputValue(input: HTMLInputElement, value: string) {
 	else input.value = value
 }
 
-async function mount(client: CmsClient, value: string, onChange: (v: unknown) => void = () => {}, widgets = 1) {
+async function mount(
+	client: CmsClient,
+	value: string,
+	onChange: (v: unknown) => void = () => {},
+	widgets = 1,
+	collection?: string,
+) {
 	const container = document.createElement('div')
 	document.body.appendChild(container)
 	const root = createRoot(container)
-	const target = `authors-${++collectionSeq}`
+	const target = collection ?? `authors-${++collectionSeq}`
 	const ctx: EditorContext = { client, collection: 'blog', slug: 'hello' }
 	await act(async () => {
 		root.render(
@@ -109,6 +115,22 @@ async function mount(client: CmsClient, value: string, onChange: (v: unknown) =>
 				input.dispatchEvent(new Event('input', { bubbles: true }))
 			})
 		},
+		/** Focus the input, as a user tabbing or clicking into an unfocused field would. */
+		async open() {
+			const input = container.querySelector('input') as HTMLInputElement
+			await act(async () => {
+				input.focus()
+				input.dispatchEvent(new FocusEvent('focus', { bubbles: false }))
+			})
+		},
+		/** Click the input while it already holds focus — no focus event fires. */
+		async clickInput() {
+			const input = container.querySelector('input') as HTMLInputElement
+			await act(async () => {
+				input.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+			})
+		},
+		activeRow: () => container.querySelector('[data-active="true"]')?.textContent ?? null,
 		async press(key: string) {
 			const input = container.querySelector('input') as HTMLInputElement
 			await act(async () => {
@@ -209,5 +231,88 @@ describe('reference combobox', () => {
 		expect(seen.length).toBe(1)
 		expect(ui.container.querySelectorAll('input').length).toBe(5)
 		ui.cleanup()
+	})
+
+	test('a page that fails mid-load keeps the pages that already landed', async () => {
+		const { client, release } = gatedClient([['ada-lovelace'], ['grace-hopper']])
+		const ui = await mount(client, '')
+		await release()
+		await release(true)
+		// The combobox survives with page one; it must not collapse to a raw text box.
+		await ui.type('ada')
+		expect(ui.options()).toEqual(['ada lovelaceada-lovelace'])
+		expect(ui.container.textContent).not.toContain('Loading more entries…')
+		ui.cleanup()
+	})
+
+	test('a cold load that fails outright falls back to free text', async () => {
+		const { client, release } = gatedClient([['ada-lovelace']])
+		const ui = await mount(client, 'ada-lovelace')
+		await release(true)
+		expect(ui.container.querySelector('[role="combobox"]')).toBe(null)
+		expect(ui.input().value).toBe('ada-lovelace')
+		ui.cleanup()
+	})
+
+	test('a page claiming more without a cursor keeps what landed and says it is partial', async () => {
+		const client = {
+			getEntries: (): Promise<CmsEntriesListResult> => Promise.resolve({ entries: entriesFrom(['ada-lovelace']), hasMore: true }),
+		} as unknown as CmsClient
+		const ui = await mount(client, '')
+		// Paging on would loop forever on the same page; presenting the one page as the whole
+		// collection would be the silent truncation this widget exists to fix.
+		expect(ui.container.textContent).toContain('Showing the first 1 entry of')
+		await ui.type('ada')
+		expect(ui.options()).toEqual(['ada lovelaceada-lovelace'])
+		ui.cleanup()
+	})
+
+	test('a selection past the visible slice is highlighted and re-committable', async () => {
+		let committed: unknown
+		const ui = await mount(pagingClient(500, 500), 'author-300', value => {
+			committed = value
+		})
+		expect(ui.input().value).toBe('Author 300')
+		await ui.open()
+		// The list renders 100 rows; entry 300 leads it rather than being highlighted off-screen.
+		expect(ui.options()[0]).toBe('Author 300author-300')
+		expect(ui.activeRow()).toBe('Author 300author-300')
+		await ui.press('Enter')
+		expect(committed).toBe('author-300')
+		ui.cleanup()
+	})
+
+	test('a value on a page that has not landed yet is not called missing', async () => {
+		const { client, release } = gatedClient([['ada-lovelace'], ['grace-hopper']])
+		const ui = await mount(client, 'grace-hopper')
+		await release()
+		expect(ui.container.textContent).not.toContain('is not an entry of')
+		await release()
+		expect(ui.input().value).toBe('grace hopper')
+		expect(ui.container.textContent).not.toContain('is not an entry of')
+		ui.cleanup()
+	})
+
+	test('the list reopens on a click, with the input already focused', async () => {
+		const ui = await mount(pagingClient(3, 500), '')
+		await ui.open()
+		await ui.press('Enter')
+		expect(ui.options()).toEqual([])
+		// Committing leaves focus on the input, so no focus event will fire again.
+		await ui.clickInput()
+		expect(ui.options().length).toBe(3)
+		ui.cleanup()
+	})
+
+	test('a picker mounting after the last one unmounted reloads, so new entries appear', async () => {
+		const seen: GetEntriesOptions[] = []
+		const client = pagingClient(3, 500, seen)
+		const first = await mount(client, '', () => {}, 1, 'authors-shared')
+		expect(seen.length).toBe(1)
+		first.cleanup()
+
+		const second = await mount(client, '', () => {}, 1, 'authors-shared')
+		expect(seen.length).toBe(2)
+		second.cleanup()
 	})
 })

@@ -17,6 +17,13 @@ import type { CmsClient } from './client'
  */
 const ENTRIES_PAGE_SIZE = 1000
 
+/**
+ * Called with each page as it lands, for a UI that wants to be usable before the whole
+ * collection has arrived. `more` says whether another page is still coming. Pages are
+ * already `cap`-trimmed, so concatenating them yields exactly the final `entries`.
+ */
+export type LoadAllEntriesOnPage = (entries: CollectionEntryInfo[], more: boolean) => void
+
 export interface LoadAllEntriesResult {
 	entries: CollectionEntryInfo[]
 	/** True when a `cap` was reached before the collection was exhausted — the entries are truncated. */
@@ -29,12 +36,16 @@ export interface LoadAllEntriesResult {
  *
  * `cap` bounds how many rows are pulled into memory for very large collections; the result's
  * `truncated` flag reports whether more exist beyond it. Omit it to load all.
+ *
+ * `onPage` streams pages to the caller as they land — the difference between a picker that
+ * waits for the whole collection and one that is usable after a single round trip.
  */
 export async function loadAllEntries(
 	client: Pick<CmsClient, 'getEntries'>,
 	collection: string,
 	fields: string,
 	cap?: number,
+	onPage?: LoadAllEntriesOnPage,
 ): Promise<LoadAllEntriesResult> {
 	const rows: CollectionEntryInfo[] = []
 	let cursor: string | undefined
@@ -42,9 +53,15 @@ export async function loadAllEntries(
 
 	while (hasMore) {
 		const result = await client.getEntries(collection, { fields, draft: 'all', limit: ENTRIES_PAGE_SIZE, cursor })
-		rows.push(...result.entries)
 		hasMore = result.hasMore
-		if (cap !== undefined && rows.length >= cap) return { entries: rows.slice(0, cap), truncated: hasMore || rows.length > cap }
+		// Trim before accumulating, so `onPage` only ever sees rows the caller keeps.
+		const room = cap === undefined ? result.entries.length : Math.max(0, cap - rows.length)
+		const page = result.entries.length <= room ? result.entries : result.entries.slice(0, room)
+		rows.push(...page)
+
+		const capped = cap !== undefined && rows.length >= cap
+		onPage?.(page, hasMore && !capped)
+		if (capped) return { entries: rows, truncated: hasMore || result.entries.length > page.length }
 		if (hasMore) {
 			// A page that says there is more but hands back no cursor would loop forever on the
 			// same page; fail loudly instead.
