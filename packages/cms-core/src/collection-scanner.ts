@@ -685,6 +685,10 @@ function applyParsedFieldLayout(field: FieldDefinition, pf: ParsedField): void {
 		// A declared derivation beats `detectDerivedHrefFields`: that pass runs after this one
 		// and skips any field already carrying `derivedFrom`, so the config wins by construction.
 		field.derivedFrom = layout.derivedFrom
+		// A derivation read out of the config is a statement, not the guess `detectDerivedHrefFields`
+		// makes from three sampled values — and only a statement is recomputed on write. Mark it so
+		// consumers reading the wire definition can tell the two apart; the guess never sets this.
+		field.derivedDeclared = true
 		if (layout.derivedTransform) field.derivedTransform = layout.derivedTransform
 		// The value is computed on every write, so hand-editing it makes no sense — hide it
 		// unless the author explicitly asked for the opposite.

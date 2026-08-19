@@ -133,6 +133,19 @@ export interface FieldDefinition {
 	derivedFrom?: string
 	/** Transform applied to the source value when recomputing. Absent means `slugifyHref`. */
 	derivedTransform?: DerivedTransform
+	/**
+	 * The `derivedFrom` above was *declared* in the content config (`n.text({ derivedFrom: … })`),
+	 * not guessed. Absent (the default) means the scanner inferred it: a name ending in
+	 * href/url/link/slug/path next to a sibling whose slugified values matched, over at most
+	 * three sampled entries.
+	 *
+	 * The difference decides who owns the value. Only a declared derivation is recomputed on
+	 * write, so only there is the field genuinely computed rather than filled in — that is what
+	 * lets a form stop demanding it. An inferred one is a coincidence until proven otherwise:
+	 * nothing recomputes it, so a required one is still the user's to fill, and treating it as
+	 * computed would silently drop the only validation standing between a typo and the data.
+	 */
+	derivedDeclared?: boolean
 	/** Editor hints for enhanced field rendering */
 	hints?: FieldHints
 	/** True when the field uses Astro's `image()` schema (entry-relative paths through astro:assets). */

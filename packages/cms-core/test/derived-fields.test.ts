@@ -167,6 +167,28 @@ export const collections = { articles, products, notes, events }
 			expect(field.derivedFrom).toBe('topic')
 			expect(field.hidden).toBe(false)
 		})
+
+		// `derivedFrom` alone says nothing about where it came from, and the two origins carry
+		// different rights: a declaration is recomputed on write, a guess is not. The marker is
+		// how a consumer of the wire definition — the client-side `missingRequiredFields`, say —
+		// tells them apart without reading the config itself.
+		test('a declared derivation is marked `derivedDeclared`, in both hidden and visible form', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/articles/aktualne.md': ARTICLE_FILE,
+				'src/content/notes/prvni.md': '---\ntitle: První\ntopic: Lidé\ntopicHref: /lide\n---\n',
+			})
+
+			const collections = await core().scanCollections()
+			const articles = collections['articles']!.fields
+
+			expect(articles.find(f => f.name === 'categoryHref')!.derivedDeclared).toBe(true)
+			expect(articles.find(f => f.name === 'categorySlug')!.derivedDeclared).toBe(true)
+			// An explicit `hidden: false` changes nothing about provenance.
+			expect(collections['notes']!.fields.find(f => f.name === 'topicHref')!.derivedDeclared).toBe(true)
+			// A plain field near them stays unmarked.
+			expect(articles.find(f => f.name === 'category')!.derivedDeclared).toBeUndefined()
+		})
 	})
 
 	// ------------------------------------------------------------------
@@ -228,6 +250,37 @@ export const collections = { notes }
 			expect(field.derivedFrom).toBe('category')
 			expect(field.hidden).toBe(true)
 			expect(field.derivedTransform).toBeUndefined()
+		})
+
+		// The marker has to stay off the heuristic's output, or a consumer treating it as
+		// "computed, do not demand" would apply that to a field nothing ever computes.
+		test('`detectDerivedHrefFields` never sets `derivedDeclared`, with or without a config', async () => {
+			await write({ 'src/content.config.ts': notesConfig('n.text()'), ...NOTE_FILES })
+
+			const inferred = (await core().scanCollections())['notes']!.fields.find(f => f.name === 'authorHref')!
+
+			expect(inferred.derivedFrom).toBe('author')
+			expect(inferred.derivedDeclared).toBeUndefined()
+
+			// Same field, same data, only the declaration added — now it is marked.
+			await write({ 'src/content.config.ts': notesConfig(`n.text({ derivedFrom: 'author' })`) })
+
+			const declared = (await core().scanCollections())['notes']!.fields.find(f => f.name === 'authorHref')!
+
+			expect(declared.derivedFrom).toBe('author')
+			expect(declared.derivedDeclared).toBe(true)
+		})
+
+		test('inference with no content config at all leaves the marker off too', async () => {
+			await write({
+				'src/content/blog/prvni.md': '---\ntitle: První\ncategory: Aktuálně z nezisku\ncategoryHref: /aktualne-z-nezisku\n---\n',
+				'src/content/blog/druhy.md': '---\ntitle: Druhý\ncategory: Lidé\ncategoryHref: /lide\n---\n',
+			})
+
+			const field = (await core().scanCollections())['blog']!.fields.find(f => f.name === 'categoryHref')!
+
+			expect(field.derivedFrom).toBe('category')
+			expect(field.derivedDeclared).toBeUndefined()
 		})
 
 		test('an inferred derived field is not recomputed on write — only a declaration opts in', async () => {
