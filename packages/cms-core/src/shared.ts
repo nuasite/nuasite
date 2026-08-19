@@ -125,10 +125,15 @@ export function applyDerivedTransform(value: string, transform: DerivedTransform
  * Values every derived field in `fields` should hold given `data`, keyed by field name.
  *
  * The single definition of "recompute derived fields", shared by every write path in
- * `cms-core`. A source field that is missing or not a string yields no entry at all — the
- * existing value is left alone rather than blanked, because "no source" is not "empty
- * result". `hidden` is deliberately not consulted: an author who sets `hidden: false` on a
- * declared derived field still gets it computed, they only also get to see it.
+ * `cms-core`. A source field that is missing, not a string, or blank yields no entry at all —
+ * the existing value is left alone rather than blanked, because "no source" is not "empty
+ * result". An empty source is deliberately in that group: every transform maps `''` to
+ * something that looks like a value (`slugifyHref('')` is `'/'`, a link to the site root), and
+ * writing that into content is worse than leaving the previous value in place. Whitespace-only
+ * counts as empty for the same reason — it slugifies to the same thing.
+ *
+ * `hidden` is deliberately not consulted: an author who sets `hidden: false` on a declared
+ * derived field still gets it computed, they only also get to see it.
  */
 export function computeDerivedFieldUpdates(
 	fields: readonly DerivedFieldSpec[],
@@ -138,7 +143,7 @@ export function computeDerivedFieldUpdates(
 	for (const field of fields) {
 		if (!field.derivedFrom) continue
 		const source = data[field.derivedFrom]
-		if (typeof source !== 'string') continue
+		if (typeof source !== 'string' || source.trim() === '') continue
 		updates[field.name] = applyDerivedTransform(source, field.derivedTransform)
 	}
 	return updates

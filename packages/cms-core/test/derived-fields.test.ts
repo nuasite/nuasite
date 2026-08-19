@@ -38,9 +38,10 @@ describe('derived fields — declaration, recompute, and the surviving inference
 	}
 
 	/**
-	 * `articles` is markdown, `products` is data, `notes` carries the visible variant.
-	 * Between them the schema covers every authoring form (shorthand, both transforms) and
-	 * both `hidden` outcomes.
+	 * `articles` is markdown, `products` is data, `notes` carries the visible variant, and
+	 * `events` the documented shorthand with no `.optional()` after it. Between them the
+	 * schema covers every authoring form (shorthand, both transforms), both `hidden` outcomes
+	 * and both `required` ones.
 	 */
 	const CONFIG = `import { n } from '@nuasite/cms'
 import { z } from 'astro/zod'
@@ -72,7 +73,15 @@ const notes = defineCollection({
 	}),
 })
 
-export const collections = { articles, products, notes }
+const events = defineCollection({
+	schema: z.object({
+		title: n.text(),
+		category: n.text().optional(),
+		categoryHref: n.text({ derivedFrom: 'category' }),
+	}),
+})
+
+export const collections = { articles, products, notes, events }
 `
 
 	// ------------------------------------------------------------------
@@ -336,9 +345,11 @@ export const collections = { notes }
 			expect(written).toContain('categorySlug: aktualne-z-nezisku')
 		})
 
-		test('markdown: the recompute reads the merged frontmatter, so an unrelated patch keeps the derived value in step', async () => {
-			// `categoryHref` is stale on disk; the merged result is what gets written, so the
-			// save that only touches the title still lands a correct derived value.
+		test('markdown: the recompute reads the merged frontmatter, so a patched source refreshes every field derived from it', async () => {
+			// The merged result is what gets written: `titleCopy` is derived from `title`, which
+			// this patch carries, so it refreshes even though the patch never names it.
+			// `categoryHref` is a different matter — its source is untouched here, so the value
+			// on disk is left exactly as the author wrote it (see the hand-authored test below).
 			await write({
 				'src/content.config.ts': CONFIG,
 				'src/content/articles/aktualne.md': '---\ntitle: Aktuálně\ncategory: Lidé\ncategoryHref: /zastarale\n---\n',
@@ -348,8 +359,8 @@ export const collections = { notes }
 
 			expect(result.success).toBe(true)
 			const written = await read('src/content/articles/aktualne.md')
-			expect(written).toContain('categoryHref: /lide')
 			expect(written).toContain('titleCopy: Nový titulek')
+			expect(written).toContain('categoryHref: /zastarale')
 		})
 
 		test('json: the data branch recomputes on update as well', async () => {
@@ -435,13 +446,15 @@ export const collections = { notes }
 			expect(await read('src/content/notes/prvni.md')).toContain('topicHref: /lide')
 		})
 
-		test('a required derived field whose source is missing still fails validation — nothing was computable', async () => {
+		test('a missing source is reported as the source, not as the derived field the user cannot fill', async () => {
+			// The write still fails — but on `topic`, the field the user can actually act on.
+			// `topicHref` is derived, so it is not something the caller was ever asked for.
 			await write({ 'src/content.config.ts': CONFIG })
 
 			const result = await core().createEntry({ collection: 'notes', slug: 'prvni', frontmatter: { title: 'První' } })
 
 			expect(result.success).toBe(false)
-			expect(result.error).toContain('topic')
+			expect(result.error).toBe('Field "topic" is required')
 		})
 
 		test('updateEntry: blanking the source of a required visible derived field is rejected', async () => {
@@ -454,4 +467,336 @@ export const collections = { notes }
 			expect(await read('src/content/notes/prvni.md')).toBe(before)
 		})
 	})
+
+	// ------------------------------------------------------------------
+	// A derived field is never validated as required
+	// ------------------------------------------------------------------
+
+	describe('required validation skips derived fields', () => {
+		// `events.categoryHref` is the documented shorthand written exactly as the docs write
+		// it — `n.text({ derivedFrom: 'category' })`, with **no `.optional()`**, so the parser
+		// marks it `required: true` while the declaration hides it. Validating it would reject
+		// a write over a field no UI shows and no client sends.
+		test('the shorthand really does produce a required, implicitly hidden field', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/events/sraz.md': '---\ntitle: Sraz\ncategory: Lidé\ncategoryHref: /lide\n---\n',
+			})
+			const parsed = parseConfigSource(CONFIG).get('events')!.fields.find(f => f.name === 'categoryHref')!
+
+			expect(parsed.required).toBe(true)
+			expect(parsed.layout?.derivedFrom).toBe('category')
+			// The implied hiding lives on the scanned definition, not on the parsed layout —
+			// which is exactly why validation could not see it.
+			expect(parsed.layout?.hidden).toBeUndefined()
+			expect((await core().scanCollections())['events']!.fields.find(f => f.name === 'categoryHref')!.hidden).toBe(true)
+		})
+
+		test('createEntry succeeds when the source is absent, instead of demanding the invisible derived field', async () => {
+			await write({ 'src/content.config.ts': CONFIG })
+
+			const result = await core().createEntry({ collection: 'events', slug: 'sraz', frontmatter: { title: 'Sraz' } })
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/events/sraz.md')).not.toContain('categoryHref')
+		})
+
+		test('createEntry succeeds when the source is non-string — nothing computable, nothing to demand', async () => {
+			await write({ 'src/content.config.ts': CONFIG })
+
+			const result = await core().createEntry({ collection: 'events', slug: 'sraz', frontmatter: { title: 'Sraz', category: 42 } })
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/events/sraz.md')).not.toContain('categoryHref')
+		})
+
+		test('updateEntry accepts a patch that blanks the source of a hidden derived field', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/events/sraz.md': '---\ntitle: Sraz\ncategory: Lidé\ncategoryHref: /lide\n---\n',
+			})
+
+			const result = await core().updateEntry({ collection: 'events', slug: 'sraz', frontmatter: { category: '' } })
+
+			expect(result.success).toBe(true)
+		})
+	})
+
+	// ------------------------------------------------------------------
+	// Nested `derivedFrom` is out of scope, and says so
+	// ------------------------------------------------------------------
+
+	describe('nested derivedFrom', () => {
+		const NESTED_CONFIG = `import { n } from '@nuasite/cms'
+import { z } from 'astro/zod'
+import { defineCollection } from 'astro:content'
+
+const pages = defineCollection({
+	schema: z.object({
+		title: n.text(),
+		cta: n.object({
+			label: n.text(),
+			labelHref: n.text({ derivedFrom: 'label' }),
+		}),
+	}),
 })
+
+export const collections = { pages }
+`
+
+		const PAGE_FILE = '---\ntitle: Domů\ncta:\n  label: Lidé\n  labelHref: /rucne-nastaveno\n---\n'
+
+		test('the declaration is dropped at parse time — only top-level fields derive', () => {
+			const cta = parseConfigSource(NESTED_CONFIG).get('pages')!.fields.find(f => f.name === 'cta')!
+			const nested = cta.fields!.find(f => f.name === 'labelHref')!
+
+			expect(nested.layout?.derivedFrom).toBeUndefined()
+			expect(nested.layout?.derivedTransform).toBeUndefined()
+		})
+
+		test('parsing warns once, naming the collection and the field path', () => {
+			const warnings = captureWarnings(() => {
+				parseConfigSource(NESTED_CONFIG)
+			})
+
+			const nestedWarnings = warnings.filter(w => w.includes('cta.labelHref'))
+			expect(nestedWarnings).toHaveLength(1)
+			expect(nestedWarnings[0]).toContain('[cms]')
+			expect(nestedWarnings[0]).toContain('"pages"')
+			expect(nestedWarnings[0]).toContain('not supported')
+		})
+
+		test('the nested field stays visible — hiding it would only hide a field nothing computes', async () => {
+			await write({ 'src/content.config.ts': NESTED_CONFIG, 'src/content/pages/domu.md': PAGE_FILE })
+
+			const cta = (await core().scanCollections())['pages']!.fields.find(f => f.name === 'cta')!
+			const nested = cta.fields!.find(f => f.name === 'labelHref')!
+
+			expect(nested.hidden).toBeUndefined()
+			expect(nested.derivedFrom).toBeUndefined()
+		})
+
+		test('the write path invents no nested value: what the patch carries is what lands on disk', async () => {
+			await write({ 'src/content.config.ts': NESTED_CONFIG, 'src/content/pages/domu.md': PAGE_FILE })
+
+			const result = await core().updateEntry({ collection: 'pages', slug: 'domu', frontmatter: { cta: { label: 'Aktuálně z nezisku' } } })
+
+			expect(result.success).toBe(true)
+			const written = await read('src/content/pages/domu.md')
+			expect(written).toContain('label: Aktuálně z nezisku')
+			expect(written).not.toContain('labelHref')
+		})
+	})
+
+	// ------------------------------------------------------------------
+	// An empty source is a missing source
+	// ------------------------------------------------------------------
+
+	describe('empty source', () => {
+		test('updateEntry: an empty source leaves the stored value alone instead of writing `/`', async () => {
+			// `slugifyHref('')` is `'/'` — a link to the site root. Storing that is worse than
+			// keeping the previous value, and `'/'` is not blank, so a required *visible*
+			// derived field would even pass validation on it.
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/articles/aktualne.md': '---\ntitle: Aktuálně\ncategory: Lidé\ncategoryHref: /lide\n---\n',
+			})
+
+			const result = await core().updateEntry({ collection: 'articles', slug: 'aktualne', frontmatter: { category: '' } })
+
+			expect(result.success).toBe(true)
+			const written = await read('src/content/articles/aktualne.md')
+			expect(written).toContain('categoryHref: /lide')
+			expect(written).not.toContain('categoryHref: /\n')
+		})
+
+		test('updateEntry: a whitespace-only source counts as empty too — it slugifies to the same `/`', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/articles/aktualne.md': '---\ntitle: Aktuálně\ncategory: Lidé\ncategoryHref: /lide\n---\n',
+			})
+
+			const result = await core().updateEntry({ collection: 'articles', slug: 'aktualne', frontmatter: { category: '   ' } })
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/articles/aktualne.md')).toContain('categoryHref: /lide')
+		})
+
+		test('createEntry: an empty source writes no derived key, exactly like a missing one', async () => {
+			await write({ 'src/content.config.ts': CONFIG })
+
+			const result = await core().createEntry({ collection: 'articles', slug: 'bez-rubriky', frontmatter: { title: 'Bez rubriky', category: '' } })
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/articles/bez-rubriky.md')).not.toContain('categoryHref')
+		})
+	})
+
+	// ------------------------------------------------------------------
+	// An update recomputes only what it has reason to
+	// ------------------------------------------------------------------
+
+	describe('an update rewrites a derived field only when it has reason to', () => {
+		const HAND_AUTHORED = '---\ntitle: Aktuálně\ncategory: Lidé\ncategoryHref: /kategorie/lide\ncategorySlug: kategorie/lide\n'
+			+ 'titleCopy: Aktuálně\n---\n# Aktuálně\n'
+
+		test('a body-only save leaves a hand-authored derived value alone', async () => {
+			// Nothing about this write concerns `category`. Rewriting `/kategorie/lide` into
+			// `/lide` here is an edit nobody asked for, in a diff the author never expected.
+			await write({ 'src/content.config.ts': CONFIG, 'src/content/articles/aktualne.md': HAND_AUTHORED })
+
+			const result = await core().updateEntry({ collection: 'articles', slug: 'aktualne', body: '# Nový text' })
+
+			expect(result.success).toBe(true)
+			const written = await read('src/content/articles/aktualne.md')
+			expect(written).toContain('categoryHref: /kategorie/lide')
+			expect(written).toContain('# Nový text')
+		})
+
+		test('a patch touching an unrelated field leaves it alone as well', async () => {
+			await write({ 'src/content.config.ts': CONFIG, 'src/content/articles/aktualne.md': HAND_AUTHORED })
+
+			const result = await core().updateEntry({ collection: 'articles', slug: 'aktualne', frontmatter: { title: 'Nový titulek' } })
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/articles/aktualne.md')).toContain('categoryHref: /kategorie/lide')
+		})
+
+		test('json: a body-less data patch leaves the hand-authored value alone too', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/products/desk.json': '{\n  "name": "Desk",\n  "line": "Lidé",\n  "lineHref": "/rada/lide"\n}\n',
+			})
+
+			const result = await core().updateEntry({ collection: 'products', slug: 'desk', frontmatter: { name: 'Standing desk' } })
+
+			expect(result.success).toBe(true)
+			expect(JSON.parse(await read('src/content/products/desk.json')).lineHref).toBe('/rada/lide')
+		})
+
+		test('a derived value the entry does not have yet is filled in, even by a patch that never touches the source', async () => {
+			// Filling a hole is not an edit anybody has to notice — it is what a create would
+			// have written, and there is no authored value to protect.
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/articles/aktualne.md': '---\ntitle: Aktuálně\ncategory: Lidé\n---\n',
+			})
+
+			const result = await core().updateEntry({ collection: 'articles', slug: 'aktualne', frontmatter: { title: 'Nový titulek' } })
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/articles/aktualne.md')).toContain('categoryHref: /lide')
+		})
+
+		test('createEntry still computes unconditionally — a new file has nothing to preserve', async () => {
+			await write({ 'src/content.config.ts': CONFIG })
+
+			const result = await core().createEntry({
+				collection: 'articles',
+				slug: 'nove',
+				frontmatter: { title: 'Nové', category: 'Lidé', categoryHref: '/kategorie/lide' },
+			})
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/articles/nove.md')).toContain('categoryHref: /lide')
+		})
+	})
+
+	// ------------------------------------------------------------------
+	// A source that names nothing
+	// ------------------------------------------------------------------
+
+	describe('unknown source field', () => {
+		const typoConfig = (source: string) =>
+			`import { n } from '@nuasite/cms'
+import { z } from 'astro/zod'
+import { defineCollection } from 'astro:content'
+
+const articles = defineCollection({
+	schema: z.object({
+		title: n.text(),
+		category: n.text(),
+		categoryHref: n.text({ derivedFrom: '${source}' }).optional(),
+	}),
+})
+
+export const collections = { articles }
+`
+
+		test('a source that names no sibling field warns, once, naming collection, field and source', () => {
+			const warnings = captureWarnings(() => {
+				parseConfigSource(typoConfig('catgory'))
+			})
+
+			expect(warnings).toHaveLength(1)
+			expect(warnings[0]).toContain('[cms]')
+			expect(warnings[0]).toContain('"articles"')
+			expect(warnings[0]).toContain('"categoryHref"')
+			expect(warnings[0]).toContain('"catgory"')
+		})
+
+		test('the warning does not throw — the declaration is still parsed and the site still builds', () => {
+			const parsed = captureWarnings(() => {
+				parseConfigSource(typoConfig('catgory'))
+			})
+			expect(parsed).toHaveLength(1)
+
+			const field = parseConfigSource(typoConfig('catgory')).get('articles')!.fields.find(f => f.name === 'categoryHref')!
+			expect(field.layout?.derivedFrom).toBe('catgory')
+		})
+
+		test('a source that does exist warns about nothing', () => {
+			const warnings = captureWarnings(() => {
+				parseConfigSource(typoConfig('category'))
+			})
+
+			expect(warnings).toEqual([])
+		})
+
+		test('a scan does not repeat the warning per entry — it is emitted where the config is parsed', async () => {
+			await write({
+				'src/content.config.ts': typoConfig('catgory'),
+				'src/content/articles/prvni.md': '---\ntitle: První\ncategory: Lidé\n---\n',
+				'src/content/articles/druhy.md': '---\ntitle: Druhý\ncategory: Lidé\n---\n',
+				'src/content/articles/treti.md': '---\ntitle: Třetí\ncategory: Lidé\n---\n',
+			})
+			const cms = core()
+
+			const warnings = await captureWarningsAsync(async () => {
+				await cms.scanCollections()
+			})
+
+			expect(warnings.filter(w => w.includes('catgory'))).toHaveLength(1)
+		})
+	})
+})
+
+/** Collect everything `console.warn` receives while `run` executes. */
+function captureWarnings(run: () => void): string[] {
+	const warnings: string[] = []
+	const original = console.warn
+	console.warn = (...args: unknown[]) => {
+		warnings.push(args.map(arg => String(arg)).join(' '))
+	}
+	try {
+		run()
+	} finally {
+		console.warn = original
+	}
+	return warnings
+}
+
+/** `captureWarnings` for an awaited body. */
+async function captureWarningsAsync(run: () => Promise<void>): Promise<string[]> {
+	const warnings: string[] = []
+	const original = console.warn
+	console.warn = (...args: unknown[]) => {
+		warnings.push(args.map(arg => String(arg)).join(' '))
+	}
+	try {
+		await run()
+	} finally {
+		console.warn = original
+	}
+	return warnings
+}

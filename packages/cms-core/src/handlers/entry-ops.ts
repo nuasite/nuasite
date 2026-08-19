@@ -2,8 +2,8 @@ import type { CollectionEntryInfo, ComponentDefinition, MutationResult } from '@
 import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths'
 import { scanCollections } from '../collection-scanner'
-import { type ParseCache, parseContentConfig } from '../content-config-ast'
-import { blankRequiredFields, newRepeaterItem, type RepeaterItemField } from '../editor-write-model'
+import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast'
+import { blankRequiredFields, isBlankFieldValue, newRepeaterItem, type RepeaterItemField } from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
 import { mimeFromExt } from '../media/local'
 import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared'
@@ -332,12 +332,19 @@ function isIndexStyleGlobPattern(pattern: string): boolean {
  *
  * - The input is the **merged** frontmatter (what lands on disk), never the incoming patch —
  *   so an update touching only the source field still refreshes the derived one.
- * - A missing or non-string source leaves the derived value untouched; see
+ * - A missing, non-string or blank source leaves the derived value untouched; see
  *   `computeDerivedFieldUpdates`.
  * - Only `derivedFrom` **declared in the content config** is recomputed. The scanner's
  *   `detectDerivedHrefFields` guess deliberately stays out of the write path: it is a
  *   heuristic over at most three sampled values, and letting it overwrite files would turn a
  *   coincidence into data loss. Declaring the field opts into the recompute.
+ * - Only **top-level** fields derive. A `derivedFrom` on a nested field is dropped at parse
+ *   time (with a warning) — see `content-config-ast.ts` — so nothing here has to guess what
+ *   a source name would mean inside an object.
+ * - `patch` is the incoming update, and its absence means "this is a create". On an update
+ *   only the fields `shouldRecomputeOnUpdate` accepts are touched; on a create everything
+ *   declared is computed, because the file does not exist yet and has no authored value to
+ *   preserve.
  *
  * Reads the config the same way `missingRequiredFields` does (`parseContentConfig` +
  * `deps.parseCache`), so no new dependency enters `EntryOpsDeps`.
@@ -346,21 +353,50 @@ async function applyDerivedFields(
 	deps: EntryOpsDeps,
 	collection: string,
 	frontmatter: Record<string, unknown>,
+	patch?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
 	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
 	const parsedCollection = parsed.get(collection)
 	if (!parsedCollection) return frontmatter
 
 	const updates = computeDerivedFieldUpdates(
-		parsedCollection.fields.map(field => ({
-			name: field.name,
-			derivedFrom: field.layout?.derivedFrom,
-			derivedTransform: field.layout?.derivedTransform,
-		})),
+		parsedCollection.fields
+			.filter(field => patch === undefined || shouldRecomputeOnUpdate(field, frontmatter, patch))
+			.map(field => ({
+				name: field.name,
+				derivedFrom: field.layout?.derivedFrom,
+				derivedTransform: field.layout?.derivedTransform,
+			})),
 		frontmatter,
 	)
 	if (Object.keys(updates).length === 0) return frontmatter
 	return { ...frontmatter, ...updates }
+}
+
+/**
+ * Whether an **update** should recompute this derived field, given the patch it carries and
+ * the merged frontmatter that would land on disk.
+ *
+ * Two cases, and nothing else:
+ *
+ * 1. The patch carries the source field. The derivation is what the source means, so a write
+ *    that moves the source moves the derived value with it — even when the patch never names
+ *    it. (`updateEntry({ frontmatter: { category } })` refreshing `categoryHref` is the whole
+ *    point of the feature.)
+ * 2. The entry holds no derived value yet. Filling a hole is not an edit anybody has to
+ *    notice, and it is what a create would have written.
+ *
+ * Everything else is left alone. An update that touches only the body, or only an unrelated
+ * field, must not rewrite a value the author put there by hand: `categoryHref:
+ * /kategorie/lide` overridden into `/lide` is a diff nobody asked for, produced by a save
+ * that had nothing to do with it. `createEntry` skips this check entirely — a new file has no
+ * hand-authored value to protect.
+ */
+function shouldRecomputeOnUpdate(field: ParsedField, frontmatter: Record<string, unknown>, patch: Record<string, unknown>): boolean {
+	const source = field.layout?.derivedFrom
+	if (source === undefined) return false
+	if (Object.hasOwn(patch, source)) return true
+	return isBlankFieldValue(frontmatter[field.name])
 }
 
 // ============================================================================
@@ -386,6 +422,9 @@ async function applyDerivedFields(
  *
  * A collection absent from `content.config.ts` therefore yields `[]` — nobody declared
  * anything required there, so there is nothing to enforce and the write goes through.
+ *
+ * The rule itself lives in `blankRequiredFields` (`@nuasite/cms-types`), shared with every
+ * collections UI — including which fields are exempt, and why.
  */
 async function missingRequiredFields(deps: EntryOpsDeps, collection: string, frontmatter: Record<string, unknown>): Promise<string[]> {
 	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
@@ -513,8 +552,9 @@ export async function updateEntry(deps: EntryOpsDeps, input: UpdateEntryInput): 
 
 			// Recompute from the merged result, so a patch that carries only the source field
 			// still refreshes the derived one. Ahead of the required check for the same reason
-			// as in `createEntry`.
-			const resolved = await applyDerivedFields(deps, input.collection, merged)
+			// as in `createEntry`. The patch goes along so a write that never touches a source
+			// leaves the value the author put there alone — see `shouldRecomputeOnUpdate`.
+			const resolved = await applyDerivedFields(deps, input.collection, merged, input.frontmatter ?? {})
 
 			// Validate the merged result, not the incoming patch: a patch that omits a
 			// required field is fine when the file already carries it, and a patch that
@@ -538,8 +578,9 @@ export async function updateEntry(deps: EntryOpsDeps, input: UpdateEntryInput): 
 			}
 
 			// Same rule as the data branch: recompute the derived fields off the merged
-			// frontmatter, then validate what is actually going to disk.
-			const resolvedFrontmatter = await applyDerivedFields(deps, input.collection, mergedFrontmatter)
+			// frontmatter — bounded by the patch, so a body-only save rewrites nothing — then
+			// validate what is actually going to disk.
+			const resolvedFrontmatter = await applyDerivedFields(deps, input.collection, mergedFrontmatter, input.frontmatter ?? {})
 
 			const missing = await missingRequiredFields(deps, input.collection, resolvedFrontmatter)
 			if (missing.length > 0) {

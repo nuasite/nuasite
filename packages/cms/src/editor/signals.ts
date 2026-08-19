@@ -859,7 +859,9 @@ export function updateMarkdownFrontmatter(updates: Partial<import('./types').Blo
  * whose source is untouched keeps its stored value here, and the server refreshes it on save.
  *
  * `hidden` is not consulted, matching the server: a declared derived field with an explicit
- * `hidden: false` is visible but still computed.
+ * `hidden: false` is visible but still computed. An empty or whitespace-only source is skipped
+ * for the same reason the server skips it (`computeDerivedFieldUpdates`): clearing the source
+ * field must not drop a `/` into the form.
  */
 function computeDerivedUpdates(updates: Record<string, unknown>): Record<string, unknown> {
 	const fields = markdownEditorState.value.collectionDefinition?.fields
@@ -869,7 +871,7 @@ function computeDerivedUpdates(updates: Record<string, unknown>): Record<string,
 	for (const field of fields) {
 		if (!field.derivedFrom) continue
 		const sourceValue = updates[field.derivedFrom]
-		if (typeof sourceValue !== 'string') continue
+		if (typeof sourceValue !== 'string' || sourceValue.trim() === '') continue
 		result[field.name] = applyDerivedTransform(sourceValue, field.derivedTransform)
 	}
 	return result

@@ -104,6 +104,26 @@ describe('derived fields — editor form state', () => {
 		expect((currentMarkdownPage.value!.frontmatter as Record<string, unknown>)['categoryHref']).toBe('/lide')
 	})
 
+	test('clearing the source leaves the derived field alone rather than dropping `/` into the form', () => {
+		// `slugifyHref('')` is `'/'`. The server skips an empty source (`computeDerivedFieldUpdates`),
+		// so computing one here would put a value in the form that the next save would not keep.
+		updateMarkdownFrontmatter({ category: '' } as Partial<BlogFrontmatter>)
+
+		const frontmatter = currentMarkdownPage.value!.frontmatter as Record<string, unknown>
+		expect(frontmatter['categoryHref']).toBe('/lide')
+		// And the server agrees on the same merged frontmatter: nothing derived from `category`.
+		const serverUpdates = computeDerivedFieldUpdates(fields, { ...frontmatter, category: '' })
+		expect(Object.keys(serverUpdates)).not.toContain('categoryHref')
+		expect(Object.keys(serverUpdates)).not.toContain('categorySlug')
+		expect(Object.keys(serverUpdates)).not.toContain('visibleHref')
+	})
+
+	test('a whitespace-only source counts as empty on both sides', () => {
+		updateMarkdownFrontmatter({ category: '   ' } as Partial<BlogFrontmatter>)
+
+		expect((currentMarkdownPage.value!.frontmatter as Record<string, unknown>)['categoryHref']).toBe('/lide')
+	})
+
 	test('a patch that leaves the source alone computes nothing here — the server refreshes it on save', () => {
 		// The editor only reacts to what the user just typed. For any field it *does* compute
 		// the value equals the server's, because the server derives from a merge that carries

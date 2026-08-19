@@ -404,9 +404,15 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 			continue
 		}
 
+		const fields = parseSchemaFields(schemaObject, bindings)
+		// Once per parse of the config file, not once per entry: the parse result is cached by
+		// mtime, so a bad declaration is reported when it is read, not on every scan that
+		// consults it.
+		checkDerivedFromDeclarations(collectionName, fields)
+
 		result.set(collectionName, {
 			name: collectionName,
-			fields: parseSchemaFields(schemaObject, bindings),
+			fields,
 			...(hasSkippedMembers(schemaObject) ? { partialFields: true as const } : {}),
 			loaderPattern,
 			loaderBase,
@@ -1045,4 +1051,58 @@ function parseDerivedFromValue(value: t.ObjectProperty['value'], layout: ParsedF
 	if (!field) return
 	layout.derivedFrom = field
 	if (transform) layout.derivedTransform = transform
+}
+
+/**
+ * Report the `derivedFrom` declarations the recompute cannot honour, and drop the ones that
+ * would otherwise take effect halfway.
+ *
+ * Two kinds, both silent before:
+ *
+ * - **Unknown source.** `derivedFrom: 'catgory'` parses perfectly well, so the field is
+ *   hidden (a declaration implies `hidden`) and then never computed, because no such key ever
+ *   appears in the frontmatter. The result is a field that has quietly left the CMS. Warn
+ *   rather than throw: a typo in one field must not take the whole config down, and the site
+ *   still builds.
+ * - **Nested field.** Deriving is a top-level operation — `applyDerivedFields` reads the
+ *   entry's top-level frontmatter, which is the only place a source name is unambiguous.
+ *   A `derivedFrom` inside `n.object({ … })` used to hide the sub-field anyway and then never
+ *   compute it, so the key disappeared from the file on the next write. Rather than invent
+ *   "source relative to the parent object" semantics, the declaration is dropped here: the
+ *   nested field stays visible and hand-editable, and the warning says why.
+ *
+ * Emitted over `console.warn` for the same reason as `warnOnPathnameCollisions` in
+ * `collection-scanner.ts`: `cms-core` cannot reach the ErrorCollector in `@nuasite/cms` and
+ * must not grow a dependency on it.
+ */
+function checkDerivedFromDeclarations(collectionName: string, fields: ParsedField[]): void {
+	const siblingNames = new Set(fields.map(f => f.name))
+	for (const field of fields) {
+		const source = field.layout?.derivedFrom
+		if (source !== undefined && !siblingNames.has(source)) {
+			console.warn(
+				`[cms] collection "${collectionName}": field "${field.name}" derives from "${source}", which is not a field of this collection`
+					+ ` — the field is hidden and nothing is ever computed for it`,
+			)
+		}
+		dropNestedDerivedFrom(collectionName, field.name, field.fields)
+	}
+}
+
+/** Strip `derivedFrom` from every field below the top level, warning once per declaration. */
+function dropNestedDerivedFrom(collectionName: string, path: string, fields: ParsedField[] | undefined): void {
+	if (!fields) return
+	for (const field of fields) {
+		const fieldPath = `${path}.${field.name}`
+		const layout = field.layout
+		if (layout?.derivedFrom !== undefined) {
+			console.warn(
+				`[cms] collection "${collectionName}": field "${fieldPath}" declares \`derivedFrom\` on a nested field, which is not supported`
+					+ ` — only top-level fields derive, so the declaration is ignored and the field stays editable`,
+			)
+			delete layout.derivedFrom
+			delete layout.derivedTransform
+		}
+		dropNestedDerivedFrom(collectionName, fieldPath, field.fields)
+	}
 }
