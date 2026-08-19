@@ -290,6 +290,32 @@ describe('missingRequiredFields', () => {
 		const fields = [field('title'), field('topic'), field('perex', { required: false })]
 		expect(missingRequiredFields(fields, { title: '', topic: '', perex: '' })).toEqual(['title', 'topic'])
 	})
+
+	// A derivation declared in the content config is recomputed by cms-core on every write,
+	// ahead of its own required check. Demanding it here would refuse a save the server would
+	// have taken — over a value the form never asks for.
+	test('a declared derived field is skipped even when visible — the server computes it', () => {
+		const fields = [field('topicHref', { derivedFrom: 'topic', derivedDeclared: true, hidden: false })]
+		expect(missingRequiredFields(fields, { topic: 'Lidé', topicHref: '' })).toEqual([])
+	})
+
+	// The other half, and the one that matters: `detectDerivedHrefFields` guesses a derivation
+	// from at most three sampled values and nothing ever recomputes it. Skipping on `derivedFrom`
+	// alone would quietly stop validating a genuinely required field over that coincidence.
+	test('a merely inferred derived field is still reported — nothing recomputes it', () => {
+		const fields = [field('authorHref', { derivedFrom: 'author' })]
+		expect(missingRequiredFields(fields, { author: 'Jana Nováková', authorHref: '' })).toEqual(['authorHref'])
+	})
+
+	test('a declared derived field that is hidden stays skipped, and an optional one is never reported either', () => {
+		expect(missingRequiredFields([field('categoryHref', { derivedFrom: 'category', derivedDeclared: true, hidden: true })], {})).toEqual([])
+		expect(missingRequiredFields([field('categorySlug', { derivedFrom: 'category', derivedDeclared: true, required: false })], {})).toEqual([])
+	})
+
+	test('the marker exempts only the field carrying it — its source is reported as usual', () => {
+		const fields = [field('topic'), field('topicHref', { derivedFrom: 'topic', derivedDeclared: true, hidden: false })]
+		expect(missingRequiredFields(fields, { topic: '', topicHref: '' })).toEqual(['topic'])
+	})
 })
 
 describe('missingRequiredMessage', () => {

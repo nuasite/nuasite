@@ -277,9 +277,20 @@ function isBlank(value: unknown): boolean {
  * value at all. An empty array or object is a deliberate "nothing here" and passes;
  * so do `false` and `0`, which are values. Hidden fields are skipped: a form offers
  * no way to fill them.
+ *
+ * A **declared** derived field (`derivedDeclared`) is skipped too, whatever its `hidden`
+ * says. The server computes such a field from its source on every write — see the twin
+ * `missingRequiredFields` in `cms-core`'s `handlers/entry-ops.ts`, which runs after the
+ * recompute for exactly this reason — so demanding it here would block a save the server
+ * would have accepted, over a value the user never supplies. What the user can act on is
+ * the source field, and that one carries its own `required`.
+ *
+ * `derivedFrom` alone is not enough to skip on: the scanner also *infers* derivations from
+ * at most three sampled values, and those are deliberately never recomputed on write. A
+ * required field that merely looks derived is still the user's to fill.
  */
 export function missingRequiredFields(fields: FieldDefinition[], frontmatter: Record<string, unknown>): string[] {
-	return fields.filter(f => f.required && !f.hidden && isBlank(frontmatter[f.name])).map(f => f.name)
+	return fields.filter(f => f.required && !f.hidden && !f.derivedDeclared && isBlank(frontmatter[f.name])).map(f => f.name)
 }
 
 /** Phrased for the one-line status slot in the entry forms. */

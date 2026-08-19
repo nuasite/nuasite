@@ -1,4 +1,4 @@
-import type { CollectionDefinition, PathnameSpec } from '@nuasite/cms-types'
+import { type CollectionDefinition, type DerivedTransform, type PathnameSpec, slugify } from '@nuasite/cms-types'
 
 /**
  * Coerce a frontmatter value into a URL path segment. Strings pass through;
@@ -89,7 +89,65 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
  * Re-exported from `@nuasite/cms-types` so the server and every client slugify identically —
  * a host deriving a slug locally is predicting this write. See `cms-types/src/slug.ts`.
  */
-export { slugify } from '@nuasite/cms-types'
+export { slugify }
+
+/** A field's derived-value declaration, the subset of `FieldDefinition` the recompute reads. */
+export interface DerivedFieldSpec {
+	name: string
+	derivedFrom?: string
+	derivedTransform?: DerivedTransform
+}
+
+/**
+ * Apply a derived field's named transform to its source value.
+ *
+ * `slug` reuses `slugify` deliberately, and `slugify` **keeps `/`** — it is written to name
+ * files on disk, where a nested entry path has to survive. So `transform: 'slug'` on a value
+ * that already contains a slash keeps it (`"news/2024"` → `"news/2024"`). That is a conscious
+ * reuse of the existing function, not a bug: the transform is documented as "the `slugifyHref`
+ * fold without the leading slash", and every other separator still collapses to `-`.
+ */
+export function applyDerivedTransform(value: string, transform: DerivedTransform | undefined): string {
+	switch (transform) {
+		case 'copy':
+			return value
+		case 'slug':
+			return slugify(value)
+		// `slugifyHref` is the default so a declared `derivedFrom: 'category'` produces exactly
+		// what `detectDerivedHrefFields` used to infer — migrating an inferred field to a
+		// declared one must not rewrite any data.
+		default:
+			return slugifyHref(value)
+	}
+}
+
+/**
+ * Values every derived field in `fields` should hold given `data`, keyed by field name.
+ *
+ * The single definition of "recompute derived fields", shared by every write path in
+ * `cms-core`. A source field that is missing, not a string, or blank yields no entry at all —
+ * the existing value is left alone rather than blanked, because "no source" is not "empty
+ * result". An empty source is deliberately in that group: every transform maps `''` to
+ * something that looks like a value (`slugifyHref('')` is `'/'`, a link to the site root), and
+ * writing that into content is worse than leaving the previous value in place. Whitespace-only
+ * counts as empty for the same reason — it slugifies to the same thing.
+ *
+ * `hidden` is deliberately not consulted: an author who sets `hidden: false` on a declared
+ * derived field still gets it computed, they only also get to see it.
+ */
+export function computeDerivedFieldUpdates(
+	fields: readonly DerivedFieldSpec[],
+	data: Record<string, unknown>,
+): Record<string, unknown> {
+	const updates: Record<string, unknown> = {}
+	for (const field of fields) {
+		if (!field.derivedFrom) continue
+		const source = data[field.derivedFrom]
+		if (typeof source !== 'string' || source.trim() === '') continue
+		updates[field.name] = applyDerivedTransform(source, field.derivedTransform)
+	}
+	return updates
+}
 
 /**
  * Escape HTML special characters to prevent injection.

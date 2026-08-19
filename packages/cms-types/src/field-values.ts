@@ -87,12 +87,26 @@ export function newRepeaterItem(fields: RepeaterItemField[], today?: () => Date)
 	return item
 }
 
-/** A field carrying a declared required flag. `layout.hidden` is how `parseContentConfig` spells it. */
+/** A field carrying a declared required flag. `layout.*` is how `parseContentConfig` spells it. */
 export interface RequiredGuardField {
 	name: string
 	required: boolean
 	hidden?: boolean
-	layout?: { hidden?: boolean }
+	/** Set only where a derivation was *declared* in the content config — see `blankRequiredFields`. */
+	derivedDeclared?: boolean
+	layout?: { hidden?: boolean; derivedFrom?: string }
+}
+
+/**
+ * Whether this field's value is computed from another field on every write.
+ *
+ * Only a *declared* derivation counts. `parseContentConfig` puts one in `layout.derivedFrom`,
+ * which only ever comes from the config; the wire `FieldDefinition` flags it as
+ * `derivedDeclared`, because there `derivedFrom` alone is ambiguous — `detectDerivedHrefFields`
+ * also sets it, from a guess over at most three sampled values, and nothing recomputes that.
+ */
+function isDeclaredDerived(field: RequiredGuardField): boolean {
+	return field.derivedDeclared === true || field.layout?.derivedFrom !== undefined
 }
 
 /**
@@ -112,9 +126,21 @@ export interface RequiredGuardField {
  * happens to carry as required — enforcing that would make the collection impossible to
  * extend. `FieldDefinition.required` on a collection that reached `applyParsedFieldOverrides`
  * carries the schema's answer; anything else does not.
+ *
+ * A declared derived field is skipped whatever its `hidden` says. Its value is computed from
+ * another field on every write, so it is never something a caller fills in, and demanding it
+ * back would reject a write over a value only the CMS produces. Declaring a derivation also
+ * implies hiding it, so it is usually invisible too — reporting `categoryHref` would name a
+ * field the user cannot see, let alone fill. What they *can* act on is the source, and that
+ * carries its own `required`: leave `category` empty and `category` is what gets reported.
  */
 export function blankRequiredFields(fields: RequiredGuardField[], frontmatter: Record<string, unknown>): string[] {
 	return fields
-		.filter(field => field.required && !(field.hidden ?? field.layout?.hidden) && isBlankFieldValue(frontmatter[field.name]))
+		.filter(field =>
+			field.required
+			&& !(field.hidden ?? field.layout?.hidden)
+			&& !isDeclaredDerived(field)
+			&& isBlankFieldValue(frontmatter[field.name])
+		)
 		.map(field => field.name)
 }

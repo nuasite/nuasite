@@ -1,4 +1,4 @@
-import type { CollectionLayout } from '@nuasite/cms-types'
+import type { CollectionLayout, DerivedTransform } from '@nuasite/cms-types'
 import { z } from 'astro/zod'
 
 /**
@@ -48,6 +48,25 @@ export interface LayoutHints {
 	order?: number
 	/** Hide the field from the editor. */
 	hidden?: boolean
+	/**
+	 * Compute this field's value from another field on every write, instead of editing it
+	 * by hand. The CMS recomputes it in `createEntry`/`updateEntry` — for markdown and data
+	 * entries alike — so the value is refreshed no matter which client wrote it.
+	 *
+	 * The shorthand names the source field and applies `slugifyHref`; the object form picks
+	 * a different transform:
+	 *
+	 * ```ts
+	 * n.text({ derivedFrom: 'category' })                                // 'Lidé' → '/lide'
+	 * n.text({ derivedFrom: { field: 'category', transform: 'slug' } })  // 'Lidé' → 'lide'
+	 * n.text({ derivedFrom: { field: 'title', transform: 'copy' } })     // 'Lidé' → 'Lidé'
+	 * ```
+	 *
+	 * Declaring this implies `hidden: true` — an explicit `hidden: false` still wins and the
+	 * field stays visible (and still computed). A source field that is missing, or holds a
+	 * non-string, leaves the derived value alone rather than blanking it.
+	 */
+	derivedFrom?: string | { field: string; transform?: DerivedTransform }
 }
 
 export interface NumberHints extends LayoutHints {

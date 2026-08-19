@@ -1,6 +1,6 @@
 import { newEntryFrontmatter } from '@nuasite/cms-core/editor-write-model'
 import { batch, computed, effect, type Signal, signal } from '@preact/signals'
-import { slugifyHref } from '../shared'
+import { applyDerivedTransform } from '../shared'
 import { fetchManifest, getMarkdownContent } from './api'
 import type { ToastMessage, ToastType } from './components/toast/types'
 import { getConfig } from './config'
@@ -847,16 +847,32 @@ export function updateMarkdownFrontmatter(updates: Partial<import('./types').Blo
 	}
 }
 
+/**
+ * Derived values for the fields whose source the user just edited — instant feedback while
+ * typing. **The server is authoritative**: `cms-core`'s `applyDerivedFields` recomputes the
+ * same fields on every write, from the merged frontmatter, whichever client sent it.
+ *
+ * This copy cannot disagree with it. It runs the same transform (`applyDerivedTransform`,
+ * mirrored in `../shared`) over the same source value, so for every field whose source
+ * appears in `updates` it yields exactly what the server will write — the merged frontmatter
+ * the server computes from carries that very value. It simply computes *fewer* fields: one
+ * whose source is untouched keeps its stored value here, and the server refreshes it on save.
+ *
+ * `hidden` is not consulted, matching the server: a declared derived field with an explicit
+ * `hidden: false` is visible but still computed. An empty or whitespace-only source is skipped
+ * for the same reason the server skips it (`computeDerivedFieldUpdates`): clearing the source
+ * field must not drop a `/` into the form.
+ */
 function computeDerivedUpdates(updates: Record<string, unknown>): Record<string, unknown> {
 	const fields = markdownEditorState.value.collectionDefinition?.fields
 	if (!fields) return {}
 
 	const result: Record<string, unknown> = {}
 	for (const field of fields) {
-		if (!field.derivedFrom || !field.hidden) continue
+		if (!field.derivedFrom) continue
 		const sourceValue = updates[field.derivedFrom]
-		if (typeof sourceValue !== 'string') continue
-		result[field.name] = slugifyHref(sourceValue)
+		if (typeof sourceValue !== 'string' || sourceValue.trim() === '') continue
+		result[field.name] = applyDerivedTransform(sourceValue, field.derivedTransform)
 	}
 	return result
 }
