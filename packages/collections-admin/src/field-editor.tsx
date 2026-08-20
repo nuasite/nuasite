@@ -640,7 +640,9 @@ function ArrayWidget({ field, value, onChange, ctx }: FieldEditorProps) {
 	)
 	// An object item is built from the schema (`newRepeaterItem` in cms-types, shared with every
 	// other editor and with `nua check`): required keys seeded, optional ones left out. Appending
-	// a bare `{}` writes frontmatter the next build refuses.
+	// a bare `{}` writes frontmatter the next build refuses. A scalar item starts blank and stays
+	// visible until the user fills it in; if they save without doing so, the server drops it
+	// (`withoutBlankArrayItems`) rather than writing an empty list entry.
 	const addItem = useCallback(() => {
 		const seeded = itemType === 'object' && field.fields ? newRepeaterItem(field.fields) : blankValue(itemType)
 		onChange([...items, seeded])

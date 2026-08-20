@@ -15,21 +15,30 @@
  *   Where `blankRequiredFields` says the write guard in `handlers/entry-ops.ts` would reject
  *   the create before it reaches disk, there is no finding to make — with the exception of
  *   `hidden` fields, which that guard skips.
- * - **"+ Add" in a repeater** — an object-array field gains an item built by `newRepeaterItem`,
+ * - **"+ Add" in a list** — an object-array field gains an item built by `newRepeaterItem`,
  *   which seeds the keys the config declares required and omits the rest. What survives is a
  *   required key the config does not know about: `addArrayItem` seeds from the same config the
- *   editor renders from, so neither can supply a key neither can see.
+ *   editor renders from, so neither can supply a key neither can see. A list of scalars —
+ *   `z.array(reference('tags'))` and friends — is simulated too: it appends `blankFieldValue`
+ *   for the item type, which is what every editor's "+ Add" does.
+ *
+ * Both simulated writes end with `withoutBlankArrayItems`, because that is the last thing
+ * `handlers/entry-ops.ts` does before serializing. Predicting the pre-write record would
+ * report a failure the server no longer allows to happen.
  */
 
+import type { FieldType } from '@nuasite/cms-types'
 import type { CheckFinding } from './check'
 import { collectionKind, isPlainObject, type LoadedCollection, type LoadedCollections, type LoadedEntry } from './check-entries'
 import type { ParsedConfig, ParsedField } from './content-config-ast'
 import {
 	applyCreateRouteFields,
+	blankFieldValue,
 	blankRequiredFields,
 	newEntryFrontmatter,
 	newRepeaterItem,
 	omitEmptyOnCreate,
+	withoutBlankArrayItems,
 	type WriteModelField,
 } from './editor-write-model'
 import { describeIssue, type LiveIssue, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port'
@@ -140,6 +149,27 @@ const throwFinding = (action: string, threw: string): CheckFinding => ({
 })
 
 /**
+ * Whether "+ Add" can be clicked on this field at all.
+ *
+ * `field.type` is not enough on its own: `z.array(reference('tags'))` parses to a `reference`
+ * with `isArray`, no `type` and no `itemType`, which is exactly the shape that went unchecked.
+ */
+const isListField = (field: ParsedField): boolean => field.type === 'array' || field.reference?.isArray === true
+
+/**
+ * The item type of a list of scalars, or `undefined` for a list of objects.
+ *
+ * A list whose `itemType` the config never pinned is treated as a list of objects, which is
+ * what `blankItemsFor`'s keyless fallback is for — guessing `text` there would predict a write
+ * nobody makes.
+ */
+function scalarItemType(field: ParsedField): FieldType | undefined {
+	if (field.reference?.isArray) return 'reference'
+	if (field.type !== 'array') return undefined
+	return field.itemType === undefined || field.itemType === 'object' ? undefined : field.itemType
+}
+
+/**
  * The item "+ Add" appends to a repeater.
  *
  * Where the schema declares the item's fields, both the editor and `addArrayItem` build it with
@@ -154,16 +184,25 @@ const throwFinding = (action: string, threw: string): CheckFinding => ({
  * which is the failure `{}` alone cannot predict.
  */
 function blankItemsFor(field: ParsedField, current: unknown[], today?: () => Date): unknown[] {
+	// A list of scalars has one shape, and it is the one every editor's item widget produces.
+	const scalar = scalarItemType(field)
+	if (scalar !== undefined) return [blankFieldValue({ name: field.name, type: scalar })]
+
 	const itemFields = field.fields ?? []
 	if (itemFields.length > 0) {
 		return [newRepeaterItem(itemFields.map(item => ({ ...toWriteModelField(item), required: item.required })), today)]
 	}
-	if (current.length === 0) return [{}, { name: '' }]
+	// What is already on disk is the only evidence left. `z.array(z.string())` parses with no item
+	// type either, and it renders as a row of text inputs whose blank the server drops — so an
+	// object is invented only where something says the items are objects. Predicting one anywhere
+	// else reports a write no editor makes.
 	const first = current[0]
-	// A non-object first item means the in-page repeater is not what renders this field; fall
-	// back to the shape the other editor writes rather than inventing a third one.
-	const template = isPlainObject(first) ? Object.fromEntries(Object.keys(first).map(key => [key, ''])) : {}
-	return [{}, template]
+	if (isPlainObject(first)) return [{}, Object.fromEntries(Object.keys(first).map(key => [key, '']))]
+	if (field.itemType !== 'object') return []
+	// Declared a repeater, with nothing to copy: the in-page editor invents `{ name: '' }` there.
+	// With a scalar sitting in it, it is not what renders this field, and `{}` — what the other
+	// editor appends — is the honest stand-in.
+	return current.length === 0 ? [{}, { name: '' }] : [{}]
 }
 
 export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFinding[]> {
@@ -207,11 +246,11 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 		const kind = loaded ? collectionKind(loaded, collection.loaderPattern) : 'markdown'
 
 		// The route's own keys go on last, because it spreads the form's frontmatter over them.
-		const created = applyCreateRouteFields(
-			omitEmptyOnCreate(newEntryFrontmatter(collection.fields.map(toWriteModelField), input.today)),
+		const created = withoutBlankArrayItems(applyCreateRouteFields(
+			omitEmptyOnCreate(newEntryFrontmatter(collection.fields.map(toWriteModelField))),
 			kind,
 			input.today,
-		)
+		))
 		// What the write guard in `handlers/entry-ops.ts` rejects never reaches disk, so it is
 		// nothing to report. The guard runs inside `createEntry`, i.e. on this same record — and
 		// it skips `hidden` fields, which is why `blankRequiredFields` never lists one and why a
@@ -230,14 +269,14 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 			}
 		}
 
-		const repeaters = collection.fields.filter(field => field.type === 'array' && field.itemType === 'object')
-		if (repeaters.length === 0) continue
+		const lists = collection.fields.filter(isListField)
+		if (lists.length === 0) continue
 
 		// The record the editor is really sitting on when "+ Add" is clicked. Shared with the shape
 		// rules so both mean the same thing by it.
 		const seed = await firstAcceptedEntry(schema, entries)
 
-		for (const field of repeaters) {
+		for (const field of lists) {
 			const key = `${name} add:${field.name}`
 			if (!seed) {
 				// A simulation that could not run must never read as a pass.
@@ -265,7 +304,7 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 			// identically the report says it once — in the words of the keyless item, which is
 			// simulated first — and a failure only one of them causes still names "+ Add".
 			for (const item of blankItemsFor(field, existing, input.today)) {
-				const written = { ...seed, [field.name]: [...existing, item] }
+				const written = withoutBlankArrayItems({ ...seed, [field.name]: [...existing, item] })
 				const verdict = await parseWrite(schema, written)
 				if ('threw' in verdict) {
 					report(key, throwFinding(action, verdict.threw))

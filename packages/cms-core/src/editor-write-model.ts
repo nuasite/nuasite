@@ -14,15 +14,17 @@
  * and misses the ones that can — which is why none of it may be reimplemented anywhere.
  */
 
-import { defaultValueForNewEntry, type WriteModelField } from '@nuasite/cms-types'
+import { blankFieldValue, type WriteModelField } from '@nuasite/cms-types'
 
 export {
+	blankFieldValue,
 	blankRequiredFields,
-	defaultValueForNewEntry,
 	isBlankFieldValue,
 	newRepeaterItem,
 	type RepeaterItemField,
 	type RequiredGuardField,
+	seedValueForRequiredField,
+	withoutBlankArrayItems,
 	type WriteModelField,
 } from '@nuasite/cms-types'
 
@@ -32,12 +34,16 @@ export {
  * `title` is excluded because the create form carries it in its own header field, and
  * hidden fields are excluded because the form cannot fill them in. Neither is missing from
  * the finished entry — see `applyCreateRouteFields`, which is what puts `title` back.
+ *
+ * The values come from `blankFieldValue`, the same function `draftForCreate` in `cms-client`
+ * asks. The two used to seed differently, so this — and the check built on it — described a
+ * write only one of the two editors ever made.
  */
-export function newEntryFrontmatter(fields: WriteModelField[], today?: () => Date): Record<string, unknown> {
+export function newEntryFrontmatter(fields: WriteModelField[]): Record<string, unknown> {
 	const frontmatter: Record<string, unknown> = {}
 	for (const field of fields) {
 		if (field.name === 'title' || field.hidden) continue
-		frontmatter[field.name] = defaultValueForNewEntry(field, today)
+		frontmatter[field.name] = blankFieldValue(field)
 	}
 	return frontmatter
 }

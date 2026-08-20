@@ -3,7 +3,7 @@ import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths'
 import { scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast'
-import { blankRequiredFields, isBlankFieldValue, newRepeaterItem, type RepeaterItemField } from '../editor-write-model'
+import { blankRequiredFields, isBlankFieldValue, newRepeaterItem, type RepeaterItemField, withoutBlankArrayItems } from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
 import { mimeFromExt } from '../media/local'
 import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared'
@@ -485,7 +485,10 @@ export async function getEntry(deps: EntryOpsDeps, collection: string, slug: str
 }
 
 export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): Promise<MutationResult> {
-	const { collection, slug, frontmatter, body = '' } = input
+	const { collection, slug, body = '' } = input
+	// Before anything reads it: a list may not carry a blank item. See `withoutBlankArrayItems`
+	// — an unfilled row appended by "+ Add" arrives as `null` and fails the whole site build.
+	const frontmatter = withoutBlankArrayItems(input.frontmatter)
 
 	const normalizedSlug = slugify(slug)
 	if (!normalizedSlug) {
@@ -544,17 +547,21 @@ export async function updateEntry(deps: EntryOpsDeps, input: UpdateEntryInput): 
 		return { success: false, error: `Entry not found: ${input.collection}/${input.slug}` }
 	}
 
+	// The incoming patch only — never the merged record. Cleaning what is already on disk would
+	// rewrite lists this edit never touched, and a save must change what the editor changed.
+	const patch = input.frontmatter === undefined ? undefined : withoutBlankArrayItems(input.frontmatter)
+
 	try {
 		if (isDataFile(sourcePath)) {
 			const raw = await deps.fs.readFile(sourcePath)
 			const existing = sourcePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)
-			const merged: Record<string, unknown> = { ...(existing ?? {}), ...input.frontmatter }
+			const merged: Record<string, unknown> = { ...(existing ?? {}), ...patch }
 
 			// Recompute from the merged result, so a patch that carries only the source field
 			// still refreshes the derived one. Ahead of the required check for the same reason
 			// as in `createEntry`. The patch goes along so a write that never touches a source
 			// leaves the value the author put there alone — see `shouldRecomputeOnUpdate`.
-			const resolved = await applyDerivedFields(deps, input.collection, merged, input.frontmatter ?? {})
+			const resolved = await applyDerivedFields(deps, input.collection, merged, patch ?? {})
 
 			// Validate the merged result, not the incoming patch: a patch that omits a
 			// required field is fine when the file already carries it, and a patch that
@@ -574,13 +581,13 @@ export async function updateEntry(deps: EntryOpsDeps, input: UpdateEntryInput): 
 
 			const mergedFrontmatter: Record<string, unknown> = {
 				...existing.frontmatter,
-				...input.frontmatter,
+				...patch,
 			}
 
 			// Same rule as the data branch: recompute the derived fields off the merged
 			// frontmatter — bounded by the patch, so a body-only save rewrites nothing — then
 			// validate what is actually going to disk.
-			const resolvedFrontmatter = await applyDerivedFields(deps, input.collection, mergedFrontmatter, input.frontmatter ?? {})
+			const resolvedFrontmatter = await applyDerivedFields(deps, input.collection, mergedFrontmatter, patch ?? {})
 
 			const missing = await missingRequiredFields(deps, input.collection, resolvedFrontmatter)
 			if (missing.length > 0) {
@@ -751,6 +758,13 @@ export async function addArrayItem(deps: EntryOpsDeps, input: AddArrayItemInput)
 	const array = Array.isArray(current) ? current.slice() : current === undefined ? [] : null
 	if (array === null) {
 		return { success: false, error: `Field "${input.field}" is not an array` }
+	}
+
+	// A field may be absent; an item in a list may not, so a blank one is frontmatter the next
+	// build refuses. Refused rather than dropped: a client that asked for an append should not
+	// be told it happened when nothing was written.
+	if (isBlankFieldValue(input.value)) {
+		return { success: false, error: `Refusing to append an empty item to "${input.field}" — fill it in, or leave the list alone` }
 	}
 
 	const index = input.index ?? array.length
