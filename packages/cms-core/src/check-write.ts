@@ -192,12 +192,17 @@ function blankItemsFor(field: ParsedField, current: unknown[], today?: () => Dat
 	if (itemFields.length > 0) {
 		return [newRepeaterItem(itemFields.map(item => ({ ...toWriteModelField(item), required: item.required })), today)]
 	}
-	if (current.length === 0) return [{}, { name: '' }]
+	// What is already on disk is the only evidence left. `z.array(z.string())` parses with no item
+	// type either, and it renders as a row of text inputs whose blank the server drops — so an
+	// object is invented only where something says the items are objects. Predicting one anywhere
+	// else reports a write no editor makes.
 	const first = current[0]
-	// A non-object first item means the in-page repeater is not what renders this field; fall
-	// back to the shape the other editor writes rather than inventing a third one.
-	const template = isPlainObject(first) ? Object.fromEntries(Object.keys(first).map(key => [key, ''])) : {}
-	return [{}, template]
+	if (isPlainObject(first)) return [{}, Object.fromEntries(Object.keys(first).map(key => [key, '']))]
+	if (field.itemType !== 'object') return []
+	// Declared a repeater, with nothing to copy: the in-page editor invents `{ name: '' }` there.
+	// With a scalar sitting in it, it is not what renders this field, and `{}` — what the other
+	// editor appends — is the honest stand-in.
+	return current.length === 0 ? [{}, { name: '' }] : [{}]
 }
 
 export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFinding[]> {

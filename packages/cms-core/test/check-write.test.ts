@@ -446,6 +446,30 @@ describe('checkEditorWrites', () => {
 		expect(await checkEditorWrites(input)).toEqual([])
 	})
 
+	// `z.array(z.string())` parses to an array with no item type at all — the same shape a repeater
+	// whose item schema could not be read leaves behind. It renders as a row of text inputs, so
+	// guessing an object item there reports a write no editor makes.
+	test('a list of plain strings is not predicted as a list of objects', async () => {
+		const input = inputOf(
+			{
+				people: {
+					fields: [fieldOf('linked', { required: false, type: 'array' })],
+					entries: [entryOf('src/content/people/ada.md', { linked: ['ada-on-tour'] })],
+				},
+			},
+			{
+				people: schemaOf(value => {
+					const linked: unknown[] = isRecord(value) && Array.isArray(value.linked) ? value.linked : []
+					return linked.flatMap((item, index) =>
+						typeof item === 'string' ? [] : [{ path: ['linked', index], message: 'Invalid input: expected string, received object' }]
+					)
+				}),
+			},
+		)
+
+		expect(await checkEditorWrites(input)).toEqual([])
+	})
+
 	// A simulation that did not run must never look like a pass.
 	test('a repeater with no schema-accepted entry to seed from is reported as unchecked', async () => {
 		const input = inputOf(
