@@ -72,4 +72,31 @@ describe('loadAllEntries', () => {
 
 		await expect(loadAllEntries(client, 'articles', 'slug')).rejects.toThrow(/missing a pagination cursor/)
 	})
+
+	test('onPage streams each page as it lands, and the pages concatenate to the result', async () => {
+		const client = lister([
+			{ entries: [row('a')], hasMore: true, cursor: 'c1' },
+			{ entries: [row('b'), row('c')], hasMore: false },
+		])
+		const seen: { slugs: string[]; more: boolean }[] = []
+		const result = await loadAllEntries(client, 'articles', 'slug', undefined, (entries, more) => {
+			seen.push({ slugs: entries.map(e => e.slug), more })
+		})
+
+		expect(seen).toEqual([{ slugs: ['a'], more: true }, { slugs: ['b', 'c'], more: false }])
+		expect(seen.flatMap(p => p.slugs)).toEqual(result.entries.map(e => e.slug))
+	})
+
+	test('onPage sees the cap-trimmed page, never rows the result drops', async () => {
+		const client = lister([{ entries: [row('a'), row('b'), row('c')], hasMore: true, cursor: 'c1' }])
+		const seen: { slugs: string[]; more: boolean }[] = []
+		const result = await loadAllEntries(client, 'articles', 'slug', 2, (entries, more) => {
+			seen.push({ slugs: entries.map(e => e.slug), more })
+		})
+
+		// `more: false` — capped means no further page is coming, whatever `hasMore` said.
+		expect(seen).toEqual([{ slugs: ['a', 'b'], more: false }])
+		expect(result.entries.map(e => e.slug)).toEqual(['a', 'b'])
+		expect(result.truncated).toBe(true)
+	})
 })
