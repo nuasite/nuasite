@@ -14,7 +14,7 @@
  * (no React/DOM) makes the mapping unit-testable.
  */
 
-import type { CollectionEntry, FieldDefinition, FieldType } from '@nuasite/cms-types'
+import { blankFieldValue, type CollectionEntry, type FieldDefinition, type FieldType } from '@nuasite/cms-types'
 
 /** The editor's in-memory state: native frontmatter values + the markdown body. */
 export interface EntryDraft {
@@ -84,46 +84,30 @@ export function draftFromEntry(entry: CollectionEntry, fields: FieldDefinition[]
 }
 
 /**
- * Build a fresh draft for a create form from the collection's fields, seeding
- * each field with its `defaultValue` (when present) or a type-appropriate blank.
+ * Build a fresh draft for a create form from the collection's fields.
+ *
+ * The seeding rule is `blankFieldValue` in `cms-types`, which is also what the in-page
+ * editor's `newEntryFrontmatter` asks and what `nua check` predicts. The two create forms
+ * answered this separately until they were found to disagree, so do not reintroduce a
+ * local answer here.
  */
 export function draftForCreate(fields: FieldDefinition[]): EntryDraft {
 	const frontmatter: Record<string, unknown> = {}
 	for (const field of fields) {
 		if (field.hidden) continue
-		if (field.defaultValue !== undefined) {
-			frontmatter[field.name] = field.defaultValue
-			continue
-		}
-		frontmatter[field.name] = blankValue(field.type)
+		frontmatter[field.name] = blankFieldValue(field)
 	}
 	return { frontmatter, body: '' }
 }
 
-/** A type-appropriate empty value used to seed create forms. */
+/**
+ * The same rule, asked with only a type to go on — what a list's item widget has.
+ *
+ * A blank *item* is not written: `withoutBlankArrayItems` drops it server-side, because an
+ * item has no way to be absent the way a field does.
+ */
 export function blankValue(type: FieldType): unknown {
-	switch (type) {
-		case 'boolean':
-			return false
-		case 'array':
-			return []
-		case 'object':
-			return {}
-		case 'date':
-		case 'datetime':
-		case 'time':
-		case 'month':
-		case 'number':
-		case 'year':
-		case 'select':
-		case 'reference':
-			// Seed empty (not '') everything whose schema rejects an empty string: an untouched
-			// optional field is then omitted on create rather than written as `date: ''`,
-			// `order: ''` or `role: ''`. A single rejected entry fails the whole site build.
-			return undefined
-		default:
-			return ''
-	}
+	return blankFieldValue({ name: '', type })
 }
 
 /**

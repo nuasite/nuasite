@@ -119,6 +119,57 @@ describe('checkEditorWrites', () => {
 		}])
 	})
 
+	/**
+	 * A list of scalars was invisible to this rule until it broke a production site.
+	 *
+	 * `z.array(reference('tags'))` parses to a `reference` with `isArray` — no `type`, no
+	 * `itemType` — so a filter keyed on `type === 'array' && itemType === 'object'` skipped it
+	 * entirely, and "+ Add" on a tags list went unpredicted.
+	 */
+	test('"+ Add" on a list of references is simulated, and the blank item it appends is dropped before the write', async () => {
+		const input = inputOf(
+			{
+				articles: {
+					fields: [fieldOf('title'), fieldOf('tags', { required: false, reference: { target: 'tags', isArray: true } })],
+					entries: [entryOf('src/content/articles/ada.md', { title: 'Ada', tags: ['komentar'] })],
+				},
+			},
+			{
+				articles: schemaOf(value => {
+					const tags: unknown[] = isRecord(value) && Array.isArray(value.tags) ? value.tags : []
+					return tags.flatMap((tag, index) =>
+						typeof tag === 'string' ? [] : [{ path: ['tags', index], message: `Invalid input: expected string, received ${String(tag)}` }]
+					)
+				}),
+			},
+		)
+
+		expect(await checkEditorWrites(input)).toEqual([])
+	})
+
+	// The other half: the simulation really runs, rather than passing because it skipped the field.
+	// A boolean item is not blank, so it survives to the schema and a rejection is reported.
+	test('"+ Add" on a list whose item value the schema refuses is an error', async () => {
+		const input = inputOf(
+			{
+				articles: {
+					fields: [fieldOf('title'), fieldOf('flags', { required: false, type: 'array', itemType: 'boolean' })],
+					entries: [entryOf('src/content/articles/ada.md', { title: 'Ada', flags: [true] })],
+				},
+			},
+			{
+				articles: schemaOf(value => {
+					const flags: unknown[] = isRecord(value) && Array.isArray(value.flags) ? value.flags : []
+					return flags.flatMap((flag, index) => (flag === false ? [{ path: ['flags', index], message: 'Invalid input: expected true' }] : []))
+				}),
+			},
+		)
+
+		expect((await checkEditorWrites(input)).map(finding => finding.message)).toEqual([
+			'Clicking "+ Add" on "articles.flags" produces a write the schema rejects. flags.1: Invalid input: expected true',
+		])
+	})
+
 	// The write guard in `handlers/entry-ops.ts` rejects this create before it reaches disk,
 	// so there is no build to break and nothing worth reporting.
 	test('a new-entry rejection the write guard would already block is suppressed', async () => {
@@ -146,9 +197,32 @@ describe('checkEditorWrites', () => {
 		}])
 	})
 
-	// The other half of the hint's job. A number pre-fills with 0, which survives the empty filter,
-	// so the key is present and `.optional()` is the wrong answer — the remedy has to be the other one.
+	// The other half of the hint's job. A boolean pre-fills with `false`, which survives the empty
+	// filter, so the key is present and `.optional()` is the wrong answer — the remedy has to be
+	// the other one. A number no longer qualifies: `blankFieldValue` leaves it unset precisely so
+	// that a schema asking for `>= 1` is not handed a `0`.
 	test('a rejected value the create form does write gets the remedy for a present key, not for a missing one', async () => {
+		const input = inputOf(
+			{ team: { fields: [fieldOf('published', { type: 'boolean', required: false })] } },
+			{
+				team: schemaOf(value => isRecord(value) && value.published === false ? [{ path: ['published'], message: 'Invalid input: expected true' }] : []),
+			},
+		)
+
+		expect(await checkEditorWrites(input)).toEqual([{
+			severity: 'error',
+			code: 'cms/empty-write',
+			file: 'src/content.config.ts',
+			field: 'published',
+			message: 'Creating a new entry in "team" produces a write the schema rejects. published: Invalid input: expected true',
+			hint:
+				'The create form starts this field at false and nothing makes the editor change it before saving. Either the schema accepts that value, or mark the field `hidden` so the write omits it and let `.default(…)` supply one.',
+		}])
+	})
+
+	// The counterpart, and the reason the create rule differs from the repeater's: a number the
+	// user never touched must arrive absent, so a schema with a floor never sees a seeded `0`.
+	test('a number the create form leaves alone is omitted, not written as 0', async () => {
 		const input = inputOf(
 			{ team: { fields: [fieldOf('order', { type: 'number', required: false })] } },
 			{
@@ -160,15 +234,7 @@ describe('checkEditorWrites', () => {
 			},
 		)
 
-		expect(await checkEditorWrites(input)).toEqual([{
-			severity: 'error',
-			code: 'cms/empty-write',
-			file: 'src/content.config.ts',
-			field: 'order',
-			message: 'Creating a new entry in "team" produces a write the schema rejects. order: Too small: expected number to be >=1',
-			hint:
-				'The create form starts this field at 0 and nothing makes the editor change it before saving. Either the schema accepts that value, or mark the field `hidden` so the write omits it and let `.default(…)` supply one.',
-		}])
+		expect(await checkEditorWrites(input)).toEqual([])
 	})
 
 	// A field the user never touched arrives absent, not as ''. The two produce different
@@ -460,18 +526,35 @@ describe('checkEditorWrites', () => {
 		])
 	})
 
-	// The date a `date` field defaults to is the day the check runs, and a report that changes
-	// with the calendar cannot be trusted in CI.
-	test('the injected today is what the date default reaches the schema as', async () => {
+	// The `date` the create *route* injects is the day the check runs, and a report that changes
+	// with the calendar cannot be trusted in CI. The form itself no longer defaults a `date`
+	// field — see the next test.
+	test("the injected today is what the create route's date reaches the schema as", async () => {
 		const input = inputOf(
-			{ people: { fields: [fieldOf('publishedAt', { type: 'date' })] } },
-			{
-				people: schemaOf(value => [{ path: ['publishedAt'], message: `received ${isRecord(value) ? String(value.publishedAt) : '?'}` }]),
-			},
+			{ people: { fields: [fieldOf('title')] } },
+			{ people: schemaOf(value => [{ path: ['date'], message: `received ${isRecord(value) ? String(value.date) : '?'}` }]) },
 			() => new Date('2020-01-02T03:04:05Z'),
 		)
 
 		expect((await checkEditorWrites(input))[0]!.message).toContain('received 2020-01-02')
+	})
+
+	// A date the form invented is content the user never chose — an optional `expiresAt` seeded
+	// with today is wrong in a way no schema can catch. The key is left out instead.
+	test('a date field the create form leaves alone is omitted, not filled with today', async () => {
+		const input = inputOf(
+			{ people: { fields: [fieldOf('expiresAt', { type: 'date', required: false })] } },
+			{
+				people: schemaOf(value =>
+					isRecord(value) && value.expiresAt !== undefined
+						? [{ path: ['expiresAt'], message: `received ${String(value.expiresAt)}` }]
+						: []
+				),
+			},
+			() => new Date('2020-01-02T03:04:05Z'),
+		)
+
+		expect(await checkEditorWrites(input)).toEqual([])
 	})
 
 	test('one path reported twice by the same action yields one finding', async () => {

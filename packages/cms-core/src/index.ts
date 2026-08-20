@@ -28,15 +28,17 @@ export { createCmsCore } from './core'
 export type { CmsCore, CmsCoreOptions } from './core'
 export {
 	applyCreateRouteFields,
+	blankFieldValue,
 	blankRequiredFields,
 	type CollectionKind,
-	defaultValueForNewEntry,
 	isBlankFieldValue,
 	newEntryFrontmatter,
 	newRepeaterItem,
 	omitEmptyOnCreate,
 	type RepeaterItemField,
 	type RequiredGuardField,
+	seedValueForRequiredField,
+	withoutBlankArrayItems,
 	type WriteModelField,
 } from './editor-write-model'
 export { globToRegExp } from './fs/glob'

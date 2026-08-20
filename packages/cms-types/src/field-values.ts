@@ -13,6 +13,15 @@
  * that only some writers can import is a rule that drifts. Keep this file to pure functions
  * over a `FieldDefinition`-shaped value; anything that knows about routes, the filesystem or
  * the wire belongs in the package that owns them (see `editor-write-model.ts` in `cms-core`).
+ *
+ * Three questions are answered here, and the difference between the first two is the whole
+ * reason both exist:
+ *
+ * - **What does a create form start a field at?** `blankFieldValue` — absence is allowed, so
+ *   anything whose schema would refuse a placeholder is left unset and the key is omitted.
+ * - **What does a key that must be present carry?** `seedValueForRequiredField` — omitting is
+ *   not an option there, so a placeholder it is, and `0` beats a missing number.
+ * - **What must never reach disk?** `withoutBlankArrayItems` — a blank *item* inside a list.
  */
 
 import type { FieldType } from './index'
@@ -37,12 +46,20 @@ export function isBlankFieldValue(value: unknown): boolean {
 }
 
 /**
- * The value an editor pre-fills a newly created field with.
+ * The value a key that **must be present** carries when nobody has filled it in.
+ *
+ * Used where omitting is not on the table: a required field of a repeater item, which reaches
+ * disk the moment "+ Add" is clicked. A placeholder the schema might refuse is still better
+ * than a missing required key, because the missing key is refused by every schema.
+ *
+ * This is deliberately *not* what a create form starts a field at — see `blankFieldValue`,
+ * which may leave the key out precisely because a create is allowed to. Seeding a create with
+ * this rule is what wrote `position: 0` into a collection whose schema asks for `>= 1`.
  *
  * Note which of these survive `omitEmptyOnCreate` in `cms-core`: `false`, `0`, `[]` and the
  * date string are written, `''` is not.
  */
-export function defaultValueForNewEntry(field: WriteModelField, today: () => Date = () => new Date()): unknown {
+export function seedValueForRequiredField(field: WriteModelField, today: () => Date = () => new Date()): unknown {
 	if (field.defaultValue !== undefined) return field.defaultValue
 	switch (field.type) {
 		case 'boolean':
@@ -53,6 +70,45 @@ export function defaultValueForNewEntry(field: WriteModelField, today: () => Dat
 			return []
 		case 'date':
 			return today().toISOString().split('T')[0]
+		default:
+			return ''
+	}
+}
+
+/**
+ * The value a create form starts a field at, where leaving the key out is allowed.
+ *
+ * Both create forms now ask this one function — the in-page editor through
+ * `newEntryFrontmatter`, `collections-admin` and webmaster's panel through `draftForCreate`.
+ * They used to answer separately and disagree on `number` and `date`, so a check that
+ * predicted one of them was silent about the other.
+ *
+ * Everything whose schema commonly refuses a placeholder is left unset, so an untouched
+ * optional field is *omitted* rather than written as `date: ''`, `order: 0` or `role: ''`.
+ * A single rejected entry fails the whole site build, and a required field left unset is
+ * caught by `blankRequiredFields` with a sentence naming it.
+ *
+ * `false`, `[]` and `{}` are real values, not placeholders: they say "nothing here" in a
+ * shape every schema for that type accepts.
+ */
+export function blankFieldValue(field: WriteModelField): unknown {
+	if (field.defaultValue !== undefined) return field.defaultValue
+	switch (field.type) {
+		case 'boolean':
+			return false
+		case 'array':
+			return []
+		case 'object':
+			return {}
+		case 'date':
+		case 'datetime':
+		case 'time':
+		case 'month':
+		case 'number':
+		case 'year':
+		case 'select':
+		case 'reference':
+			return undefined
 		default:
 			return ''
 	}
@@ -82,7 +138,7 @@ export function newRepeaterItem(fields: RepeaterItemField[], today?: () => Date)
 	const item: Record<string, unknown> = {}
 	for (const field of fields) {
 		if (!field.required || field.hidden) continue
-		item[field.name] = defaultValueForNewEntry(field, today)
+		item[field.name] = seedValueForRequiredField(field, today)
 	}
 	return item
 }
@@ -143,4 +199,40 @@ export function blankRequiredFields(fields: RequiredGuardField[], frontmatter: R
 			&& isBlankFieldValue(frontmatter[field.name])
 		)
 		.map(field => field.name)
+}
+
+/** A record written as frontmatter, as opposed to a `Date`, a class instance or a list. */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+	const prototype = Object.getPrototypeOf(value)
+	return prototype === Object.prototype || prototype === null
+}
+
+/** A list with its blank items dropped, applied to whatever the items themselves contain. */
+function prunedValue(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(prunedValue).filter(item => !isBlankFieldValue(item))
+	if (isPlainRecord(value)) return withoutBlankArrayItems(value)
+	return value
+}
+
+/**
+ * The same frontmatter with every blank *item* removed from every list, at any depth.
+ *
+ * A field can be absent; an item inside a list cannot. That asymmetry is what makes this
+ * necessary: an editor that clears a field writes `undefined` and the key is simply omitted,
+ * but the same `undefined` sitting in a list has nowhere to go — `JSON.stringify` turns it
+ * into `null` on the way to the server, and `null` is then written out as a real list entry.
+ * One unfilled row appended by "+ Add" is enough to fail `astro sync`, and Astro validates a
+ * collection as a whole, so the entry that fails takes the entire site build with it.
+ *
+ * Applied server-side, in `handlers/entry-ops.ts`, so it holds for every editor that reaches
+ * the sidecar — including versions of them older than this rule.
+ *
+ * Blank means `isBlankFieldValue`: `undefined`, `null`, `''`. `false`, `0`, `[]` and `{}` are
+ * values a list may legitimately hold and are kept.
+ */
+export function withoutBlankArrayItems(frontmatter: Record<string, unknown>): Record<string, unknown> {
+	const out: Record<string, unknown> = {}
+	for (const [key, value] of Object.entries(frontmatter)) out[key] = prunedValue(value)
+	return out
 }
