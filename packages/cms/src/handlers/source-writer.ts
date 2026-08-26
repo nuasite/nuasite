@@ -880,8 +880,11 @@ export function applyTextChange(
 	// everything from the `#` on — while the save still reports success. The
 	// verbatim replace below matches first for any ordinary scalar, so the YAML
 	// path only gets a turn if it comes before it.
-	if (isYamlValueSource(content, sourceSnippet, change.sourcePath)) {
-		const frontmatterResult = tryYamlValueReplacement(sourceSnippet, resolvedOriginal, resolvedNewText)
+	const insideYaml = isYamlValueSource(content, sourceSnippet, change.sourcePath)
+	if (insideYaml) {
+		// The file is known to be YAML here, so a quoted key is just a quoted key —
+		// the reason to distrust one is JSON, which cannot reach this branch.
+		const frontmatterResult = tryYamlValueReplacement(sourceSnippet, resolvedOriginal, resolvedNewText, true)
 		if (frontmatterResult !== null) {
 			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(frontmatterResult)) }
 		}
@@ -893,9 +896,9 @@ export function applyTextChange(
 	if (updatedSnippet === sourceSnippet) {
 		// Try YAML key-value replacement for multi-line frontmatter values
 		// (e.g., "title: long text\n  that wraps")
-		const yamlResult = tryYamlValueReplacement(sourceSnippet, resolvedOriginal, resolvedNewText)
+		const yamlResult = tryYamlValueReplacement(sourceSnippet, resolvedOriginal, resolvedNewText, insideYaml)
 		if (yamlResult !== null) {
-			return { success: true, content: content.replace(sourceSnippet, yamlResult) }
+			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(yamlResult)) }
 		}
 
 		// Try AST-based <br> normalization (browser normalizes <br class="..." /> to <br>
@@ -964,7 +967,19 @@ export function applyTextChange(
 		}
 	}
 
-	return { success: true, content: content.replace(sourceSnippet, updatedSnippet) }
+	// The verbatim splice is the write #91 is about: inside frontmatter it can spell
+	// a value the parser then reads as a mapping, a list, or a comment. Every path
+	// that understands YAML has declined by now, so the result is checked before it
+	// is written — a change that would not survive the round trip is refused rather
+	// than saved as `{"updated": 1}` over an entry that no longer loads.
+	if (insideYaml && !yamlWriteSurvives(updatedSnippet, resolvedNewText)) {
+		return {
+			success: false,
+			error: `"${resolvedNewText.substring(0, 50)}" cannot be written into this frontmatter field without breaking it`,
+		}
+	}
+
+	return { success: true, content: content.replace(sourceSnippet, escapeReplacement(updatedSnippet)) }
 }
 
 /**
@@ -1049,7 +1064,9 @@ function isYamlValueSource(content: string, sourceSnippet: string, sourcePath: s
 	const opening = /^---[ \t]*\r?\n/.exec(content)
 	if (!opening) return false
 	const bodyStart = opening[0].length
-	const closing = /\r?\n---[ \t]*(\r?\n|$)/.exec(content.slice(bodyStart))
+	// Match from the `\n` so a CRLF file's `\r` stays inside the block — it is part
+	// of the last field's line, and the snippet the finder cuts includes it.
+	const closing = /\n---[ \t]*(\r?\n|$)/.exec(content.slice(bodyStart))
 	if (!closing) return false
 
 	const snippetStart = content.indexOf(sourceSnippet)
@@ -1538,17 +1555,75 @@ function getVisibleText(html: string): string {
 	return text.trim()
 }
 
+interface YamlTarget {
+	/** Offset of the value's first character in the snippet */
+	start: number
+	/** Offset just past the value */
+	end: number
+	/** The value as the parser resolves it */
+	value: string | number
+	/** The key the value belongs to, or null for a plain item in a sequence */
+	key: string | null
+	/** Column of whatever owns the value — a block scalar's body has to clear it */
+	ownerColumn: number
+}
+
 /**
- * The single `key: value` pair a frontmatter snippet holds — whether it stands on
- * its own or is the compact mapping of a sequence item (`- title: Ahoj`).
+ * Locate the value a frontmatter snippet is about: `key: value` on its own, the
+ * compact mapping of a sequence item (`- title: Ahoj`), or a plain item in a
+ * sequence (`- Ahoj`), which is how a list-of-strings field arrives.
  */
-function firstYamlPair(contents: unknown): { key?: { range?: [number, number, number] }; value?: unknown } | null {
-	const node = contents as { items?: unknown[] } | null
-	const first = node?.items?.[0] as { key?: unknown; items?: unknown[] } | undefined
+function findYamlTarget(sourceSnippet: string, allowQuotedKey: boolean): YamlTarget | null {
+	let first: any
+	try {
+		const doc = parseDocument(sourceSnippet)
+		if (doc.errors.length > 0) return null
+		first = (doc.contents as { items?: unknown[] } | null)?.items?.[0]
+	} catch {
+		return null
+	}
 	if (!first) return null
-	if ('key' in first) return first as { key?: { range?: [number, number, number] }; value?: unknown }
-	const nested = first.items?.[0] as { key?: unknown } | undefined
-	return nested && 'key' in nested ? nested as { key?: { range?: [number, number, number] }; value?: unknown } : null
+
+	const pair = 'key' in first
+		? first
+		: (first.items?.[0] && 'key' in first.items[0] ? first.items[0] : null)
+
+	const valueNode = pair ? pair.value : ('value' in first ? first : null)
+	if (!valueNode?.range) return null
+	if (typeof valueNode.value !== 'string' && typeof valueNode.value !== 'number') return null
+
+	// YAML is a superset of JSON, so `parseDocument` reads a data file's
+	// `"banner": "/x.webp"` too — and the value would go back as a plain scalar,
+	// which is valid YAML and invalid JSON. Only a caller that knows the file is
+	// YAML may accept a quoted key.
+	if (pair && !allowQuotedKey && pair.key?.type !== 'PLAIN') return null
+
+	const ownerStart = pair ? pair.key.range[0] : dashBefore(sourceSnippet, valueNode.range[0])
+	const [start, end] = valueNode.range as [number, number, number]
+	const value = valueNode.value as string | number
+
+	// A CRLF file hands back the carriage return as part of the value. It belongs
+	// to the line, not to the field, so it stays where it is and out of the match.
+	const trailingCr = typeof value === 'string' && value.endsWith('\r') && sourceSnippet[end - 1] === '\r'
+
+	return {
+		start,
+		end: trailingCr ? end - 1 : end,
+		value: trailingCr ? (value as string).slice(0, -1) : value,
+		key: pair ? String(pair.key.value) : null,
+		ownerColumn: columnOf(sourceSnippet, ownerStart),
+	}
+}
+
+/** Offset of the `-` introducing the sequence item that starts at `valueStart`. */
+function dashBefore(sourceSnippet: string, valueStart: number): number {
+	const dash = sourceSnippet.lastIndexOf('-', valueStart)
+	return dash < 0 ? valueStart : dash
+}
+
+/** How far an offset sits from the start of its line. */
+function columnOf(sourceSnippet: string, offset: number): number {
+	return offset - (sourceSnippet.lastIndexOf('\n', offset - 1) + 1)
 }
 
 /**
@@ -1563,71 +1638,68 @@ function tryYamlValueReplacement(
 	sourceSnippet: string,
 	resolvedOriginal: string,
 	resolvedNewText: string,
+	allowQuotedKey = false,
 ): string | null {
-	let pair: ReturnType<typeof firstYamlPair>
-	let valueRange: [number, number, number] | undefined
-	try {
-		const doc = parseDocument(sourceSnippet)
-		if (doc.errors.length > 0) return null
-		pair = firstYamlPair(doc.contents)
-		// YAML is a superset of JSON, so `parseDocument` happily reads a data file's
-		// `"banner": "/x.webp"` — and would write the new value back as a plain
-		// scalar, which is valid YAML and invalid JSON. A quoted key means the
-		// snippet is JSON, and belongs to `tryDataFileValueReplacement` instead.
-		if ((pair?.key as { type?: string } | undefined)?.type !== 'PLAIN') return null
-		const valueNode = pair?.value as { value?: unknown; range?: [number, number, number] } | undefined
-		if (!valueNode || (typeof valueNode.value !== 'string' && typeof valueNode.value !== 'number')) return null
-		if (String(valueNode.value) !== resolvedOriginal) return null
-		valueRange = valueNode.range
-	} catch {
-		return null
-	}
-	if (!valueRange || !pair?.key?.range) return null
+	const target = findYamlTarget(sourceSnippet, allowQuotedKey)
+	if (!target || String(target.value) !== resolvedOriginal) return null
 
 	// A numeric field has to stay numeric: `stringifyYaml` quotes '120' to keep it
 	// a string, which would flip the field's type and fail the collection schema.
-	const wasNumber = typeof (pair.value as { value?: unknown }).value === 'number'
-	const replacement = wasNumber && typeof tryParseYaml(resolvedNewText) === 'number'
+	const replacement = typeof target.value === 'number' && typeof tryParseYaml(resolvedNewText) === 'number'
 		? resolvedNewText
-		: serializeYamlValue(resolvedNewText, indentationOf(sourceSnippet, pair.key.range[0]))
+		: serializeYamlValue(resolvedNewText, target.key, target.ownerColumn)
+	if (replacement === null) return null
 
-	const updated = sourceSnippet.slice(0, valueRange[0]) + replacement + sourceSnippet.slice(valueRange[1])
+	const updated = sourceSnippet.slice(0, target.start) + replacement + sourceSnippet.slice(target.end)
 
 	// Serializing and splicing are two separate guesses about the shape of the
 	// line. Reading the result back is what makes them one: a value the parser
 	// hands back unchanged is safe to write, and anything else falls through to
 	// the callers' other strategies rather than corrupting the entry.
+	return yamlWriteSurvives(updated, resolvedNewText) ? updated : null
+}
+
+/** Does this snippet still parse, and still hold the value the edit meant to write? */
+function yamlWriteSurvives(updatedSnippet: string, expected: string): boolean {
+	// A snippet cut from a CRLF file ends mid-terminator, and a lone `\r` is junk to
+	// the parser rather than a line ending, so the check reads it normalised away.
+	const target = findYamlTarget(updatedSnippet.replace(/\r(?=\n|$)/g, ''), true)
+	return target !== null && String(target.value) === expected
+}
+
+/**
+ * Serialize a value for the right-hand side of a `key:` or a `- `.
+ *
+ * The value is rendered inside a one-entry container rather than on its own: a
+ * bare block scalar whose first line is indented is written with an indentation
+ * indicator the serializer computes from its parent, and with no parent it emits
+ * a document its own parser rejects. Rendering the container gives it one, and
+ * moving owner and body by the same amount afterwards keeps the indicator true.
+ */
+function serializeYamlValue(value: string, key: string | null, ownerColumn: number): string | null {
+	const rendered = key === null
+		? stringifyYaml([value], { lineWidth: 0 })
+		: stringifyYaml({ [key]: value }, { lineWidth: 0 })
+
+	let valueStart: number
 	try {
-		const check = parseDocument(updated)
-		if (check.errors.length > 0) return null
-		const checked = firstYamlPair(check.contents)?.value as { value?: unknown } | undefined
-		if (checked === undefined || String(checked.value) !== resolvedNewText) return null
+		const doc = parseDocument(rendered)
+		const first = (doc.contents as any)?.items?.[0]
+		const node = key === null ? first : first?.value
+		if (!node?.range) return null
+		valueStart = node.range[0]
 	} catch {
 		return null
 	}
 
-	return updated
-}
-
-/** How far the key sits from the start of its line — a block scalar's body has to clear it. */
-function indentationOf(sourceSnippet: string, keyStart: number): number {
-	return keyStart - (sourceSnippet.lastIndexOf('\n', keyStart - 1) + 1)
-}
-
-/**
- * Serialize a value for the right-hand side of a `key:`. A value carrying a line
- * break comes back as a block scalar, whose body `stringifyYaml` writes flush
- * left; it is re-indented past the key so it still belongs to it.
- */
-function serializeYamlValue(value: string, keyColumn: number): string {
-	const serialized = stringifyYaml(value, { lineWidth: 0 })
-	// `stringifyYaml` always terminates the document, and that last newline is not
-	// part of the value — except under a keep-chomped block (`|+`), where every
-	// trailing newline is exactly what the block is there to preserve.
-	const body = /^[|>]\+/.test(serialized) ? serialized : serialized.slice(0, -1)
+	// The container holds nothing else, so the value runs to the end. The document's
+	// terminating newline is not part of it — unless the block is keep-chomped
+	// (`|+`, `|2+`), where the trailing newlines are what it exists to preserve.
+	const text = rendered.slice(valueStart)
+	const body = /^[|>]\d*\+/.test(text) ? text : text.replace(/\n$/, '')
 	if (!body.includes('\n')) return body
 
-	const pad = ' '.repeat(keyColumn + 2)
+	const pad = ' '.repeat(ownerColumn)
 	const [header, ...rest] = body.split('\n')
 	return [header, ...rest.map((line) => (line === '' ? line : pad + line))].join('\n')
 }

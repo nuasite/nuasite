@@ -889,6 +889,58 @@ date: 2026-03-10
 			expect(frontmatterOf(content).title).toBe('Ahoj\n\n')
 		})
 
+		test('a pasted value whose first line is indented keeps its indentation', () => {
+			const content = editFrontmatter('title: Ahoj světe', 'title: Ahoj světe', 'Ahoj světe', ' odsazeno\ndalší')
+			expect(frontmatterOf(content).title).toBe(' odsazeno\ndalší')
+		})
+
+		test('an indented value ending in a blank line keeps both', () => {
+			const content = editFrontmatter('title: Ahoj světe', 'title: Ahoj světe', 'Ahoj světe', '  odsazeno\ndalší\n\n')
+			expect(frontmatterOf(content).title).toBe('  odsazeno\ndalší\n\n')
+		})
+
+		test('a plain item in a sequence stays a string', () => {
+			const content = editFrontmatter('tags:\n  - Ahoj', '  - Ahoj', 'Ahoj', 'Ahoj: světe')
+			expect(frontmatterOf(content).tags).toEqual(['Ahoj: světe'])
+		})
+
+		test('a quoted key in a .yaml file is still editable', () => {
+			const result = applyTextChange(
+				'"title": Ahoj světe\n',
+				makeChange({ sourcePath: 'src/data/site.yaml', sourceSnippet: '"title": Ahoj světe', originalValue: 'Ahoj světe', newValue: 'Sleva #1' }),
+				emptyManifest,
+			)
+			if (!result.success) throw new Error(result.error)
+			expect(parseYaml(result.content).title).toBe('Sleva #1')
+		})
+
+		test('a CRLF entry is quoted like any other', () => {
+			const result = applyTextChange(
+				'---\r\ntitle: Ahoj světe\r\n---\r\n\r\nBody.\r\n',
+				makeChange({ sourcePath: 'src/content/blog/a.md', sourceSnippet: 'title: Ahoj světe\r', originalValue: 'Ahoj světe', newValue: 'Sleva #1' }),
+				emptyManifest,
+			)
+			if (!result.success) throw new Error(result.error)
+			expect(result.content).toContain('title: "Sleva #1"\r\n')
+			expect(parseYaml(/^---\r\n([\s\S]*?)\r\n---/.exec(result.content)![1]!).title).toBe('Sleva #1')
+		})
+
+		test('a value that cannot be written safely is refused, not saved', () => {
+			// The snippet holds two keys, so no single-value path claims it; the verbatim
+			// splice would spell a nested mapping the collection could no longer load.
+			const result = applyTextChange(
+				'---\nheading: Ahoj\ntitle: Ahoj světe\n---\n\nBody.\n',
+				makeChange({
+					sourcePath: 'src/content/blog/a.md',
+					sourceSnippet: 'heading: Ahoj\ntitle: Ahoj světe',
+					originalValue: 'Ahoj světe',
+					newValue: 'Ahoj: světe',
+				}),
+				emptyManifest,
+			)
+			expect(result.success).toBe(false)
+		})
+
 		test('a .yaml data file goes through the same path', () => {
 			const result = applyTextChange(
 				'title: Ahoj světe\n',
