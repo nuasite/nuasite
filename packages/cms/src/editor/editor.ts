@@ -1080,6 +1080,14 @@ export async function saveAllChanges(
 			})
 		})
 
+		// A refused change is the only copy of what the user typed that still exists
+		// outside the DOM, so the recovery snapshot and the undo history outlive a
+		// failed save — clearing them first would lose the text on the next reload.
+		if (result.errors && result.errors.length > 0) {
+			console.error('[CMS] Save errors:', result.errors)
+			return { success: false, updated: result.updated, errors: result.errors }
+		}
+
 		clearAllEditsFromStorage()
 		clearHistory()
 
@@ -1090,11 +1098,6 @@ export async function saveAllChanges(
 		signals.resetMediaLibraryState()
 		signals.resetMarkdownEditorState()
 		signals.resetCreatePageState()
-
-		if (result.errors && result.errors.length > 0) {
-			console.error('[CMS] Save errors:', result.errors)
-			return { success: false, updated: result.updated, errors: result.errors }
-		}
 
 		onStateChange?.()
 		return { success: true, updated: result.updated }

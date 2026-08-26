@@ -706,7 +706,7 @@ function replaceLiteralInSnippet(
 		const pattern = new RegExp(`${quote}(${escapedOld})${quote}`)
 		if (!pattern.test(snippet)) continue
 		const updated = snippet.replace(pattern, `${quote}${safeNewValue}${quote}`)
-		if (updated !== snippet) return content.replace(snippet, updated)
+		if (updated !== snippet) return content.replace(snippet, escapeReplacement(updated))
 	}
 	return undefined
 }
@@ -838,10 +838,13 @@ export function applyTextChange(
 	}
 
 	const entry = manifest.entries[change.cmsId]
+	const insideYaml = isYamlValueSource(content, sourceSnippet, change.sourcePath)
 
 	// Never write HTML back into entries that don't allow styling — these are string props,
-	// collection fields, etc. where inline HTML would produce invalid source code.
-	const stylingAllowed = entry?.allowStyling !== false
+	// collection fields, etc. where inline HTML would produce invalid source code. A missing
+	// manifest entry says nothing about styling, so a frontmatter field — which is never
+	// markup — decides on its own rather than defaulting to allowed.
+	const stylingAllowed = entry?.allowStyling !== false && !insideYaml
 	const newText = stylingAllowed ? (htmlValue ?? newValue) : newValue
 
 	// When originalValue contains CMS placeholders (child elements like {{cms:cms-5}}),
@@ -851,12 +854,16 @@ export function applyTextChange(
 	// returns the entire line, not just the individual child tag).
 	const placeholderPattern = /\{\{cms:[^}]+\}\}/g
 	if (placeholderPattern.test(originalValue)) {
-		return applyTextChangeWithPlaceholders(content, sourceSnippet, originalValue, newText)
+		return applyTextChangeWithPlaceholders(insideYaml, content, sourceSnippet, originalValue, newText)
 	}
 
 	// No placeholders — resolve and match directly
 	const resolvedNewText = resolveCmsPlaceholders(newText, manifest)
 	const resolvedOriginal = resolveCmsPlaceholders(originalValue, manifest)
+
+	// Every path below hands its result to `write`, so the frontmatter guard sits on
+	// all of them rather than on whichever one happened to be the last resort.
+	const write = (updatedSnippet: string) => writeSnippet(content, sourceSnippet, updatedSnippet, insideYaml, resolvedNewText)
 
 	// A markup-free snippet in a JavaScript file is a frontmatter constant.
 	// Substituting the text verbatim there would write an unescaped apostrophe or
@@ -870,7 +877,7 @@ export function applyTextChange(
 	if (snippetIsJavaScript) {
 		const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
 		if (literalResult !== null) {
-			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(literalResult)) }
+			return write(literalResult)
 		}
 	}
 
@@ -880,13 +887,12 @@ export function applyTextChange(
 	// everything from the `#` on — while the save still reports success. The
 	// verbatim replace below matches first for any ordinary scalar, so the YAML
 	// path only gets a turn if it comes before it.
-	const insideYaml = isYamlValueSource(content, sourceSnippet, change.sourcePath)
 	if (insideYaml) {
 		// The file is known to be YAML here, so a quoted key is just a quoted key —
 		// the reason to distrust one is JSON, which cannot reach this branch.
 		const frontmatterResult = tryYamlValueReplacement(sourceSnippet, resolvedOriginal, resolvedNewText, true)
 		if (frontmatterResult !== null) {
-			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(frontmatterResult)) }
+			return write(frontmatterResult)
 		}
 	}
 
@@ -896,16 +902,11 @@ export function applyTextChange(
 	if (updatedSnippet === sourceSnippet) {
 		// Try YAML key-value replacement for multi-line frontmatter values
 		// (e.g., "title: long text\n  that wraps")
-		const yamlResult = tryYamlValueReplacement(sourceSnippet, resolvedOriginal, resolvedNewText, insideYaml)
-		if (yamlResult !== null) {
-			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(yamlResult)) }
-		}
-
 		// Try AST-based <br> normalization (browser normalizes <br class="..." /> to <br>
 		// and collapses surrounding whitespace/indentation)
 		const brResult = tryBrNormalizedChange(sourceSnippet, resolvedOriginal, resolvedNewText)
 		if (brResult !== null) {
-			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(brResult)) }
+			return write(brResult)
 		}
 
 		// The snippet may be a frontmatter constant rather than template markup, in
@@ -913,7 +914,7 @@ export function applyTextChange(
 		if (snippetIsJavaScript) {
 			const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
 			if (literalResult !== null) {
-				return { success: true, content: content.replace(sourceSnippet, escapeReplacement(literalResult)) }
+				return write(literalResult)
 			}
 		}
 
@@ -932,8 +933,8 @@ export function applyTextChange(
 				?? (/<[^>]+>/.test(resolvedNewText)
 					? encodeNbspLike(resolvedNewText, matchedText)
 					: encodeEntitiesLike(resolvedNewText, matchedText))
-			const updatedWithEntity = sourceSnippet.replace(matchedText, replacement)
-			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(updatedWithEntity)) }
+			const updatedWithEntity = sourceSnippet.replace(matchedText, escapeReplacement(replacement))
+			return write(updatedWithEntity)
 		}
 		// Try inner content replacement for text spanning inline HTML elements
 		// (e.g., <h3>text part 1 <span class="...">text part 2</span></h3>)
@@ -947,11 +948,11 @@ export function applyTextChange(
 				// so the edit is spliced into the text run it actually touched instead.
 				const isHtmlReplacement = /<[^>]+>/.test(resolvedNewText)
 				if (isHtmlReplacement || !/<[^>]+>/.test(innerContent!)) {
-					return { success: true, content: content.replace(sourceSnippet, escapeReplacement(openTag + resolvedNewText + closeTag)) }
+					return write(openTag + resolvedNewText + closeTag)
 				}
 				const splicedInner = spliceTextAcrossInlineMarkup(innerContent!, resolvedOriginal, resolvedNewText)
 				if (splicedInner !== null) {
-					return { success: true, content: content.replace(sourceSnippet, escapeReplacement(openTag + splicedInner + closeTag)) }
+					return write(openTag + splicedInner + closeTag)
 				}
 				return {
 					success: false,
@@ -967,19 +968,7 @@ export function applyTextChange(
 		}
 	}
 
-	// The verbatim splice is the write #91 is about: inside frontmatter it can spell
-	// a value the parser then reads as a mapping, a list, or a comment. Every path
-	// that understands YAML has declined by now, so the result is checked before it
-	// is written — a change that would not survive the round trip is refused rather
-	// than saved as `{"updated": 1}` over an entry that no longer loads.
-	if (insideYaml && !yamlSnippetSurvives(updatedSnippet, resolvedNewText)) {
-		return {
-			success: false,
-			error: `"${resolvedNewText.substring(0, 50)}" cannot be written into this frontmatter field without breaking it`,
-		}
-	}
-
-	return { success: true, content: content.replace(sourceSnippet, escapeReplacement(updatedSnippet)) }
+	return write(updatedSnippet)
 }
 
 /**
@@ -987,6 +976,7 @@ export function applyTextChange(
  * Splits by placeholder boundaries and replaces only the changed text segments.
  */
 function applyTextChangeWithPlaceholders(
+	insideYaml: boolean,
 	content: string,
 	sourceSnippet: string,
 	originalValue: string,
@@ -1033,7 +1023,7 @@ function applyTextChangeWithPlaceholders(
 		return { success: false, error: 'No text changes detected between original and new values' }
 	}
 
-	return { success: true, content: content.replace(sourceSnippet, escapeReplacement(updatedSnippet)) }
+	return writeSnippet(content, sourceSnippet, updatedSnippet, insideYaml, newText)
 }
 
 // ============================================================================
@@ -1061,32 +1051,32 @@ function isYamlValueSource(content: string, sourceSnippet: string, sourcePath: s
 	if (YAML_DOCUMENT_SOURCE.test(sourcePath)) return true
 	if (!YAML_FRONTMATTER_SOURCE.test(sourcePath)) return false
 
-	const opening = /^---[ \t]*\r?\n/.exec(content)
-	if (!opening) return false
-	const bodyStart = opening[0].length
-	// Match from the `\n` so a CRLF file's `\r` stays inside the block — it is part
-	// of the last field's line, and the snippet the finder cuts includes it.
-	const closing = /\n---[ \t]*(\r?\n|$)/.exec(content.slice(bodyStart))
-	if (!closing) return false
+	const block = frontmatterBlock(content)
+	if (!block) return false
 
 	const snippetStart = content.indexOf(sourceSnippet)
-	if (snippetStart < bodyStart || snippetStart + sourceSnippet.length > bodyStart + closing.index) return false
-
-	// A body can open with a thematic break, which spells the same `---` as a
-	// frontmatter fence. What tells them apart is what sits between them: fields.
-	return holdsYamlFields(content.slice(bodyStart, bodyStart + closing.index))
+	return snippetStart >= block.start && snippetStart + sourceSnippet.length <= block.end
 }
 
-/** Does this block read as YAML fields, rather than as prose that happens to sit between two rules? */
-function holdsYamlFields(block: string): boolean {
-	try {
-		const doc = parseDocument(normalizeCr(block))
-		if (doc.errors.length > 0) return false
-		const items = (doc.contents as { items?: unknown[] } | null)?.items
-		return Array.isArray(items) && items.length > 0 && items.every((item) => !!item && typeof item === 'object' && 'key' in item)
-	} catch {
-		return false
-	}
+/**
+ * Where the frontmatter block sits, decided the way Astro decides it: a fence at
+ * the very start of the file — after an optional BOM or blank lines — and
+ * everything up to the next one. Astro reads that block as YAML whatever it
+ * holds, so this does not second-guess the shape; a block that does not parse is
+ * a broken entry, which the write guard refuses rather than waves through.
+ *
+ * `+++` opens TOML frontmatter, which Astro parses with a different library and
+ * this module has no business rewriting.
+ */
+function frontmatterBlock(content: string): { start: number; end: number } | null {
+	const opening = /^(?:\uFEFF)?(?:[ \t]*\r?\n)*(---|\+\+\+)[ \t]*\r?\n/.exec(content)
+	if (!opening || opening[1] !== '---') return null
+
+	const start = opening[0].length
+	// Match from the `\n` so a CRLF file's `\r` stays inside the block — it is part
+	// of the last field's line, and the snippet the finder cuts includes it.
+	const closing = /\n(?:---|\+\+\+)[ \t]*(\r?\n|$)/.exec(content.slice(start))
+	return closing ? { start, end: start + closing.index } : null
 }
 
 /** A `<` that opens a tag, as opposed to one that is simply part of the text (`a < b`). */
@@ -1585,50 +1575,56 @@ interface YamlTarget {
 }
 
 /**
- * Locate the value a frontmatter snippet is about: `key: value` on its own, the
- * compact mapping of a sequence item (`- title: Ahoj`), or a plain item in a
- * sequence (`- Ahoj`), which is how a list-of-strings field arrives.
+ * Every value in a snippet an edit could be about — a mapping value at any depth,
+ * or an item in a sequence. Mapping *keys* are not values and are left out.
+ *
+ * The old matcher only ever looked at the snippet's first entry, which is wrong
+ * as soon as the snippet spans more than one line — and `collection-finder.ts`
+ * builds multi-line snippets routinely. Collecting them all lets the caller
+ * insist on exactly one match rather than rewriting whichever field came first.
  */
-function findYamlTarget(sourceSnippet: string, allowQuotedKey: boolean): YamlTarget | null {
-	let first: any
+function findYamlTargets(sourceSnippet: string, allowQuotedKey: boolean): YamlTarget[] {
+	let doc
 	try {
-		const doc = parseDocument(sourceSnippet)
-		if (doc.errors.length > 0) return null
-		first = (doc.contents as { items?: unknown[] } | null)?.items?.[0]
+		doc = parseDocument(sourceSnippet)
+		if (doc.errors.length > 0) return []
 	} catch {
-		return null
+		return []
 	}
-	if (!first) return null
 
-	const pair = 'key' in first
-		? first
-		: (first.items?.[0] && 'key' in first.items[0] ? first.items[0] : null)
+	const targets: YamlTarget[] = []
+	visitYaml(doc, {
+		Scalar(key, node: any, path: any) {
+			if (key === 'key' || !node.range) return
+			if (typeof node.value !== 'string' && typeof node.value !== 'number') return
 
-	const valueNode = pair ? pair.value : ('value' in first ? first : null)
-	if (!valueNode?.range) return null
-	if (typeof valueNode.value !== 'string' && typeof valueNode.value !== 'number') return null
+			// YAML is a superset of JSON, so `parseDocument` reads a data file's
+			// `"banner": "/x.webp"` or `["/x.webp"]` too — and the value would go back
+			// as a plain scalar, which is valid YAML and invalid JSON. Quoting is the
+			// only hint available here, so only a caller that knows the file is YAML
+			// may accept a quoted key or a quoted item.
+			const parent = path[path.length - 1]
+			const pair = key === 'value' && parent && 'key' in parent ? parent : null
+			if (!allowQuotedKey && (pair ? pair.key?.type !== 'PLAIN' : node.type !== 'PLAIN')) return
 
-	// YAML is a superset of JSON, so `parseDocument` reads a data file's
-	// `"banner": "/x.webp"` too — and the value would go back as a plain scalar,
-	// which is valid YAML and invalid JSON. Only a caller that knows the file is
-	// YAML may accept a quoted key.
-	if (pair && !allowQuotedKey && pair.key?.type !== 'PLAIN') return null
+			const ownerStart = pair ? pair.key.range[0] : dashBefore(sourceSnippet, node.range[0])
+			const [start, end] = node.range as [number, number, number]
+			const value = node.value as string | number
 
-	const ownerStart = pair ? pair.key.range[0] : dashBefore(sourceSnippet, valueNode.range[0])
-	const [start, end] = valueNode.range as [number, number, number]
-	const value = valueNode.value as string | number
+			// A CRLF file hands back the carriage return as part of the value. It belongs
+			// to the line, not to the field, so it stays where it is and out of the match.
+			const trailingCr = typeof value === 'string' && value.endsWith('\r') && sourceSnippet[end - 1] === '\r'
 
-	// A CRLF file hands back the carriage return as part of the value. It belongs
-	// to the line, not to the field, so it stays where it is and out of the match.
-	const trailingCr = typeof value === 'string' && value.endsWith('\r') && sourceSnippet[end - 1] === '\r'
-
-	return {
-		start,
-		end: trailingCr ? end - 1 : end,
-		value: trailingCr ? (value as string).slice(0, -1) : value,
-		key: pair ? String(pair.key.value) : null,
-		ownerColumn: columnOf(sourceSnippet, ownerStart),
-	}
+			targets.push({
+				start,
+				end: trailingCr ? end - 1 : end,
+				value: trailingCr ? (value as string).slice(0, -1) : value,
+				key: pair ? String(pair.key.value) : null,
+				ownerColumn: columnOf(sourceSnippet, ownerStart),
+			})
+		},
+	})
+	return targets
 }
 
 /** Offset of the `-` introducing the sequence item that starts at `valueStart`. */
@@ -1650,21 +1646,32 @@ function columnOf(sourceSnippet: string, offset: number): number {
  * which quotes whatever would otherwise break the scalar (`:` `#` `[` `-` …).
  * Returns the updated snippet, or null if this approach doesn't apply.
  */
+/**
+ * A number as YAML spells one, and nothing else. `tryParseYaml` would say yes to
+ * `5 # levne`, `&a 130` and `!!int 130` as well — all of which read back as 130
+ * while quietly writing a comment, an anchor or a tag into the entry.
+ */
+const YAML_PLAIN_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
+
 function tryYamlValueReplacement(
 	sourceSnippet: string,
 	resolvedOriginal: string,
 	resolvedNewText: string,
 	allowQuotedKey = false,
 ): string | null {
-	const target = findYamlTarget(sourceSnippet, allowQuotedKey)
-	if (!target || String(target.value) !== resolvedOriginal) return null
+	// Exactly one field may answer to this text. Two fields holding the same value
+	// is not a tie to break — nothing in the snippet says which one the editor
+	// meant — so the edit goes to a path that does not have to guess.
+	const matches = findYamlTargets(sourceSnippet, allowQuotedKey).filter((candidate) => String(candidate.value) === resolvedOriginal)
+	if (matches.length !== 1) return null
+	const target = matches[0]!
 
 	// A numeric field has to stay numeric: `stringifyYaml` quotes '120' to keep it
 	// a string, which would flip the field's type and fail the collection schema.
 	// A date or boolean field is the same problem read the other way — there the
 	// plain spelling is what carries the type, so quoting is what would break it.
 	const fieldIsTyped = resolvesAsNonString(sourceSnippet.slice(target.start, target.end))
-	const replacement = typeof target.value === 'number' && typeof tryParseYaml(resolvedNewText) === 'number'
+	const replacement = typeof target.value === 'number' && YAML_PLAIN_NUMBER.test(resolvedNewText)
 		? resolvedNewText
 		: serializeYamlValue(resolvedNewText, target.key, target.ownerColumn, fieldIsTyped)
 	if (replacement === null) return null
@@ -1684,8 +1691,7 @@ function tryYamlValueReplacement(
  * comparison can be strict.
  */
 function yamlValueRoundTrips(updatedSnippet: string, expected: string): boolean {
-	const target = findYamlTarget(normalizeCr(updatedSnippet), true)
-	return target !== null && scalarSays(target.value, expected)
+	return findYamlTargets(normalizeCr(updatedSnippet), true).some((target) => scalarSays(target.value, expected))
 }
 
 /**
@@ -1701,6 +1707,28 @@ function scalarSays(actual: unknown, expected: string): boolean {
 }
 
 /**
+ * Write the rewritten snippet back, unless it is a frontmatter write that would
+ * not survive being read again. `content.replace` takes a *replacement pattern*,
+ * so `$&` and friends in the new text have to be escaped or they splice the
+ * matched snippet into itself.
+ */
+function writeSnippet(
+	content: string,
+	sourceSnippet: string,
+	updatedSnippet: string,
+	insideYaml: boolean,
+	expected: string,
+): { success: true; content: string } | { success: false; error: string } {
+	if (insideYaml && !yamlSnippetSurvives(sourceSnippet, updatedSnippet, expected)) {
+		return {
+			success: false,
+			error: `"${expected.substring(0, 50)}" cannot be written into this frontmatter field without breaking it`,
+		}
+	}
+	return { success: true, content: content.replace(sourceSnippet, escapeReplacement(updatedSnippet)) }
+}
+
+/**
  * Does this snippet still parse, and still say what the edit meant to write?
  *
  * Asked of a write no YAML-aware path claimed, where the edited field could be
@@ -1711,19 +1739,47 @@ function scalarSays(actual: unknown, expected: string): boolean {
  * mapping or a list, or truncates at a `#` — without refusing the many ordinary
  * edits whose result simply isn't `key: <the whole new text>`.
  */
-function yamlSnippetSurvives(updatedSnippet: string, expected: string): boolean {
+function yamlSnippetSurvives(sourceSnippet: string, updatedSnippet: string, expected: string): boolean {
+	const before = yamlScalars(sourceSnippet)
+	const after = yamlScalars(updatedSnippet)
+	if (!before || !after || before.length !== after.length) return false
+
+	let changed = 0
+	for (let i = 0; i < before.length; i++) {
+		if (before[i]!.owner !== after[i]!.owner) return false
+		const wrote = after[i]!.value
+		if (String(before[i]!.value) === String(wrote)) continue
+		changed++
+		// Whatever this scalar became has to still say what the editor sent. An edit
+		// can touch part of a value, so containing it is enough — but an emptied
+		// field must actually be empty, where `includes('')` would wave through the
+		// `null` a bare `key:` reads back as.
+		const saysIt = expected === '' ? wrote === '' : (scalarSays(wrote, expected) || String(wrote).includes(expected))
+		if (!saysIt) return false
+	}
+	return changed > 0
+}
+
+/**
+ * Every scalar in a snippet, in document order, each tagged with how it hangs off
+ * its parent — a mapping key, a mapping value, or an index in a sequence. Two of
+ * these lists line up only while the snippet keeps its shape, which is what turns
+ * `Ahoj: světe` written into a string field from a value change into a visibly
+ * different document. Null when the snippet does not parse at all.
+ */
+function yamlScalars(snippet: string): Array<{ owner: string; value: unknown }> | null {
 	try {
-		const doc = parseDocument(normalizeCr(updatedSnippet))
-		if (doc.errors.length > 0) return false
-		let intact = false
+		const doc = parseDocument(normalizeCr(snippet))
+		if (doc.errors.length > 0) return null
+		const scalars: Array<{ owner: string; value: unknown }> = []
 		visitYaml(doc, {
-			Scalar(_key, node) {
-				if (String(node.value).includes(expected) || scalarSays(node.value, expected)) intact = true
+			Scalar(key, node) {
+				scalars.push({ owner: String(key), value: node.value })
 			},
 		})
-		return intact
+		return scalars
 	} catch {
-		return false
+		return null
 	}
 }
 
@@ -1827,7 +1883,7 @@ function tryDataFileValueReplacement(
 		return null
 	}
 
-	const updatedSnippet = sourceSnippet.replace(quotedOriginal, quotedNew)
+	const updatedSnippet = sourceSnippet.replace(quotedOriginal, escapeReplacement(quotedNew))
 	if (updatedSnippet === sourceSnippet) return null
 
 	// Find the snippet in content near the source line
@@ -1920,7 +1976,7 @@ function tryBrNormalizedChange(
 				const leadingWs = raw.slice(0, raw.indexOf(trimmed))
 				const trailingWs = raw.slice(raw.indexOf(trimmed) + trimmed.length)
 				const newRaw = leadingWs + newSegment + trailingWs
-				result = result.replace(raw, newRaw)
+				result = result.replace(raw, escapeReplacement(newRaw))
 				break
 			}
 		}

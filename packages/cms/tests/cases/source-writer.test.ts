@@ -414,6 +414,7 @@ describe('applyTextChange', () => {
 		const result = applyTextChange(
 			content,
 			makeChange({
+				sourcePath: 'src/content/blog/a.md',
 				sourceSnippet: 'title: Dobrovolníci po celé republice spojí síly a uklidí českou krajinu. Budete \n  u toho?',
 				originalValue: 'Dobrovolníci po celé republice spojí síly a uklidí českou krajinu. Budete u toho?',
 				newValue: 'Nový titulek',
@@ -438,6 +439,7 @@ date: 2026-03-10
 		const result = applyTextChange(
 			content,
 			makeChange({
+				sourcePath: 'src/content/blog/a.md',
 				sourceSnippet:
 					'excerpt: I letos se čeká Českou republiku tradiční jarní úklid. Tisíce\n  dobrovolníků a dobrovolnic se 28. března 2026 sejdou, aby v rámci akce Ukliďme\n  Česko společně uklidili to, co do veřejného prostoru nepatří. Přidejte se k\n  nim také!',
 				originalValue:
@@ -460,6 +462,7 @@ date: 2026-03-10
 		const result = applyTextChange(
 			content,
 			makeChange({
+				sourcePath: 'src/content/blog/a.md',
 				sourceSnippet: 'title: Hello world',
 				originalValue: 'Hello world',
 				newValue: 'Hello universe',
@@ -474,6 +477,7 @@ date: 2026-03-10
 		const result = applyTextChange(
 			content,
 			makeChange({
+				sourcePath: 'src/content/blog/a.md',
 				sourceSnippet: 'description: >-\n  This is a multi-line\n  folded description',
 				originalValue: 'This is a multi-line folded description',
 				newValue: 'A short description',
@@ -491,6 +495,7 @@ date: 2026-03-10
 		const result = applyTextChange(
 			content,
 			makeChange({
+				sourcePath: 'src/content/blog/a.md',
 				sourceSnippet: 'title: "A title with special chars: colons, #hashes,\n  and continuation"',
 				originalValue: 'A title with special chars: colons, #hashes, and continuation',
 				newValue: 'Simple title',
@@ -935,16 +940,20 @@ date: 2026-03-10
 			expect(parseYaml(/^---\r\n([\s\S]*?)\r\n---/.exec(result.content)![1]!).title).toBe('Sleva #1')
 		})
 
-		test('a value that cannot be written safely is refused, not saved', () => {
-			// The snippet holds two keys, so no single-value path claims it; the verbatim
-			// splice would spell a nested mapping the collection could no longer load.
+		test('the right field of a multi-field snippet is the one rewritten', () => {
+			const content = editFrontmatter('heading: Ahoj\ntitle: Ahoj světe', 'heading: Ahoj\ntitle: Ahoj světe', 'Ahoj světe', 'Ahoj: světe')
+			expect(frontmatterOf(content)).toEqual({ heading: 'Ahoj', title: 'Ahoj: světe' })
+		})
+
+		test('an edit no field answers to uniquely is refused, not guessed at', () => {
+			// Both fields hold `Ahoj`, and nothing in the snippet says which was edited.
 			const result = applyTextChange(
-				'---\nheading: Ahoj\ntitle: Ahoj světe\n---\n\nBody.\n',
+				entryFile('heading: Ahoj\ndescription: Ahoj'),
 				makeChange({
 					sourcePath: 'src/content/blog/a.md',
-					sourceSnippet: 'heading: Ahoj\ntitle: Ahoj světe',
-					originalValue: 'Ahoj světe',
-					newValue: 'Ahoj: světe',
+					sourceSnippet: 'heading: Ahoj\ndescription: Ahoj',
+					originalValue: 'Ahoj',
+					newValue: 'Sleva #1',
 				}),
 				emptyManifest,
 			)
@@ -979,13 +988,9 @@ date: 2026-03-10
 			expect(frontmatterOf(content).title).toBe('Ahoj světe')
 		})
 
-		test('but a fall-through that would map-ify a list item is still refused', () => {
-			const result = applyTextChange(
-				entryFile('tags:\n  - Ahoj\n  - Nazdar'),
-				makeChange({ sourcePath: 'src/content/blog/a.md', sourceSnippet: 'tags:\n  - Ahoj\n  - Nazdar', originalValue: 'Nazdar', newValue: 'Nazdar: x' }),
-				emptyManifest,
-			)
-			expect(result.success).toBe(false)
+		test('a list item that would otherwise become a mapping is quoted', () => {
+			const content = editFrontmatter('tags:\n  - Ahoj\n  - Nazdar', 'tags:\n  - Ahoj\n  - Nazdar', 'Nazdar', 'Nazdar: x')
+			expect(frontmatterOf(content).tags).toEqual(['Ahoj', 'Nazdar: x'])
 		})
 
 		test('a value Astro would read as a date is quoted', () => {
@@ -994,13 +999,36 @@ date: 2026-03-10
 			expect(frontmatterOf(content).title).toBe('2026-04-01')
 		})
 
-		test('a body opening with a thematic break is not frontmatter', () => {
+		test('a leading fenced block is frontmatter, as Astro reads it', () => {
+			// Astro's own `frontmatterRE` takes everything between the first `---` and the
+			// next one as YAML, whatever it looks like — so this is a field, not a
+			// paragraph between two rules, and it is quoted like any other field.
 			const result = applyTextChange(
-				'---\n\nÚvod\n\n---\n\nDalší\n',
-				makeChange({ sourcePath: 'src/content/blog/a.md', sourceSnippet: 'Úvod', originalValue: 'Úvod', newValue: 'Úvod: dva' }),
+				'---\n\nPozn: tohle je věta.\n\n---\n\nDalší\n',
+				makeChange({
+					sourcePath: 'src/content/blog/a.md',
+					sourceSnippet: 'Pozn: tohle je věta.',
+					originalValue: 'tohle je věta.',
+					newValue: 'Sleva #1',
+				}),
 				emptyManifest,
 			)
-			expect(result).toEqual({ success: true, content: '---\n\nÚvod: dva\n\n---\n\nDalší\n' })
+			if (!result.success) throw new Error(result.error)
+			expect(result.content).toContain('Pozn: "Sleva #1"')
+		})
+
+		test('a `+++` block is TOML and is left alone', () => {
+			const result = applyTextChange(
+				'+++\ntitle = "Ahoj"\n+++\n\nBody.\n',
+				makeChange({
+					sourcePath: 'src/content/blog/a.md',
+					sourceSnippet: 'title = "Ahoj"',
+					originalValue: 'Ahoj',
+					newValue: 'Sleva #1',
+				}),
+				emptyManifest,
+			)
+			expect(result).toEqual({ success: true, content: '+++\ntitle = "Sleva #1"\n+++\n\nBody.\n' })
 		})
 
 		test('a price with cents is written as typed', () => {
@@ -1014,6 +1042,53 @@ date: 2026-03-10
 			// Quoting is what protects a string field — and what would break this one.
 			const content = editFrontmatter('date: 2026-03-10', 'date: 2026-03-10', '2026-03-10', '2026-04-01')
 			expect(content).toContain('date: 2026-04-01')
+		})
+
+		test('a numeric field takes numbers, not YAML that happens to start with one', () => {
+			// `5 # levne` parses as 5, so a laxer check would splice a comment into the file.
+			const content = editFrontmatter('price: 120', 'price: 120', '120', '5 # levne')
+			expect(frontmatterOf(content).price).toBe('5 # levne')
+		})
+
+		test('an anchor typed into a numeric field is text, not an anchor', () => {
+			const content = editFrontmatter('price: 120', 'price: 120', '120', '&a 130')
+			expect(frontmatterOf(content).price).toBe('&a 130')
+		})
+
+		test('clearing a nested field writes an empty string, not a null', () => {
+			const content = editFrontmatter('hero:\n  title: Ahoj', 'hero:\n  title: Ahoj', 'Ahoj', '')
+			expect(frontmatterOf(content).hero).toEqual({ title: '' })
+		})
+
+		test('a sibling holding the same text is not the field that gets written', () => {
+			const content = editFrontmatter('a: "Sleva #1 dlouhý text"\nb: Ahoj', 'a: "Sleva #1 dlouhý text"\nb: Ahoj', 'Ahoj', 'Sleva #1')
+			expect(frontmatterOf(content)).toEqual({ a: 'Sleva #1 dlouhý text', b: 'Sleva #1' })
+		})
+
+		test('a broken field elsewhere in the block does not switch the guard off', () => {
+			// The duplicate key is not what the edit touches, and must not degrade it.
+			const content = editFrontmatter('a: 1\na: 2\ntitle: Ahoj', 'title: Ahoj', 'Ahoj', 'Ahoj: světe')
+			expect(content).toContain('title: "Ahoj: světe"')
+		})
+
+		test('a BOM before the fence is still frontmatter', () => {
+			const result = applyTextChange(
+				'\uFEFF---\ntitle: Ahoj\n---\n\nBody.\n',
+				makeChange({ sourcePath: 'src/content/blog/a.md', sourceSnippet: 'title: Ahoj', originalValue: 'Ahoj', newValue: 'Ahoj: x' }),
+				emptyManifest,
+			)
+			if (!result.success) throw new Error(result.error)
+			expect(result.content).toContain('title: "Ahoj: x"')
+		})
+
+		test('a JSON array item is not rewritten as a YAML scalar', () => {
+			const json = '{\n  "tags": ["Ahoj", "B"]\n}\n'
+			const result = applyTextChange(
+				json,
+				makeChange({ sourcePath: 'src/content/team/a.json', sourceSnippet: '  "tags": ["Ahoj", "B"]', originalValue: 'Ahoj', newValue: 'Nový' }),
+				emptyManifest,
+			)
+			if (result.success) expect(() => JSON.parse(result.content)).not.toThrow()
 		})
 
 		test('a .yaml data file goes through the same path', () => {
