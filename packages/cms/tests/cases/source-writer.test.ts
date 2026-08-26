@@ -551,7 +551,9 @@ date: 2026-03-10
 		expect(result).toEqual({ success: true, content: '<p>Kurzy a&#160;knihy</p>' })
 	})
 
-	test('does not let a plain space silently consume a source &nbsp;', () => {
+	test('keeps a source &nbsp; the edit never touched, even when the editor sent a plain space', () => {
+		// contentEditable normalizes some authored nbsp back to a plain space; only the
+		// span that actually changed is rewritten, so the entity survives regardless.
 		const content = '<p>Kurzy a&nbsp;publikace</p>'
 		const result = applyTextChange(
 			content,
@@ -562,7 +564,27 @@ date: 2026-03-10
 			}),
 			emptyManifest,
 		)
-		expect(result.success).toBe(false)
+		expect(result).toEqual({ success: true, content: '<p>Kurzy a&nbsp;knihy</p>' })
+	})
+
+	test('saves text whose &nbsp; sits next to an ordinary space', () => {
+		const content = '<p>Text &nbsp;další</p>'
+		const result = applyTextChange(
+			content,
+			makeChange({ sourceSnippet: content, originalValue: 'Text  další', newValue: 'Text  jiné' }),
+			emptyManifest,
+		)
+		expect(result).toEqual({ success: true, content: '<p>Text &nbsp;jiné</p>' })
+	})
+
+	test('leaves untouched entities alone when rewriting part of the text', () => {
+		const content = '<p>Tom &amp; Jerry &amp; Spike</p>'
+		const result = applyTextChange(
+			content,
+			makeChange({ sourceSnippet: content, originalValue: 'Tom & Jerry & Spike', newValue: 'Tom & Jerry & Tyke' }),
+			emptyManifest,
+		)
+		expect(result).toEqual({ success: true, content: '<p>Tom &amp; Jerry &amp; Tyke</p>' })
 	})
 
 	test('keeps the entity spelling the source used when new text adds a nbsp', () => {
@@ -735,6 +757,69 @@ date: 2026-03-10
 			emptyManifest,
 		)
 		expect(result).toEqual({ success: true, content: '<li><strong>Kurzy</strong>! pro lékaře.</li>' })
+	})
+
+	test('escapes a JS literal even when the text itself contains a <', () => {
+		const snippet = "const label = 'Doprava < 50 km'"
+		const result = applyTextChange(
+			snippet,
+			makeChange({
+				sourcePath: 'src/pages/index.astro',
+				sourceSnippet: snippet,
+				originalValue: 'Doprava < 50 km',
+				newValue: "Doprava < 50 km's",
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({ success: true, content: "const label = 'Doprava < 50 km\\'s'" })
+	})
+
+	test('leaves a quoted YAML value to the yaml path, not the JS one', () => {
+		const snippet = "title: 'Ahoj světe'"
+		const result = applyTextChange(
+			snippet,
+			makeChange({
+				sourcePath: 'src/content/blog/a.md',
+				sourceSnippet: snippet,
+				originalValue: 'Ahoj světe',
+				newValue: 'Ahoj lidi',
+			}),
+			emptyManifest,
+		)
+		// `\'` is not a YAML escape, so the JS literal encoder must not run here.
+		expect(result).toEqual({ success: true, content: "title: 'Ahoj lidi'" })
+	})
+
+	describe('insertions at a markup seam stay outside the inline element', () => {
+		test('before an opening tag', () => {
+			const snippet = '<h2>Hello <span class="a">world</span></h2>'
+			const result = applyTextChange(
+				snippet,
+				makeChange({ sourceSnippet: snippet, originalValue: 'Hello world', newValue: 'Hello there world' }),
+				emptyManifest,
+			)
+			expect(result).toEqual({ success: true, content: '<h2>Hello there <span class="a">world</span></h2>' })
+		})
+
+		test('at the very end, after a trailing inline child', () => {
+			const snippet = '<h3>foo <strong>bar</strong></h3>'
+			const result = applyTextChange(
+				snippet,
+				makeChange({ sourceSnippet: snippet, originalValue: 'foo bar', newValue: 'foo bar!' }),
+				emptyManifest,
+			)
+			expect(result).toEqual({ success: true, content: '<h3>foo <strong>bar</strong>!</h3>' })
+		})
+
+		test('at the very start, before a leading inline child', () => {
+			const snippet = '<h3><strong>bar</strong> foo</h3>'
+			const result = applyTextChange(
+				snippet,
+				makeChange({ sourceSnippet: snippet, originalValue: 'bar foo', newValue: '!bar foo' }),
+				emptyManifest,
+			)
+			expect(result).toEqual({ success: true, content: '<h3>!<strong>bar</strong> foo</h3>' })
+		})
 	})
 })
 

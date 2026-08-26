@@ -837,9 +837,11 @@ export function applyTextChange(
 		return { success: false, error: 'Source snippet not found in file' }
 	}
 
+	const entry = manifest.entries[change.cmsId]
+
 	// Never write HTML back into entries that don't allow styling — these are string props,
 	// collection fields, etc. where inline HTML would produce invalid source code.
-	const stylingAllowed = manifest.entries[change.cmsId]?.allowStyling !== false
+	const stylingAllowed = entry?.allowStyling !== false
 	const newText = stylingAllowed ? (htmlValue ?? newValue) : newValue
 
 	// When originalValue contains CMS placeholders (child elements like {{cms:cms-5}}),
@@ -856,10 +858,16 @@ export function applyTextChange(
 	const resolvedNewText = resolveCmsPlaceholders(newText, manifest)
 	const resolvedOriginal = resolveCmsPlaceholders(originalValue, manifest)
 
-	// A snippet with no markup in it is a frontmatter constant, i.e. JavaScript.
+	// A markup-free snippet in a JavaScript file is a frontmatter constant.
 	// Substituting the text verbatim there would write an unescaped apostrophe or
 	// line break straight into a string literal, so the literal path goes first.
-	if (!sourceSnippet.includes('<')) {
+	// The file has to be JavaScript: a quoted YAML value in a markdown entry looks
+	// the same but escapes differently, and belongs to `tryYamlValueReplacement`.
+	// A traced variable is a definition whatever its snippet swept up; otherwise the
+	// snippet has to look markup-free on its own.
+	const snippetIsJavaScript = isJavaScriptSource(change.sourcePath)
+		&& (!!entry?.variableName || !looksLikeMarkup(sourceSnippet))
+	if (snippetIsJavaScript) {
 		const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
 		if (literalResult !== null) {
 			return { success: true, content: content.replace(sourceSnippet, literalResult) }
@@ -886,22 +894,29 @@ export function applyTextChange(
 
 		// The snippet may be a frontmatter constant rather than template markup, in
 		// which case the rendered text is the *decoded* literal.
-		const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
-		if (literalResult !== null) {
-			return { success: true, content: content.replace(sourceSnippet, literalResult) }
+		if (snippetIsJavaScript) {
+			const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
+			if (literalResult !== null) {
+				return { success: true, content: content.replace(sourceSnippet, literalResult) }
+			}
 		}
 
 		// resolvedOriginal wasn't found in snippet - try HTML entity handling
 		const matchedText = findTextInSnippet(sourceSnippet, resolvedOriginal)
 		if (matchedText) {
 			// Entity-aware matching means the source spells some characters as entities;
-			// the replacement has to keep that spelling. A replacement that carries its
-			// own markup gets the nbsp pass only — encoding `&`/`<`/`"` there would
-			// mangle the tags and attributes the editor just sent.
-			const encodedNewText = /<[^>]+>/.test(resolvedNewText)
-				? encodeNbspLike(resolvedNewText, matchedText)
-				: encodeEntitiesLike(resolvedNewText, matchedText)
-			const updatedWithEntity = sourceSnippet.replace(matchedText, encodedNewText)
+			// the replacement has to keep that spelling. Splicing only the span that
+			// changed preserves every entity the edit didn't touch.
+			const spliced = /<[^>]+>/.test(resolvedNewText)
+				? null
+				: spliceIntoEntitySource(matchedText, resolvedOriginal, resolvedNewText)
+			// A replacement carrying its own markup gets the nbsp pass only — encoding
+			// `&`/`<`/`"` there would mangle the tags the editor just sent.
+			const replacement = spliced
+				?? (/<[^>]+>/.test(resolvedNewText)
+					? encodeNbspLike(resolvedNewText, matchedText)
+					: encodeEntitiesLike(resolvedNewText, matchedText))
+			const updatedWithEntity = sourceSnippet.replace(matchedText, replacement)
 			return { success: true, content: content.replace(sourceSnippet, updatedWithEntity) }
 		}
 		// Try inner content replacement for text spanning inline HTML elements
@@ -996,6 +1011,18 @@ function applyTextChangeWithPlaceholders(
 // ============================================================================
 // JavaScript String Literals
 // ============================================================================
+
+/** Files whose contents (or frontmatter) are JavaScript, so string literals escape JS-style. */
+const JAVASCRIPT_SOURCE = /\.(astro|[cm]?[jt]sx?)$/i
+
+function isJavaScriptSource(sourcePath: string | undefined): boolean {
+	return !!sourcePath && JAVASCRIPT_SOURCE.test(sourcePath)
+}
+
+/** A `<` that opens a tag, as opposed to one that is simply part of the text (`a < b`). */
+function looksLikeMarkup(text: string): boolean {
+	return /<[a-zA-Z/!]/.test(text)
+}
 
 interface SourceLiteral {
 	/** Offset of the opening quote */
@@ -1147,6 +1174,17 @@ function tryJsStringLiteralChange(
 }
 
 /**
+ * An insertion between two text runs sits next to markup. If that markup closes an
+ * element the earlier run was inside, the text belongs to the later run; if it
+ * opens one the later run is inside, it belongs to the earlier run. Either way the
+ * typed text stays outside the inline element.
+ */
+function pickRunAtSeam<T extends { index: number }>(tokens: string[], earlier: T, later: T): T {
+	const seam = tokens.slice(earlier.index + 1, later.index).find(token => token.startsWith('<'))
+	return seam?.startsWith('</') ? later : earlier
+}
+
+/**
  * Apply a plain-text edit to inner content that carries inline markup.
  *
  * The rendered text is the concatenation of the element's text runs, so an edit
@@ -1186,10 +1224,18 @@ function spliceTextAcrossInlineMarkup(
 	const newEnd = newText.length - tail
 	if (start === originalEnd && start === newEnd) return innerContent
 
-	// A pure insertion at a boundary fits both neighbouring runs; putting it in the
-	// later one keeps it outside the inline tag that just ended.
+	// A pure insertion has no run of its own to land in; it belongs outside whatever
+	// inline element sits at the seam, not inside it.
+	if (start === originalEnd) {
+		const inserted = newText.slice(start, newEnd)
+		if (start === 0) return inserted + innerContent
+		if (start === originalText.length) return innerContent + inserted
+	}
+
 	const fitting = runs.filter(r => start >= r.start && originalEnd <= r.end)
-	const run = start === originalEnd ? fitting[fitting.length - 1] : fitting[0]
+	const run = start === originalEnd && fitting.length > 1
+		? pickRunAtSeam(tokens, fitting[0]!, fitting[fitting.length - 1]!)
+		: fitting[0]
 	if (!run) return null
 
 	const token = tokens[run.index]!
@@ -1206,7 +1252,12 @@ function spliceTextAcrossInlineMarkup(
  */
 const ENTITY_ALTERNATIVES = new Map<string, string[]>([
 	['&', ['&amp;']],
-	['\u00A0', ['&nbsp;', '&#160;']],
+	['\u00A0', ['&nbsp;', '&#160;', ' ']],
+	// contentEditable hands back a plain space for some authored `&nbsp;` (next to
+	// another space, or doubled), so the search text has to reach the entity too.
+	// Nothing is lost by it: the rewrite splices only the span that changed and
+	// leaves the surrounding source bytes, entities included, exactly as they were.
+	[' ', ['&nbsp;', '&#160;']],
 	['<', ['&lt;']],
 	['>', ['&gt;']],
 	['"', ['&quot;']],
@@ -1242,6 +1293,92 @@ function findTextInSnippet(snippet: string, decodedText: string): string | null 
 	const brMatch = snippet.match(brRegex)
 
 	return brMatch && brMatch[0] !== decodedText ? brMatch[0] : null
+}
+
+/** A space and a non-breaking space are interchangeable for matching purposes. */
+function sameCharacter(a: string | undefined, b: string | undefined): boolean {
+	if (a === b) return true
+	const spaceLike = (c: string | undefined) => c === ' ' || c === '\u00A0'
+	return spaceLike(a) && spaceLike(b)
+}
+
+/**
+ * Decode HTML entities, remembering where each decoded character came from.
+ * `offsets[i]` is the index in `source` at which decoded character `i` starts, and
+ * the array carries one extra entry for the end of the string.
+ */
+function decodeEntitiesWithOffsets(source: string): { text: string; offsets: number[] } {
+	const entityPattern = /&(?:#x([0-9a-f]+)|#(\d+)|([a-z]+));/iy
+	let text = ''
+	const offsets: number[] = []
+	let i = 0
+	while (i < source.length) {
+		entityPattern.lastIndex = i
+		const match = entityPattern.exec(source)
+		const decoded = match ? decodeEntityMatch(match) : undefined
+		offsets.push(i)
+		if (decoded !== undefined) {
+			text += decoded
+			i += match![0].length
+		} else {
+			text += source[i]
+			i++
+		}
+	}
+	offsets.push(source.length)
+	return { text, offsets }
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+	amp: '&',
+	lt: '<',
+	gt: '>',
+	quot: '"',
+	apos: "'",
+	nbsp: '\u00A0',
+}
+
+function decodeEntityMatch(match: RegExpExecArray): string | undefined {
+	const [, hex, dec, name] = match
+	if (hex) return String.fromCodePoint(parseInt(hex, 16))
+	if (dec) return String.fromCodePoint(parseInt(dec, 10))
+	return name ? NAMED_ENTITIES[name.toLowerCase()] : undefined
+}
+
+/**
+ * Rewrite entity-encoded source in place, touching only the characters that
+ * actually changed.
+ *
+ * Replacing the whole match would flatten every entity in it to whatever the
+ * browser handed back — a `&nbsp;` the user never touched would come back as a
+ * plain space. Returns null when the source doesn't decode to `original`, leaving
+ * the caller its whole-match fallback.
+ */
+function spliceIntoEntitySource(source: string, original: string, replacement: string): string | null {
+	const { text: decoded, offsets } = decodeEntitiesWithOffsets(source)
+	if (decoded.length !== original.length) return null
+	for (let i = 0; i < decoded.length; i++) {
+		if (!sameCharacter(decoded[i], original[i])) return null
+	}
+
+	let start = 0
+	while (start < original.length && start < replacement.length && sameCharacter(original[start], replacement[start])) {
+		start++
+	}
+	let tail = 0
+	while (
+		tail < original.length - start
+		&& tail < replacement.length - start
+		&& sameCharacter(original[original.length - 1 - tail], replacement[replacement.length - 1 - tail])
+	) tail++
+
+	const originalEnd = original.length - tail
+	const newEnd = replacement.length - tail
+	if (start === originalEnd && start === newEnd) return source
+
+	const head = source.slice(0, offsets[start])
+	const rest = source.slice(offsets[originalEnd])
+	return head + encodeEntitiesLike(replacement.slice(start, newEnd), source) + rest
 }
 
 /**
