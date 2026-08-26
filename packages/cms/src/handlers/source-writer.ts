@@ -259,7 +259,7 @@ export async function applyImageChange(
 
 	// Fallback: try YAML key-value replacement for collection frontmatter fields
 	// Try all srcCandidates since the rendered URL may differ from the authored YAML value
-	if (replacedIndex < 0 && change.sourceSnippet) {
+	if (replacedIndex < 0 && change.sourceSnippet && isYamlValueSource(newContent, change.sourceSnippet, change.sourcePath)) {
 		for (const srcToFind of srcCandidates) {
 			const yamlResult = tryYamlValueReplacement(change.sourceSnippet, srcToFind, newSrc)
 			if (yamlResult !== null) {
@@ -870,7 +870,7 @@ export function applyTextChange(
 	if (snippetIsJavaScript) {
 		const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
 		if (literalResult !== null) {
-			return { success: true, content: content.replace(sourceSnippet, literalResult) }
+			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(literalResult)) }
 		}
 	}
 
@@ -905,7 +905,7 @@ export function applyTextChange(
 		// and collapses surrounding whitespace/indentation)
 		const brResult = tryBrNormalizedChange(sourceSnippet, resolvedOriginal, resolvedNewText)
 		if (brResult !== null) {
-			return { success: true, content: content.replace(sourceSnippet, brResult) }
+			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(brResult)) }
 		}
 
 		// The snippet may be a frontmatter constant rather than template markup, in
@@ -913,7 +913,7 @@ export function applyTextChange(
 		if (snippetIsJavaScript) {
 			const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
 			if (literalResult !== null) {
-				return { success: true, content: content.replace(sourceSnippet, literalResult) }
+				return { success: true, content: content.replace(sourceSnippet, escapeReplacement(literalResult)) }
 			}
 		}
 
@@ -933,7 +933,7 @@ export function applyTextChange(
 					? encodeNbspLike(resolvedNewText, matchedText)
 					: encodeEntitiesLike(resolvedNewText, matchedText))
 			const updatedWithEntity = sourceSnippet.replace(matchedText, replacement)
-			return { success: true, content: content.replace(sourceSnippet, updatedWithEntity) }
+			return { success: true, content: content.replace(sourceSnippet, escapeReplacement(updatedWithEntity)) }
 		}
 		// Try inner content replacement for text spanning inline HTML elements
 		// (e.g., <h3>text part 1 <span class="...">text part 2</span></h3>)
@@ -947,11 +947,11 @@ export function applyTextChange(
 				// so the edit is spliced into the text run it actually touched instead.
 				const isHtmlReplacement = /<[^>]+>/.test(resolvedNewText)
 				if (isHtmlReplacement || !/<[^>]+>/.test(innerContent!)) {
-					return { success: true, content: content.replace(sourceSnippet, openTag + resolvedNewText + closeTag) }
+					return { success: true, content: content.replace(sourceSnippet, escapeReplacement(openTag + resolvedNewText + closeTag)) }
 				}
 				const splicedInner = spliceTextAcrossInlineMarkup(innerContent!, resolvedOriginal, resolvedNewText)
 				if (splicedInner !== null) {
-					return { success: true, content: content.replace(sourceSnippet, openTag + splicedInner + closeTag) }
+					return { success: true, content: content.replace(sourceSnippet, escapeReplacement(openTag + splicedInner + closeTag)) }
 				}
 				return {
 					success: false,
@@ -1033,7 +1033,7 @@ function applyTextChangeWithPlaceholders(
 		return { success: false, error: 'No text changes detected between original and new values' }
 	}
 
-	return { success: true, content: content.replace(sourceSnippet, updatedSnippet) }
+	return { success: true, content: content.replace(sourceSnippet, escapeReplacement(updatedSnippet)) }
 }
 
 // ============================================================================
@@ -1661,9 +1661,12 @@ function tryYamlValueReplacement(
 
 	// A numeric field has to stay numeric: `stringifyYaml` quotes '120' to keep it
 	// a string, which would flip the field's type and fail the collection schema.
+	// A date or boolean field is the same problem read the other way — there the
+	// plain spelling is what carries the type, so quoting is what would break it.
+	const fieldIsTyped = resolvesAsNonString(sourceSnippet.slice(target.start, target.end))
 	const replacement = typeof target.value === 'number' && typeof tryParseYaml(resolvedNewText) === 'number'
 		? resolvedNewText
-		: serializeYamlValue(resolvedNewText, target.key, target.ownerColumn)
+		: serializeYamlValue(resolvedNewText, target.key, target.ownerColumn, fieldIsTyped)
 	if (replacement === null) return null
 
 	const updated = sourceSnippet.slice(0, target.start) + replacement + sourceSnippet.slice(target.end)
@@ -1682,7 +1685,19 @@ function tryYamlValueReplacement(
  */
 function yamlValueRoundTrips(updatedSnippet: string, expected: string): boolean {
 	const target = findYamlTarget(normalizeCr(updatedSnippet), true)
-	return target !== null && String(target.value) === expected
+	return target !== null && scalarSays(target.value, expected)
+}
+
+/**
+ * Does this scalar say what the editor sent? A number is compared as a number:
+ * `129.90` is how a price is typed, `129.9` is how it reads back, and that is the
+ * same value spelled canonically rather than a failed write.
+ */
+function scalarSays(actual: unknown, expected: string): boolean {
+	if (String(actual) === expected) return true
+	if (typeof actual !== 'number') return false
+	const parsed = tryParseYaml(expected)
+	return typeof parsed === 'number' && parsed === actual
 }
 
 /**
@@ -1703,7 +1718,7 @@ function yamlSnippetSurvives(updatedSnippet: string, expected: string): boolean 
 		let intact = false
 		visitYaml(doc, {
 			Scalar(_key, node) {
-				if (String(node.value).includes(expected)) intact = true
+				if (String(node.value).includes(expected) || scalarSays(node.value, expected)) intact = true
 			},
 		})
 		return intact
@@ -1726,14 +1741,15 @@ function normalizeCr(snippet: string): string {
  * a document its own parser rejects. Rendering the container gives it one, and
  * moving owner and body by the same amount afterwards keeps the indicator true.
  */
-function serializeYamlValue(value: string, key: string | null, ownerColumn: number): string | null {
+function serializeYamlValue(value: string, key: string | null, ownerColumn: number, fieldIsTyped = false): string | null {
 	let body = renderYamlValue(value, key, undefined)
 
 	// The serializer targets YAML 1.2, where a plain `2026-04-01` is a string.
 	// Astro reads frontmatter with a 1.1 parser, which resolves it to a Date — the
 	// same silent type flip the numeric branch guards against, in the other
-	// direction. Quoting is what keeps a string field a string.
-	if (body !== null && !body.includes('\n') && resolvesAsNonString(body)) {
+	// direction. Quoting is what keeps a string field a string — and what would
+	// break a field that really is a date or a boolean, hence `fieldIsTyped`.
+	if (!fieldIsTyped && body !== null && !body.includes('\n') && resolvesAsNonString(body)) {
 		body = renderYamlValue(value, key, 'QUOTE_DOUBLE')
 	}
 	if (body === null || !body.includes('\n')) return body

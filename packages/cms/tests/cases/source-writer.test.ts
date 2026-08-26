@@ -1003,6 +1003,19 @@ date: 2026-03-10
 			expect(result).toEqual({ success: true, content: '---\n\nÚvod: dva\n\n---\n\nDalší\n' })
 		})
 
+		test('a price with cents is written as typed', () => {
+			// `129.90` reads back as 129.9 — the same number, canonically spelled.
+			const content = editFrontmatter('price: 100', 'price: 100', '100', '129.90')
+			expect(content).toContain('price: 129.90')
+			expect(frontmatterOf(content).price).toBe(129.9)
+		})
+
+		test('a date field stays a date', () => {
+			// Quoting is what protects a string field — and what would break this one.
+			const content = editFrontmatter('date: 2026-03-10', 'date: 2026-03-10', '2026-03-10', '2026-04-01')
+			expect(content).toContain('date: 2026-04-01')
+		})
+
 		test('a .yaml data file goes through the same path', () => {
 			const result = applyTextChange(
 				'title: Ahoj světe\n',

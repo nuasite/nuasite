@@ -340,6 +340,7 @@ describe('applyImageChange', async () => {
 			const result = await applyImageChange(
 				content,
 				makeImageChange({
+					sourcePath: 'src/content/blog/a.md',
 					originalValue: 'https://images.unsplash.com/photo-123?w=1200',
 					sourceSnippet: 'coverImage: https://images.unsplash.com/photo-123?w=1200',
 					sourceLine: 3,
@@ -358,6 +359,7 @@ describe('applyImageChange', async () => {
 			const result = await applyImageChange(
 				content,
 				makeImageChange({
+					sourcePath: 'src/content/blog/a.md',
 					originalValue: '/images/old-hero.jpg',
 					sourceSnippet: 'heroImage: /images/old-hero.jpg',
 					sourceLine: 2,
@@ -376,6 +378,7 @@ describe('applyImageChange', async () => {
 			const result = await applyImageChange(
 				content,
 				makeImageChange({
+					sourcePath: 'src/content/blog/a.md',
 					// Astro Image component transforms the URL in the rendered HTML
 					originalValue: '/_image?href=%2Fimages%2Fhero.jpg&w=1024',
 					sourceSnippet: 'image: /images/hero.jpg',
@@ -395,6 +398,7 @@ describe('applyImageChange', async () => {
 			const result = await applyImageChange(
 				content,
 				makeImageChange({
+					sourcePath: 'src/content/blog/a.md',
 					// Rendered URL differs from authored URL (CDN/optimization)
 					originalValue: 'https://cdn.example.com/photos/sunset.jpg',
 					sourceSnippet: 'coverImage: /photos/sunset.jpg',
@@ -414,6 +418,7 @@ describe('applyImageChange', async () => {
 			const result = await applyImageChange(
 				content,
 				makeImageChange({
+					sourcePath: 'src/content/blog/a.md',
 					// Astro content collection images get hashed filenames in rendered HTML
 					originalValue: '/assets/02ea4e4b132e-5172-jpg.webp',
 					sourceSnippet: 'image: ./images/hero.jpg',
@@ -433,6 +438,7 @@ describe('applyImageChange', async () => {
 			const result = await applyImageChange(
 				content,
 				makeImageChange({
+					sourcePath: 'src/content/blog/a.md',
 					originalValue: '/assets/old-photo.webp',
 					sourceSnippet: '"image": "/assets/old-photo.webp",',
 					sourceLine: 3,
@@ -451,6 +457,7 @@ describe('applyImageChange', async () => {
 			const result = await applyImageChange(
 				content,
 				makeImageChange({
+					sourcePath: 'src/content/blog/a.md',
 					originalValue: '/simple-path.jpg',
 					sourceSnippet: 'image: /simple-path.jpg',
 					sourceLine: 2,
