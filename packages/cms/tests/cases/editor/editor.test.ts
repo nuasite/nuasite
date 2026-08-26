@@ -40,6 +40,14 @@ beforeEach(() => {
 				tag: 'p',
 				text: 'Text with no source path',
 			},
+			'unresolved-text-id': {
+				id: 'unresolved-text-id',
+				tag: 'p',
+				text: 'Text the source finder never located',
+				sourcePath: '/test/path3.astro',
+				sourceLine: 4,
+				textResolved: false,
+			},
 		},
 		components: {},
 		componentDefinitions: {},
@@ -339,4 +347,21 @@ test('stopEditMode clears the locked attribute', async () => {
 
 	stopEditMode(() => {})
 	expect(locked.hasAttribute('data-cms-locked')).toBe(false)
+})
+
+test('locks an entry whose text was never located in the source', async () => {
+	document.body.innerHTML = `
+    <p data-cms-id="unresolved-text-id">Text the source finder never located</p>
+    <p data-cms-id="test-id-1">Editable content</p>
+  `
+
+	await startEditMode(mockConfig, () => {})
+
+	const unresolved = document.querySelector('[data-cms-id="unresolved-text-id"]')!
+	const editable = document.querySelector('[data-cms-id="test-id-1"]')!
+
+	// Typing into it would only fail on save — the snippet holds no text to replace.
+	expect(unresolved.getAttribute('data-cms-locked')).toBe('true')
+	expect(unresolved.getAttribute('contenteditable')).not.toBe('true')
+	expect(editable.hasAttribute('data-cms-locked')).toBe(false)
 })

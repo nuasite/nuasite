@@ -73,6 +73,16 @@ export function snippetContainsText(snippet: string, text: string): boolean {
 }
 
 /**
+ * The source text a variable definition occupies. Usually one line, but an
+ * initializer split across lines (`'one ' +\n'two'`) needs all of them — the
+ * writer has to see the whole chain to rewrite it.
+ */
+export function definitionSnippet(lines: string[], def: { line: number; endLine?: number }): string {
+	if (!def.endLine || def.endLine <= def.line) return lines[def.line - 1] || ''
+	return lines.slice(def.line - 1, def.endLine).join('\n')
+}
+
+/**
  * Strip markdown syntax for text comparison
  */
 export function stripMarkdownSyntax(text: string): string {
@@ -960,9 +970,10 @@ export async function enhanceManifestWithSourceSnippets(
 
 			if (sourceSnippet) {
 				const trimmedText = entry.text?.trim()
+				const textIsInSnippet = !trimmedText || snippetContainsText(sourceSnippet, trimmedText)
 
 				// Check if text is directly in the snippet (static content)
-				if (trimmedText && !snippetContainsText(sourceSnippet, trimmedText)) {
+				if (!textIsInSnippet) {
 					// Text from dynamic expression — resolve via variable definitions
 					const cached = await getCachedParsedFile(filePath)
 					if (cached) {
@@ -971,7 +982,7 @@ export async function enhanceManifestWithSourceSnippets(
 							def => normalizeText(def.value) === normalizedSearch,
 						)
 						if (matchingDef) {
-							const defSnippet = lines[matchingDef.line - 1] || ''
+							const defSnippet = definitionSnippet(lines, matchingDef)
 							const sourceHash = generateSourceHash(defSnippet)
 							return [id, {
 								...entry,
@@ -1110,7 +1121,9 @@ export async function enhanceManifestWithSourceSnippets(
 					}
 				}
 
-				// Original static content path
+				// Original static content path. Reaching here with text that isn't in the
+				// snippet means every lookup above came up empty — the editor locks the
+				// entry instead of letting the user type into an edit that can't be saved.
 				const sourceHash = generateSourceHash(sourceSnippet)
 				return [id, {
 					...entry,
@@ -1118,6 +1131,7 @@ export async function enhanceManifestWithSourceSnippets(
 					attributes,
 					colorClasses,
 					sourceHash,
+					...(textIsInSnippet ? {} : { textResolved: false }),
 				}] as const
 			}
 		} catch {
@@ -1417,7 +1431,7 @@ async function resolveImageExpression(
 		def => normalizeText(def.value) === normalizedSrc,
 	)
 	if (matchingDef) {
-		const defSnippet = cached.lines[matchingDef.line - 1] || ''
+		const defSnippet = definitionSnippet(cached.lines, matchingDef)
 		const sourceHash = generateSourceHash(defSnippet)
 		return {
 			...entry,

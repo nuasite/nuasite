@@ -18,6 +18,8 @@ export interface VariableDefinition {
 	name: string
 	value: string
 	line: number
+	/** Last line of the initializer, when it spans more than one (`'a'` + `'b'`) */
+	endLine?: number
 	/** For object properties, the parent variable name */
 	parentName?: string
 }

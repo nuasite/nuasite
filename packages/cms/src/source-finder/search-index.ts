@@ -23,7 +23,7 @@ import {
 	setCollectionTextIndex,
 	setSearchIndexInitialized,
 } from './cache'
-import { extractAstroImageOriginalUrl, extractImageSnippet, normalizeText } from './snippet-utils'
+import { definitionSnippet, extractAstroImageOriginalUrl, extractImageSnippet, normalizeText } from './snippet-utils'
 import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types'
 
 /** Collection data files live under this path — used to prefer them over templates */
@@ -439,7 +439,7 @@ export function indexFileContent(cached: CachedParsedFile, relFile: string): voi
 							addToTextSearchIndex({
 								file: relFile,
 								line: def.line,
-								snippet: cached.lines[def.line - 1] || '',
+								snippet: definitionSnippet(cached.lines, def),
 								type: 'variable',
 								variableName: defPath,
 								definitionLine: def.line,
@@ -569,7 +569,7 @@ function indexExpressionTextRef(
 		addToTextSearchIndex({
 			file: relFile,
 			line: def.line,
-			snippet: cached.lines[def.line - 1] || '',
+			snippet: definitionSnippet(cached.lines, def),
 			type: 'variable',
 			variableName: defPath,
 			definitionLine: def.line,

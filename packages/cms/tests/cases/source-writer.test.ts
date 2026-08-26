@@ -639,6 +639,74 @@ date: 2026-03-10
 			})
 		})
 	})
+
+	// Frontmatter constants are JavaScript: the rendered text is the *decoded*
+	// literal, and the rewrite has to go back through the same escaping.
+	describe('javascript string literals', () => {
+		test('matches a \\u00A0 escape and keeps the escape on write', () => {
+			const snippet = "const ITEMS = ['Nemají s\\u00A0kým sdílet.', 'první\\nřádek']"
+			const result = applyTextChange(
+				snippet,
+				makeChange({
+					sourceSnippet: snippet,
+					originalValue: 'Nemají s\u00A0kým sdílet.',
+					newValue: 'Nemají s\u00A0kým mluvit.',
+				}),
+				emptyManifest,
+			)
+			expect(result).toEqual({
+				success: true,
+				content: "const ITEMS = ['Nemají s\\u00A0kým mluvit.', 'první\\nřádek']",
+			})
+		})
+
+		test('matches a \\n escape and re-escapes the new line break', () => {
+			const snippet = "const TEXT = 'první\\nřádek'"
+			const result = applyTextChange(
+				snippet,
+				makeChange({ sourceSnippet: snippet, originalValue: 'první\nřádek', newValue: 'druhý\nřádek' }),
+				emptyManifest,
+			)
+			expect(result).toEqual({ success: true, content: "const TEXT = 'druhý\\nřádek'" })
+		})
+
+		test('collapses a + chain of literals into one literal', () => {
+			const snippet = "const STORY = 'Tématu podpory sourozenců '\n\t+ 'jsem si poprvé všimla v USA.'"
+			const result = applyTextChange(
+				snippet,
+				makeChange({
+					sourceSnippet: snippet,
+					originalValue: 'Tématu podpory sourozenců jsem si poprvé všimla v USA.',
+					newValue: 'Tématu podpory jsem si všimla v USA.',
+				}),
+				emptyManifest,
+			)
+			expect(result).toEqual({
+				success: true,
+				content: "const STORY = 'Tématu podpory jsem si všimla v USA.'",
+			})
+		})
+
+		test('escapes a quote that would otherwise break the literal', () => {
+			const snippet = "const TEXT = 'plain text'"
+			const result = applyTextChange(
+				snippet,
+				makeChange({ sourceSnippet: snippet, originalValue: 'plain text', newValue: "it's here" }),
+				emptyManifest,
+			)
+			expect(result).toEqual({ success: true, content: "const TEXT = 'it\\'s here'" })
+		})
+
+		test('leaves markup snippets to the template paths', () => {
+			const snippet = '<a href="/about">About us</a>'
+			const result = applyTextChange(
+				snippet,
+				makeChange({ sourceSnippet: snippet, originalValue: 'About us', newValue: 'About them' }),
+				emptyManifest,
+			)
+			expect(result).toEqual({ success: true, content: '<a href="/about">About them</a>' })
+		})
+	})
 })
 
 describe('applyAttributeChanges', () => {

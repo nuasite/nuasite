@@ -46,6 +46,27 @@ describe('snippetContainsText', () => {
 })
 
 withTempDir('findSourceLocation - Text Finding', (getCtx) => {
+	test('finds text built from a + chain of string literals', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Story.astro',
+			`---
+const STORY = 'Tématu podpory sourozenců '
+	+ 'jsem si poprvé všimla v USA.'
+---
+<p>{STORY}</p>
+`,
+		)
+
+		const result = await findSourceLocation('Tématu podpory sourozenců jsem si poprvé všimla v USA.', 'p')
+
+		expect(result?.file).toBe('src/components/Story.astro')
+		expect(result?.line).toBe(2)
+		// The whole chain is the edit target, not just its first line.
+		expect(result?.snippet).toContain("'jsem si poprvé všimla v USA.'")
+	})
+
 	test('should find simple text in component', async () => {
 		const ctx = getCtx()
 		await setupAstroProjectStructure(ctx)

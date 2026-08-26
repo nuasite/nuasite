@@ -7,7 +7,7 @@ import { isSearchIndexInitialized } from './cache'
 import { searchForExpressionProp, searchForImportedValue, searchForPropInParents } from './cross-file-tracker'
 import { findElementWithText } from './element-finder'
 import { findInTextIndex } from './search-index'
-import { extractCompleteTagSnippet, extractOpeningTagSnippet } from './snippet-utils'
+import { definitionSnippet, extractCompleteTagSnippet, extractOpeningTagSnippet } from './snippet-utils'
 import type { SourceLocation } from './types'
 
 // ============================================================================
@@ -152,8 +152,10 @@ export async function searchAstroFile(
 				// Also extract just the opening tag for attribute updates
 				openingTagSnippet = extractOpeningTagSnippet(lines, editableLine - 1, tag)
 			} else {
-				// For variables/props, just the definition line with indentation
-				snippet = lines[editableLine - 1] || ''
+				// For variables/props, the definition with its indentation — which can
+				// run past one line when the value is a `+` chain of literals.
+				const definition = variableDefinitions.find(def => def.line === editableLine)
+				snippet = definition ? definitionSnippet(lines, definition) : lines[editableLine - 1] || ''
 			}
 
 			return {

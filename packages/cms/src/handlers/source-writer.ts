@@ -856,6 +856,16 @@ export function applyTextChange(
 	const resolvedNewText = resolveCmsPlaceholders(newText, manifest)
 	const resolvedOriginal = resolveCmsPlaceholders(originalValue, manifest)
 
+	// A snippet with no markup in it is a frontmatter constant, i.e. JavaScript.
+	// Substituting the text verbatim there would write an unescaped apostrophe or
+	// line break straight into a string literal, so the literal path goes first.
+	if (!sourceSnippet.includes('<')) {
+		const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
+		if (literalResult !== null) {
+			return { success: true, content: content.replace(sourceSnippet, literalResult) }
+		}
+	}
+
 	// Replace resolvedOriginal with resolvedNewText WITHIN the sourceSnippet
 	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, resolvedNewText)
 
@@ -872,6 +882,13 @@ export function applyTextChange(
 		const brResult = tryBrNormalizedChange(sourceSnippet, resolvedOriginal, resolvedNewText)
 		if (brResult !== null) {
 			return { success: true, content: content.replace(sourceSnippet, brResult) }
+		}
+
+		// The snippet may be a frontmatter constant rather than template markup, in
+		// which case the rendered text is the *decoded* literal.
+		const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
+		if (literalResult !== null) {
+			return { success: true, content: content.replace(sourceSnippet, literalResult) }
 		}
 
 		// resolvedOriginal wasn't found in snippet - try HTML entity handling
@@ -970,6 +987,159 @@ function applyTextChangeWithPlaceholders(
 	}
 
 	return { success: true, content: content.replace(sourceSnippet, updatedSnippet) }
+}
+
+// ============================================================================
+// JavaScript String Literals
+// ============================================================================
+
+interface SourceLiteral {
+	/** Offset of the opening quote */
+	start: number
+	/** Offset just past the closing quote */
+	end: number
+	quote: string
+	/** The literal's decoded value */
+	value: string
+}
+
+const JS_ESCAPES: Record<string, string> = {
+	n: '\n',
+	r: '\r',
+	t: '\t',
+	b: '\b',
+	f: '\f',
+	v: '\v',
+	0: '\0',
+}
+
+/** Decode the body of a JavaScript string literal (no surrounding quotes). */
+function decodeJsString(raw: string): string {
+	let out = ''
+	for (let i = 0; i < raw.length; i++) {
+		const char = raw[i]!
+		if (char !== '\\') {
+			out += char
+			continue
+		}
+		const next = raw[++i]
+		if (next === undefined) break
+		if (next === 'u') {
+			if (raw[i + 1] === '{') {
+				const close = raw.indexOf('}', i + 2)
+				if (close !== -1) {
+					const code = parseInt(raw.slice(i + 2, close), 16)
+					if (!Number.isNaN(code)) {
+						out += String.fromCodePoint(code)
+						i = close
+						continue
+					}
+				}
+			}
+			const code = parseInt(raw.slice(i + 1, i + 5), 16)
+			if (!Number.isNaN(code)) {
+				out += String.fromCharCode(code)
+				i += 4
+				continue
+			}
+		}
+		if (next === 'x') {
+			const code = parseInt(raw.slice(i + 1, i + 3), 16)
+			if (!Number.isNaN(code)) {
+				out += String.fromCharCode(code)
+				i += 2
+				continue
+			}
+		}
+		// A backslash before a real newline is a line continuation
+		if (next === '\n') continue
+		out += JS_ESCAPES[next] ?? next
+	}
+	return out
+}
+
+/**
+ * Re-encode a value for a literal delimited by `quote`, keeping the escape
+ * style the source used for non-breaking spaces.
+ */
+function encodeJsString(value: string, quote: string, escapeNbsp: boolean): string {
+	let out = value
+		.replace(/\\/g, '\\\\')
+		.replace(/\n/g, '\\n')
+		.replace(/\r/g, '\\r')
+		.replace(/\t/g, '\\t')
+		.replaceAll(quote, `\\${quote}`)
+	if (escapeNbsp) out = out.replace(/\u00A0/g, '\\u00A0')
+	if (quote === '`') out = out.replace(/\$\{/g, '\\${')
+	return quote + out + quote
+}
+
+/** Locate every string literal in a snippet, with its decoded value. */
+function findStringLiterals(snippet: string): SourceLiteral[] {
+	const literals: SourceLiteral[] = []
+	for (let i = 0; i < snippet.length; i++) {
+		const quote = snippet[i]!
+		if (quote !== "'" && quote !== '"' && quote !== '`') continue
+		let j = i + 1
+		while (j < snippet.length) {
+			if (snippet[j] === '\\') j += 2
+			else if (snippet[j] === quote) break
+			else j++
+		}
+		if (j >= snippet.length) break
+		const raw = snippet.slice(i + 1, j)
+		literals.push({ start: i, end: j + 1, quote, value: decodeJsString(raw) })
+		i = j
+	}
+	return literals
+}
+
+/**
+ * Rewrite text that lives in a JavaScript string literal.
+ *
+ * The rendered text carries the decoded value — a source `\u00A0` reaches the
+ * browser as U+00A0, a `\n` as a real line break — so a verbatim comparison
+ * against the snippet never matches. A literal split across a `+` chain is
+ * collapsed into one literal, since the edit has no way to say where the seam
+ * should fall.
+ *
+ * Returns the updated snippet, or null when no literal holds exactly this text.
+ */
+function tryJsStringLiteralChange(
+	sourceSnippet: string,
+	resolvedOriginal: string,
+	resolvedNewText: string,
+): string | null {
+	const literals = findStringLiterals(sourceSnippet)
+	if (literals.length === 0) return null
+
+	const splice = (start: number, end: number, replacement: string) => sourceSnippet.slice(0, start) + replacement + sourceSnippet.slice(end)
+
+	// A single literal holding the whole text
+	for (const literal of literals) {
+		if (literal.value !== resolvedOriginal) continue
+		const escapeNbsp = /\\u00[aA]0/.test(sourceSnippet.slice(literal.start, literal.end))
+		return splice(literal.start, literal.end, encodeJsString(resolvedNewText, literal.quote, escapeNbsp))
+	}
+
+	// A `+` chain of adjacent literals
+	for (let first = 0; first < literals.length; first++) {
+		let combined = ''
+		for (let last = first; last < literals.length; last++) {
+			if (last > first) {
+				const between = sourceSnippet.slice(literals[last - 1]!.end, literals[last]!.start)
+				if (!/^\s*\+\s*$/.test(between)) break
+			}
+			combined += literals[last]!.value
+			if (last === first || combined !== resolvedOriginal) continue
+			const start = literals[first]!.start
+			const end = literals[last]!.end
+			const escapeNbsp = /\\u00[aA]0/.test(sourceSnippet.slice(start, end))
+			return splice(start, end, encodeJsString(resolvedNewText, literals[first]!.quote, escapeNbsp))
+		}
+	}
+
+	return null
 }
 
 /**

@@ -663,6 +663,10 @@ export interface ManifestEntry {
 	/** Whether inline text styling (bold, italic, etc.) can be applied.
 	 *  False when text comes from a string variable/prop that cannot contain HTML markup. */
 	allowStyling?: boolean
+	/** False when the text could not be located in any source — the snippet is a bare
+	 *  expression (`{VAR}`) or a key whose value lives elsewhere. Such an entry is locked
+	 *  in the editor instead of failing on save. */
+	textResolved?: boolean
 
 	// === Reference field metadata ===
 

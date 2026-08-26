@@ -36,7 +36,11 @@ export function extractVariableDefinitions(ast: BabelFile, frontmatterStartLine:
 					// Simple string value
 					const stringValue = getStringValue(init)
 					if (stringValue !== null) {
-						definitions.push({ name: varName, value: stringValue, line })
+						// A `+` chain of literals can run past the declaration line, and the
+						// whole chain is what an edit has to be written back into.
+						const initLoc = init.loc as { end: { line: number } } | undefined
+						const endLine = lineTransformer(initLoc?.end.line ?? loc?.start.line ?? 1)
+						definitions.push({ name: varName, value: stringValue, line, ...(endLine > line && { endLine }) })
 					} else if (init.type === 'ConditionalExpression' || init.type === 'LogicalExpression') {
 						// One definition per reachable branch — each carries its own
 						// literal's line so edits route to the matching branch.

@@ -18,6 +18,15 @@ export function getStringValue(node: BabelNode): string | null {
 			return quasis[0]?.value.cooked ?? null
 		}
 	}
+	// `'one ' + 'two'` — a long string broken across source lines still renders as
+	// one value, so the index has to carry the folded result.
+	if (node.type === 'BinaryExpression' && node.operator === '+') {
+		const left = getStringValue(node.left as BabelNode)
+		if (left === null) return null
+		const right = getStringValue(node.right as BabelNode)
+		if (right === null) return null
+		return left + right
+	}
 	return null
 }
 
