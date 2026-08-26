@@ -1,7 +1,7 @@
 import { NodeType, parse as parseHtml } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { parse as parseYaml, parseDocument, stringify as stringifyYaml } from 'yaml'
+import { parse as parseYaml, parseDocument, stringify as stringifyYaml, visit as visitYaml } from 'yaml'
 import { pickSiblingTarget } from '../astro-image-paths'
 import { getProjectRoot } from '../config'
 import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
@@ -891,7 +891,7 @@ export function applyTextChange(
 	}
 
 	// Replace resolvedOriginal with resolvedNewText WITHIN the sourceSnippet
-	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, resolvedNewText)
+	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, escapeReplacement(resolvedNewText))
 
 	if (updatedSnippet === sourceSnippet) {
 		// Try YAML key-value replacement for multi-line frontmatter values
@@ -972,7 +972,7 @@ export function applyTextChange(
 	// that understands YAML has declined by now, so the result is checked before it
 	// is written — a change that would not survive the round trip is refused rather
 	// than saved as `{"updated": 1}` over an entry that no longer loads.
-	if (insideYaml && !yamlWriteSurvives(updatedSnippet, resolvedNewText)) {
+	if (insideYaml && !yamlSnippetSurvives(updatedSnippet, resolvedNewText)) {
 		return {
 			success: false,
 			error: `"${resolvedNewText.substring(0, 50)}" cannot be written into this frontmatter field without breaking it`,
@@ -1019,7 +1019,7 @@ function applyTextChangeWithPlaceholders(
 			if (matchedText !== oldPart) {
 				newPart = encodeEntitiesLike(newPart, matchedText)
 			}
-			updatedSnippet = updatedSnippet.replace(matchedText, newPart)
+			updatedSnippet = updatedSnippet.replace(matchedText, escapeReplacement(newPart))
 			anyChange = true
 		} else {
 			return {
@@ -1070,7 +1070,23 @@ function isYamlValueSource(content: string, sourceSnippet: string, sourcePath: s
 	if (!closing) return false
 
 	const snippetStart = content.indexOf(sourceSnippet)
-	return snippetStart >= bodyStart && snippetStart + sourceSnippet.length <= bodyStart + closing.index
+	if (snippetStart < bodyStart || snippetStart + sourceSnippet.length > bodyStart + closing.index) return false
+
+	// A body can open with a thematic break, which spells the same `---` as a
+	// frontmatter fence. What tells them apart is what sits between them: fields.
+	return holdsYamlFields(content.slice(bodyStart, bodyStart + closing.index))
+}
+
+/** Does this block read as YAML fields, rather than as prose that happens to sit between two rules? */
+function holdsYamlFields(block: string): boolean {
+	try {
+		const doc = parseDocument(normalizeCr(block))
+		if (doc.errors.length > 0) return false
+		const items = (doc.contents as { items?: unknown[] } | null)?.items
+		return Array.isArray(items) && items.length > 0 && items.every((item) => !!item && typeof item === 'object' && 'key' in item)
+	} catch {
+		return false
+	}
 }
 
 /** A `<` that opens a tag, as opposed to one that is simply part of the text (`a < b`). */
@@ -1656,15 +1672,49 @@ function tryYamlValueReplacement(
 	// line. Reading the result back is what makes them one: a value the parser
 	// hands back unchanged is safe to write, and anything else falls through to
 	// the callers' other strategies rather than corrupting the entry.
-	return yamlWriteSurvives(updated, resolvedNewText) ? updated : null
+	return yamlValueRoundTrips(updated, resolvedNewText) ? updated : null
 }
 
-/** Does this snippet still parse, and still hold the value the edit meant to write? */
-function yamlWriteSurvives(updatedSnippet: string, expected: string): boolean {
-	// A snippet cut from a CRLF file ends mid-terminator, and a lone `\r` is junk to
-	// the parser rather than a line ending, so the check reads it normalised away.
-	const target = findYamlTarget(updatedSnippet.replace(/\r(?=\n|$)/g, ''), true)
+/**
+ * Does the value this edit rewrote read back exactly as written? Asked of a
+ * snippet whose target we located ourselves, so the value is known and the
+ * comparison can be strict.
+ */
+function yamlValueRoundTrips(updatedSnippet: string, expected: string): boolean {
+	const target = findYamlTarget(normalizeCr(updatedSnippet), true)
 	return target !== null && String(target.value) === expected
+}
+
+/**
+ * Does this snippet still parse, and still say what the edit meant to write?
+ *
+ * Asked of a write no YAML-aware path claimed, where the edited field could be
+ * any scalar in the snippet — a second list item, a field under a parent key, a
+ * run of text inside a longer value. So the question is deliberately weaker than
+ * `yamlValueRoundTrips`: the new text has to come back readable inside *some*
+ * scalar. That still catches what #91 is about — a value the parser rereads as a
+ * mapping or a list, or truncates at a `#` — without refusing the many ordinary
+ * edits whose result simply isn't `key: <the whole new text>`.
+ */
+function yamlSnippetSurvives(updatedSnippet: string, expected: string): boolean {
+	try {
+		const doc = parseDocument(normalizeCr(updatedSnippet))
+		if (doc.errors.length > 0) return false
+		let intact = false
+		visitYaml(doc, {
+			Scalar(_key, node) {
+				if (String(node.value).includes(expected)) intact = true
+			},
+		})
+		return intact
+	} catch {
+		return false
+	}
+}
+
+/** A snippet cut from a CRLF file ends mid-terminator, and a lone `\r` is junk to the parser. */
+function normalizeCr(snippet: string): string {
+	return snippet.replace(/\r(?=\n|$)/g, '')
 }
 
 /**
@@ -1677,9 +1727,26 @@ function yamlWriteSurvives(updatedSnippet: string, expected: string): boolean {
  * moving owner and body by the same amount afterwards keeps the indicator true.
  */
 function serializeYamlValue(value: string, key: string | null, ownerColumn: number): string | null {
-	const rendered = key === null
-		? stringifyYaml([value], { lineWidth: 0 })
-		: stringifyYaml({ [key]: value }, { lineWidth: 0 })
+	let body = renderYamlValue(value, key, undefined)
+
+	// The serializer targets YAML 1.2, where a plain `2026-04-01` is a string.
+	// Astro reads frontmatter with a 1.1 parser, which resolves it to a Date — the
+	// same silent type flip the numeric branch guards against, in the other
+	// direction. Quoting is what keeps a string field a string.
+	if (body !== null && !body.includes('\n') && resolvesAsNonString(body)) {
+		body = renderYamlValue(value, key, 'QUOTE_DOUBLE')
+	}
+	if (body === null || !body.includes('\n')) return body
+
+	const pad = ' '.repeat(ownerColumn)
+	const [header, ...rest] = body.split('\n')
+	return [header, ...rest.map((line) => (line === '' ? line : pad + line))].join('\n')
+}
+
+/** Render the value inside a one-entry container and return just the value's own text. */
+function renderYamlValue(value: string, key: string | null, defaultStringType: 'QUOTE_DOUBLE' | undefined): string | null {
+	const options = { lineWidth: 0, ...(defaultStringType ? { defaultStringType, defaultKeyType: 'PLAIN' as const } : {}) }
+	const rendered = key === null ? stringifyYaml([value], options) : stringifyYaml({ [key]: value }, options)
 
 	let valueStart: number
 	try {
@@ -1696,12 +1763,16 @@ function serializeYamlValue(value: string, key: string | null, ownerColumn: numb
 	// terminating newline is not part of it — unless the block is keep-chomped
 	// (`|+`, `|2+`), where the trailing newlines are what it exists to preserve.
 	const text = rendered.slice(valueStart)
-	const body = /^[|>]\d*\+/.test(text) ? text : text.replace(/\n$/, '')
-	if (!body.includes('\n')) return body
+	return /^[|>]\d*\+/.test(text) ? text : text.replace(/\n$/, '')
+}
 
-	const pad = ' '.repeat(ownerColumn)
-	const [header, ...rest] = body.split('\n')
-	return [header, ...rest.map((line) => (line === '' ? line : pad + line))].join('\n')
+/** Would a 1.1 parser — the one Astro loads frontmatter with — read this scalar as something other than a string? */
+function resolvesAsNonString(scalar: string): boolean {
+	try {
+		return typeof parseYaml(scalar, { version: '1.1' }) !== 'string'
+	} catch {
+		return false
+	}
 }
 
 /** `parseYaml` on text that may not be YAML at all. */

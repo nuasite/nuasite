@@ -731,6 +731,16 @@ date: 2026-03-10
 		})
 	})
 
+	test('a $ in the new value is not read as a replacement pattern', () => {
+		const snippet = '<h3>Cena</h3>'
+		const result = applyTextChange(
+			snippet,
+			makeChange({ sourceSnippet: snippet, originalValue: 'Cena', newValue: 'Cena $& sleva' }),
+			emptyManifest,
+		)
+		expect(result).toEqual({ success: true, content: '<h3>Cena $& sleva</h3>' })
+	})
+
 	test('does not re-encode entities inside html the editor sent', () => {
 		const snippet = '<p>Tom &amp; Friends</p>'
 		const result = applyTextChange(
@@ -939,6 +949,58 @@ date: 2026-03-10
 				emptyManifest,
 			)
 			expect(result.success).toBe(false)
+		})
+
+		// The guard on the verbatim fall-through has to let ordinary edits through:
+		// most of them do not leave the snippet reading `key: <the whole new text>`.
+		test('an edit against a trimmed value still writes', () => {
+			// The browser hands back the rendered text, so the padding never comes with it.
+			const content = editFrontmatter('title: "Ahoj lidi "', 'title: "Ahoj lidi "', 'Ahoj lidi', 'Nazdar')
+			expect(frontmatterOf(content).title).toBe('Nazdar ')
+		})
+
+		test('a field under a parent key still writes', () => {
+			const content = editFrontmatter('hero:\n  title: Ahoj', 'hero:\n  title: Ahoj', 'Ahoj', 'Nazdar')
+			expect(frontmatterOf(content).hero).toEqual({ title: 'Nazdar' })
+		})
+
+		test('the second field of an object list item still writes', () => {
+			const content = editFrontmatter('items:\n  - title: Ahoj\n    desc: Popis', '  - title: Ahoj\n    desc: Popis', 'Popis', 'Nový popis')
+			expect(frontmatterOf(content).items).toEqual([{ title: 'Ahoj', desc: 'Nový popis' }])
+		})
+
+		test('the second item of a string list still writes', () => {
+			const content = editFrontmatter('tags:\n  - Ahoj\n  - Nazdar', 'tags:\n  - Ahoj\n  - Nazdar', 'Nazdar', 'Čau')
+			expect(frontmatterOf(content).tags).toEqual(['Ahoj', 'Čau'])
+		})
+
+		test('a run of text inside a longer value still writes', () => {
+			const content = editFrontmatter('title: Ahoj lidi', 'title: Ahoj lidi', 'lidi', 'světe')
+			expect(frontmatterOf(content).title).toBe('Ahoj světe')
+		})
+
+		test('but a fall-through that would map-ify a list item is still refused', () => {
+			const result = applyTextChange(
+				entryFile('tags:\n  - Ahoj\n  - Nazdar'),
+				makeChange({ sourcePath: 'src/content/blog/a.md', sourceSnippet: 'tags:\n  - Ahoj\n  - Nazdar', originalValue: 'Nazdar', newValue: 'Nazdar: x' }),
+				emptyManifest,
+			)
+			expect(result.success).toBe(false)
+		})
+
+		test('a value Astro would read as a date is quoted', () => {
+			const content = editFrontmatter('title: Ahoj světe', 'title: Ahoj světe', 'Ahoj světe', '2026-04-01')
+			expect(content).toContain('title: "2026-04-01"')
+			expect(frontmatterOf(content).title).toBe('2026-04-01')
+		})
+
+		test('a body opening with a thematic break is not frontmatter', () => {
+			const result = applyTextChange(
+				'---\n\nÚvod\n\n---\n\nDalší\n',
+				makeChange({ sourcePath: 'src/content/blog/a.md', sourceSnippet: 'Úvod', originalValue: 'Úvod', newValue: 'Úvod: dva' }),
+				emptyManifest,
+			)
+			expect(result).toEqual({ success: true, content: '---\n\nÚvod: dva\n\n---\n\nDalší\n' })
 		})
 
 		test('a .yaml data file goes through the same path', () => {
