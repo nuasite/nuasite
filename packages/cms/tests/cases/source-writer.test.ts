@@ -707,6 +707,35 @@ date: 2026-03-10
 			expect(result).toEqual({ success: true, content: '<a href="/about">About them</a>' })
 		})
 	})
+
+	test('does not re-encode entities inside html the editor sent', () => {
+		const snippet = '<p>Tom &amp; Friends</p>'
+		const result = applyTextChange(
+			snippet,
+			makeChange({
+				sourceSnippet: snippet,
+				originalValue: 'Tom & Friends',
+				newValue: 'Tom & Friends',
+				htmlValue: 'Tom &amp; <span class="x">Friends</span>',
+				hasStyledContent: true,
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({
+			success: true,
+			content: '<p>Tom &amp; <span class="x">Friends</span></p>',
+		})
+	})
+
+	test('puts an insertion at a markup boundary outside the inline tag', () => {
+		const snippet = '<li><strong>Kurzy</strong> pro lékaře.</li>'
+		const result = applyTextChange(
+			snippet,
+			makeChange({ sourceSnippet: snippet, originalValue: 'Kurzy pro lékaře.', newValue: 'Kurzy! pro lékaře.' }),
+			emptyManifest,
+		)
+		expect(result).toEqual({ success: true, content: '<li><strong>Kurzy</strong>! pro lékaře.</li>' })
+	})
 })
 
 describe('applyAttributeChanges', () => {

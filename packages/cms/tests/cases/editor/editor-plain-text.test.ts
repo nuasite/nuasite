@@ -393,3 +393,12 @@ test('stopEditMode detaches the plain-text listeners via AbortController', async
 	const allowed = dispatchBeforeInput(el, 'formatBold')
 	expect(allowed).toBe(true)
 })
+
+test('keeps an authored non-breaking space but drops browser-inserted ones', () => {
+	// A lone U+00A0 between two words is what `&nbsp;` in the source renders as;
+	// contentEditable's own are the ones next to another space or at the edges.
+	document.body.innerHTML = `<p data-cms-id="nbsp">Kurzy a\u00A0publikace\u00A0 a\u00A0</p>`
+	const el = document.querySelector('[data-cms-id="nbsp"]') as HTMLElement
+
+	expect(getEditableTextFromElement(el)).toBe('Kurzy a\u00A0publikace  a')
+})

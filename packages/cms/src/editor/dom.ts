@@ -217,14 +217,28 @@ export function isStyledSpan(element: HTMLElement): boolean {
  */
 const BLOCK_ELEMENTS = new Set(['div', 'p', 'section', 'article', 'header', 'footer', 'blockquote'])
 
+/**
+ * contentEditable inserts U+00A0 for runs of spaces and at the edges of a text
+ * node, and those have to come back out as ordinary spaces. A lone one between
+ * two non-space characters is the author's own — it came from an `&nbsp;` in the
+ * source — and has to survive the round-trip, or every edit of such a line
+ * quietly downgrades it to a breaking space.
+ */
+function normalizeEditorSpaces(text: string): string {
+	return text.replace(/\u00a0/g, (_match, offset: number, whole: string) => {
+		const before = whole[offset - 1]
+		const after = whole[offset + 1]
+		if (before === undefined || after === undefined) return ' '
+		return /\s/.test(before) || /\s/.test(after) ? ' ' : '\u00a0'
+	})
+}
+
 function extractTextFromChildNodes(parentNode: HTMLElement): string {
 	let text = ''
 
 	parentNode.childNodes.forEach(node => {
 		if (node.nodeType === Node.TEXT_NODE) {
-			// Normalize non-breaking spaces (\u00a0) that browsers insert in
-			// contentEditable to regular spaces
-			text += (node.nodeValue || '').replace(/\u00a0/g, ' ')
+			text += node.nodeValue || ''
 		} else if (node.nodeType === Node.ELEMENT_NODE) {
 			const element = node as HTMLElement
 			const tagName = element.tagName.toLowerCase()
@@ -250,7 +264,7 @@ function extractTextFromChildNodes(parentNode: HTMLElement): string {
 				}
 			} else {
 				// For all other elements (including styled spans), just get their text content
-				text += (element.textContent || '').replace(/\u00a0/g, ' ')
+				text += element.textContent || ''
 			}
 		}
 	})
@@ -264,7 +278,7 @@ function extractTextFromChildNodes(parentNode: HTMLElement): string {
  * Nested CMS elements are replaced with {{cms:id}} placeholders.
  */
 export function getEditableTextFromElement(el: HTMLElement): string {
-	return extractTextFromChildNodes(el).trim()
+	return normalizeEditorSpaces(extractTextFromChildNodes(el)).trim()
 }
 
 /**

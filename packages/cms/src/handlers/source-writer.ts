@@ -895,8 +895,12 @@ export function applyTextChange(
 		const matchedText = findTextInSnippet(sourceSnippet, resolvedOriginal)
 		if (matchedText) {
 			// Entity-aware matching means the source spells some characters as entities;
-			// the replacement has to keep that spelling.
-			const encodedNewText = encodeEntitiesLike(resolvedNewText, matchedText)
+			// the replacement has to keep that spelling. A replacement that carries its
+			// own markup gets the nbsp pass only — encoding `&`/`<`/`"` there would
+			// mangle the tags and attributes the editor just sent.
+			const encodedNewText = /<[^>]+>/.test(resolvedNewText)
+				? encodeNbspLike(resolvedNewText, matchedText)
+				: encodeEntitiesLike(resolvedNewText, matchedText)
 			const updatedWithEntity = sourceSnippet.replace(matchedText, encodedNewText)
 			return { success: true, content: content.replace(sourceSnippet, updatedWithEntity) }
 		}
@@ -1182,7 +1186,10 @@ function spliceTextAcrossInlineMarkup(
 	const newEnd = newText.length - tail
 	if (start === originalEnd && start === newEnd) return innerContent
 
-	const run = runs.find(r => start >= r.start && originalEnd <= r.end)
+	// A pure insertion at a boundary fits both neighbouring runs; putting it in the
+	// later one keeps it outside the inline tag that just ended.
+	const fitting = runs.filter(r => start >= r.start && originalEnd <= r.end)
+	const run = start === originalEnd ? fitting[fitting.length - 1] : fitting[0]
 	if (!run) return null
 
 	const token = tokens[run.index]!
@@ -1248,13 +1255,7 @@ function encodeEntitiesLike(text: string, reference: string): string {
 	if (reference.includes('&amp;')) {
 		result = result.replace(/&/g, '&amp;')
 	}
-	// Keep non-breaking spaces in the entity form the source used — writing a raw
-	// U+00A0 back would leave an invisible character in the template.
-	if (reference.includes('&nbsp;')) {
-		result = result.replace(/\u00A0/g, '&nbsp;')
-	} else if (reference.includes('&#160;')) {
-		result = result.replace(/\u00A0/g, '&#160;')
-	}
+	result = encodeNbspLike(result, reference)
 	if (reference.includes('&lt;')) {
 		result = result.replace(/</g, '&lt;')
 	}
@@ -1268,6 +1269,16 @@ function encodeEntitiesLike(text: string, reference: string): string {
 		result = result.replace(/'/g, '&#39;')
 	}
 	return result
+}
+
+/**
+ * Keep non-breaking spaces in the entity form the source used — writing a raw
+ * U+00A0 back would leave an invisible character in the template.
+ */
+function encodeNbspLike(text: string, reference: string): string {
+	if (reference.includes('&nbsp;')) return text.replace(/\u00A0/g, '&nbsp;')
+	if (reference.includes('&#160;')) return text.replace(/\u00A0/g, '&#160;')
+	return text
 }
 
 /**
