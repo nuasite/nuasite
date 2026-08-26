@@ -23,7 +23,7 @@ import {
 	setCollectionTextIndex,
 	setSearchIndexInitialized,
 } from './cache'
-import { extractAstroImageOriginalUrl, extractImageSnippet, extractInnerHtmlFromSnippet, normalizeText } from './snippet-utils'
+import { extractAstroImageOriginalUrl, extractImageSnippet, normalizeText } from './snippet-utils'
 import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types'
 
 /** Collection data files live under this path — used to prefer them over templates */
@@ -458,9 +458,10 @@ export function indexFileContent(cached: CachedParsedFile, relFile: string): voi
 			}
 
 			if (normalizedText && normalizedText.length >= 2) {
-				// Index static text content
-				const completeSnippet = extractCompleteTagSnippet(cached.lines, line - 1, tag)
-				const snippet = extractInnerHtmlFromSnippet(completeSnippet, tag) ?? completeSnippet
+				// Index static text content. The snippet keeps its wrapping tag: the
+				// writer's fallbacks (inline-child replacement, `<br>` normalization)
+				// need the complete element to reason about what is inside it.
+				const snippet = extractCompleteTagSnippet(cached.lines, line - 1, tag)
 				const openingTagInfo = extractOpeningTagWithLine(cached.lines, line - 1, tag)
 
 				addToTextSearchIndex({

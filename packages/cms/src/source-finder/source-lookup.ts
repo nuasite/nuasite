@@ -7,7 +7,7 @@ import { isSearchIndexInitialized } from './cache'
 import { searchForExpressionProp, searchForImportedValue, searchForPropInParents } from './cross-file-tracker'
 import { findElementWithText } from './element-finder'
 import { findInTextIndex } from './search-index'
-import { extractCompleteTagSnippet, extractInnerHtmlFromSnippet, extractOpeningTagSnippet } from './snippet-utils'
+import { extractCompleteTagSnippet, extractOpeningTagSnippet } from './snippet-utils'
 import type { SourceLocation } from './types'
 
 // ============================================================================

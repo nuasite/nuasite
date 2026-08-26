@@ -271,6 +271,25 @@ withTempDir('indexFileContent', (getCtx) => {
 		expect(entry?.type).toBe('static')
 	})
 
+	test('indexes the complete element, not just its inner HTML', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		const cached = createMockCachedFile({
+			lines: ['---', '---', '<h1 class="title">Hello World</h1>'],
+			ast: createMockAst([
+				createMockElement('h1', 'Hello World', 3),
+			]),
+		})
+
+		indexFileContent(cached, 'src/components/Test.astro')
+
+		const entry = getTextSearchIndex().find((e: SearchIndexEntry) => e.normalizedText === 'hello world')
+
+		// The writer's inline-child and <br> fallbacks need the wrapping tag.
+		expect(entry?.snippet).toBe('<h1 class="title">Hello World</h1>')
+	})
+
 	test('should index variable text content', async () => {
 		const ctx = getCtx()
 		await setupAstroProjectStructure(ctx)
