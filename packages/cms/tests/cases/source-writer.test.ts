@@ -855,6 +855,40 @@ date: 2026-03-10
 			expect(content).toContain('Poznámka: tohle je: jiná věta')
 		})
 
+		// Everything on the line that is not the value has to survive the rewrite.
+		test('keeps a trailing comment', () => {
+			const snippet = 'title: Ahoj světe # ponechat'
+			const content = editFrontmatter(snippet, snippet, 'Ahoj světe', 'Ahoj lidi')
+			expect(content).toContain('title: Ahoj lidi # ponechat')
+			expect(frontmatterOf(content).title).toBe('Ahoj lidi')
+		})
+
+		test('keeps an anchor, so its alias still resolves', () => {
+			const content = editFrontmatter('title: &t Ahoj světe\nheading: *t', 'title: &t Ahoj světe', 'Ahoj světe', 'Ahoj lidi')
+			expect(content).toContain('title: &t Ahoj lidi')
+			expect(frontmatterOf(content)).toEqual({ title: 'Ahoj lidi', heading: 'Ahoj lidi' })
+		})
+
+		test('a compact mapping inside a sequence keeps its dash', () => {
+			const content = editFrontmatter('items:\n  - title: Ahoj světe', '  - title: Ahoj světe', 'Ahoj světe', 'Ahoj: světe')
+			expect(frontmatterOf(content).items).toEqual([{ title: 'Ahoj: světe' }])
+		})
+
+		test('a $ in the new value is not read as a replacement pattern', () => {
+			expect(frontmatterOf(editFrontmatter('title: Ahoj světe', 'title: Ahoj světe', 'Ahoj světe', 'cena $& sleva')).title)
+				.toBe('cena $& sleva')
+		})
+
+		test('a numeric key survives a block scalar', () => {
+			const content = editFrontmatter('2024: Ahoj světe', '2024: Ahoj světe', 'Ahoj světe', 'Ahoj\nsvětě')
+			expect(frontmatterOf(content)['2024']).toBe('Ahoj\nsvětě')
+		})
+
+		test('a value ending in a blank line keeps it', () => {
+			const content = editFrontmatter('title: Ahoj světe', 'title: Ahoj světe', 'Ahoj světe', 'Ahoj\n\n')
+			expect(frontmatterOf(content).title).toBe('Ahoj\n\n')
+		})
+
 		test('a .yaml data file goes through the same path', () => {
 			const result = applyTextChange(
 				'title: Ahoj světe\n',
