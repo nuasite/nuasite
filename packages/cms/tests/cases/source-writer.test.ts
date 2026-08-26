@@ -166,7 +166,8 @@ describe('applyTextChange', () => {
 		)
 		expect(result.success).toBe(true)
 		if (result.success) {
-			expect(result.content).toBe('<p>Tom & Friends</p>')
+			// The source spelled the ampersand as an entity — the rewrite keeps it that way.
+			expect(result.content).toBe('<p>Tom &amp; Friends</p>')
 		}
 	})
 
@@ -519,6 +520,68 @@ date: 2026-03-10
 			expect(result.content).toBe('<div>\n  <h3>Hi <span class="sm">earth</span></h3>\n  <p>Other</p>\n</div>')
 		}
 	})
+
+	// Non-breaking spaces: the rendered text always carries U+00A0, the source may
+	// spell it `&nbsp;`, `&#160;` or as the raw character.
+	test('matches U+00A0 in text against &nbsp; in source', () => {
+		const content = '<p>Kurzy a&nbsp;publikace</p>'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: content,
+				originalValue: 'Kurzy a\u00A0publikace',
+				newValue: 'Kurzy a\u00A0knihy',
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({ success: true, content: '<p>Kurzy a&nbsp;knihy</p>' })
+	})
+
+	test('matches U+00A0 against the numeric &#160; entity', () => {
+		const content = '<p>Kurzy a&#160;publikace</p>'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: content,
+				originalValue: 'Kurzy a\u00A0publikace',
+				newValue: 'Kurzy a\u00A0knihy',
+			}),
+			emptyManifest,
+		)
+		expect(result).toEqual({ success: true, content: '<p>Kurzy a&#160;knihy</p>' })
+	})
+
+	test('does not let a plain space silently consume a source &nbsp;', () => {
+		const content = '<p>Kurzy a&nbsp;publikace</p>'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: content,
+				originalValue: 'Kurzy a publikace',
+				newValue: 'Kurzy a knihy',
+			}),
+			emptyManifest,
+		)
+		expect(result.success).toBe(false)
+	})
+
+	test('keeps the entity spelling the source used when new text adds a nbsp', () => {
+		const content = '<p>Kurzy a&nbsp;publikace</p>'
+		const result = applyTextChange(
+			content,
+			makeChange({
+				sourceSnippet: content,
+				originalValue: 'Kurzy a\u00A0publikace',
+				newValue: 'Kurzy a\u00A0nove\u00A0publikace',
+			}),
+			emptyManifest,
+		)
+		expect(result.success).toBe(true)
+		if (result.success) {
+			expect(result.content).toBe('<p>Kurzy a&nbsp;nove&nbsp;publikace</p>')
+		}
+	})
+
 })
 
 describe('applyAttributeChanges', () => {

@@ -877,7 +877,10 @@ export function applyTextChange(
 		// resolvedOriginal wasn't found in snippet - try HTML entity handling
 		const matchedText = findTextInSnippet(sourceSnippet, resolvedOriginal)
 		if (matchedText) {
-			const updatedWithEntity = sourceSnippet.replace(matchedText, resolvedNewText)
+			// Entity-aware matching means the source spells some characters as entities;
+			// the replacement has to keep that spelling.
+			const encodedNewText = encodeEntitiesLike(resolvedNewText, matchedText)
+			const updatedWithEntity = sourceSnippet.replace(matchedText, encodedNewText)
 			return { success: true, content: content.replace(sourceSnippet, updatedWithEntity) }
 		}
 		// Try inner content replacement for text spanning inline HTML elements
@@ -955,6 +958,20 @@ function applyTextChangeWithPlaceholders(
 }
 
 /**
+ * Source forms each character can take in an `.astro` template. The rendered
+ * text always carries the decoded character (a `&nbsp;` reaches us as U+00A0),
+ * so the source may spell it either way.
+ */
+const ENTITY_ALTERNATIVES = new Map<string, string[]>([
+	['&', ['&amp;']],
+	['\u00A0', ['&nbsp;', '&#160;']],
+	['<', ['&lt;']],
+	['>', ['&gt;']],
+	['"', ['&quot;']],
+	["'", ['&#39;', '&apos;']],
+])
+
+/**
  * Find the original text within a source snippet, accounting for HTML entities.
  */
 function findTextInSnippet(snippet: string, decodedText: string): string | null {
@@ -962,23 +979,14 @@ function findTextInSnippet(snippet: string, decodedText: string): string | null 
 		return decodedText
 	}
 
-	const entityMap: Array<[string, string]> = [
-		// & must be first: other entities contain & which would get double-expanded
-		['&', '&amp;'],
-		[' ', '&nbsp;'],
-		[' ', '&#160;'],
-		['<', '&lt;'],
-		['>', '&gt;'],
-		['"', '&quot;'],
-		["'", '&#39;'],
-		["'", '&apos;'],
-	]
-
-	let pattern = escapeRegex(decodedText)
-	for (const [char, entity] of entityMap) {
-		const escapedChar = escapeRegex(char)
-		const escapedEntity = escapeRegex(entity)
-		pattern = pattern.replace(new RegExp(escapedChar, 'g'), `(?:${escapedChar}|${escapedEntity})`)
+	// Built per character so an entity alternation can never be re-expanded by a
+	// later pass (`&` inside `&nbsp;` used to get rewritten to `(?:&|&amp;)nbsp;`).
+	let pattern = ''
+	for (const char of decodedText) {
+		const alternatives = ENTITY_ALTERNATIVES.get(char)
+		pattern += alternatives
+			? `(?:${[char, ...alternatives].map(escapeRegex).join('|')})`
+			: escapeRegex(char)
 	}
 
 	const regex = new RegExp(pattern)
@@ -1004,6 +1012,13 @@ function encodeEntitiesLike(text: string, reference: string): string {
 	// & must be encoded first to avoid double-encoding other entities
 	if (reference.includes('&amp;')) {
 		result = result.replace(/&/g, '&amp;')
+	}
+	// Keep non-breaking spaces in the entity form the source used — writing a raw
+	// U+00A0 back would leave an invisible character in the template.
+	if (reference.includes('&nbsp;')) {
+		result = result.replace(/\u00A0/g, '&nbsp;')
+	} else if (reference.includes('&#160;')) {
+		result = result.replace(/\u00A0/g, '&#160;')
 	}
 	if (reference.includes('&lt;')) {
 		result = result.replace(/</g, '&lt;')
