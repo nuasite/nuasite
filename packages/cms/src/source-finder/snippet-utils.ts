@@ -25,6 +25,7 @@ import {
 	findVariableHitInFile,
 	initializeSearchIndex,
 	isTranslationFilePath,
+	toProjectRelativePath,
 } from './search-index'
 import type { CachedParsedFile, ImageMatch, SourceLocation } from './types'
 
@@ -49,6 +50,26 @@ export function normalizeText(text: string): string {
 		.replace(/<wbr\s*\/?>/gi, '') // Strip <wbr> tags (word break opportunity, no visible content)
 		.replace(/\s+/g, ' ') // Normalize whitespace
 		.toLowerCase()
+}
+
+/**
+ * Does this snippet render the given text directly?
+ *
+ * A raw `includes` is not enough: the rendered text carries decoded entities
+ * (U+00A0 for `&nbsp;`), a literal `<br>` where the source writes
+ * `<br class="..." />`, and no inline markup where the source has `<strong>`.
+ * Missing those makes static template text look like a dynamic expression and
+ * sends the lookup off to the search index, which then resolves the text in
+ * whatever file happens to be indexed first.
+ */
+export function snippetContainsText(snippet: string, text: string): boolean {
+	if (snippet.includes(text)) return true
+	const normalizedText = normalizeText(text)
+	if (!normalizedText) return false
+	if (normalizeText(snippet).includes(normalizedText)) return true
+	// Inline children (`<strong>`, styled spans) break the text into pieces that
+	// are only contiguous once the tags are out of the way.
+	return normalizeText(snippet.replace(/<[^>]+>/g, ' ')).includes(normalizedText)
 }
 
 /**
@@ -941,7 +962,7 @@ export async function enhanceManifestWithSourceSnippets(
 				const trimmedText = entry.text?.trim()
 
 				// Check if text is directly in the snippet (static content)
-				if (trimmedText && !sourceSnippet.includes(trimmedText)) {
+				if (trimmedText && !snippetContainsText(sourceSnippet, trimmedText)) {
 					// Text from dynamic expression — resolve via variable definitions
 					const cached = await getCachedParsedFile(filePath)
 					if (cached) {
@@ -1075,8 +1096,15 @@ export async function enhanceManifestWithSourceSnippets(
 
 					// Last resort — consult the text index (covers i18n JSON dictionaries
 					// and any other indexed text that shares no tag with the rendered element).
-					const indexHit = findInTextIndex(trimmedText, entry.tag, pageFiles)
-					if (indexHit && indexHit.file !== entry.sourcePath) {
+					// Astro stamps `data-astro-source-file` with an absolute path while the
+					// index stores relative ones, so both sides are normalized before the
+					// comparison — otherwise a same-file hit always looks like a new location
+					// and overwrites the coordinates Astro already gave us.
+					const indexHit = findInTextIndex(trimmedText, entry.tag, pageFiles, {
+						file: entry.sourcePath,
+						line: entry.sourceLine,
+					})
+					if (indexHit && indexHit.file !== toProjectRelativePath(entry.sourcePath)) {
 						const resolved = await applyTranslationSource(entry, indexHit, attributes, colorClasses)
 						return [id, resolved] as const
 					}

@@ -5,9 +5,45 @@
  * including static text, variables, and multiline content.
  */
 
-import { expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { findSourceLocation } from '../../../src/source-finder'
+import { snippetContainsText } from '../../../src/source-finder/snippet-utils'
 import { setupAstroProjectStructure, withTempDir } from '../../utils'
+
+// Deciding "static template text" vs. "dynamic expression" hinges on this — a
+// false negative sends the lookup to the search index, which resolves the text
+// in whichever file was indexed first.
+describe('snippetContainsText', () => {
+	test('matches plain text directly', () => {
+		expect(snippetContainsText('<h1>Hello World</h1>', 'Hello World')).toBe(true)
+	})
+
+	test('matches rendered U+00A0 against a source &nbsp;', () => {
+		expect(snippetContainsText('<a href="/about">About&nbsp;us</a>', 'About\u00A0us')).toBe(true)
+	})
+
+	test('matches a rendered <br> against <br class="..." />', () => {
+		expect(
+			snippetContainsText(
+				'<h1>Když onemocní dítě, bojuje<br class="hidden lg:inline" /> celá rodina.</h1>',
+				'Když onemocní dítě, bojuje<br> celá rodina.',
+			),
+		).toBe(true)
+	})
+
+	test('matches text split by an inline <strong>', () => {
+		expect(
+			snippetContainsText(
+				'<li><strong class="font-semibold">Pořádáme kurzy</strong> pro zdravotníky.</li>',
+				'Pořádáme kurzy pro zdravotníky.',
+			),
+		).toBe(true)
+	})
+
+	test('does not match text rendered from an expression', () => {
+		expect(snippetContainsText('<p>{STORY}</p>', 'Tématu podpory sourozenců')).toBe(false)
+	})
+})
 
 withTempDir('findSourceLocation - Text Finding', (getCtx) => {
 	test('should find simple text in component', async () => {

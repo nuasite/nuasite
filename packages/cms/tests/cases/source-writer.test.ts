@@ -581,7 +581,6 @@ date: 2026-03-10
 			expect(result.content).toBe('<p>Kurzy a&nbsp;nove&nbsp;publikace</p>')
 		}
 	})
-
 })
 
 describe('applyAttributeChanges', () => {

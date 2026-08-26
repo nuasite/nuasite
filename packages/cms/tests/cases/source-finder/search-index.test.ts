@@ -494,6 +494,87 @@ withTempDir('findInTextIndex', (getCtx) => {
 		expect(result?.type).toBe('static')
 	})
 
+	test('prefers a hit in the file the element was rendered from', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		// Same link text in two components — the footer is indexed first.
+		addToTextSearchIndex({
+			file: 'src/components/SiteFooter.astro',
+			line: 4,
+			snippet: '<a href="/about">About us</a>',
+			type: 'static',
+			normalizedText: 'about us',
+			tag: 'a',
+		})
+		addToTextSearchIndex({
+			file: 'src/components/SiteHeader.astro',
+			line: 7,
+			snippet: '<a href="/about">About us</a>',
+			type: 'static',
+			normalizedText: 'about us',
+			tag: 'a',
+		})
+
+		const result = findInTextIndex('About us', 'a', undefined, {
+			file: 'src/components/SiteHeader.astro',
+		})
+
+		expect(result?.file).toBe('src/components/SiteHeader.astro')
+		expect(result?.line).toBe(7)
+	})
+
+	test('accepts the absolute path Astro stamps as the preferred file', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		addToTextSearchIndex({
+			file: 'src/components/SiteFooter.astro',
+			line: 4,
+			snippet: '<a href="/about">About us</a>',
+			type: 'static',
+			normalizedText: 'about us',
+			tag: 'a',
+		})
+		addToTextSearchIndex({
+			file: 'src/components/SiteHeader.astro',
+			line: 7,
+			snippet: '<a href="/about">About us</a>',
+			type: 'static',
+			normalizedText: 'about us',
+			tag: 'a',
+		})
+
+		const result = findInTextIndex('About us', 'a', undefined, {
+			file: `${ctx.tempDir}/src/components/SiteHeader.astro`,
+		})
+
+		expect(result?.file).toBe('src/components/SiteHeader.astro')
+	})
+
+	test('prefers the candidate nearest the rendered line within the same file', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+
+		for (const line of [3, 40, 22]) {
+			addToTextSearchIndex({
+				file: 'src/components/Nav.astro',
+				line,
+				snippet: '<a href="/about">About us</a>',
+				type: 'static',
+				normalizedText: 'about us',
+				tag: 'a',
+			})
+		}
+
+		const result = findInTextIndex('About us', 'a', undefined, {
+			file: 'src/components/Nav.astro',
+			line: 24,
+		})
+
+		expect(result?.line).toBe(22)
+	})
+
 	test('should find partial match for long text', async () => {
 		const ctx = getCtx()
 		await setupAstroProjectStructure(ctx)
