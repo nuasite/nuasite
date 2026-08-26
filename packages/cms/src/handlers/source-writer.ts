@@ -874,6 +874,19 @@ export function applyTextChange(
 		}
 	}
 
+	// A frontmatter scalar has to go through the YAML serializer even when the old
+	// text sits in the line verbatim. Written back raw, `Ahoj: světe` or `- světe`
+	// gives a mapping the parser can no longer read, and `Sleva #1` silently loses
+	// everything from the `#` on — while the save still reports success. The
+	// verbatim replace below matches first for any ordinary scalar, so the YAML
+	// path only gets a turn if it comes before it.
+	if (isYamlValueSource(content, sourceSnippet, change.sourcePath)) {
+		const frontmatterResult = tryYamlValueReplacement(sourceSnippet, resolvedOriginal, resolvedNewText)
+		if (frontmatterResult !== null) {
+			return { success: true, content: content.replace(sourceSnippet, frontmatterResult) }
+		}
+	}
+
 	// Replace resolvedOriginal with resolvedNewText WITHIN the sourceSnippet
 	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, resolvedNewText)
 
@@ -1017,6 +1030,30 @@ const JAVASCRIPT_SOURCE = /\.(astro|[cm]?[jt]sx?)$/i
 
 function isJavaScriptSource(sourcePath: string | undefined): boolean {
 	return !!sourcePath && JAVASCRIPT_SOURCE.test(sourcePath)
+}
+
+const YAML_DOCUMENT_SOURCE = /\.ya?ml$/i
+const YAML_FRONTMATTER_SOURCE = /\.(md|mdx|markdown)$/i
+
+/**
+ * True when the snippet sits in YAML the file means as data — a markdown entry's
+ * frontmatter block, or the whole of a `.yaml` file. Position decides this, not
+ * shape: a markdown *body* line reads `Poznámka: text` exactly like a mapping
+ * entry, and running prose through the YAML serializer would quote it.
+ */
+function isYamlValueSource(content: string, sourceSnippet: string, sourcePath: string | undefined): boolean {
+	if (!sourcePath) return false
+	if (YAML_DOCUMENT_SOURCE.test(sourcePath)) return true
+	if (!YAML_FRONTMATTER_SOURCE.test(sourcePath)) return false
+
+	const opening = /^---[ \t]*\r?\n/.exec(content)
+	if (!opening) return false
+	const bodyStart = opening[0].length
+	const closing = /\r?\n---[ \t]*(\r?\n|$)/.exec(content.slice(bodyStart))
+	if (!closing) return false
+
+	const snippetStart = content.indexOf(sourceSnippet)
+	return snippetStart >= bodyStart && snippetStart + sourceSnippet.length <= bodyStart + closing.index
 }
 
 /** A `<` that opens a tag, as opposed to one that is simply part of the text (`a < b`). */
@@ -1517,20 +1554,47 @@ function tryYamlValueReplacement(
 	if (!keyMatch) return null
 
 	// Use the YAML parser to resolve the value — handles all scalar styles
+	let value: string | number
 	try {
 		const parsed = parseYaml(sourceSnippet)
 		if (parsed == null || typeof parsed !== 'object') return null
-		const value = (parsed as Record<string, unknown>)[keyMatch[2]!]
-		if (typeof value !== 'string' && typeof value !== 'number') return null
-		if (String(value) !== resolvedOriginal) return null
+		const resolved = (parsed as Record<string, unknown>)[keyMatch[2]!]
+		if (typeof resolved !== 'string' && typeof resolved !== 'number') return null
+		if (String(resolved) !== resolvedOriginal) return null
+		value = resolved
 	} catch {
 		return null
+	}
+
+	// A numeric field has to stay numeric: `stringifyYaml` quotes '120' to keep it
+	// a string, which would flip the field's type and fail the collection schema.
+	if (typeof value === 'number' && typeof tryParseYaml(resolvedNewText) === 'number') {
+		return `${keyMatch[1]}${resolvedNewText}`
 	}
 
 	// Use the YAML library to safely serialize the new value,
 	// handling characters that would break plain scalars (: # [ ] { } , etc.)
 	const serialized = stringifyYaml(resolvedNewText, { lineWidth: 0 }).trimEnd()
-	return `${keyMatch[1]}${serialized}`
+	if (!serialized.includes('\n')) return `${keyMatch[1]}${serialized}`
+
+	// A value carrying a line break serializes as a block scalar, whose body has to
+	// sit indented under its key. Serializing the whole entry gets that body
+	// indentation right; the key's own indentation goes back on top of it, so a
+	// nested key keeps its place.
+	const key = keyMatch[2]!
+	const indent = /^[ \t]*/.exec(keyMatch[1]!)![0]
+	const entryLines = stringifyYaml({ [key]: resolvedNewText }, { lineWidth: 0 }).trimEnd().split('\n')
+	const header = entryLines[0]!.slice(`${key}:`.length)
+	return [keyMatch[1]!.trimEnd() + header, ...entryLines.slice(1).map((line) => indent + line)].join('\n')
+}
+
+/** `parseYaml` on text that may not be YAML at all. */
+function tryParseYaml(text: string): unknown {
+	try {
+		return parseYaml(text)
+	} catch {
+		return undefined
+	}
 }
 
 /**

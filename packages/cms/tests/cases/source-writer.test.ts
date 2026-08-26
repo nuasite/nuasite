@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { parse as parseYaml } from 'yaml'
 import type { ChangePayload } from '../../src/editor/types'
 import { applyAttributeChanges, applyTextChange } from '../../src/handlers/source-writer'
 import type { CmsManifest } from '../../src/types'
@@ -788,6 +789,80 @@ date: 2026-03-10
 		)
 		// `\'` is not a YAML escape, so the JS literal encoder must not run here.
 		expect(result).toEqual({ success: true, content: "title: 'Ahoj lidi'" })
+	})
+
+	describe('yaml frontmatter values', () => {
+		const entryFile = (frontmatter: string) => `---\n${frontmatter}\n---\n\nBody text.\n\nPoznámka: tohle je věta, ne pole.\n`
+
+		function editFrontmatter(frontmatter: string, snippet: string, originalValue: string, newValue: string) {
+			const result = applyTextChange(
+				entryFile(frontmatter),
+				makeChange({ sourcePath: 'src/content/blog/a.md', sourceLine: 2, sourceSnippet: snippet, originalValue, newValue }),
+				emptyManifest,
+			)
+			if (!result.success) throw new Error(result.error)
+			return result.content
+		}
+
+		/** Round-trip through the parser — the point is that the entry still loads, not how it is spelled. */
+		function frontmatterOf(content: string): Record<string, unknown> {
+			const match = /^---\n([\s\S]*?)\n---/.exec(content)
+			if (!match) throw new Error('no frontmatter block')
+			return parseYaml(match[1]!) as Record<string, unknown>
+		}
+
+		// Every row here wrote invalid YAML — or silently the wrong value — while reporting success.
+		const cases: Array<{ name: string; snippet: string; key: string; original: string; next: string }> = [
+			{ name: 'apostrophe into a single-quoted value', snippet: "title: 'Ahoj světe'", key: 'title', original: 'Ahoj světe', next: "Dnes' novinka" },
+			{ name: 'double quote into a double-quoted value', snippet: 'title: "Ahoj světe"', key: 'title', original: 'Ahoj světe', next: 'Řekl "ahoj"' },
+			{ name: 'colon into a plain value', snippet: 'title: Ahoj světe', key: 'title', original: 'Ahoj světe', next: 'Ahoj: světe' },
+			{ name: 'leading dash into a plain value', snippet: 'title: Ahoj světe', key: 'title', original: 'Ahoj světe', next: '- světe' },
+			{
+				name: 'colon into a second field',
+				snippet: 'description: Naše služby',
+				key: 'description',
+				original: 'Naše služby',
+				next: 'Naše služby: přehled',
+			},
+			{ name: 'hash is not a comment', snippet: 'title: Ahoj světe', key: 'title', original: 'Ahoj světe', next: 'Sleva #1' },
+			{ name: 'pasted line break survives', snippet: "title: 'Ahoj světe'", key: 'title', original: 'Ahoj světe', next: 'Ahoj\nsvětě' },
+		]
+
+		for (const { name, snippet, key, original, next } of cases) {
+			test(name, () => {
+				expect(frontmatterOf(editFrontmatter(snippet, snippet, original, next))[key]).toBe(next)
+			})
+		}
+
+		test('an ordinary value stays an unquoted plain scalar', () => {
+			expect(editFrontmatter('title: Ahoj světe', 'title: Ahoj světe', 'Ahoj světe', 'Ahoj lidi')).toContain('\ntitle: Ahoj lidi\n')
+		})
+
+		test('a numeric field keeps its type', () => {
+			const content = editFrontmatter('price: 100', 'price: 100', '100', '120')
+			expect(content).toContain('\nprice: 120\n')
+			expect(frontmatterOf(content).price).toBe(120)
+		})
+
+		test('a nested key keeps its indentation across a block scalar', () => {
+			const content = editFrontmatter('meta:\n  title: Ahoj světe', '  title: Ahoj světe', 'Ahoj světe', 'Ahoj\nsvětě')
+			expect((frontmatterOf(content).meta as Record<string, unknown>).title).toBe('Ahoj\nsvětě')
+		})
+
+		test('a body line shaped like a mapping entry is left alone', () => {
+			const snippet = 'Poznámka: tohle je věta, ne pole.'
+			const content = editFrontmatter('title: Ahoj světe', snippet, 'tohle je věta, ne pole.', 'tohle je: jiná věta')
+			expect(content).toContain('Poznámka: tohle je: jiná věta')
+		})
+
+		test('a .yaml data file goes through the same path', () => {
+			const result = applyTextChange(
+				'title: Ahoj světe\n',
+				makeChange({ sourcePath: 'src/data/site.yaml', sourceSnippet: 'title: Ahoj světe', originalValue: 'Ahoj světe', newValue: 'Sleva #1' }),
+				emptyManifest,
+			)
+			expect(result).toEqual({ success: true, content: 'title: "Sleva #1"\n' })
+		})
 	})
 
 	describe('insertions at a markup seam stay outside the inline element', () => {
