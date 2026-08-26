@@ -64,12 +64,36 @@ export function normalizeText(text: string): string {
  */
 export function snippetContainsText(snippet: string, text: string): boolean {
 	if (snippet.includes(text)) return true
-	const normalizedText = normalizeText(text)
-	if (!normalizedText) return false
-	if (normalizeText(snippet).includes(normalizedText)) return true
+
+	// A nested CMS element stands in the text as `{{cms:cms-5}}`; its own source
+	// sits between the surrounding runs, so each run is matched in turn.
+	const segments = text.split(CMS_PLACEHOLDER_PATTERN).map(normalizeText).filter(Boolean)
+	// Nothing but placeholders — the element is a container and its children carry
+	// the text, which the writer resolves through them.
+	if (segments.length === 0) return true
+
 	// Inline children (`<strong>`, styled spans) break the text into pieces that
-	// are only contiguous once the tags are out of the way.
-	return normalizeText(snippet.replace(/<[^>]+>/g, ' ')).includes(normalizedText)
+	// are only contiguous once the tags are out of the way. Both spellings matter:
+	// `Nua<span>Site</span>` renders `NuaSite`, `a<br>b` renders as two words.
+	const candidates = [
+		normalizeText(snippet),
+		normalizeText(snippet.replace(/<[^>]+>/g, ' ')),
+		normalizeText(snippet.replace(/<[^>]+>/g, '')),
+	]
+	return candidates.some(candidate => containsInOrder(candidate, segments))
+}
+
+const CMS_PLACEHOLDER_PATTERN = /\{\{cms:[^}]+\}\}/
+
+/** Are all of `segments` present in `haystack`, in order and without overlap? */
+function containsInOrder(haystack: string, segments: string[]): boolean {
+	let from = 0
+	for (const segment of segments) {
+		const at = haystack.indexOf(segment, from)
+		if (at === -1) return false
+		from = at + segment.length
+	}
+	return true
 }
 
 /**
@@ -1111,10 +1135,7 @@ export async function enhanceManifestWithSourceSnippets(
 					// index stores relative ones, so both sides are normalized before the
 					// comparison — otherwise a same-file hit always looks like a new location
 					// and overwrites the coordinates Astro already gave us.
-					const indexHit = findInTextIndex(trimmedText, entry.tag, pageFiles, {
-						file: entry.sourcePath,
-						line: entry.sourceLine,
-					})
+					const indexHit = findInTextIndex(trimmedText, entry.tag, pageFiles)
 					if (indexHit && indexHit.file !== toProjectRelativePath(entry.sourcePath)) {
 						const resolved = await applyTranslationSource(entry, indexHit, attributes, colorClasses)
 						return [id, resolved] as const

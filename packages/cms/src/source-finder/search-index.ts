@@ -1285,14 +1285,13 @@ function imageEntryToLocation(entry: ImageIndexEntry): SourceLocation {
  * return immediately — collection data files are always authoritative).
  */
 interface RankedMatches {
-	preferred?: SourceLocation
 	page?: SourceLocation
 	other?: SourceLocation
 }
 
 /** Best candidate found so far, in priority order. */
 function bestMatch(matches: RankedMatches): SourceLocation | undefined {
-	return matches.preferred ?? matches.page ?? matches.other
+	return matches.page ?? matches.other
 }
 
 function rankAndStash(
@@ -1300,28 +1299,11 @@ function rankAndStash(
 	result: SourceLocation,
 	pageFiles: readonly string[] | undefined,
 	matches: RankedMatches,
-	preferred?: { file: string; line?: number },
 ): SourceLocation | undefined {
 	if (isCollectionFile(file)) return result
-	if (preferred && file === preferred.file) {
-		matches.preferred = closerTo(preferred.line, matches.preferred, result)
-	} else if (pageFiles?.includes(file)) matches.page ??= result
+	if (pageFiles?.includes(file)) matches.page ??= result
 	else matches.other ??= result
 	return undefined
-}
-
-/**
- * Of two same-file candidates, keep the one nearest the line the element was
- * rendered from. Without a line to aim at the first candidate wins.
- */
-function closerTo(
-	line: number | undefined,
-	current: SourceLocation | undefined,
-	candidate: SourceLocation,
-): SourceLocation {
-	if (!current) return candidate
-	if (line === undefined) return current
-	return Math.abs(candidate.line - line) < Math.abs(current.line - line) ? candidate : current
 }
 
 /**
@@ -1392,29 +1374,22 @@ export function findInTextIndex(
 	textContent: string,
 	tag: string,
 	pageFiles?: readonly string[],
-	preferredLocation?: { file?: string; line?: number },
 ): SourceLocation | undefined {
 	const normalizedSearch = normalizeText(textContent)
 	const tagLower = tag.toLowerCase()
 	const index = getTextSearchIndex()
 	const matches: RankedMatches = {}
-	const preferred = preferredLocation?.file
-		? { file: toProjectRelativePath(preferredLocation.file), line: preferredLocation.line }
-		: undefined
 	let translationHit: SourceLocation | undefined
 
 	for (const entry of index) {
 		if (entry.normalizedText !== normalizedSearch) continue
 		if (entry.tag === tagLower) {
-			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches, preferred)
+			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches)
 			if (collectionHit) return collectionHit
 		} else if (entry.tag === TRANSLATION_TAG_MARKER) {
 			translationHit ??= textEntryToLocation(entry)
 		}
 	}
-	// A hit in the file the element was rendered from is authoritative — it beats
-	// an i18n dictionary entry that merely shares the same text.
-	if (matches.preferred) return matches.preferred
 	if (translationHit) return translationHit
 	const sameTag = bestMatch(matches)
 	if (sameTag) return sameTag
@@ -1424,7 +1399,7 @@ export function findInTextIndex(
 		for (const entry of index) {
 			if (entry.tag !== tagLower) continue
 			if (!entry.normalizedText.includes(textPreview)) continue
-			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches, preferred)
+			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches)
 			if (collectionHit) return collectionHit
 		}
 		const partial = bestMatch(matches)
@@ -1433,7 +1408,7 @@ export function findInTextIndex(
 
 	for (const entry of index) {
 		if (entry.normalizedText !== normalizedSearch) continue
-		const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches, preferred)
+		const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches)
 		if (collectionHit) return collectionHit
 	}
 

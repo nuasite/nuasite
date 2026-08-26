@@ -43,9 +43,53 @@ describe('snippetContainsText', () => {
 	test('does not match text rendered from an expression', () => {
 		expect(snippetContainsText('<p>{STORY}</p>', 'Tématu podpory sourozenců')).toBe(false)
 	})
+
+	test('matches around a nested CMS child placeholder', () => {
+		expect(
+			snippetContainsText(
+				'<p>Read more <a href="/docs">here</a>.</p>',
+				'Read more {{cms:cms-5}}.',
+			),
+		).toBe(true)
+	})
+
+	test('matches an element that is nothing but a nested child', () => {
+		expect(snippetContainsText('<p><a href="/docs">here</a></p>', '{{cms:cms-5}}')).toBe(true)
+	})
+
+	test('matches inline markup with no whitespace at the seam', () => {
+		expect(snippetContainsText('<h2>Nua<span class="text-primary">Site</span></h2>', 'NuaSite')).toBe(true)
+	})
+
+	test('requires the runs to appear in order', () => {
+		expect(
+			snippetContainsText('<p>second <a href="/x">link</a> first</p>', 'first {{cms:cms-5}} second'),
+		).toBe(false)
+	})
 })
 
 withTempDir('findSourceLocation - Text Finding', (getCtx) => {
+	test('covers the whole value when an object property spans lines', async () => {
+		const ctx = getCtx()
+		await setupAstroProjectStructure(ctx)
+		await ctx.writeFile(
+			'src/components/Config.astro',
+			`---
+const CONFIG = {
+	body: 'Tématu podpory '
+		+ 'sourozenců.',
+}
+---
+<p>{CONFIG.body}</p>
+`,
+		)
+
+		const result = await findSourceLocation('Tématu podpory sourozenců.', 'p')
+
+		expect(result?.file).toBe('src/components/Config.astro')
+		expect(result?.snippet).toContain("'sourozenců.'")
+	})
+
 	test('finds text built from a + chain of string literals', async () => {
 		const ctx = getCtx()
 		await setupAstroProjectStructure(ctx)
