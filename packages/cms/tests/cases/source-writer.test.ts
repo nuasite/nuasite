@@ -105,7 +105,7 @@ describe('applyTextChange', () => {
 		}
 	})
 
-	test('text spanning inline span without htmlValue falls back to newValue', () => {
+	test('text spanning an inline span is not flattened when no htmlValue is sent', () => {
 		const content = '<h2>Hello <span class="accent">world</span></h2>'
 		const result = applyTextChange(
 			content,
@@ -116,10 +116,10 @@ describe('applyTextChange', () => {
 			}),
 			emptyManifest,
 		)
-		expect(result.success).toBe(true)
-		if (result.success) {
-			expect(result.content).toBe('<h2>Hi everyone</h2>')
-		}
+		// The rewrite touches both text runs, so no splice can keep the span —
+		// better to refuse than to silently drop it. The editor sends `htmlValue`
+		// for styled elements, which takes the whole-inner-content path instead.
+		expect(result.success).toBe(false)
 	})
 
 	test('returns error when text not found and no inline elements', () => {
@@ -580,6 +580,64 @@ date: 2026-03-10
 		if (result.success) {
 			expect(result.content).toBe('<p>Kurzy a&nbsp;nove&nbsp;publikace</p>')
 		}
+	})
+
+	// Inline markup must survive a plain-text edit — the editor only sends
+	// `htmlValue` for entries that allow styling.
+	describe('inner content carrying inline markup', () => {
+		const snippet = '<li><strong class="font-semibold">Pořádáme kurzy</strong> pro zdravotníky.</li>'
+		const text = 'Pořádáme kurzy pro zdravotníky.'
+
+		test('splices a plain-text edit into the run it touched', () => {
+			const result = applyTextChange(
+				snippet,
+				makeChange({ sourceSnippet: snippet, originalValue: text, newValue: 'Pořádáme kurzy pro učitele.' }),
+				emptyManifest,
+			)
+			expect(result).toEqual({
+				success: true,
+				content: '<li><strong class="font-semibold">Pořádáme kurzy</strong> pro učitele.</li>',
+			})
+		})
+
+		test('splices an edit that falls inside the styled run', () => {
+			const result = applyTextChange(
+				snippet,
+				makeChange({ sourceSnippet: snippet, originalValue: text, newValue: 'Pořádáme školení pro zdravotníky.' }),
+				emptyManifest,
+			)
+			expect(result).toEqual({
+				success: true,
+				content: '<li><strong class="font-semibold">Pořádáme školení</strong> pro zdravotníky.</li>',
+			})
+		})
+
+		test('refuses an edit that spans the markup boundary rather than dropping the tag', () => {
+			const result = applyTextChange(
+				snippet,
+				makeChange({ sourceSnippet: snippet, originalValue: text, newValue: 'Úplně jiná věta.' }),
+				emptyManifest,
+			)
+			expect(result.success).toBe(false)
+		})
+
+		test('still replaces the whole inner content when the editor sends html', () => {
+			const result = applyTextChange(
+				snippet,
+				makeChange({
+					sourceSnippet: snippet,
+					originalValue: text,
+					newValue: 'Pořádáme kurzy živě pro zdravotníky.',
+					htmlValue: '<strong class="font-semibold">Pořádáme kurzy živě</strong> pro zdravotníky.',
+					hasStyledContent: true,
+				}),
+				emptyManifest,
+			)
+			expect(result).toEqual({
+				success: true,
+				content: '<li><strong class="font-semibold">Pořádáme kurzy živě</strong> pro zdravotníky.</li>',
+			})
+		})
 	})
 })
 

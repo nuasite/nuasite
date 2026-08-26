@@ -890,7 +890,22 @@ export function applyTextChange(
 			const [, openTag, , innerContent, closeTag] = innerMatch
 			const textOnly = innerContent!.replace(/<[^>]+>/g, '')
 			if (textOnly === resolvedOriginal) {
-				return { success: true, content: content.replace(sourceSnippet, openTag + resolvedNewText + closeTag) }
+				// The editor sends markup of its own only when the element allows styling.
+				// Swapping plain text in for inner content that has tags would delete them,
+				// so the edit is spliced into the text run it actually touched instead.
+				const isHtmlReplacement = /<[^>]+>/.test(resolvedNewText)
+				if (isHtmlReplacement || !/<[^>]+>/.test(innerContent!)) {
+					return { success: true, content: content.replace(sourceSnippet, openTag + resolvedNewText + closeTag) }
+				}
+				const splicedInner = spliceTextAcrossInlineMarkup(innerContent!, resolvedOriginal, resolvedNewText)
+				if (splicedInner !== null) {
+					return { success: true, content: content.replace(sourceSnippet, openTag + splicedInner + closeTag) }
+				}
+				return {
+					success: false,
+					error: 'Cannot apply this edit without dropping the inline markup inside the element '
+						+ '— edit the styled part separately',
+				}
 			}
 		}
 
@@ -955,6 +970,56 @@ function applyTextChangeWithPlaceholders(
 	}
 
 	return { success: true, content: content.replace(sourceSnippet, updatedSnippet) }
+}
+
+/**
+ * Apply a plain-text edit to inner content that carries inline markup.
+ *
+ * The rendered text is the concatenation of the element's text runs, so an edit
+ * to it has to be written back into whichever run it fell in — replacing the
+ * whole inner content would take `<strong>`/`<em>` with it. Returns null when
+ * the edit spans more than one run, where no splice can preserve the markup.
+ */
+function spliceTextAcrossInlineMarkup(
+	innerContent: string,
+	originalText: string,
+	newText: string,
+): string | null {
+	const tokens = innerContent.split(/(<[^>]+>)/)
+	const isTag = (token: string) => token.startsWith('<')
+
+	// Offset of each text token within the concatenated plain text
+	const runs: Array<{ index: number; start: number; end: number }> = []
+	let plain = ''
+	for (let i = 0; i < tokens.length; i++) {
+		const token = tokens[i]!
+		if (isTag(token) || !token) continue
+		runs.push({ index: i, start: plain.length, end: plain.length + token.length })
+		plain += token
+	}
+	if (plain !== originalText) return null
+
+	// Narrow the edit to the span that actually changed
+	let start = 0
+	while (start < originalText.length && start < newText.length && originalText[start] === newText[start]) start++
+	let tail = 0
+	while (
+		tail < originalText.length - start
+		&& tail < newText.length - start
+		&& originalText[originalText.length - 1 - tail] === newText[newText.length - 1 - tail]
+	) tail++
+	const originalEnd = originalText.length - tail
+	const newEnd = newText.length - tail
+	if (start === originalEnd && start === newEnd) return innerContent
+
+	const run = runs.find(r => start >= r.start && originalEnd <= r.end)
+	if (!run) return null
+
+	const token = tokens[run.index]!
+	tokens[run.index] = token.slice(0, start - run.start)
+		+ newText.slice(start, newEnd)
+		+ token.slice(originalEnd - run.start)
+	return tokens.join('')
 }
 
 /**
