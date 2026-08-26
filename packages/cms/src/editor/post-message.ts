@@ -54,6 +54,7 @@ export function buildSelectedElement(opts: {
 			attributes: entry.attributes,
 			constraints: entry.constraints,
 			allowStyling: entry.allowStyling,
+			textResolved: entry.textResolved,
 			collectionName: entry.collectionName,
 			collectionSlug: entry.collectionSlug,
 		}),

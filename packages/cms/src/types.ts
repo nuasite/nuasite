@@ -242,6 +242,8 @@ export interface CmsSelectedElement {
 	constraints?: ContentConstraints
 	/** Whether inline text styling is allowed */
 	allowStyling?: boolean
+	/** False when the text was never located in source — attributes stay editable, the text doesn't */
+	textResolved?: boolean
 	/** Collection name if from a content collection */
 	collectionName?: string
 	/** Collection entry slug */

@@ -402,3 +402,12 @@ test('keeps an authored non-breaking space but drops browser-inserted ones', () 
 
 	expect(getEditableTextFromElement(el)).toBe('Kurzy a\u00A0publikace  a')
 })
+
+test('a nbsp at a text node edge is browser-inserted, not authored', () => {
+	// contentEditable inserts U+00A0 for a space typed right before an inline
+	// element; writing that back would turn an ordinary space into `&nbsp;`.
+	document.body.innerHTML = `<p data-cms-id="edge">foo\u00A0<strong>bar</strong></p>`
+	const el = document.querySelector('[data-cms-id="edge"]') as HTMLElement
+
+	expect(getEditableTextFromElement(el)).toBe('foo bar')
+})

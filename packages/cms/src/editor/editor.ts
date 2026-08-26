@@ -328,14 +328,23 @@ export async function startEditMode(
 			return
 		}
 
-		// Without a source path — or with text the source finder never located — the
-		// writer has nowhere to persist edits, so lock the element rather than let
-		// the user type into a change that fails on save.
-		if (!manifestEntry?.sourcePath || manifestEntry.textResolved === false) {
+		// Without a source path the writer has nowhere to persist anything — lock the
+		// element so it can't be typed into and the user gets told why on click.
+		if (!manifestEntry?.sourcePath) {
 			logDebug(config.debug, 'Skipping element without source path:', cmsId)
 			makeElementNonEditable(el)
 			el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
 			el.addEventListener('click', handleLockedClick, { signal: editModeSignal })
+			return
+		}
+
+		// The source finder located the element but not its text, so typing into it
+		// could only fail on save. It stays selectable — its href, other attributes
+		// and colour classes are written from the opening tag and still work — it
+		// just isn't contenteditable.
+		if (manifestEntry.textResolved === false) {
+			logDebug(config.debug, 'Text not resolved to source, attributes only:', cmsId)
+			makeElementNonEditable(el)
 			return
 		}
 

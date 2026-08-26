@@ -219,10 +219,13 @@ const BLOCK_ELEMENTS = new Set(['div', 'p', 'section', 'article', 'header', 'foo
 
 /**
  * contentEditable inserts U+00A0 for runs of spaces and at the edges of a text
- * node, and those have to come back out as ordinary spaces. A lone one between
- * two non-space characters is the author's own — it came from an `&nbsp;` in the
- * source — and has to survive the round-trip, or every edit of such a line
- * quietly downgrades it to a breaking space.
+ * node — including the space typed just before an inline element — and those have
+ * to come back out as ordinary spaces, or an ordinary space ends up written to
+ * source as a non-breaking one. A lone one between two non-space characters
+ * *within the same text node* is the author's own, from an `&nbsp;` in the source,
+ * and survives the round-trip; the writer splices only what changed, so an
+ * authored `&nbsp;` at a node edge still stays put in the source unless the edit
+ * reaches it.
  */
 function normalizeEditorSpaces(text: string): string {
 	return text.replace(/\u00a0/g, (_match, offset: number, whole: string) => {
@@ -238,7 +241,7 @@ function extractTextFromChildNodes(parentNode: HTMLElement): string {
 
 	parentNode.childNodes.forEach(node => {
 		if (node.nodeType === Node.TEXT_NODE) {
-			text += node.nodeValue || ''
+			text += normalizeEditorSpaces(node.nodeValue || '')
 		} else if (node.nodeType === Node.ELEMENT_NODE) {
 			const element = node as HTMLElement
 			const tagName = element.tagName.toLowerCase()
@@ -264,7 +267,7 @@ function extractTextFromChildNodes(parentNode: HTMLElement): string {
 				}
 			} else {
 				// For all other elements (including styled spans), just get their text content
-				text += element.textContent || ''
+				text += normalizeEditorSpaces(element.textContent || '')
 			}
 		}
 	})
@@ -278,7 +281,7 @@ function extractTextFromChildNodes(parentNode: HTMLElement): string {
  * Nested CMS elements are replaced with {{cms:id}} placeholders.
  */
 export function getEditableTextFromElement(el: HTMLElement): string {
-	return normalizeEditorSpaces(extractTextFromChildNodes(el)).trim()
+	return extractTextFromChildNodes(el).trim()
 }
 
 /**
