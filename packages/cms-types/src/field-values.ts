@@ -14,7 +14,7 @@
  * over a `FieldDefinition`-shaped value; anything that knows about routes, the filesystem or
  * the wire belongs in the package that owns them (see `editor-write-model.ts` in `cms-core`).
  *
- * Three questions are answered here, and the difference between the first two is the whole
+ * Four questions are answered here, and the difference between the first two is the whole
  * reason both exist:
  *
  * - **What does a create form start a field at?** `blankFieldValue` — absence is allowed, so
@@ -22,6 +22,10 @@
  * - **What does a key that must be present carry?** `seedValueForRequiredField` — omitting is
  *   not an option there, so a placeholder it is, and `0` beats a missing number.
  * - **What must never reach disk?** `withoutBlankArrayItems` — a blank *item* inside a list.
+ * - **What does the file name imply about the frontmatter?** `withEntrySlug` — a declared `slug`
+ *   field is the entry's address, and on a create the file name is what that address is.
+ * - **And when the file name changes?** `withRenamedEntrySlug` — the same fact, moved. A rename
+ *   is the one write that relocates an entry, so it is the one write that may rewrite the copy.
  */
 
 import type { FieldType } from './index'
@@ -143,13 +147,24 @@ export function newRepeaterItem(fields: RepeaterItemField[], today?: () => Date)
 	return item
 }
 
+/**
+ * A field whose value the CMS computes on every write, in either of the two spellings.
+ *
+ * `parseContentConfig` puts a declared derivation in `layout.derivedFrom`; the wire
+ * `FieldDefinition` flags it as `derivedDeclared`. Both mean the same thing, and the
+ * distinction from a plain `derivedFrom` is the point — see `isDeclaredDerived`.
+ */
+export interface DeclaredDerivationField {
+	/** Set only where a derivation was *declared* in the content config — see `blankRequiredFields`. */
+	derivedDeclared?: boolean
+	layout?: { derivedFrom?: string }
+}
+
 /** A field carrying a declared required flag. `layout.*` is how `parseContentConfig` spells it. */
-export interface RequiredGuardField {
+export interface RequiredGuardField extends DeclaredDerivationField {
 	name: string
 	required: boolean
 	hidden?: boolean
-	/** Set only where a derivation was *declared* in the content config — see `blankRequiredFields`. */
-	derivedDeclared?: boolean
 	layout?: { hidden?: boolean; derivedFrom?: string }
 }
 
@@ -161,7 +176,7 @@ export interface RequiredGuardField {
  * `derivedDeclared`, because there `derivedFrom` alone is ambiguous — `detectDerivedHrefFields`
  * also sets it, from a guess over at most three sampled values, and nothing recomputes that.
  */
-function isDeclaredDerived(field: RequiredGuardField): boolean {
+function isDeclaredDerived(field: DeclaredDerivationField): boolean {
 	return field.derivedDeclared === true || field.layout?.derivedFrom !== undefined
 }
 
@@ -199,6 +214,109 @@ export function blankRequiredFields(fields: RequiredGuardField[], frontmatter: R
 			&& isBlankFieldValue(frontmatter[field.name])
 		)
 		.map(field => field.name)
+}
+
+/** The frontmatter key that mirrors an entry's file slug. */
+export const ENTRY_SLUG_FIELD = 'slug'
+
+/**
+ * Field types a `slug` cannot be, for the entry-slug rules below.
+ *
+ * A deny-list, not an allow-list of `'text'`, because the two callers of those rules see the same
+ * field differently: the server hands them `ParsedField`s, whose `type` is `undefined` for a plain
+ * `z.string()`, while the create form hands them scanned `FieldDefinition`s, whose `type` is always
+ * set and *inferred from sampled values* — a `slug` holding `/o-nas` is typed `'url'`, and a very
+ * long one `'textarea'`. Demanding `'text'` made the form decline exactly where the server would
+ * have filled the field in, so the form reported a required `slug` the user then could not satisfy.
+ *
+ * What actually disqualifies a `slug` is holding something that is not a line of text at all. Those
+ * are listed here; everything else is a spelling of a string, and the rules can read it.
+ */
+const NON_TEXT_SLUG_TYPES = new Set<FieldType>(['array', 'object', 'reference', 'image', 'file', 'boolean', 'number', 'date', 'datetime'])
+
+/** Whether this field could hold an entry's address at all. */
+function holdsEntrySlug(field: SlugMirrorField): boolean {
+	return field.name === ENTRY_SLUG_FIELD && (field.type === undefined || !NON_TEXT_SLUG_TYPES.has(field.type))
+}
+
+/** A field the entry-slug rule reads — satisfied by both `FieldDefinition` and a `ParsedField`. */
+export interface SlugMirrorField extends WriteModelField, DeclaredDerivationField {}
+
+/**
+ * The frontmatter an entry should be **created** with, given the file slug it is being written at.
+ *
+ * A collection that declares a `slug` field means the entry's own address, and the file name is
+ * that address — the two are the same fact stored twice. Nothing was filling the frontmatter copy
+ * in: the create forms derive a *file name* from the title, so the entry landed at
+ * `vecirek-ve-vile.md` with `slug:` still empty, and every rule reading the frontmatter (a
+ * `pathname` spec, a field declared `derivedFrom: 'slug'`) then had nothing to read.
+ *
+ * Create only. On an update the file slug is already the entry's published address, so rewriting
+ * the frontmatter copy from it is at best a no-op and at worst silently repoints a URL because
+ * somebody edited a title — renaming an entry is `renameEntry`, deliberately, and moving the copy
+ * with the file is `withRenamedEntrySlug`. Nothing here touches an existing value.
+ *
+ * The rule declines in four cases, each for its own reason:
+ *
+ * - **No `slug` field declared.** The key is not part of this collection's schema, and inventing
+ *   it would write frontmatter the schema rejects — a single rejected entry fails the site build.
+ * - **The field cannot hold a line of text.** Whatever a `slug` typed as a list, an object, an
+ *   image or a number means, it is not this. See `NON_TEXT_SLUG_TYPES` for why the test is that
+ *   way round rather than a demand for `'text'`.
+ * - **A value is already there.** The author typed it, or a previous rule computed it; either way
+ *   it is not ours to overwrite. This is what keeps a hand-chosen address stable.
+ * - **The derivation was declared.** `applyDerivedFields` owns those, computes them from their
+ *   own source, and runs right after this — so seeding one would be overwritten anyway. Note this
+ *   is `isDeclaredDerived`, not a bare `derivedFrom`: the scanner *infers* a derivation for any
+ *   name ending in href/url/link/slug/path whose sampled values happen to match a sibling's, and
+ *   nothing ever recomputes that guess. Declining on the guess would leave exactly the collections
+ *   this rule exists for — a `slug` next to a `title` — with the empty field they started with.
+ *
+ * A `hidden` field is seeded like any other. Hidden is why the form cannot fill it in, which is
+ * the reason this rule has to.
+ */
+export function withEntrySlug(fields: SlugMirrorField[], frontmatter: Record<string, unknown>, slug: string): Record<string, unknown> {
+	if (slug === '') return frontmatter
+	const field = fields.find(holdsEntrySlug)
+	if (!field) return frontmatter
+	if (isDeclaredDerived(field) || !isBlankFieldValue(frontmatter[field.name])) return frontmatter
+	return { ...frontmatter, [field.name]: slug }
+}
+
+/**
+ * The same frontmatter after the entry's file has been **renamed** from `fromSlug` to `toSlug`.
+ *
+ * `withEntrySlug` fills the frontmatter copy on a create and then never touches it again, which
+ * leaves exactly one hole: a rename moves the file and the frontmatter keeps pointing at where
+ * the entry used to live. Before the create rule the key was empty and nothing read it, so the
+ * two copies had nothing to disagree about; now they do, and `vecirek-2026.md` carrying
+ * `slug: vecirek-ve-vile` sends every `pathname` spec and every `derivedFrom: 'slug'` field to
+ * the old URL.
+ *
+ * It rewrites only a copy that still mirrors the *old* file name (or is blank). That is the
+ * narrow case where the value is demonstrably the file's and not the author's: a `slug` the
+ * author pointed somewhere else on purpose already disagreed with the file name before the
+ * rename, and moving the file is no reason to overwrite the address they chose. The remaining
+ * declines are `withEntrySlug`'s, for its reasons — no declared `slug` field, one that cannot hold
+ * text, or a declared derivation that `applyDerivedFields` owns and recomputes anyway.
+ *
+ * Comparison is on the *normalized* slugs the caller passes: both sides of a rename are
+ * `slugify`'d before they reach a file name, so that is the form the frontmatter was seeded in.
+ */
+export function withRenamedEntrySlug(
+	fields: SlugMirrorField[],
+	frontmatter: Record<string, unknown>,
+	fromSlug: string,
+	toSlug: string,
+): Record<string, unknown> {
+	if (toSlug === '') return frontmatter
+	const field = fields.find(holdsEntrySlug)
+	if (!field) return frontmatter
+	if (isDeclaredDerived(field)) return frontmatter
+	const current = frontmatter[field.name]
+	if (!isBlankFieldValue(current) && current !== fromSlug) return frontmatter
+	if (current === toSlug) return frontmatter
+	return { ...frontmatter, [field.name]: toSlug }
 }
 
 /** A record written as frontmatter, as opposed to a `Date`, a class instance or a list. */

@@ -5,6 +5,11 @@
  * `defaultValue`). On submit it `POST`s the new entry and hands the created slug
  * back to the host so it can open the editor. Reuses the same field widgets and
  * native draft model as the editor.
+ *
+ * Field order comes from the same `resolveFormLayout` the editor renders, so a collection reads
+ * the same way in both. What create does *not* borrow is the chrome: no tabs and no collapsed
+ * blocks, because a form somebody is filling in for the first time should not hide fields behind
+ * a click. Sections keep their headings and stay open.
  */
 
 import {
@@ -12,18 +17,17 @@ import {
 	CmsClientError,
 	draftForCreate,
 	type EntryDraft,
+	fieldLabel,
 	missingRequiredFields,
 	missingRequiredMessage,
+	resolveFormLayout,
 	setDraftField,
 	slugify,
+	withEntrySlug,
 } from '@nuasite/cms-client'
-import type { CollectionDefinition, FieldDefinition } from '@nuasite/cms-types'
-import { useCallback, useMemo, useState } from 'react'
+import type { CollectionDefinition } from '@nuasite/cms-types'
+import { Fragment, useCallback, useMemo, useState } from 'react'
 import { type EditorContext, FieldEditor } from './field-editor'
-
-function visibleFields(fields: FieldDefinition[]): FieldDefinition[] {
-	return fields.filter(f => !f.hidden)
-}
 
 export function EntryCreate({ client, definition, collection, onCreated, onCancel }: {
 	client: CmsClient
@@ -38,6 +42,29 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 	const [submitting, setSubmitting] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
+	const { title, header, sidebar, sections } = useMemo(() => resolveFormLayout(fields, definition?.layout), [fields, definition?.layout])
+	// One stack, in the plan's order. The side column is an editor affordance; here its fields
+	// simply come last, after the main sections.
+	const ordered = useMemo(
+		() => [
+			...(title ? [{ heading: undefined, fields: [title, ...header] }] : header.length > 0 ? [{ heading: undefined, fields: header }] : []),
+			...sections.map(section => ({ heading: section.title, fields: section.fields })),
+			...(sidebar.length > 0 ? [{ heading: undefined, fields: sidebar }] : []),
+		],
+		[title, header, sections, sidebar],
+	)
+
+	// What the server will actually write: `createEntry` fills a declared `slug` field from the
+	// file slug, so the form validates and submits the same frontmatter rather than reporting a
+	// required field the write would have filled in. `withEntrySlug` is that same rule.
+	//
+	// This is what the form *sends*, not what its inputs read — those stay on `draft.frontmatter`.
+	// Feeding the filled-in copy back into a *visible* `slug` field makes it impossible to clear:
+	// the blank goes into the draft, the rule fills it from the file slug again, and the value
+	// snaps back under the cursor.
+	const normalizedSlug = useMemo(() => slugify(slug), [slug])
+	const effectiveFrontmatter = useMemo(() => withEntrySlug(fields, draft.frontmatter, normalizedSlug), [fields, draft.frontmatter, normalizedSlug])
+
 	const ctx: EditorContext = useMemo(() => ({ client, collection }), [client, collection])
 
 	const onField = useCallback((name: string, value: unknown) => {
@@ -47,12 +74,11 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 	const submit = useCallback(async () => {
 		// The sidecar slugifies whatever it receives, so send what it will actually write —
 		// otherwise `onCreated` opens a slug that does not exist ("My Entry" → `my-entry`).
-		const normalized = slugify(slug)
-		if (normalized === '') {
+		if (normalizedSlug === '') {
 			setError('A slug is required.')
 			return
 		}
-		const missing = missingRequiredFields(fields, draft.frontmatter)
+		const missing = missingRequiredFields(fields, effectiveFrontmatter)
 		if (missing.length > 0) {
 			setError(missingRequiredMessage(missing))
 			return
@@ -61,13 +87,13 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 		setError(null)
 		try {
 			const result = await client.createEntry(collection, {
-				slug: normalized,
-				frontmatter: draft.frontmatter,
+				slug: normalizedSlug,
+				frontmatter: effectiveFrontmatter,
 				body: draft.body,
 				fileExtension: definition?.fileExtension,
 			})
 			if (result.success) {
-				onCreated(normalized)
+				onCreated(normalizedSlug)
 			} else {
 				setError(result.error ?? 'Could not create the entry.')
 			}
@@ -76,7 +102,7 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 		} finally {
 			setSubmitting(false)
 		}
-	}, [client, collection, definition, draft, fields, slug, onCreated])
+	}, [client, collection, definition, draft.body, effectiveFrontmatter, fields, normalizedSlug, onCreated])
 
 	const isData = definition?.type === 'data'
 
@@ -90,14 +116,22 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 				<input type="text" className="nua-cadmin-input" value={slug} placeholder="my-new-entry" onChange={e => setSlug(e.target.value)} />
 			</div>
 
-			{visibleFields(fields).map(field => (
-				<div key={field.name} className={`nua-cadmin-field${field.role ? ` nua-cadmin-field-${field.role}` : ''}`}>
-					<div className="nua-cadmin-field-label">
-						<span>{field.name}</span>
-						<span className="nua-cadmin-field-type">{field.type}{field.required ? ' · required' : ''}</span>
-					</div>
-					<FieldEditor field={field} value={draft.frontmatter[field.name]} onChange={value => onField(field.name, value)} ctx={ctx} />
-				</div>
+			{ordered.map((block, index) => (
+				// Keyed by position, not by heading: `resolveFormLayout` appends a leftover block titled
+				// `Other`, which a declared section is free to be titled too — two blocks with one key
+				// let React reuse the wrong inputs between them.
+				<Fragment key={`block-${index}`}>
+					{block.heading ? <div className="nua-cadmin-form-heading">{block.heading}</div> : null}
+					{block.fields.map(field => (
+						<div key={field.name} className={`nua-cadmin-field${field.role ? ` nua-cadmin-field-${field.role}` : ''}`}>
+							<div className="nua-cadmin-field-label">
+								<span>{fieldLabel(field)}</span>
+								<span className="nua-cadmin-field-type">{field.type}{field.required ? ' · required' : ''}</span>
+							</div>
+							<FieldEditor field={field} value={draft.frontmatter[field.name]} onChange={value => onField(field.name, value)} ctx={ctx} />
+						</div>
+					))}
+				</Fragment>
 			))}
 
 			{!isData

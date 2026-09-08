@@ -158,6 +158,18 @@ function parseFieldDirectives(content: string): Record<string, { position?: 'sid
 /**
  * Assign default positions to fields based on field name heuristics,
  * then overlay frontmatter comment directives.
+ *
+ * Only the sidebar default is written. A field the heuristic does not recognise is left with no
+ * `position` at all, which is what "the editor decides" looks like on the wire — it used to be
+ * stamped `'header'`, and that broke the one consumer that read it: an editor rendering
+ * `position === 'header'` as a top strip put *every* unrecognised field in the strip and left the
+ * main column empty, which in turn meant a collection's declared `cms.sections` had no fields to
+ * order and never rendered. `'header'` now only ever comes from a `@position` directive or
+ * `n.text({ position: 'header' })`, so an editor can trust it as an author's choice.
+ *
+ * The default written here deliberately leaves `positionDeclared` unset, and the directive
+ * overlay deliberately sets it: on the wire the two produce the same `'sidebar'`, and a consumer
+ * that cannot tell a guess from an instruction ends up overriding the instruction.
  */
 function assignFieldMetadata(
 	fields: FieldDefinition[],
@@ -167,14 +179,15 @@ function assignFieldMetadata(
 		// Scanner defaults: well-known fields go to sidebar
 		if (SIDEBAR_FIELD_NAMES.has(normalizeFieldName(field.name)) || field.type === 'image' || field.type === 'boolean') {
 			field.position = 'sidebar'
-		} else {
-			field.position = 'header'
 		}
 
 		// Overlay frontmatter comment directives
 		const directive = directives[field.name]
 		if (directive) {
-			if (directive.position) field.position = directive.position
+			if (directive.position) {
+				field.position = directive.position
+				field.positionDeclared = true
+			}
 			if (directive.group) field.group = directive.group
 		}
 	}
@@ -671,7 +684,7 @@ function applyCollectionTitleField(def: CollectionDefinition, titleField: string
 	def.entries.sort((a, b) => (a.title ?? a.slug).localeCompare(b.title ?? b.slug))
 }
 
-/** Map a parsed field's layout hints onto the field definition (sidebar → position). */
+/** Map a parsed field's layout hints onto the field definition (sidebar/position → position). */
 function applyParsedFieldLayout(field: FieldDefinition, pf: ParsedField): void {
 	const layout = pf.layout
 	if (!layout) return
@@ -680,7 +693,17 @@ function applyParsedFieldLayout(field: FieldDefinition, pf: ParsedField): void {
 	if (layout.group !== undefined) field.group = layout.group
 	if (layout.width !== undefined) field.width = layout.width
 	if (layout.order !== undefined) field.order = layout.order
-	if (layout.sidebar) field.position = 'sidebar'
+	// Either spelling is the author's answer, so both carry `positionDeclared` — that is the flag
+	// telling a layout apart from the scanner's name-and-type guess below, and the difference
+	// decides whether a rule like the headline hoist may override the placement.
+	if (layout.sidebar) {
+		field.position = 'sidebar'
+		field.positionDeclared = true
+	}
+	if (layout.position) {
+		field.position = layout.position
+		field.positionDeclared = true
+	}
 	if (layout.derivedFrom) {
 		// A declared derivation beats `detectDerivedHrefFields`: that pass runs after this one
 		// and skips any field already carrying `derivedFrom`, so the config wins by construction.

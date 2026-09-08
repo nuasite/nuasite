@@ -42,6 +42,15 @@ export interface ParsedFieldLayout {
 	help?: string
 	group?: string
 	sidebar?: boolean
+	/**
+	 * Where the field renders (`n.text({ position: 'header' })`).
+	 *
+	 * `sidebar: true` above is the shorthand for `position: 'sidebar'` and stays because it is
+	 * what existing configs are written with; `'header'` has no shorthand, and until this was
+	 * parsed the top strip could only ever be asked for by a `@position` comment in an entry
+	 * that already existed — so a collection with no entries yet could not have one at all.
+	 */
+	position?: 'sidebar' | 'header'
 	width?: 'full' | 'half'
 	order?: number
 	hidden?: boolean
@@ -1037,6 +1046,9 @@ function parseFieldLayoutFromObject(obj: t.ObjectExpression): ParsedFieldLayout 
 				break
 			case 'sidebar':
 				if (value.type === 'BooleanLiteral') layout.sidebar = value.value
+				break
+			case 'position':
+				if (value.type === 'StringLiteral' && (value.value === 'sidebar' || value.value === 'header')) layout.position = value.value
 				break
 			case 'hidden':
 				if (value.type === 'BooleanLiteral') layout.hidden = value.value

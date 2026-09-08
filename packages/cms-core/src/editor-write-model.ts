@@ -19,12 +19,16 @@ import { blankFieldValue, type WriteModelField } from '@nuasite/cms-types'
 export {
 	blankFieldValue,
 	blankRequiredFields,
+	ENTRY_SLUG_FIELD,
 	isBlankFieldValue,
 	newRepeaterItem,
 	type RepeaterItemField,
 	type RequiredGuardField,
 	seedValueForRequiredField,
+	type SlugMirrorField,
+	withEntrySlug,
 	withoutBlankArrayItems,
+	withRenamedEntrySlug,
 	type WriteModelField,
 } from '@nuasite/cms-types'
 

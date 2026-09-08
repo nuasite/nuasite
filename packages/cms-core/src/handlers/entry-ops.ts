@@ -3,7 +3,16 @@ import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths'
 import { scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast'
-import { blankRequiredFields, isBlankFieldValue, newRepeaterItem, type RepeaterItemField, withoutBlankArrayItems } from '../editor-write-model'
+import {
+	blankRequiredFields,
+	ENTRY_SLUG_FIELD,
+	isBlankFieldValue,
+	newRepeaterItem,
+	type RepeaterItemField,
+	withEntrySlug,
+	withoutBlankArrayItems,
+	withRenamedEntrySlug,
+} from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
 import { mimeFromExt } from '../media/local'
 import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared'
@@ -374,6 +383,29 @@ async function applyDerivedFields(
 }
 
 /**
+ * Fill a declared `slug` field from the file slug the create is about to write at.
+ *
+ * The rule itself is `withEntrySlug` in `cms-types`, shared with the create forms so the one they
+ * preview is the one that lands. This wrapper only supplies the collection's declared fields, read
+ * the same way `applyDerivedFields` and `missingRequiredFields` read them (`parseContentConfig` +
+ * `deps.parseCache`), so no new dependency enters `EntryOpsDeps`.
+ *
+ * Deliberately reads the *config*, not the scan: `scanCollections` infers a field from the entries
+ * that exist, and a collection whose first entry is being created has none to infer from.
+ */
+async function applyEntrySlugField(
+	deps: EntryOpsDeps,
+	collection: string,
+	frontmatter: Record<string, unknown>,
+	slug: string,
+): Promise<Record<string, unknown>> {
+	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+	const parsedCollection = parsed.get(collection)
+	if (!parsedCollection) return frontmatter
+	return withEntrySlug(parsedCollection.fields, frontmatter, slug)
+}
+
+/**
  * Whether an **update** should recompute this derived field, given the patch it carries and
  * the merged frontmatter that would land on disk.
  *
@@ -500,10 +532,17 @@ export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): 
 	if (!allowedExtensions.includes(ext)) {
 		return { success: false, error: `Invalid file extension "${ext}". Allowed: ${allowedExtensions.join(', ')}` }
 	}
-	// Derived fields first: a required-but-visible derived field must be judged on the value
+	// The frontmatter copy of the slug first: this is the only place that knows the file name
+	// the entry is about to get, and `withEntrySlug` explains why a create is the only write
+	// allowed to fill it. Ahead of the derive on purpose — a field declared
+	// `derivedFrom: 'slug'` then computes off the address being written instead of the hole the
+	// caller left, which is the case that sent entries out with an empty `url_path`.
+	const seeded = await applyEntrySlugField(deps, collection, frontmatter, normalizedSlug)
+
+	// Derived fields next: a required-but-visible derived field must be judged on the value
 	// it is about to be given, not on the hole the caller left. `resolved` is what both
 	// branches below serialize, so the markdown and the data file agree by construction.
-	const resolved = await applyDerivedFields(deps, collection, frontmatter)
+	const resolved = await applyDerivedFields(deps, collection, seeded)
 
 	// Hard invariant, ahead of every path that could touch the disk — the markdown and
 	// the data branch below both write exactly `{ ...resolved }`, so one check covers
@@ -637,25 +676,204 @@ export async function renameEntry(deps: EntryOpsDeps, collection: string, from: 
 		return { success: false, error: 'Invalid slug' }
 	}
 
+	const { moveFrom, moveTo, previousSlug, newSourcePath } = renameTarget(sourcePath, from, normalizedSlug)
+
+	if (moveFrom === moveTo) {
+		return { success: true, sourcePath: newSourcePath }
+	}
+
+	if (await deps.fs.exists(moveTo)) {
+		return { success: false, error: `Already exists: ${normalizedSlug}` }
+	}
+
+	try {
+		await deps.fs.rename(moveFrom, moveTo)
+	} catch (error) {
+		return { success: false, error: errorMessage(error) }
+	}
+
+	// Outside the try above, and deliberately: the file has moved, so the rename the caller asked
+	// for happened. Reporting `success: false` because the frontmatter touch-up hit something
+	// would leave the editor showing "rename failed" while pointing at a slug that no longer
+	// resolves. `syncRenamedEntrySlug` answers for itself instead — it never throws, and it
+	// declines rather than writing a file it did not fully understand.
+	await syncRenamedEntrySlug(deps, collection, newSourcePath, previousSlug, normalizedSlug)
+	return { success: true, sourcePath: newSourcePath }
+}
+
+/** What a rename moves, where to, and what the entry's slug was before it. */
+interface RenameTarget {
+	/** The path to move. The entry file in a flat layout; the folder that carries the slug otherwise. */
+	moveFrom: string
+	moveTo: string
+	/** Where the entry file itself ends up — what the caller reports and the slug sync patches. */
+	newSourcePath: string
+	previousSlug: string
+}
+
+/**
+ * Resolve a rename against the entry's layout.
+ *
+ * Two markdown layouts to answer for, and `createEntry` writes both (see
+ * `detectCollectionMarkdownLayout`): a flat `<slug>.md`, and a folder layout where the *directory*
+ * carries the slug and the file inside it is always `index.md`.
+ *
+ * The folder layout is identified the way `resolveEntryPath` found the file to begin with — an
+ * `index` file whose parent directory is named for the entry — and not by the file name alone. A
+ * flat entry may perfectly well be called `index.md` (a collection's own landing page usually is),
+ * `resolveEntryPath` checks the flat candidate first so that is what it resolves to, and reading
+ * `'index'` as "this is a folder layout" then treated the *collection* directory as the entry's:
+ * renaming it moved the file out of the collection entirely and left a stray directory at the
+ * content root.
+ *
+ * Where it is the folder layout, the folder is what moves. Colocating assets is the reason to use
+ * it, and `image()` and relative frontmatter paths resolve against the entry file — moving
+ * `index.md` alone would leave `cover: ./cover.jpg` pointing at a file that is no longer beside
+ * it, which fails the build rather than the rename.
+ */
+function renameTarget(sourcePath: string, from: string, normalizedSlug: string): RenameTarget {
 	const lastSlash = sourcePath.lastIndexOf('/')
 	const dir = lastSlash >= 0 ? sourcePath.slice(0, lastSlash) : ''
 	const fileName = lastSlash >= 0 ? sourcePath.slice(lastSlash + 1) : sourcePath
 	const ext = fileExtension(fileName)
-	const newSourcePath = dir ? `${dir}/${normalizedSlug}.${ext}` : `${normalizedSlug}.${ext}`
+	const baseName = fileName.slice(0, fileName.length - ext.length - 1)
 
-	if (sourcePath === newSourcePath) {
-		return { success: true, sourcePath: newSourcePath }
+	const parentSlash = dir.lastIndexOf('/')
+	const dirName = parentSlash >= 0 ? dir.slice(parentSlash + 1) : dir
+	if (baseName !== 'index' || dir === '' || dirName !== from) {
+		const newSourcePath = dir ? `${dir}/${normalizedSlug}.${ext}` : `${normalizedSlug}.${ext}`
+		return { moveFrom: sourcePath, moveTo: newSourcePath, newSourcePath, previousSlug: baseName }
 	}
 
-	if (await deps.fs.exists(newSourcePath)) {
-		return { success: false, error: `File already exists: ${normalizedSlug}.${ext}` }
-	}
+	const parentDir = parentSlash >= 0 ? dir.slice(0, parentSlash) : ''
+	const newDir = parentDir ? `${parentDir}/${normalizedSlug}` : normalizedSlug
+	return { moveFrom: dir, moveTo: newDir, newSourcePath: `${newDir}/index.${ext}`, previousSlug: dirName }
+}
 
+/**
+ * Move the frontmatter copy of the slug along with the file, and recompute what derives from it.
+ *
+ * `createEntry` seeds a declared `slug` field from the file name, which makes a rename the one
+ * operation that can leave the two copies disagreeing: the file becomes `vecirek-2026.md` while
+ * the frontmatter still says `vecirek-ve-vile`, and a `pathname` spec or a `derivedFrom: 'slug'`
+ * field goes on resolving the old URL. `withRenamedEntrySlug` decides whether the copy is the
+ * file's to move (see it for the cases it declines), and the derive runs with the new slug as its
+ * patch so it takes the same path an `updateEntry` that moved the source field would.
+ *
+ * Runs after the rename and writes through the new path, so nothing here depends on the entry
+ * being resolvable under its new slug yet. It touches the file only when something changed, and a
+ * collection with no declared `slug` field never reaches the write at all.
+ */
+async function syncRenamedEntrySlug(
+	deps: EntryOpsDeps,
+	collection: string,
+	sourcePath: string,
+	previousSlug: string,
+	nextSlug: string,
+): Promise<void> {
 	try {
-		await deps.fs.rename(sourcePath, newSourcePath)
-		return { success: true, sourcePath: newSourcePath }
-	} catch (error) {
-		return { success: false, error: errorMessage(error) }
+		const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+		const parsedCollection = parsed.get(collection)
+		// No declared `slug` field, no copy to move — and the file is never opened, so a rename in
+		// every other collection stays the pure move it has always been.
+		if (!parsedCollection?.fields.some(field => field.name === ENTRY_SLUG_FIELD)) return
+
+		const document = openEntryDocument(sourcePath, await deps.fs.readFile(sourcePath))
+		if (!document) return
+
+		const moved = withRenamedEntrySlug(parsedCollection.fields, document.record, previousSlug, nextSlug)
+		if (moved === document.record) return
+
+		const resolved = await applyDerivedFields(deps, collection, moved, { [ENTRY_SLUG_FIELD]: nextSlug })
+		const updates = changedTextKeys(document.record, resolved)
+		if (Object.keys(updates).length === 0) return
+
+		await deps.fs.writeFile(sourcePath, document.withKeys(updates))
+	} catch {
+		// The rename itself is done and correct; this is the copy catching up. Leaving it stale is
+		// the state every entry was in before the rule existed, and it is the only outcome here
+		// that cannot make things worse — so a failure to read or write is swallowed rather than
+		// turned into a half-applied entry or a rename reported as failed.
+	}
+}
+
+/** The string-valued keys `after` changed, which is all this write path ever produces. */
+function changedTextKeys(before: Record<string, unknown>, after: Record<string, unknown>): Record<string, string> {
+	const updates: Record<string, string> = {}
+	for (const [key, value] of Object.entries(after)) {
+		if (typeof value === 'string' && value !== before[key]) updates[key] = value
+	}
+	return updates
+}
+
+/** An entry's frontmatter, readable as a value and editable without rewriting the rest of the file. */
+interface EntryDocument {
+	/** The frontmatter as a plain record, for the rules that reason over it. */
+	record: Record<string, unknown>
+	/** The whole file with `updates` applied and everything else — comments included — left alone. */
+	withKeys(updates: Record<string, string>): string
+}
+
+/**
+ * Open an entry for a *targeted* frontmatter edit, or decline.
+ *
+ * Two reasons this exists rather than `parseFrontmatter` → `serializeFrontmatter`, and both are
+ * about a rename being a move, not an edit:
+ *
+ * - **Comments survive.** `serializeFrontmatter` builds a fresh `yaml.Document` from a plain
+ *   object, which drops every comment in the block — including the `@position` and `@group`
+ *   directives `parseFieldDirectives` reads back as layout. A rename that silently restyled the
+ *   author's frontmatter would be a worse bug than the stale slug it set out to fix.
+ * - **An unparseable file is left alone.** `parseFrontmatter` reports invalid YAML as `{}`, and a
+ *   writer that believes it rewrites the entry down to the one key it just filled in. `null` here
+ *   means "not understood", and nothing downstream may write.
+ */
+function openEntryDocument(sourcePath: string, raw: string): EntryDocument | null {
+	if (sourcePath.endsWith('.json')) {
+		let parsed: unknown
+		try {
+			parsed = JSON.parse(raw)
+		} catch {
+			return null
+		}
+		if (!isPlainRecord(parsed)) return null
+		const record = parsed
+		return { record, withKeys: updates => JSON.stringify({ ...record, ...updates }, null, 2) + '\n' }
+	}
+
+	if (isDataFile(sourcePath)) return openYamlDocument(raw, block => block)
+
+	const leading = raw.length - raw.trimStart().length
+	const lines = raw.slice(leading).split('\n')
+	if (lines[0]?.trimEnd() !== '---') return null
+	const endLineIndex = lines.findIndex((line, index) => index > 0 && line.trimEnd() === '---')
+	if (endLineIndex === -1) return null
+
+	const body = lines.slice(endLineIndex + 1).join('\n')
+	return openYamlDocument(lines.slice(1, endLineIndex).join('\n'), block => `---\n${block.trimEnd()}\n---\n${body}`)
+}
+
+/** A YAML source and the file it sits in, edited key by key so the document's own formatting stays. */
+function openYamlDocument(source: string, reassemble: (block: string) => string): EntryDocument | null {
+	const doc = yaml.parseDocument(source)
+	if (doc.errors.length > 0) return null
+	const parsed: unknown = doc.toJS()
+	// An empty block parses to `null` and is a map waiting to happen — `doc.set` creates it. A
+	// block that parses to a list or a scalar is something else entirely, and not ours to edit.
+	if (parsed !== null && !isPlainRecord(parsed)) return null
+
+	return {
+		record: parsed ?? {},
+		withKeys(updates) {
+			for (const [key, value] of Object.entries(updates)) {
+				const scalar = new yaml.Scalar(value)
+				// The quoting `serializeFrontmatter` applies, for the same reason: an unquoted
+				// `2026-01-01` reads back as a Date, and a slug is a string.
+				if (YAML_DATE_PATTERN.test(value)) scalar.type = yaml.Scalar.QUOTE_SINGLE
+				doc.set(key, scalar)
+			}
+			return reassemble(doc.toString())
+		},
 	}
 }
 
