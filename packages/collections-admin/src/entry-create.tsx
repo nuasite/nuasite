@@ -121,7 +121,7 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 				// `Other`, which a declared section is free to be titled too — two blocks with one key
 				// let React reuse the wrong inputs between them.
 				<Fragment key={`block-${index}`}>
-					{block.heading ? <div className="nua-cadmin-section-summary">{block.heading}</div> : null}
+					{block.heading ? <div className="nua-cadmin-form-heading">{block.heading}</div> : null}
 					{block.fields.map(field => (
 						<div key={field.name} className={`nua-cadmin-field${field.role ? ` nua-cadmin-field-${field.role}` : ''}`}>
 							<div className="nua-cadmin-field-label">

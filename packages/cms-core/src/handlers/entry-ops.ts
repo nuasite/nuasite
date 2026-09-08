@@ -676,28 +676,57 @@ export async function renameEntry(deps: EntryOpsDeps, collection: string, from: 
 		return { success: false, error: 'Invalid slug' }
 	}
 
-	const lastSlash = sourcePath.lastIndexOf('/')
-	const dir = lastSlash >= 0 ? sourcePath.slice(0, lastSlash) : ''
-	const fileName = lastSlash >= 0 ? sourcePath.slice(lastSlash + 1) : sourcePath
-	const ext = fileExtension(fileName)
-	const previousSlug = fileName.slice(0, fileName.length - ext.length - 1)
-	const newSourcePath = dir ? `${dir}/${normalizedSlug}.${ext}` : `${normalizedSlug}.${ext}`
+	const { previousSlug, newSourcePath } = renameTarget(sourcePath, normalizedSlug)
 
 	if (sourcePath === newSourcePath) {
 		return { success: true, sourcePath: newSourcePath }
 	}
 
 	if (await deps.fs.exists(newSourcePath)) {
-		return { success: false, error: `File already exists: ${normalizedSlug}.${ext}` }
+		return { success: false, error: `File already exists: ${normalizedSlug}` }
 	}
 
 	try {
 		await deps.fs.rename(sourcePath, newSourcePath)
-		await syncRenamedEntrySlug(deps, collection, newSourcePath, previousSlug, normalizedSlug)
-		return { success: true, sourcePath: newSourcePath }
 	} catch (error) {
 		return { success: false, error: errorMessage(error) }
 	}
+
+	// Outside the try above, and deliberately: the file has moved, so the rename the caller asked
+	// for happened. Reporting `success: false` because the frontmatter touch-up hit something
+	// would leave the editor showing "rename failed" while pointing at a slug that no longer
+	// resolves. `syncRenamedEntrySlug` answers for itself instead — it never throws, and it
+	// declines rather than writing a file it did not fully understand.
+	await syncRenamedEntrySlug(deps, collection, newSourcePath, previousSlug, normalizedSlug)
+	return { success: true, sourcePath: newSourcePath }
+}
+
+/**
+ * Where a rename moves the entry, and what its slug was before the move.
+ *
+ * Two markdown layouts to answer for, and `createEntry` writes both (see
+ * `detectCollectionMarkdownLayout`): a flat `<slug>.md`, and an `index` layout where the *folder*
+ * carries the slug and the file is always `index.md`. In the index layout the rename moves the
+ * folder, and the old slug is the folder's name — read off the file name it is `'index'`, which
+ * matches no frontmatter copy and quietly left the slug rule with nothing to do for exactly the
+ * collections `createEntry` had just laid out that way.
+ */
+function renameTarget(sourcePath: string, normalizedSlug: string): { previousSlug: string; newSourcePath: string } {
+	const lastSlash = sourcePath.lastIndexOf('/')
+	const dir = lastSlash >= 0 ? sourcePath.slice(0, lastSlash) : ''
+	const fileName = lastSlash >= 0 ? sourcePath.slice(lastSlash + 1) : sourcePath
+	const ext = fileExtension(fileName)
+	const baseName = fileName.slice(0, fileName.length - ext.length - 1)
+
+	if (baseName !== 'index' || dir === '') {
+		return { previousSlug: baseName, newSourcePath: dir ? `${dir}/${normalizedSlug}.${ext}` : `${normalizedSlug}.${ext}` }
+	}
+
+	const parentSlash = dir.lastIndexOf('/')
+	const parentDir = parentSlash >= 0 ? dir.slice(0, parentSlash) : ''
+	const previousSlug = parentSlash >= 0 ? dir.slice(parentSlash + 1) : dir
+	const newDir = parentDir ? `${parentDir}/${normalizedSlug}` : normalizedSlug
+	return { previousSlug, newSourcePath: `${newDir}/index.${ext}` }
 }
 
 /**
@@ -721,16 +750,110 @@ async function syncRenamedEntrySlug(
 	previousSlug: string,
 	nextSlug: string,
 ): Promise<void> {
-	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
-	const parsedCollection = parsed.get(collection)
-	if (!parsedCollection) return
+	try {
+		const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+		const parsedCollection = parsed.get(collection)
+		// No declared `slug` field, no copy to move — and the file is never opened, so a rename in
+		// every other collection stays the pure move it has always been.
+		if (!parsedCollection?.fields.some(field => field.name === ENTRY_SLUG_FIELD)) return
 
-	const loaded = await loadFrontmatterAt(deps, sourcePath)
-	const moved = withRenamedEntrySlug(parsedCollection.fields, loaded.frontmatter, previousSlug, nextSlug)
-	if (moved === loaded.frontmatter) return
+		const document = openEntryDocument(sourcePath, await deps.fs.readFile(sourcePath))
+		if (!document) return
 
-	const resolved = await applyDerivedFields(deps, collection, moved, { [ENTRY_SLUG_FIELD]: nextSlug })
-	await writeEntryFrontmatter(deps, { ...loaded, frontmatter: resolved })
+		const moved = withRenamedEntrySlug(parsedCollection.fields, document.record, previousSlug, nextSlug)
+		if (moved === document.record) return
+
+		const resolved = await applyDerivedFields(deps, collection, moved, { [ENTRY_SLUG_FIELD]: nextSlug })
+		const updates = changedTextKeys(document.record, resolved)
+		if (Object.keys(updates).length === 0) return
+
+		await deps.fs.writeFile(sourcePath, document.withKeys(updates))
+	} catch {
+		// The rename itself is done and correct; this is the copy catching up. Leaving it stale is
+		// the state every entry was in before the rule existed, and it is the only outcome here
+		// that cannot make things worse — so a failure to read or write is swallowed rather than
+		// turned into a half-applied entry or a rename reported as failed.
+	}
+}
+
+/** The string-valued keys `after` changed, which is all this write path ever produces. */
+function changedTextKeys(before: Record<string, unknown>, after: Record<string, unknown>): Record<string, string> {
+	const updates: Record<string, string> = {}
+	for (const [key, value] of Object.entries(after)) {
+		if (typeof value === 'string' && value !== before[key]) updates[key] = value
+	}
+	return updates
+}
+
+/** An entry's frontmatter, readable as a value and editable without rewriting the rest of the file. */
+interface EntryDocument {
+	/** The frontmatter as a plain record, for the rules that reason over it. */
+	record: Record<string, unknown>
+	/** The whole file with `updates` applied and everything else — comments included — left alone. */
+	withKeys(updates: Record<string, string>): string
+}
+
+/**
+ * Open an entry for a *targeted* frontmatter edit, or decline.
+ *
+ * Two reasons this exists rather than `parseFrontmatter` → `serializeFrontmatter`, and both are
+ * about a rename being a move, not an edit:
+ *
+ * - **Comments survive.** `serializeFrontmatter` builds a fresh `yaml.Document` from a plain
+ *   object, which drops every comment in the block — including the `@position` and `@group`
+ *   directives `parseFieldDirectives` reads back as layout. A rename that silently restyled the
+ *   author's frontmatter would be a worse bug than the stale slug it set out to fix.
+ * - **An unparseable file is left alone.** `parseFrontmatter` reports invalid YAML as `{}`, and a
+ *   writer that believes it rewrites the entry down to the one key it just filled in. `null` here
+ *   means "not understood", and nothing downstream may write.
+ */
+function openEntryDocument(sourcePath: string, raw: string): EntryDocument | null {
+	if (sourcePath.endsWith('.json')) {
+		let parsed: unknown
+		try {
+			parsed = JSON.parse(raw)
+		} catch {
+			return null
+		}
+		if (!isPlainRecord(parsed)) return null
+		const record = parsed
+		return { record, withKeys: updates => JSON.stringify({ ...record, ...updates }, null, 2) + '\n' }
+	}
+
+	if (isDataFile(sourcePath)) return openYamlDocument(raw, block => block)
+
+	const leading = raw.length - raw.trimStart().length
+	const lines = raw.slice(leading).split('\n')
+	if (lines[0]?.trimEnd() !== '---') return null
+	const endLineIndex = lines.findIndex((line, index) => index > 0 && line.trimEnd() === '---')
+	if (endLineIndex === -1) return null
+
+	const body = lines.slice(endLineIndex + 1).join('\n')
+	return openYamlDocument(lines.slice(1, endLineIndex).join('\n'), block => `---\n${block.trimEnd()}\n---\n${body}`)
+}
+
+/** A YAML source and the file it sits in, edited key by key so the document's own formatting stays. */
+function openYamlDocument(source: string, reassemble: (block: string) => string): EntryDocument | null {
+	const doc = yaml.parseDocument(source)
+	if (doc.errors.length > 0) return null
+	const parsed: unknown = doc.toJS()
+	// An empty block parses to `null` and is a map waiting to happen — `doc.set` creates it. A
+	// block that parses to a list or a scalar is something else entirely, and not ours to edit.
+	if (parsed !== null && !isPlainRecord(parsed)) return null
+
+	return {
+		record: parsed ?? {},
+		withKeys(updates) {
+			for (const [key, value] of Object.entries(updates)) {
+				const scalar = new yaml.Scalar(value)
+				// The quoting `serializeFrontmatter` applies, for the same reason: an unquoted
+				// `2026-01-01` reads back as a Date, and a slug is a string.
+				if (YAML_DATE_PATTERN.test(value)) scalar.type = yaml.Scalar.QUOTE_SINGLE
+				doc.set(key, scalar)
+			}
+			return reassemble(doc.toString())
+		},
+	}
 }
 
 // ============================================================================
@@ -764,14 +887,7 @@ async function loadEntryFrontmatter(
 ): Promise<{ sourcePath: string; frontmatter: Record<string, unknown>; body: string; data: boolean } | null> {
 	const sourcePath = await resolveEntryPath(deps, collection, slug)
 	if (!sourcePath) return null
-	return await loadFrontmatterAt(deps, sourcePath)
-}
 
-/** The same read as `loadEntryFrontmatter`, for a caller that already knows the path. */
-async function loadFrontmatterAt(
-	deps: EntryOpsDeps,
-	sourcePath: string,
-): Promise<{ sourcePath: string; frontmatter: Record<string, unknown>; body: string; data: boolean }> {
 	const raw = await deps.fs.readFile(sourcePath)
 	if (isDataFile(sourcePath)) {
 		const parsed = sourcePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)

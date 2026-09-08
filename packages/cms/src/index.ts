@@ -256,7 +256,13 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 						for (const field of def.fields) {
 							const fieldOverride = overrides.fields[field.name]
 							if (!fieldOverride) continue
-							if (fieldOverride.position) field.position = fieldOverride.position
+							// `positionDeclared` alongside it, for the same reason the config and directive paths
+							// set it: on the wire this `'sidebar'` is the one the scanner also guesses, and a
+							// layout that cannot tell them apart overrides the highest-priority answer there is.
+							if (fieldOverride.position) {
+								field.position = fieldOverride.position
+								field.positionDeclared = true
+							}
 							if (fieldOverride.group) field.group = fieldOverride.group
 						}
 					}

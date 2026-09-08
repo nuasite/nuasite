@@ -921,6 +921,18 @@ select.nua-cadmin-input:focus {
 	padding: 2px 12px 12px;
 }
 
+/*
+ * A section heading in a form that does not collapse — the create form, which keeps the plan's
+ * headings but opens every block. It cannot borrow `.nua-cadmin-section-summary`: that one is
+ * styled for a `<summary>`, so it carries a `▸` marker and a `cursor: pointer` promising a
+ * disclosure that is not there (and the rule rotating the arrow only matches inside `<details>`,
+ * so every heading read as collapsed).
+ */
+.nua-cadmin-form-heading {
+	padding: 10px 0 2px;
+	font-weight: 600;
+}
+
 /* --- Tabs (tabbed display) --- */
 
 .nua-cadmin-tabs {

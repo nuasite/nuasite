@@ -162,5 +162,67 @@ export const collections = { events, pages, posts }
 			expect(result.success).toBe(true)
 			expect(await read('src/content/posts/nazdar.md')).toBe('---\ntitle: Ahoj\n---\nBody\n')
 		})
+
+		// A rename is a move, not an edit. Everything it did not come for has to survive it —
+		// including the comments a rewrite through `serializeFrontmatter` would have dropped, which
+		// is where `parseFieldDirectives` reads a field's column from.
+		test('the rest of the frontmatter survives, comments and layout directives included', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/events/vecirek.md': '---\n# @position header\ntitle: Večírek\n\n# kdy to je\ndate: 2026-01-01\nslug: vecirek\n---\n\n# Body\n',
+			})
+
+			const result = await core().renameEntry('events', 'vecirek', 'vecirek-2026')
+
+			expect(result.success).toBe(true)
+			const written = await read('src/content/events/vecirek-2026.md')
+			expect(written).toContain('# @position header')
+			expect(written).toContain('# kdy to je')
+			expect(written).toContain('slug: vecirek-2026')
+			expect(written).toContain('title: Večírek')
+			expect(written).toEndWith('---\n\n# Body\n')
+		})
+
+		// `parseFrontmatter` reports invalid YAML as `{}`, and a writer that believes it rewrites
+		// the entry down to the one key it just filled in. Every other field would be gone, and the
+		// caller told it worked.
+		test('an entry whose frontmatter cannot be parsed is moved and not touched', async () => {
+			const broken = '---\ntitle: Party\nperex: "unclosed\ndate:\n---\n# Body here\n'
+			await write({ 'src/content.config.ts': CONFIG, 'src/content/events/party.md': broken })
+
+			const result = await core().renameEntry('events', 'party', 'party-2026')
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/events/party-2026.md')).toBe(broken)
+		})
+
+		test('a data entry that is not valid JSON is moved and not touched', async () => {
+			const broken = '{ "title": "Party", }'
+			await write({ 'src/content.config.ts': CONFIG, 'src/content/events/party.json': broken })
+
+			const result = await core().renameEntry('events', 'party', 'party-2026')
+
+			// The rename happened, so it is reported as having happened — the editor must not be
+			// told a move failed while the entry it is pointing at has already moved away.
+			expect(result.success).toBe(true)
+			expect(result.sourcePath).toContain('party-2026.json')
+			expect(await read('src/content/events/party-2026.json')).toBe(broken)
+		})
+
+		// `createEntry` writes this layout itself once a collection uses it, and the slug is the
+		// folder's name — read off the file it is `'index'`, which matches no frontmatter copy.
+		test('an index-layout entry moves its folder, and its slug with it', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/events/vecirek/index.md': '---\ntitle: Večírek\nslug: vecirek\nurl_path: /vecirek\n---\n',
+			})
+
+			const result = await core().renameEntry('events', 'vecirek', 'vecirek-2026')
+
+			expect(result.success).toBe(true)
+			const written = await read('src/content/events/vecirek-2026/index.md')
+			expect(written).toContain('slug: vecirek-2026')
+			expect(written).toContain('url_path: /vecirek-2026')
+		})
 	})
 })
