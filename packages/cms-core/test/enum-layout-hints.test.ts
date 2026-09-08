@@ -127,9 +127,9 @@ export const collections = { posts }
 		expect(field?.width).toBeUndefined()
 		expect(field?.order).toBeUndefined()
 		expect(field?.hidden).toBeUndefined()
-		// `position` is the scanner's own default for a non-sidebar field type — not something
-		// the hint path touches. Without a `sidebar` hint it has to stay exactly that.
-		expect(field?.position).toBe('header')
+		// `position` is an author's choice, never a scanner default: without a `sidebar` hint or a
+		// `@position` directive the field carries none at all, and the editor picks the column.
+		expect(field?.position).toBeUndefined()
 		expect(field?.type).toBe('select')
 		expect(field?.options).toEqual(['zpravy', 'tipy'])
 		expect(field?.optionsClosed).toBe(true)

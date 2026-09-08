@@ -158,6 +158,14 @@ function parseFieldDirectives(content: string): Record<string, { position?: 'sid
 /**
  * Assign default positions to fields based on field name heuristics,
  * then overlay frontmatter comment directives.
+ *
+ * Only the sidebar default is written. A field the heuristic does not recognise is left with no
+ * `position` at all, which is what "the editor decides" looks like on the wire — it used to be
+ * stamped `'header'`, and that broke the one consumer that read it: an editor rendering
+ * `position === 'header'` as a top strip put *every* unrecognised field in the strip and left the
+ * main column empty, which in turn meant a collection's declared `cms.sections` had no fields to
+ * order and never rendered. `'header'` now only ever comes from a `@position` directive or
+ * `n.text({ position: 'header' })`, so an editor can trust it as an author's choice.
  */
 function assignFieldMetadata(
 	fields: FieldDefinition[],
@@ -167,8 +175,6 @@ function assignFieldMetadata(
 		// Scanner defaults: well-known fields go to sidebar
 		if (SIDEBAR_FIELD_NAMES.has(normalizeFieldName(field.name)) || field.type === 'image' || field.type === 'boolean') {
 			field.position = 'sidebar'
-		} else {
-			field.position = 'header'
 		}
 
 		// Overlay frontmatter comment directives

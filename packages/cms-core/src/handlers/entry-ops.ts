@@ -3,7 +3,14 @@ import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths'
 import { scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast'
-import { blankRequiredFields, isBlankFieldValue, newRepeaterItem, type RepeaterItemField, withoutBlankArrayItems } from '../editor-write-model'
+import {
+	blankRequiredFields,
+	isBlankFieldValue,
+	newRepeaterItem,
+	type RepeaterItemField,
+	withEntrySlug,
+	withoutBlankArrayItems,
+} from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
 import { mimeFromExt } from '../media/local'
 import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared'
@@ -374,6 +381,29 @@ async function applyDerivedFields(
 }
 
 /**
+ * Fill a declared `slug` field from the file slug the create is about to write at.
+ *
+ * The rule itself is `withEntrySlug` in `cms-types`, shared with the create forms so the one they
+ * preview is the one that lands. This wrapper only supplies the collection's declared fields, read
+ * the same way `applyDerivedFields` and `missingRequiredFields` read them (`parseContentConfig` +
+ * `deps.parseCache`), so no new dependency enters `EntryOpsDeps`.
+ *
+ * Deliberately reads the *config*, not the scan: `scanCollections` infers a field from the entries
+ * that exist, and a collection whose first entry is being created has none to infer from.
+ */
+async function applyEntrySlugField(
+	deps: EntryOpsDeps,
+	collection: string,
+	frontmatter: Record<string, unknown>,
+	slug: string,
+): Promise<Record<string, unknown>> {
+	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+	const parsedCollection = parsed.get(collection)
+	if (!parsedCollection) return frontmatter
+	return withEntrySlug(parsedCollection.fields, frontmatter, slug)
+}
+
+/**
  * Whether an **update** should recompute this derived field, given the patch it carries and
  * the merged frontmatter that would land on disk.
  *
@@ -500,10 +530,17 @@ export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): 
 	if (!allowedExtensions.includes(ext)) {
 		return { success: false, error: `Invalid file extension "${ext}". Allowed: ${allowedExtensions.join(', ')}` }
 	}
-	// Derived fields first: a required-but-visible derived field must be judged on the value
+	// The frontmatter copy of the slug first: this is the only place that knows the file name
+	// the entry is about to get, and `withEntrySlug` explains why a create is the only write
+	// allowed to fill it. Ahead of the derive on purpose — a field declared
+	// `derivedFrom: 'slug'` then computes off the address being written instead of the hole the
+	// caller left, which is the case that sent entries out with an empty `url_path`.
+	const seeded = await applyEntrySlugField(deps, collection, frontmatter, normalizedSlug)
+
+	// Derived fields next: a required-but-visible derived field must be judged on the value
 	// it is about to be given, not on the hole the caller left. `resolved` is what both
 	// branches below serialize, so the markdown and the data file agree by construction.
-	const resolved = await applyDerivedFields(deps, collection, frontmatter)
+	const resolved = await applyDerivedFields(deps, collection, seeded)
 
 	// Hard invariant, ahead of every path that could touch the disk — the markdown and
 	// the data branch below both write exactly `{ ...resolved }`, so one check covers

@@ -744,11 +744,15 @@ export interface CmsManifest {
 export {
 	blankFieldValue,
 	blankRequiredFields,
+	type DeclaredDerivationField,
+	ENTRY_SLUG_FIELD,
 	isBlankFieldValue,
 	newRepeaterItem,
 	type RepeaterItemField,
 	type RequiredGuardField,
 	seedValueForRequiredField,
+	type SlugMirrorField,
+	withEntrySlug,
 	withoutBlankArrayItems,
 	type WriteModelField,
 } from './field-values'
