@@ -676,18 +676,18 @@ export async function renameEntry(deps: EntryOpsDeps, collection: string, from: 
 		return { success: false, error: 'Invalid slug' }
 	}
 
-	const { previousSlug, newSourcePath } = renameTarget(sourcePath, normalizedSlug)
+	const { moveFrom, moveTo, previousSlug, newSourcePath } = renameTarget(sourcePath, from, normalizedSlug)
 
-	if (sourcePath === newSourcePath) {
+	if (moveFrom === moveTo) {
 		return { success: true, sourcePath: newSourcePath }
 	}
 
-	if (await deps.fs.exists(newSourcePath)) {
-		return { success: false, error: `File already exists: ${normalizedSlug}` }
+	if (await deps.fs.exists(moveTo)) {
+		return { success: false, error: `Already exists: ${normalizedSlug}` }
 	}
 
 	try {
-		await deps.fs.rename(sourcePath, newSourcePath)
+		await deps.fs.rename(moveFrom, moveTo)
 	} catch (error) {
 		return { success: false, error: errorMessage(error) }
 	}
@@ -701,32 +701,53 @@ export async function renameEntry(deps: EntryOpsDeps, collection: string, from: 
 	return { success: true, sourcePath: newSourcePath }
 }
 
+/** What a rename moves, where to, and what the entry's slug was before it. */
+interface RenameTarget {
+	/** The path to move. The entry file in a flat layout; the folder that carries the slug otherwise. */
+	moveFrom: string
+	moveTo: string
+	/** Where the entry file itself ends up — what the caller reports and the slug sync patches. */
+	newSourcePath: string
+	previousSlug: string
+}
+
 /**
- * Where a rename moves the entry, and what its slug was before the move.
+ * Resolve a rename against the entry's layout.
  *
  * Two markdown layouts to answer for, and `createEntry` writes both (see
- * `detectCollectionMarkdownLayout`): a flat `<slug>.md`, and an `index` layout where the *folder*
- * carries the slug and the file is always `index.md`. In the index layout the rename moves the
- * folder, and the old slug is the folder's name — read off the file name it is `'index'`, which
- * matches no frontmatter copy and quietly left the slug rule with nothing to do for exactly the
- * collections `createEntry` had just laid out that way.
+ * `detectCollectionMarkdownLayout`): a flat `<slug>.md`, and a folder layout where the *directory*
+ * carries the slug and the file inside it is always `index.md`.
+ *
+ * The folder layout is identified the way `resolveEntryPath` found the file to begin with — an
+ * `index` file whose parent directory is named for the entry — and not by the file name alone. A
+ * flat entry may perfectly well be called `index.md` (a collection's own landing page usually is),
+ * `resolveEntryPath` checks the flat candidate first so that is what it resolves to, and reading
+ * `'index'` as "this is a folder layout" then treated the *collection* directory as the entry's:
+ * renaming it moved the file out of the collection entirely and left a stray directory at the
+ * content root.
+ *
+ * Where it is the folder layout, the folder is what moves. Colocating assets is the reason to use
+ * it, and `image()` and relative frontmatter paths resolve against the entry file — moving
+ * `index.md` alone would leave `cover: ./cover.jpg` pointing at a file that is no longer beside
+ * it, which fails the build rather than the rename.
  */
-function renameTarget(sourcePath: string, normalizedSlug: string): { previousSlug: string; newSourcePath: string } {
+function renameTarget(sourcePath: string, from: string, normalizedSlug: string): RenameTarget {
 	const lastSlash = sourcePath.lastIndexOf('/')
 	const dir = lastSlash >= 0 ? sourcePath.slice(0, lastSlash) : ''
 	const fileName = lastSlash >= 0 ? sourcePath.slice(lastSlash + 1) : sourcePath
 	const ext = fileExtension(fileName)
 	const baseName = fileName.slice(0, fileName.length - ext.length - 1)
 
-	if (baseName !== 'index' || dir === '') {
-		return { previousSlug: baseName, newSourcePath: dir ? `${dir}/${normalizedSlug}.${ext}` : `${normalizedSlug}.${ext}` }
+	const parentSlash = dir.lastIndexOf('/')
+	const dirName = parentSlash >= 0 ? dir.slice(parentSlash + 1) : dir
+	if (baseName !== 'index' || dir === '' || dirName !== from) {
+		const newSourcePath = dir ? `${dir}/${normalizedSlug}.${ext}` : `${normalizedSlug}.${ext}`
+		return { moveFrom: sourcePath, moveTo: newSourcePath, newSourcePath, previousSlug: baseName }
 	}
 
-	const parentSlash = dir.lastIndexOf('/')
 	const parentDir = parentSlash >= 0 ? dir.slice(0, parentSlash) : ''
-	const previousSlug = parentSlash >= 0 ? dir.slice(parentSlash + 1) : dir
 	const newDir = parentDir ? `${parentDir}/${normalizedSlug}` : normalizedSlug
-	return { previousSlug, newSourcePath: `${newDir}/index.${ext}` }
+	return { moveFrom: dir, moveTo: newDir, newSourcePath: `${newDir}/index.${ext}`, previousSlug: dirName }
 }
 
 /**

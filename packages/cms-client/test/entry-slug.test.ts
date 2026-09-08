@@ -20,12 +20,25 @@ describe('the frontmatter slug follows the file slug on create', () => {
 		expect(frontmatter.slug).toBe('')
 	})
 
+	// The server passes `ParsedField`s, whose `type` is `undefined` for a plain `z.string()`; the
+	// create form passes scanned `FieldDefinition`s, whose `type` is *inferred from the values seen*
+	// — `/o-nas` reads as `'url'`, a long one as `'textarea'`. Demanding `'text'` made the form
+	// decline exactly where the server filled the field in, and report a required slug nobody could
+	// then satisfy.
+	test('every spelling of a string qualifies, not just `text`', () => {
+		for (const type of ['text', 'textarea', 'url', 'select', undefined] as const) {
+			expect(withEntrySlug(slugField({ type }), { slug: '' }, 'o-nas').slug).toBe('o-nas')
+		}
+	})
+
 	test('it declines, returning the very same object, when it has no business writing', () => {
 		const frontmatter = { slug: '' }
 		// Nothing declared this field — inventing the key writes frontmatter the schema rejects.
 		expect(withEntrySlug([], frontmatter, 'event')).toBe(frontmatter)
-		// Not text.
+		// A slug that holds something which is not a line of text at all.
 		expect(withEntrySlug(slugField({ type: 'number' }), frontmatter, 'event')).toBe(frontmatter)
+		expect(withEntrySlug(slugField({ type: 'array' }), frontmatter, 'event')).toBe(frontmatter)
+		expect(withEntrySlug(slugField({ type: 'image' }), frontmatter, 'event')).toBe(frontmatter)
 		// No file slug yet (the form is still empty).
 		expect(withEntrySlug(slugField(), frontmatter, '')).toBe(frontmatter)
 		// `applyDerivedFields` owns a *declared* derivation and runs right after this.

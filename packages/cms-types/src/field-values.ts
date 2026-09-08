@@ -219,6 +219,26 @@ export function blankRequiredFields(fields: RequiredGuardField[], frontmatter: R
 /** The frontmatter key that mirrors an entry's file slug. */
 export const ENTRY_SLUG_FIELD = 'slug'
 
+/**
+ * Field types a `slug` cannot be, for the entry-slug rules below.
+ *
+ * A deny-list, not an allow-list of `'text'`, because the two callers of those rules see the same
+ * field differently: the server hands them `ParsedField`s, whose `type` is `undefined` for a plain
+ * `z.string()`, while the create form hands them scanned `FieldDefinition`s, whose `type` is always
+ * set and *inferred from sampled values* — a `slug` holding `/o-nas` is typed `'url'`, and a very
+ * long one `'textarea'`. Demanding `'text'` made the form decline exactly where the server would
+ * have filled the field in, so the form reported a required `slug` the user then could not satisfy.
+ *
+ * What actually disqualifies a `slug` is holding something that is not a line of text at all. Those
+ * are listed here; everything else is a spelling of a string, and the rules can read it.
+ */
+const NON_TEXT_SLUG_TYPES = new Set<FieldType>(['array', 'object', 'reference', 'image', 'file', 'boolean', 'number', 'date', 'datetime'])
+
+/** Whether this field could hold an entry's address at all. */
+function holdsEntrySlug(field: SlugMirrorField): boolean {
+	return field.name === ENTRY_SLUG_FIELD && (field.type === undefined || !NON_TEXT_SLUG_TYPES.has(field.type))
+}
+
 /** A field the entry-slug rule reads — satisfied by both `FieldDefinition` and a `ParsedField`. */
 export interface SlugMirrorField extends WriteModelField, DeclaredDerivationField {}
 
@@ -240,7 +260,9 @@ export interface SlugMirrorField extends WriteModelField, DeclaredDerivationFiel
  *
  * - **No `slug` field declared.** The key is not part of this collection's schema, and inventing
  *   it would write frontmatter the schema rejects — a single rejected entry fails the site build.
- * - **The field is not text.** Whatever a non-text `slug` means, it is not this.
+ * - **The field cannot hold a line of text.** Whatever a `slug` typed as a list, an object, an
+ *   image or a number means, it is not this. See `NON_TEXT_SLUG_TYPES` for why the test is that
+ *   way round rather than a demand for `'text'`.
  * - **A value is already there.** The author typed it, or a previous rule computed it; either way
  *   it is not ours to overwrite. This is what keeps a hand-chosen address stable.
  * - **The derivation was declared.** `applyDerivedFields` owns those, computes them from their
@@ -255,8 +277,8 @@ export interface SlugMirrorField extends WriteModelField, DeclaredDerivationFiel
  */
 export function withEntrySlug(fields: SlugMirrorField[], frontmatter: Record<string, unknown>, slug: string): Record<string, unknown> {
 	if (slug === '') return frontmatter
-	const field = fields.find(candidate => candidate.name === ENTRY_SLUG_FIELD)
-	if (!field || (field.type !== undefined && field.type !== 'text')) return frontmatter
+	const field = fields.find(holdsEntrySlug)
+	if (!field) return frontmatter
 	if (isDeclaredDerived(field) || !isBlankFieldValue(frontmatter[field.name])) return frontmatter
 	return { ...frontmatter, [field.name]: slug }
 }
@@ -275,8 +297,8 @@ export function withEntrySlug(fields: SlugMirrorField[], frontmatter: Record<str
  * narrow case where the value is demonstrably the file's and not the author's: a `slug` the
  * author pointed somewhere else on purpose already disagreed with the file name before the
  * rename, and moving the file is no reason to overwrite the address they chose. The remaining
- * declines are `withEntrySlug`'s, for its reasons — no declared `slug` field, a non-text one, or
- * a declared derivation that `applyDerivedFields` owns and recomputes anyway.
+ * declines are `withEntrySlug`'s, for its reasons — no declared `slug` field, one that cannot hold
+ * text, or a declared derivation that `applyDerivedFields` owns and recomputes anyway.
  *
  * Comparison is on the *normalized* slugs the caller passes: both sides of a rename are
  * `slugify`'d before they reach a file name, so that is the form the frontmatter was seeded in.
@@ -288,8 +310,8 @@ export function withRenamedEntrySlug(
 	toSlug: string,
 ): Record<string, unknown> {
 	if (toSlug === '') return frontmatter
-	const field = fields.find(candidate => candidate.name === ENTRY_SLUG_FIELD)
-	if (!field || (field.type !== undefined && field.type !== 'text')) return frontmatter
+	const field = fields.find(holdsEntrySlug)
+	if (!field) return frontmatter
 	if (isDeclaredDerived(field)) return frontmatter
 	const current = frontmatter[field.name]
 	if (!isBlankFieldValue(current) && current !== fromSlug) return frontmatter

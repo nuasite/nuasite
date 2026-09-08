@@ -29,6 +29,7 @@ describe('createEntry fills a declared slug field from the file name', () => {
 	}
 
 	const read = (relative: string): Promise<string> => fs.readFile(path.join(root, relative), 'utf-8')
+	const exists = (relative: string): Promise<boolean> => fs.access(path.join(root, relative)).then(() => true, () => false)
 	const core = (): ReturnType<typeof createCmsCore> => createCmsCore(createNodeFs(root))
 
 	/** `events` is the shape that prompted this; `pages` declares a slug the author fills in; `posts` has none. */
@@ -211,10 +212,14 @@ export const collections = { events, pages, posts }
 
 		// `createEntry` writes this layout itself once a collection uses it, and the slug is the
 		// folder's name — read off the file it is `'index'`, which matches no frontmatter copy.
-		test('an index-layout entry moves its folder, and its slug with it', async () => {
+		// The *folder* is what moves: colocating assets is the reason to use this layout, and
+		// `image()` and relative frontmatter paths resolve against the entry file, so an
+		// `index.md` moved out from under its siblings fails the build rather than the rename.
+		test('an index-layout entry moves its folder, with everything colocated in it', async () => {
 			await write({
 				'src/content.config.ts': CONFIG,
-				'src/content/events/vecirek/index.md': '---\ntitle: Večírek\nslug: vecirek\nurl_path: /vecirek\n---\n',
+				'src/content/events/vecirek/index.md': '---\ntitle: Večírek\nslug: vecirek\nurl_path: /vecirek\ncover: ./cover.jpg\n---\n',
+				'src/content/events/vecirek/cover.jpg': 'not-really-a-jpeg',
 			})
 
 			const result = await core().renameEntry('events', 'vecirek', 'vecirek-2026')
@@ -223,6 +228,24 @@ export const collections = { events, pages, posts }
 			const written = await read('src/content/events/vecirek-2026/index.md')
 			expect(written).toContain('slug: vecirek-2026')
 			expect(written).toContain('url_path: /vecirek-2026')
+			// The asset came along, and the old folder is not left behind holding it.
+			expect(await read('src/content/events/vecirek-2026/cover.jpg')).toBe('not-really-a-jpeg')
+			expect(await exists('src/content/events/vecirek')).toBe(false)
+		})
+
+		// A collection's landing page is usually called `index.md`, and `resolveEntryPath` checks
+		// the flat candidate first — so this file *is* the entry. Reading its name as "folder
+		// layout" made the rename treat the collection's own directory as the entry's and move the
+		// file clean out of the collection.
+		test('a flat entry that happens to be named `index` is renamed in place', async () => {
+			await write({ 'src/content.config.ts': CONFIG, 'src/content/posts/index.md': '---\ntitle: Rozcestník\n---\n' })
+
+			const result = await core().renameEntry('posts', 'index', 'home')
+
+			expect(result.success).toBe(true)
+			expect(result.sourcePath).toBe('src/content/posts/home.md')
+			expect(await read('src/content/posts/home.md')).toContain('title: Rozcestník')
+			expect(await exists('src/content/home')).toBe(false)
 		})
 	})
 })
