@@ -19,7 +19,7 @@
 // Surface the field-type contract values from the SDK so UI consumers can drive
 // field widgets off one import — and so `@nuasite/cms-types` is a genuine runtime
 // dependency (not type-only), matching the shared-contract intent.
-export { ENTRY_SLUG_FIELD, FIELD_TYPES, isFieldType, nextFreeSlug, slugify, withEntrySlug } from '@nuasite/cms-types'
+export { ENTRY_SLUG_FIELD, FIELD_TYPES, isFieldType, nextFreeSlug, slugify, withEntrySlug, withRenamedEntrySlug } from '@nuasite/cms-types'
 export type { CmsConfig, CmsListStyle } from '@nuasite/cms-types'
 export * from './client'
 export * from './entries'

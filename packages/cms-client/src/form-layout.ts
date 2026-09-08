@@ -15,7 +15,10 @@
  * - `title` — the entry's headline field, ahead of everything. WHY: `scanCollections` puts
  *   `title` in `SIDEBAR_FIELD_NAMES`, so left alone the heuristic files an entry's headline in
  *   the side column, and in a narrow viewport that lands it halfway down the stack. Explicit
- *   placement still wins; this only fires when nothing in the config placed the field.
+ *   placement still wins, and that means both spellings of it: a name in `cms.sidebar` or
+ *   `cms.sections`, *and* a field carrying `positionDeclared` from `n.text({ sidebar: true })` or
+ *   a `@position` directive. The scanner's own guess and the author's instruction arrive as the
+ *   same `position: 'sidebar'`, so without that flag this hoist overrode the instruction too.
  * - `header` — fields the *author* pinned to a top strip (`@position header`,
  *   `n.text({ position: 'header' })`). WHY it is safe to read now: the scanner used to stamp
  *   `position: 'header'` on every field it did not recognise, so a strip built from it swallowed
@@ -23,6 +26,8 @@
  *   means somebody asked for it.
  * - `sidebar` — declared `cms.sidebar` first, in the order it was declared, then the fields the
  *   scanner or config marked `position: 'sidebar'`, with publish controls floated to the top.
+ *   A field a declared `cms.sections` block names is never swept in here — see `resolveFormLayout`
+ *   for why that sweep is what kept declared sections from rendering.
  * - `sections` — the main column, as titled blocks. Declared `cms.sections` win, in their
  *   declared order, and whatever they leave out lands in a trailing `Other` rather than
  *   inheriting the previous block's heading.
@@ -132,13 +137,18 @@ function deriveDefaultSections(main: FieldDefinition[]): RenderSection[] {
 	return [...scalarSections, ...structural]
 }
 
-/** Every field name the config placed by hand — the set the title heuristic must not override. */
-function declaredNames(layout: CollectionLayout | undefined): Set<string> {
-	const names = new Set(layout?.sidebar ?? [])
+/** Every field name a declared `cms.sections` block claims for the main column. */
+function sectionNames(layout: CollectionLayout | undefined): Set<string> {
+	const names = new Set<string>()
 	for (const section of layout?.sections ?? []) {
 		for (const name of section.fields) names.add(name)
 	}
 	return names
+}
+
+/** Every field name the config placed by hand — the set the title heuristic must not override. */
+function declaredNames(layout: CollectionLayout | undefined, sections: Set<string>): Set<string> {
+	return new Set([...(layout?.sidebar ?? []), ...sections])
 }
 
 /**
@@ -150,12 +160,16 @@ function declaredNames(layout: CollectionLayout | undefined): Set<string> {
 export function resolveFormLayout(fields: FieldDefinition[], layout?: CollectionLayout): RenderLayout {
 	const visible = sortByOrder(fields.filter(field => !field.hidden))
 	const byName = new Map(visible.map(field => [field.name, field] as const))
-	const placed = declaredNames(layout)
+	const claimed = sectionNames(layout)
+	const placed = declaredNames(layout, claimed)
 
 	// The headline leads the form — unless the config placed that field itself, in which case the
-	// author has already said where it goes and this heuristic has nothing to add.
+	// author has already said where it goes and this heuristic has nothing to add. `placed` covers
+	// the layout block; `positionDeclared` covers the other way to say it, on the field.
 	const candidate = findTitleField(visible)
-	const title = candidate && !placed.has(candidate.name) && candidate.position !== 'header' ? candidate : undefined
+	const title = candidate && !placed.has(candidate.name) && !candidate.positionDeclared && candidate.position !== 'header'
+		? candidate
+		: undefined
 
 	const header = visible.filter(field => field !== title && field.position === 'header')
 
@@ -172,6 +186,14 @@ export function resolveFormLayout(fields: FieldDefinition[], layout?: Collection
 	}
 	for (const field of visible) {
 		if (field === title || field.position === 'header' || inSidebar.has(field.name)) continue
+		// A field a declared section names belongs to that section, not to whatever *marked* it
+		// sidebar. (A name in `cms.sidebar` still wins — that is the author placing it too, and it
+		// was already taken above.) This sweep is otherwise wide enough to empty the sections it
+		// was meant to leave alone: the
+		// scanner marks every image, every boolean and every well-known name (`date`, `cover`,
+		// `author`, …) `position: 'sidebar'`, so a section declared as `['date', 'program', 'cover']`
+		// rendered as `['program']` and the author's two other fields turned up in the side column.
+		if (claimed.has(field.name)) continue
 		if (field.position === 'sidebar' || field.role !== undefined) {
 			sidebar.push(field)
 			inSidebar.add(field.name)

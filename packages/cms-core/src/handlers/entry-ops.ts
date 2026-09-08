@@ -5,11 +5,13 @@ import { scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast'
 import {
 	blankRequiredFields,
+	ENTRY_SLUG_FIELD,
 	isBlankFieldValue,
 	newRepeaterItem,
 	type RepeaterItemField,
 	withEntrySlug,
 	withoutBlankArrayItems,
+	withRenamedEntrySlug,
 } from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
 import { mimeFromExt } from '../media/local'
@@ -678,6 +680,7 @@ export async function renameEntry(deps: EntryOpsDeps, collection: string, from: 
 	const dir = lastSlash >= 0 ? sourcePath.slice(0, lastSlash) : ''
 	const fileName = lastSlash >= 0 ? sourcePath.slice(lastSlash + 1) : sourcePath
 	const ext = fileExtension(fileName)
+	const previousSlug = fileName.slice(0, fileName.length - ext.length - 1)
 	const newSourcePath = dir ? `${dir}/${normalizedSlug}.${ext}` : `${normalizedSlug}.${ext}`
 
 	if (sourcePath === newSourcePath) {
@@ -690,10 +693,44 @@ export async function renameEntry(deps: EntryOpsDeps, collection: string, from: 
 
 	try {
 		await deps.fs.rename(sourcePath, newSourcePath)
+		await syncRenamedEntrySlug(deps, collection, newSourcePath, previousSlug, normalizedSlug)
 		return { success: true, sourcePath: newSourcePath }
 	} catch (error) {
 		return { success: false, error: errorMessage(error) }
 	}
+}
+
+/**
+ * Move the frontmatter copy of the slug along with the file, and recompute what derives from it.
+ *
+ * `createEntry` seeds a declared `slug` field from the file name, which makes a rename the one
+ * operation that can leave the two copies disagreeing: the file becomes `vecirek-2026.md` while
+ * the frontmatter still says `vecirek-ve-vile`, and a `pathname` spec or a `derivedFrom: 'slug'`
+ * field goes on resolving the old URL. `withRenamedEntrySlug` decides whether the copy is the
+ * file's to move (see it for the cases it declines), and the derive runs with the new slug as its
+ * patch so it takes the same path an `updateEntry` that moved the source field would.
+ *
+ * Runs after the rename and writes through the new path, so nothing here depends on the entry
+ * being resolvable under its new slug yet. It touches the file only when something changed, and a
+ * collection with no declared `slug` field never reaches the write at all.
+ */
+async function syncRenamedEntrySlug(
+	deps: EntryOpsDeps,
+	collection: string,
+	sourcePath: string,
+	previousSlug: string,
+	nextSlug: string,
+): Promise<void> {
+	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
+	const parsedCollection = parsed.get(collection)
+	if (!parsedCollection) return
+
+	const loaded = await loadFrontmatterAt(deps, sourcePath)
+	const moved = withRenamedEntrySlug(parsedCollection.fields, loaded.frontmatter, previousSlug, nextSlug)
+	if (moved === loaded.frontmatter) return
+
+	const resolved = await applyDerivedFields(deps, collection, moved, { [ENTRY_SLUG_FIELD]: nextSlug })
+	await writeEntryFrontmatter(deps, { ...loaded, frontmatter: resolved })
 }
 
 // ============================================================================
@@ -727,7 +764,14 @@ async function loadEntryFrontmatter(
 ): Promise<{ sourcePath: string; frontmatter: Record<string, unknown>; body: string; data: boolean } | null> {
 	const sourcePath = await resolveEntryPath(deps, collection, slug)
 	if (!sourcePath) return null
+	return await loadFrontmatterAt(deps, sourcePath)
+}
 
+/** The same read as `loadEntryFrontmatter`, for a caller that already knows the path. */
+async function loadFrontmatterAt(
+	deps: EntryOpsDeps,
+	sourcePath: string,
+): Promise<{ sourcePath: string; frontmatter: Record<string, unknown>; body: string; data: boolean }> {
 	const raw = await deps.fs.readFile(sourcePath)
 	if (isDataFile(sourcePath)) {
 		const parsed = sourcePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)

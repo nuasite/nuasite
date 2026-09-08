@@ -28,6 +28,7 @@ export {
 	type SlugMirrorField,
 	withEntrySlug,
 	withoutBlankArrayItems,
+	withRenamedEntrySlug,
 	type WriteModelField,
 } from '@nuasite/cms-types'
 

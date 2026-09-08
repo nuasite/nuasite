@@ -24,6 +24,8 @@
  * - **What must never reach disk?** `withoutBlankArrayItems` — a blank *item* inside a list.
  * - **What does the file name imply about the frontmatter?** `withEntrySlug` — a declared `slug`
  *   field is the entry's address, and on a create the file name is what that address is.
+ * - **And when the file name changes?** `withRenamedEntrySlug` — the same fact, moved. A rename
+ *   is the one write that relocates an entry, so it is the one write that may rewrite the copy.
  */
 
 import type { FieldType } from './index'
@@ -231,8 +233,8 @@ export interface SlugMirrorField extends WriteModelField, DeclaredDerivationFiel
  *
  * Create only. On an update the file slug is already the entry's published address, so rewriting
  * the frontmatter copy from it is at best a no-op and at worst silently repoints a URL because
- * somebody edited a title — renaming an entry is `renameEntry`, deliberately, and it moves the
- * file. Nothing here touches an existing value.
+ * somebody edited a title — renaming an entry is `renameEntry`, deliberately, and moving the copy
+ * with the file is `withRenamedEntrySlug`. Nothing here touches an existing value.
  *
  * The rule declines in four cases, each for its own reason:
  *
@@ -257,6 +259,42 @@ export function withEntrySlug(fields: SlugMirrorField[], frontmatter: Record<str
 	if (!field || (field.type !== undefined && field.type !== 'text')) return frontmatter
 	if (isDeclaredDerived(field) || !isBlankFieldValue(frontmatter[field.name])) return frontmatter
 	return { ...frontmatter, [field.name]: slug }
+}
+
+/**
+ * The same frontmatter after the entry's file has been **renamed** from `fromSlug` to `toSlug`.
+ *
+ * `withEntrySlug` fills the frontmatter copy on a create and then never touches it again, which
+ * leaves exactly one hole: a rename moves the file and the frontmatter keeps pointing at where
+ * the entry used to live. Before the create rule the key was empty and nothing read it, so the
+ * two copies had nothing to disagree about; now they do, and `vecirek-2026.md` carrying
+ * `slug: vecirek-ve-vile` sends every `pathname` spec and every `derivedFrom: 'slug'` field to
+ * the old URL.
+ *
+ * It rewrites only a copy that still mirrors the *old* file name (or is blank). That is the
+ * narrow case where the value is demonstrably the file's and not the author's: a `slug` the
+ * author pointed somewhere else on purpose already disagreed with the file name before the
+ * rename, and moving the file is no reason to overwrite the address they chose. The remaining
+ * declines are `withEntrySlug`'s, for its reasons — no declared `slug` field, a non-text one, or
+ * a declared derivation that `applyDerivedFields` owns and recomputes anyway.
+ *
+ * Comparison is on the *normalized* slugs the caller passes: both sides of a rename are
+ * `slugify`'d before they reach a file name, so that is the form the frontmatter was seeded in.
+ */
+export function withRenamedEntrySlug(
+	fields: SlugMirrorField[],
+	frontmatter: Record<string, unknown>,
+	fromSlug: string,
+	toSlug: string,
+): Record<string, unknown> {
+	if (toSlug === '') return frontmatter
+	const field = fields.find(candidate => candidate.name === ENTRY_SLUG_FIELD)
+	if (!field || (field.type !== undefined && field.type !== 'text')) return frontmatter
+	if (isDeclaredDerived(field)) return frontmatter
+	const current = frontmatter[field.name]
+	if (!isBlankFieldValue(current) && current !== fromSlug) return frontmatter
+	if (current === toSlug) return frontmatter
+	return { ...frontmatter, [field.name]: toSlug }
 }
 
 /** A record written as frontmatter, as opposed to a `Date`, a class instance or a list. */

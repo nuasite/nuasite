@@ -97,6 +97,34 @@ export const collections = { posts }
 		expect(layoutOf(rubrika)).toEqual(layoutOf(stitek))
 	})
 
+	// Three docblocks promised this spelling and nothing parsed it, which left the header strip
+	// reachable only through a `@position` comment in an entry that already existed — so a
+	// collection with no entries yet could not have one at all.
+	test('`position` is read from the config, and both spellings mark the placement as declared', async () => {
+		await write({
+			'src/content/posts/a.md': '---\ntitle: A\nperex: x\nstitek: y\n---\n',
+			'src/content.config.ts': config(
+				`n.object({ title: n.text(), perex: n.text({ position: 'header' }), stitek: n.text({ sidebar: true }) })`,
+			),
+		})
+
+		expect(await scanField('perex')).toMatchObject({ position: 'header', positionDeclared: true })
+		expect(await scanField('stitek')).toMatchObject({ position: 'sidebar', positionDeclared: true })
+	})
+
+	// The same `'sidebar'` on the wire, and the opposite meaning: this one is a guess about a name,
+	// and a layout is free to override it. `title` is in the scanner's well-known list.
+	test('the scanner’s own guess stays undeclared', async () => {
+		await write({
+			'src/content/posts/a.md': '---\ntitle: A\n---\n',
+			'src/content.config.ts': config(`n.object({ title: n.text() })`),
+		})
+
+		const field = await scanField('title')
+		expect(field?.position).toBe('sidebar')
+		expect(field?.positionDeclared).toBeUndefined()
+	})
+
 	// A nested enum with no entry data goes down the other path onto a field definition
 	// (`parsedFieldToFieldDefinition`), so the hints have to survive that one too.
 	test('hints survive on a nested enum no entry fills in yet', async () => {

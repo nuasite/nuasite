@@ -109,6 +109,17 @@ export interface FieldDefinition {
 	examples?: unknown[]
 	/** Where the field renders in the editor UI */
 	position?: 'sidebar' | 'header'
+	/**
+	 * The `position` above was *declared* — a `@position` directive, or `n.text({ position, sidebar })`
+	 * in the content config. Absent (the default) means the scanner picked it: `'sidebar'` for an
+	 * image, a boolean, or a name in its well-known list (`title`, `date`, `cover`, `author`, …).
+	 *
+	 * The two are the same value on the wire and mean opposite things to a layout. A scanner
+	 * default is a guess a better rule may override — the entry's headline is hoisted out of the
+	 * side column for exactly that reason. A declared one is the author's answer, and a layout
+	 * that overrides it is a layout ignoring the only instruction it was given.
+	 */
+	positionDeclared?: boolean
 	/** Group name for visual grouping with section headers */
 	group?: string
 	/** Human label shown instead of the raw field name. */
@@ -754,6 +765,7 @@ export {
 	type SlugMirrorField,
 	withEntrySlug,
 	withoutBlankArrayItems,
+	withRenamedEntrySlug,
 	type WriteModelField,
 } from './field-values'
 

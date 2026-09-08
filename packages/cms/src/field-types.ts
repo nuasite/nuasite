@@ -40,8 +40,17 @@ export interface LayoutHints {
 	help?: string
 	/** Section name; fields sharing a `group` render under one heading. */
 	group?: string
-	/** Pin the field to the editor's side column. */
+	/** Pin the field to the editor's side column. Shorthand for `position: 'sidebar'`. */
 	sidebar?: boolean
+	/**
+	 * Which column the field renders in: the side column, or the strip above the form.
+	 *
+	 * Both values are an instruction, not a preference — the scanner also *guesses* `'sidebar'`
+	 * for images, booleans and well-known names (`title`, `date`, `cover`, …), and only a
+	 * placement declared here or with a `@position` comment is one the editor will not override.
+	 * Left unset, the editor picks.
+	 */
+	position?: 'sidebar' | 'header'
 	/** Column span — `half` lets two fields share a row. */
 	width?: 'full' | 'half'
 	/** Ordering weight within its column/section (lower comes first). */

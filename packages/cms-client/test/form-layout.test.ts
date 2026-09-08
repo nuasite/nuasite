@@ -117,3 +117,35 @@ describe('presentation details every UI should share', () => {
 		expect(fieldLabel(field('showings'))).toBe('showings')
 	})
 })
+
+describe('an author’s placement is not the scanner’s guess', () => {
+	// `scanCollections` marks every image, every boolean and every well-known name
+	// `position: 'sidebar'`, and the side column used to sweep them up before sections were
+	// resolved — so the fields a declared section named were gone by the time it looked for them.
+	test('a declared section keeps the fields the scanner would have sidebar’d', () => {
+		const fields = [field('date', { position: 'sidebar' }), field('program'), field('cover', { type: 'image', position: 'sidebar' })]
+		const resolved = resolveFormLayout(fields, { sections: [{ title: 'Schedule', fields: ['date', 'program', 'cover'] }] })
+		expect(sectionNames(resolved)).toEqual([['Schedule', ['date', 'program', 'cover']]])
+		expect(names(resolved.sidebar)).toEqual([])
+	})
+
+	test('a declared `cms.sidebar` still outranks a section naming the same field', () => {
+		const resolved = resolveFormLayout(eventFields, { sections: [{ title: 'S', fields: ['cover', 'showings'] }], sidebar: ['cover'] })
+		expect(sectionNames(resolved)).toEqual([['S', ['showings']], ['Other', ['credits']]])
+		expect(names(resolved.sidebar)).toContain('cover')
+	})
+
+	// `n.text({ sidebar: true })` and a `@position sidebar` directive reach the wire as the same
+	// `position: 'sidebar'` the heuristic writes. Without `positionDeclared` the hoist below could
+	// not tell them apart, and lifted the headline out of the column the author put it in.
+	test('a declared sidebar position stops the headline hoist', () => {
+		const declared = [field('title', { position: 'sidebar', positionDeclared: true }), field('body', { type: 'textarea' })]
+		const resolved = resolveFormLayout(declared)
+		expect(resolved.title).toBeUndefined()
+		expect(names(resolved.sidebar)).toEqual(['title'])
+	})
+
+	test('the scanner’s own sidebar guess does not', () => {
+		expect(resolveFormLayout([field('title', { position: 'sidebar' }), field('body', { type: 'textarea' })]).title?.name).toBe('title')
+	})
+})

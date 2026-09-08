@@ -107,7 +107,7 @@ function SectionsView({ sections, display, draft, onField, ctx }: {
 				<div className="nua-cadmin-tabbar" role="tablist">
 					{sections.map((s, i) => (
 						<button
-							key={s.title ?? `section-${i}`}
+							key={`section-${i}`}
 							type="button"
 							role="tab"
 							aria-selected={i === activeTab}
@@ -131,7 +131,9 @@ function SectionsView({ sections, display, draft, onField, ctx }: {
 					return <FieldGrid key={`section-${i}`} fields={s.fields} draft={draft} onField={onField} ctx={ctx} />
 				}
 				return (
-					<details key={s.title} className="nua-cadmin-section" open={!s.collapsed}>
+					// Keyed by position for the reason the tab buttons are: a declared section may share a
+					// title with another, or with the leftover `Other` block the plan appends.
+					<details key={`section-${i}`} className="nua-cadmin-section" open={!s.collapsed}>
 						<summary className="nua-cadmin-section-summary">{s.title}</summary>
 						<div className="nua-cadmin-section-body">
 							<FieldGrid fields={s.fields} draft={draft} onField={onField} ctx={ctx} />

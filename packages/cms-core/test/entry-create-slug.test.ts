@@ -119,4 +119,48 @@ export const collections = { events, pages, posts }
 		expect(result.success).toBe(true)
 		expect(await read('src/content/pages/o-nas.md')).toContain('slug: kdo-jsme')
 	})
+
+	// And renaming *is* the operation that repoints it. Seeding the copy on create is what gave the
+	// two copies something to disagree about: before it the key was empty and nothing read it.
+	describe('renameEntry moves the copy with the file', () => {
+		test('the frontmatter slug follows the new file name, and the derived field with it', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/events/vecirek-ve-vile.md': '---\ntitle: Večírek\nslug: vecirek-ve-vile\nurl_path: /vecirek-ve-vile\n---\n# Večírek\n',
+			})
+
+			const result = await core().renameEntry('events', 'vecirek-ve-vile', 'vecirek-2026')
+
+			expect(result.success).toBe(true)
+			const written = await read('src/content/events/vecirek-2026.md')
+			expect(written).toContain('slug: vecirek-2026')
+			expect(written).toContain('url_path: /vecirek-2026')
+			// The body is written back through the same serializer, so it has to survive the trip.
+			expect(written).toContain('# Večírek')
+		})
+
+		test('an address the author aimed elsewhere survives the move', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/pages/o-nas.md': '---\ntitle: O nás\nslug: kdo-jsme\n---\n',
+			})
+
+			const result = await core().renameEntry('pages', 'o-nas', 'o-nas-2026')
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/pages/o-nas-2026.md')).toContain('slug: kdo-jsme')
+		})
+
+		test('a collection with no slug field is renamed and otherwise left alone', async () => {
+			await write({
+				'src/content.config.ts': CONFIG,
+				'src/content/posts/ahoj.md': '---\ntitle: Ahoj\n---\nBody\n',
+			})
+
+			const result = await core().renameEntry('posts', 'ahoj', 'nazdar')
+
+			expect(result.success).toBe(true)
+			expect(await read('src/content/posts/nazdar.md')).toBe('---\ntitle: Ahoj\n---\nBody\n')
+		})
+	})
 })

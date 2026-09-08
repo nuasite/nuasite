@@ -55,8 +55,13 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 	)
 
 	// What the server will actually write: `createEntry` fills a declared `slug` field from the
-	// file slug, so the form validates and previews the same frontmatter rather than reporting a
+	// file slug, so the form validates and submits the same frontmatter rather than reporting a
 	// required field the write would have filled in. `withEntrySlug` is that same rule.
+	//
+	// This is what the form *sends*, not what its inputs read — those stay on `draft.frontmatter`.
+	// Feeding the filled-in copy back into a *visible* `slug` field makes it impossible to clear:
+	// the blank goes into the draft, the rule fills it from the file slug again, and the value
+	// snaps back under the cursor.
 	const normalizedSlug = useMemo(() => slugify(slug), [slug])
 	const effectiveFrontmatter = useMemo(() => withEntrySlug(fields, draft.frontmatter, normalizedSlug), [fields, draft.frontmatter, normalizedSlug])
 
@@ -112,7 +117,10 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 			</div>
 
 			{ordered.map((block, index) => (
-				<Fragment key={block.heading ?? `block-${index}`}>
+				// Keyed by position, not by heading: `resolveFormLayout` appends a leftover block titled
+				// `Other`, which a declared section is free to be titled too — two blocks with one key
+				// let React reuse the wrong inputs between them.
+				<Fragment key={`block-${index}`}>
 					{block.heading ? <div className="nua-cadmin-section-summary">{block.heading}</div> : null}
 					{block.fields.map(field => (
 						<div key={field.name} className={`nua-cadmin-field${field.role ? ` nua-cadmin-field-${field.role}` : ''}`}>
@@ -120,7 +128,7 @@ export function EntryCreate({ client, definition, collection, onCreated, onCance
 								<span>{fieldLabel(field)}</span>
 								<span className="nua-cadmin-field-type">{field.type}{field.required ? ' · required' : ''}</span>
 							</div>
-							<FieldEditor field={field} value={effectiveFrontmatter[field.name]} onChange={value => onField(field.name, value)} ctx={ctx} />
+							<FieldEditor field={field} value={draft.frontmatter[field.name]} onChange={value => onField(field.name, value)} ctx={ctx} />
 						</div>
 					))}
 				</Fragment>
