@@ -8,6 +8,7 @@ import {
 	ENTRY_SLUG_FIELD,
 	isBlankFieldValue,
 	newRepeaterItem,
+	normalizeCreateWrite,
 	type RepeaterItemField,
 	withEntrySlug,
 	withoutBlankArrayItems,
@@ -518,9 +519,11 @@ export async function getEntry(deps: EntryOpsDeps, collection: string, slug: str
 
 export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): Promise<MutationResult> {
 	const { collection, slug, body = '' } = input
-	// Before anything reads it: a list may not carry a blank item. See `withoutBlankArrayItems`
-	// — an unfilled row appended by "+ Add" arrives as `null` and fails the whole site build.
-	const frontmatter = withoutBlankArrayItems(input.frontmatter)
+	// Before anything reads it: what the form left untouched is not written, and a list may not
+	// carry a blank item. See `normalizeCreateWrite` and `withoutBlankArrayItems` — an untouched
+	// optional object seeded as `{}`, or an unfilled row appended by "+ Add", fails the whole site build.
+	const declared = (await parseContentConfig(deps.fs, deps.parseCache)).get(collection)?.fields ?? []
+	const frontmatter = withoutBlankArrayItems(normalizeCreateWrite(declared, input.frontmatter))
 
 	const normalizedSlug = slugify(slug)
 	if (!normalizedSlug) {

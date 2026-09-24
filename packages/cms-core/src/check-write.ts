@@ -10,7 +10,8 @@
  * Two actions are simulated:
  *
  * - **new entry** — `newEntryFrontmatter` then `omitEmptyOnCreate`, then the keys the create
- *   route itself injects (`applyCreateRouteFields`). Note what this means: a field left empty
+ *   route itself injects (`applyCreateRouteFields`), then what `createEntry` normalizes away
+ *   (`normalizeCreateWrite`). Note what this means: a field left empty
  *   arrives *absent*, not as `''`, so the failure to look for is a missing required value.
  *   Where `blankRequiredFields` says the write guard in `handlers/entry-ops.ts` would reject
  *   the create before it reaches disk, there is no finding to make — with the exception of
@@ -37,6 +38,7 @@ import {
 	blankRequiredFields,
 	newEntryFrontmatter,
 	newRepeaterItem,
+	normalizeCreateWrite,
 	omitEmptyOnCreate,
 	withoutBlankArrayItems,
 	type WriteModelField,
@@ -246,10 +248,14 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 		const kind = loaded ? collectionKind(loaded, collection.loaderPattern) : 'markdown'
 
 		// The route's own keys go on last, because it spreads the form's frontmatter over them.
-		const created = withoutBlankArrayItems(applyCreateRouteFields(
-			omitEmptyOnCreate(newEntryFrontmatter(collection.fields.map(toWriteModelField))),
-			kind,
-			input.today,
+		// `createEntry` then normalizes what it received, so the prediction does too.
+		const created = withoutBlankArrayItems(normalizeCreateWrite(
+			collection.fields,
+			applyCreateRouteFields(
+				omitEmptyOnCreate(newEntryFrontmatter(collection.fields.map(toWriteModelField))),
+				kind,
+				input.today,
+			),
 		))
 		// What the write guard in `handlers/entry-ops.ts` rejects never reaches disk, so it is
 		// nothing to report. The guard runs inside `createEntry`, i.e. on this same record — and

@@ -15,6 +15,7 @@
  */
 
 import { blankFieldValue, type WriteModelField } from '@nuasite/cms-types'
+import { isPlainRecord } from './shared'
 
 export {
 	blankFieldValue,
@@ -87,6 +88,43 @@ export function omitEmptyOnCreate(frontmatter: Record<string, unknown>): Record<
 	const out: Record<string, unknown> = {}
 	for (const [key, value] of Object.entries(frontmatter)) {
 		if (value !== undefined && value !== '') out[key] = value
+	}
+	return out
+}
+
+/** A field as `normalizeCreateWrite` reads it — satisfied by `ParsedField`. */
+export interface CreateWriteField {
+	name: string
+	required: boolean
+	fields?: CreateWriteField[]
+}
+
+/**
+ * What the create route writes of the frontmatter it receives, whichever editor sent it.
+ *
+ * Every create form seeds from `blankFieldValue`, so an untouched text field arrives as `''` and
+ * an untouched object as `{}`, and not every editor filters them out (`omitEmptyOnCreate` is the
+ * in-page editor's). An untouched optional object written as `{}` is rejected by a schema that
+ * requires any of its members, and Astro then fails the build for the whole collection.
+ *
+ * So `''` and `undefined` are dropped at every depth, and an object left with nothing in it is
+ * dropped too — unless the schema requires it, in which case it stays `{}` for
+ * `blankRequiredFields` to refuse by name. Applied in `createEntry`, and by the content check,
+ * which predicts the same write.
+ */
+export function normalizeCreateWrite(fields: CreateWriteField[], frontmatter: Record<string, unknown>): Record<string, unknown> {
+	const byName = new Map(fields.map(field => [field.name, field]))
+	const out: Record<string, unknown> = {}
+	for (const [key, value] of Object.entries(frontmatter)) {
+		if (value === undefined || value === '') continue
+		const field = byName.get(key)
+		if (!isPlainRecord(value)) {
+			out[key] = value
+			continue
+		}
+		const members = normalizeCreateWrite(field?.fields ?? [], value)
+		if (Object.keys(members).length === 0 && !field?.required) continue
+		out[key] = members
 	}
 	return out
 }
