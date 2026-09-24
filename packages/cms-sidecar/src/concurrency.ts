@@ -2,7 +2,7 @@ import type { CmsFileSystem } from '@nuasite/cms-core'
 import { createHash } from 'node:crypto'
 
 /**
- * Hashing + per-file serialization for the sidecar layer.
+ * Hashing, per-file serialization and shared reads for the sidecar layer.
  *
  * cms-core stays hash-agnostic: the optimistic-concurrency `baseHash`/`sourceHash`
  * comparison and the in-process mutex live here. Hashing reads the on-disk source
@@ -23,6 +23,33 @@ export async function hashSource(fs: CmsFileSystem, sourcePath: string): Promise
 	if (!(await fs.exists(sourcePath))) return null
 	const raw = await fs.readFile(sourcePath)
 	return hashContent(raw)
+}
+
+/**
+ * One run of an expensive read at a time, shared by every caller that asks while it is in flight.
+ * `invalidate()` makes the next caller start a fresh run, so a caller never gets a result that
+ * predates a write which already completed.
+ */
+export class SharedRun<T> {
+	private current: { generation: number; promise: Promise<T> } | null = null
+	private generation = 0
+
+	constructor(private readonly run: () => Promise<T>) {}
+
+	get(): Promise<T> {
+		if (this.current !== null && this.current.generation === this.generation) return this.current.promise
+		const entry = { generation: this.generation, promise: this.run() }
+		this.current = entry
+		const release = () => {
+			if (this.current === entry) this.current = null
+		}
+		entry.promise.then(release, release)
+		return entry.promise
+	}
+
+	invalidate(): void {
+		this.generation++
+	}
 }
 
 /**
