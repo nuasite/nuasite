@@ -249,6 +249,34 @@ describe('checkEditorWrites', () => {
 		expect(await checkEditorWrites(input)).toEqual([])
 	})
 
+	// Every create form seeds an object as `{}`. `createEntry` drops an optional one nobody filled
+	// in, so a schema requiring its members never sees it.
+	test('an untouched optional object is not written, so its required members are not reported', async () => {
+		const input = inputOf(
+			{ settings: { fields: [fieldOf('promo', { type: 'object', required: false, fields: [fieldOf('heading', { type: 'text' })] })] } },
+			{
+				settings: schemaOf(value =>
+					isRecord(value) && isRecord(value.promo) && value.promo.heading === undefined ? [{ path: ['promo', 'heading'], message: 'Required' }] : []
+				),
+			},
+		)
+
+		expect(await checkEditorWrites(input)).toEqual([])
+	})
+
+	test('an untouched required object is still written as {}, so its required members are still reported', async () => {
+		const input = inputOf(
+			{ settings: { fields: [fieldOf('social', { type: 'object', fields: [fieldOf('facebook', { type: 'text' })] })] } },
+			{
+				settings: schemaOf(value =>
+					isRecord(value) && isRecord(value.social) && value.social.facebook === undefined ? [{ path: ['social', 'facebook'], message: 'Required' }] : []
+				),
+			},
+		)
+
+		expect((await checkEditorWrites(input)).map(finding => finding.field)).toEqual(['social.facebook'])
+	})
+
 	// The create route writes `{ title, date, ...frontmatter }` for a markdown collection, so an
 	// auto-managed hidden date is filled in by the server and is not the editor's problem.
 	test('a hidden date the create route injects is not reported for a markdown collection', async () => {
