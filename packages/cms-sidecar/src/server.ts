@@ -11,7 +11,7 @@ import type {
 	MediaStorageAdapter,
 	MutationResult,
 } from '@nuasite/cms-types'
-import { hashContent, hashSource, KeyedMutex } from './concurrency'
+import { hashContent, hashSource, KeyedMutex, SharedRun } from './concurrency'
 import {
 	type AddArrayItemBody,
 	type ApiError,
@@ -538,14 +538,18 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 	const contentDir = opts.contentDir ?? 'src/content'
 	const maxUploadSize = opts.maxUploadSize ?? 20 * 1024 * 1024
 	const mutex = new KeyedMutex()
+	// A client may ask for the entries of every collection at once, and each scan reads and parses
+	// all of the project's content: without sharing, N concurrent requests hold N full scans in memory.
+	const collectionsScan = new SharedRun(() => core.scanCollections())
+	const collectionRoutes = new SharedRun(() => resolveCollectionRoutes(fs))
 
 	async function scanList(): Promise<CollectionDefinition[]> {
-		const map = await core.scanCollections()
+		const map = await collectionsScan.get()
 		return Object.values(map)
 	}
 
 	async function resolveCollection(name: string): Promise<CollectionDefinition | null> {
-		const map = await core.scanCollections()
+		const map = await collectionsScan.get()
 		return map[name] ?? null
 	}
 
@@ -653,7 +657,15 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		const segments = rest.split('/').filter(Boolean).map(decodeURIComponent)
 		const method = req.method
 
-		return route(method, segments, req, url)
+		try {
+			return await route(method, segments, req, url)
+		} finally {
+			// Any write may change what the shared scans read.
+			if (method !== 'GET') {
+				collectionsScan.invalidate()
+				collectionRoutes.invalidate()
+			}
+		}
 	}
 
 	async function route(method: string, segments: string[], req: Request, url: URL): Promise<Response> {
@@ -744,7 +756,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		// Tag entries with the URL of their rendered page (when the collection has a route),
 		// so a consumer can sync a preview to the entry being edited. Falls back to no
 		// pathname on any fs error — better absent than wrong.
-		const routes = await resolveCollectionRoutes(fs).catch(() => new Map<string, CollectionRoute>())
+		const routes = await collectionRoutes.get().catch(() => new Map<string, CollectionRoute>())
 		const route = routes.get(collection)
 		const all = (def.entries ?? []).map(e => entryWithPageUrl(def, e, route))
 		const filtered = filterByDraft(all, query.draft)

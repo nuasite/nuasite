@@ -874,3 +874,52 @@ describe('cms-sidecar cold-start timing (recorded for F2 tuning)', () => {
 		expect(elapsedMs).toBeLessThan(5000)
 	})
 })
+
+describe('shared collection scan', () => {
+	async function serverWithScanSpy() {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cms-sidecar-shared-'))
+		await fs.cp(FIXTURE_ROOT, root, { recursive: true })
+		cleanups.push(root)
+		const nodeFs = createNodeFs(root)
+		const core = createCmsCore(nodeFs, { componentDirs: ['src/components'] })
+		const scanOnce = core.scanCollections
+		const scan = spyOn(core, 'scanCollections')
+		const server = createServer({ core, fs: nodeFs, root, coreVersion: '0.42.1' })
+		return { server, scan, scanOnce }
+	}
+
+	test('concurrent entry lists of different collections share one scan', async () => {
+		const { server, scan } = await serverWithScanSpy()
+
+		const responses = await Promise.all(['blog', 'docs', 'team', 'people', 'blog'].map(c => call(server, 'GET', `/collections/${c}/entries`)))
+
+		expect(responses.map(r => r.status)).toEqual([200, 200, 200, 200, 200])
+		expect(scan).toHaveBeenCalledTimes(1)
+	})
+
+	test('a list requested after a write does not join a scan that started before it', async () => {
+		const { server, scan, scanOnce } = await serverWithScanSpy()
+		const scanned = Promise.withResolvers<void>()
+		const held = Promise.withResolvers<void>()
+		scan.mockImplementationOnce(async () => {
+			const map = await scanOnce()
+			scanned.resolve()
+			await held.promise
+			return map
+		})
+
+		const before = call(server, 'GET', '/collections/blog/entries?draft=all')
+		await scanned.promise
+		const created = await call(server, 'POST', '/collections/blog/entries', {
+			slug: 'new-post',
+			frontmatter: { title: 'New Post', date: '2024-06-01', draft: false, cover: './new-post.jpg', tags: ['intro'], author: 'jane-doe' },
+			body: '# New Post\n\nBody.',
+		})
+		expect(created.status).toBe(200)
+		const after = call(server, 'GET', '/collections/blog/entries?draft=all')
+		held.resolve()
+
+		expect((await jsonOf<EntriesListResult>(await after)).entries.map(e => e.slug)).toContain('new-post')
+		expect((await jsonOf<EntriesListResult>(await before)).entries.map(e => e.slug)).not.toContain('new-post')
+	})
+})
