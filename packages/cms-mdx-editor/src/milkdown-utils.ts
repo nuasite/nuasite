@@ -187,3 +187,12 @@ export function setupFormatTracking(editor: Editor, callback: (formats: ActiveFo
 		cancelAnimationFrame(formatRaf)
 	}
 }
+
+/** Adding a link without a selection should insert visible linked text, not just a pending mark. */
+export function insertLinkAtCursor(view: EditorView, href: string): boolean {
+	const { state } = view
+	const link = state.schema.marks.link
+	if (!state.selection.empty || !link) return false
+	view.dispatch(state.tr.replaceSelectionWith(state.schema.text(href, [link.create({ href })]), false).scrollIntoView())
+	return true
+}

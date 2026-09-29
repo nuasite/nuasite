@@ -8,8 +8,9 @@
  * block-card prop labels; without it blocks still render and round-trip, just
  * without rich labels.
  */
-import { defaultValueCtx, Editor, rootCtx } from '@milkdown/core'
-import { listener, listenerCtx } from '@milkdown/plugin-listener'
+import { defaultValueCtx, Editor, rootCtx, prosePluginsCtx, serializerCtx } from '@milkdown/core'
+import { listener } from '@milkdown/plugin-listener'
+import { documentChangePlugin } from './document-change-plugin'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
 import { callCommand, replaceAll } from '@milkdown/utils'
@@ -20,6 +21,7 @@ import { FormatToolbar } from './format-toolbar'
 import { insertMdxComponentCommand, mdxComponentNode, mdxEsmNode, remarkMdxPlugin } from './mdx-plugin'
 import { type ComponentResolver, createMdxComponentView } from './mdx-view'
 import type { MediaContext, MediaSource } from './media-source'
+import { createImageView } from './image-view'
 import { styledListPlugin } from './styled-list-plugin'
 import { insertYoutubeCommand, remarkYoutubeDirectivePlugin, youtubeNode } from './youtube-plugin'
 import { createYoutubeView } from './youtube-view'
@@ -163,12 +165,14 @@ export function MdxBodyEditor({ value, onChange, components, listStyles, media, 
 				.config((ctx) => {
 					ctx.set(rootCtx, el)
 					ctx.set(defaultValueCtx, latest.current)
-					ctx.get(listenerCtx).markdownUpdated((_, md) => {
+					ctx.update(prosePluginsCtx, plugins => [...plugins, documentChangePlugin(doc => {
+						const md = ctx.get(serializerCtx)(doc)
 						latest.current = md
 						if (ready.current && !settingExternal.current) onChangeRef.current(md)
-					})
+					})])
 				})
 				.use(commonmark)
+				.use(createImageView(mediaRef.current, mediaContextRef.current))
 				.use(styledListPlugin)
 				.use(gfm)
 				.use(listener)

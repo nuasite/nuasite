@@ -24,7 +24,7 @@ import { ImagePopover } from './image-popover'
 import { LinkPopover } from './link-popover'
 import { MediaLibrary } from './media-library'
 import type { MediaContext, MediaSource } from './media-source'
-import { type ActiveFormats, defaultActiveFormats, isInListType, removeLinkMark, setupFormatTracking, toggleHeading } from './milkdown-utils'
+import { type ActiveFormats, defaultActiveFormats, insertLinkAtCursor, isInListType, removeLinkMark, setupFormatTracking, toggleHeading } from './milkdown-utils'
 import { setListStyleCommand } from './styled-list-plugin'
 import { insertYoutubeCommand } from './youtube-plugin'
 import { YoutubePopover } from './youtube-popover'
@@ -171,6 +171,7 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 		if (!editor) return
 		const view = editor.ctx.get(editorViewCtx)
 		view.focus()
+		if (!formats.link && insertLinkAtCursor(view, url)) return
 		editor.action(callCommand(formats.link ? updateLinkCommand.key : toggleLinkCommand.key, { href: url }))
 	}
 
