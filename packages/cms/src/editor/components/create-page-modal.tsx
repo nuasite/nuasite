@@ -392,10 +392,12 @@ function DuplicatePageForm() {
 
 function CollectionPicker() {
 	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}
+	const locale = config.value.locale
 	// Offered as the collection browser lists them: hidden collections left out, same order.
 	const collections = useMemo(
-		() => getCollectionNav(collectionDefinitions).flatMap(section => section.items.flatMap(({ collection, children }) => [collection, ...children])),
-		[collectionDefinitions],
+		() =>
+			getCollectionNav(collectionDefinitions, locale).flatMap(section => section.items.flatMap(({ collection, children }) => [collection, ...children])),
+		[collectionDefinitions, locale],
 	)
 
 	// Single collection — skip picker and go straight to editor

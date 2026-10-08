@@ -16,13 +16,18 @@
  * 2. The rest is sorted by `order` (lower first, undeclared last), then by label, then by
  *    name. WHY the name: the sidecar serves collections in no particular order, and two
  *    collections may share a label, so without a last word the list would reshuffle between
- *    reloads.
+ *    reloads. Digits in a label compare as numbers, so "Sekce 2" precedes "Sekce 10".
  * 3. A collection is listed under its `parentCollection`. One level, as every browser draws
  *    it: a child whose parent is hidden, missing or itself a child is listed at the top
  *    level instead, so nothing reachable disappears from the browser.
  * 4. Top-level collections without a `group` come first, then one section per group, in the
  *    order their first member sorted. A nested collection follows its parent; its own
  *    `group` only matters once it is listed at the top level.
+ *
+ * The order belongs to the project, not to whoever is looking at it. Nothing here reads the
+ * runtime's locale: two editors with differently configured browsers, and two browsers of the
+ * same project, have to see the same list. The one input that varies is the language the
+ * labels are compared in, and it is the caller's to supply — see `CollectionNavOptions.locale`.
  */
 
 import type { CollectionDefinition } from './index'
@@ -43,21 +48,32 @@ export interface CollectionNavSection {
 
 export interface CollectionNavOptions {
 	/**
-	 * Locale the labels are compared in — the language of the site's content, when the host
-	 * knows it (`'cs'` puts "Č" after "C"). Defaults to the runtime's own locale, which is what
-	 * `localeCompare` without an argument uses; a tag `Intl` rejects falls back to it too.
+	 * Language the labels are compared in (`'cs'` puts "Č" after "C" and "Ch" after "H").
+	 * Pass the project's own — `CmsConfig.locale`, which the sidecar serves at `/config` — and
+	 * never the viewer's, or the same project lists differently from one browser to the next.
+	 *
+	 * Without one, or with a tag the runtime has no collation for, labels are compared as
+	 * English: diacritics only break ties, so "Č" sorts with "C".
 	 */
 	locale?: Intl.LocalesArgument
 }
 
+/** The collation used when the project's language is unknown or unusable. */
+const FALLBACK_LOCALE = 'en'
+
 function labelCollator(locale: Intl.LocalesArgument): Intl.Collator {
+	// WHY not hand `locale` straight to `Intl.Collator`: for `undefined`, and for any tag it
+	// has no data for (`'und'`, an Astro locale path like `'spanish'`), it silently uses the
+	// runtime's default locale — the viewer's, which is the one thing the order may not
+	// depend on. `supportedLocalesOf` keeps only the tags that resolve on their own merit.
+	let supported: string[] = []
 	try {
-		return new Intl.Collator(locale)
+		if (locale !== undefined) supported = Intl.Collator.supportedLocalesOf(locale)
 	} catch {
-		// A malformed tag (`<html lang="cs_CZ">`) throws; a browser that cannot list
-		// collections is a worse outcome than one sorted in the default locale.
-		return new Intl.Collator()
+		// A malformed tag (`cs_CZ`) throws; a browser that cannot list collections is a worse
+		// outcome than one sorted in the fallback.
 	}
+	return new Intl.Collator(supported.length > 0 ? supported : FALLBACK_LOCALE, { numeric: true })
 }
 
 /** Arrange collections for a collection browser. Pure; the input is not modified. */

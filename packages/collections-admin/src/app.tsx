@@ -134,8 +134,10 @@ function EmptyState({ label }: { label: string }) {
 // Sidebar — content-type menu
 // ============================================================================
 
-function Sidebar({ collections, loading, error, activeCollection, onSelect, onReload, onClose }: {
+function Sidebar({ collections, locale, loading, error, activeCollection, onSelect, onReload, onClose }: {
 	collections: CollectionDefinition[]
+	/** The project's language (`CmsConfig.locale`) — labels are compared in it, not in the viewer's. */
+	locale: string | undefined
 	loading: boolean
 	error: CmsClientError | Error | null
 	activeCollection: string | undefined
@@ -146,7 +148,7 @@ function Sidebar({ collections, loading, error, activeCollection, onSelect, onRe
 	// The arrangement every collection browser shares: hidden collections left out, declared
 	// order and sections, and glob-nested collections (e.g. `jsem-otazky` under `jsem`)
 	// indented below their parent so the menu mirrors the content structure.
-	const sections = resolveCollectionNav(collections)
+	const sections = resolveCollectionNav(collections, { locale })
 
 	const item = (c: CollectionDefinition, depth: number) => (
 		<button
@@ -329,6 +331,9 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 	// rendering; load them once at the root and pass the active one down.
 	const collectionsState = useAsync(() => client.getCollections(), [client])
 	const collections = collectionsState.data ?? []
+	// The project's language orders the menu. The menu waits for it so it does not render once
+	// in the fallback order and then reshuffle; a failed read just leaves that fallback.
+	const configState = useAsync(() => client.getConfig(), [client])
 
 	const activeCollectionName = state.view !== 'list' ? state.collection : undefined
 	const activeCollection = activeCollectionName ? collections.find((c) => c.name === activeCollectionName) : undefined
@@ -342,7 +347,8 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 		<div className="nua-cadmin">
 			<Sidebar
 				collections={collections}
-				loading={collectionsState.loading}
+				locale={configState.data?.locale}
+				loading={collectionsState.loading || configState.loading}
 				error={collectionsState.error}
 				activeCollection={activeCollectionName}
 				onSelect={goEntries}

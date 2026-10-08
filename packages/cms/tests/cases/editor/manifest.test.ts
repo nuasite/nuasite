@@ -96,30 +96,35 @@ test('getAvailableComponentNames returns component names', () => {
 	expect(names).toHaveLength(1)
 })
 
-test('getCollectionNav arranges collections in the language of the page', () => {
-	const collection = (name: string, extra: Partial<CollectionDefinition>): CollectionDefinition => ({
-		name,
-		label: name,
-		path: `src/content/${name}`,
-		entryCount: 0,
-		fields: [],
-		fileExtension: 'md',
-		...extra,
-	})
+const collection = (name: string, extra: Partial<CollectionDefinition> = {}): CollectionDefinition => ({
+	name,
+	label: name,
+	path: `src/content/${name}`,
+	entryCount: 0,
+	fields: [],
+	fileExtension: 'md',
+	...extra,
+})
+
+test('getCollectionNav orders by the project locale, whatever page the editor is on', () => {
 	const definitions = {
 		clanky: collection('clanky', { label: 'Články' }),
 		cukr: collection('cukr', { label: 'Cukr' }),
 		redirects: collection('redirects', { hidden: true }),
 	}
-	const names = () => getCollectionNav(definitions).flatMap(section => section.items.map(item => item.collection.name))
+	const names = (locale: string | undefined) =>
+		getCollectionNav(definitions, locale).flatMap(section => section.items.map(item => item.collection.name))
 
 	const previousLang = document.documentElement.lang
 	try {
-		// Czech sorts "Č" as its own letter after "C"; English only breaks a tie on the caron.
-		document.documentElement.lang = 'cs'
-		expect(names()).toEqual(['cukr', 'clanky'])
-		document.documentElement.lang = 'en'
-		expect(names()).toEqual(['clanky', 'cukr'])
+		// A bilingual site: the editor moves from a Czech page to an English one, and back.
+		for (const pageLang of ['cs', 'en', '']) {
+			document.documentElement.lang = pageLang
+			// Czech sorts "Č" as its own letter after "C"…
+			expect(names('cs')).toEqual(['cukr', 'clanky'])
+			// …and a project that declares no language gets the fixed fallback, not the page's.
+			expect(names(undefined)).toEqual(['clanky', 'cukr'])
+		}
 	} finally {
 		document.documentElement.lang = previousLang
 	}

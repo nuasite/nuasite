@@ -38,11 +38,13 @@ export function getCollectionField(
 /**
  * The manifest's collections as a collection browser lists them — hidden ones left out,
  * ordered, nested and sectioned by the rule every browser shares (`resolveCollectionNav`).
- * Labels are compared in the page's language: the editor runs inside the site, so
- * `<html lang>` is the language they are written in.
+ *
+ * `locale` is the project's language (`CmsConfig.locale`), never the page's: on a bilingual
+ * site `<html lang>` changes as the editor moves between pages, and the list may not reorder
+ * with it.
  */
-export function getCollectionNav(collectionDefinitions: Record<string, CollectionDefinition>): CollectionNavSection[] {
-	return resolveCollectionNav(Object.values(collectionDefinitions), { locale: document.documentElement.lang || undefined })
+export function getCollectionNav(collectionDefinitions: Record<string, CollectionDefinition>, locale: string | undefined): CollectionNavSection[] {
+	return resolveCollectionNav(Object.values(collectionDefinitions), { locale })
 }
 
 /**

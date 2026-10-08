@@ -73,9 +73,72 @@ describe('resolveCollectionNav — ordering', () => {
 		expect(outline(resolveCollectionNav(input, { locale: 'en' }))).toEqual([[undefined, ['ceny', 'chaty', 'cisla', 'clanky', 'cukr', 'hry', 'ikony']]])
 	})
 
-	test('a locale tag Intl rejects falls back to the default instead of throwing', () => {
-		const sections = resolveCollectionNav([collection('b', { label: 'B' }), collection('a', { label: 'A' })], { locale: 'cs_CZ' })
-		expect(outline(sections)).toEqual([[undefined, ['a', 'b']]])
+	test('digits in a label compare as numbers', () => {
+		const sections = resolveCollectionNav([
+			collection('s10', { label: 'Sekce 10' }),
+			collection('s2', { label: 'Sekce 2' }),
+			collection('s1', { label: 'Sekce 1' }),
+		])
+		expect(outline(sections)).toEqual([[undefined, ['s1', 's2', 's10']]])
+	})
+
+	// The order is a property of the project: it may not change with the language of the
+	// viewer's browser. `Intl.Collator` reaches for the runtime's default locale whenever it
+	// is given nothing it has data for, so that is the path these close.
+	describe('never the runtime locale', () => {
+		const czechLabels = [
+			collection('chaty', { label: 'Chaty' }),
+			collection('hry', { label: 'Hry' }),
+			collection('cisla', { label: 'Čísla' }),
+			collection('cukr', { label: 'Cukr' }),
+		]
+		const asEnglish = ['chaty', 'cisla', 'cukr', 'hry']
+		const asCzech = ['cukr', 'cisla', 'hry', 'chaty']
+
+		/** Run `arrange` while recording the locales every `Intl.Collator` is constructed with. */
+		function collatorLocales(arrange: () => void): unknown[] {
+			const original = Intl.Collator
+			const seen: unknown[] = []
+			Intl.Collator = new Proxy(original, {
+				construct(Collator, args: ConstructorParameters<typeof Intl.Collator>) {
+					seen.push(args[0])
+					return new Collator(...args)
+				},
+			})
+			try {
+				arrange()
+			} finally {
+				Intl.Collator = original
+			}
+			return seen
+		}
+
+		test('no locale: labels are compared as English', () => {
+			expect(outline(resolveCollectionNav(czechLabels))).toEqual([[undefined, asEnglish]])
+			expect(collatorLocales(() => resolveCollectionNav(czechLabels))).toEqual(['en'])
+		})
+
+		test('a tag the runtime has no collation for is not handed to Intl', () => {
+			// `und` and an Astro locale path are well-formed, so `Intl.Collator` would accept
+			// them — and quietly collate in the runtime's default locale instead.
+			for (const locale of ['und', 'spanish', 'xx-YY']) {
+				expect(outline(resolveCollectionNav(czechLabels, { locale }))).toEqual([[undefined, asEnglish]])
+				expect(collatorLocales(() => resolveCollectionNav(czechLabels, { locale }))).toEqual(['en'])
+			}
+		})
+
+		test('a malformed tag falls back the same way instead of throwing', () => {
+			for (const locale of ['cs_CZ', '']) {
+				expect(outline(resolveCollectionNav(czechLabels, { locale }))).toEqual([[undefined, asEnglish]])
+				expect(collatorLocales(() => resolveCollectionNav(czechLabels, { locale }))).toEqual(['en'])
+			}
+		})
+
+		test('a supported locale is the one used, region and all', () => {
+			expect(outline(resolveCollectionNav(czechLabels, { locale: 'cs' }))).toEqual([[undefined, asCzech]])
+			expect(outline(resolveCollectionNav(czechLabels, { locale: 'cs-CZ' }))).toEqual([[undefined, asCzech]])
+			expect(collatorLocales(() => resolveCollectionNav(czechLabels, { locale: 'cs-CZ' }))).toEqual([['cs-CZ']])
+		})
 	})
 
 	test('the result does not depend on the order the sidecar happened to serve', () => {

@@ -119,7 +119,28 @@ function configObjectFromDefaultExport(ast: File, bindings: Bindings): ObjectExp
 	return null
 }
 
-/** Parse `nua.cms.cmsConfig.listStyles` from an Astro config source string. */
+/** `nua.cms.cmsConfig.listStyles` of the config object; empty when absent or not an array. */
+function parseConfigListStyles(configObject: ObjectExpression, bindings: Bindings): CmsListStyle[] {
+	const cmsConfig = objectAtPath(configObject, ['nua', 'cms', 'cmsConfig'], bindings)
+	if (!cmsConfig) return []
+
+	const listStylesNode = objectPropertyValue(cmsConfig, 'listStyles', bindings)
+	if (!listStylesNode || listStylesNode.type !== 'ArrayExpression') return []
+
+	return parseListStyles(listStylesNode, bindings)
+}
+
+/** Astro's `i18n.defaultLocale` of the config object, when it is a non-empty static string. */
+function parseDefaultLocale(configObject: ObjectExpression, bindings: Bindings): string | undefined {
+	const i18n = objectAtPath(configObject, ['i18n'], bindings)
+	const defaultLocaleNode = i18n ? objectPropertyValue(i18n, 'defaultLocale', bindings) : null
+	return (defaultLocaleNode && staticString(defaultLocaleNode, bindings)) || undefined
+}
+
+/**
+ * Parse the project-level CMS config from an Astro config source string:
+ * `nua.cms.cmsConfig.listStyles`, and the project's language from `i18n.defaultLocale`.
+ */
 export function parseProjectCmsConfigSource(source: string): CmsConfig {
 	const ast = parseSource(source)
 	if (!ast) return EMPTY_CONFIG
@@ -128,13 +149,8 @@ export function parseProjectCmsConfigSource(source: string): CmsConfig {
 	const configObject = configObjectFromDefaultExport(ast, bindings)
 	if (!configObject) return EMPTY_CONFIG
 
-	const cmsConfig = objectAtPath(configObject, ['nua', 'cms', 'cmsConfig'], bindings)
-	if (!cmsConfig) return EMPTY_CONFIG
-
-	const listStylesNode = objectPropertyValue(cmsConfig, 'listStyles', bindings)
-	if (!listStylesNode || listStylesNode.type !== 'ArrayExpression') return EMPTY_CONFIG
-
-	return { listStyles: parseListStyles(listStylesNode, bindings) }
+	const locale = parseDefaultLocale(configObject, bindings)
+	return { listStyles: parseConfigListStyles(configObject, bindings), ...(locale ? { locale } : {}) }
 }
 
 const ASTRO_CONFIG_FILES = ['astro.config.ts', 'astro.config.mts', 'astro.config.mjs', 'astro.config.js']

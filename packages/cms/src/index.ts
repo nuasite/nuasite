@@ -4,7 +4,7 @@ import fs from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createLocalStorageAdapter } from '@nuasite/cms-core'
+import { createLocalStorageAdapter, createNodeFs, parseProjectCmsConfig } from '@nuasite/cms-core'
 import remarkDirective from 'remark-directive'
 import { processBuildOutput } from './build-processor'
 import type { CollectionOverrides } from './collection-overrides'
@@ -296,7 +296,12 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				if (command === 'dev') {
 					const editorSrc = resolvedEditorSrc
 
-					const configScript = `window.NuaCmsConfig = ${JSON.stringify(resolvedCmsConfig)};`
+					// The project's language, for ordering collection labels. Read from the config
+					// source by the same function the sidecar's `/config` uses — rather than from the
+					// resolved Astro config at hand — so the in-page editor and every sidecar client
+					// are given the same value, including when neither can read it.
+					const { locale } = await parseProjectCmsConfig(createNodeFs(getProjectRoot()))
+					const configScript = `window.NuaCmsConfig = ${JSON.stringify({ ...resolvedCmsConfig, ...(locale ? { locale } : {}) })};`
 
 					injectScript(
 						'page',

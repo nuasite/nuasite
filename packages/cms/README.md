@@ -344,13 +344,17 @@ Browsers arrange the list with `resolveCollectionNav` from `@nuasite/cms-types` 
 ```typescript
 import { resolveCollectionNav } from '@nuasite/cms-client'
 
-const sections = resolveCollectionNav(await client.getCollections(), {
-	locale: 'cs',
-})
+const [collections, config] = await Promise.all([
+	client.getCollections(),
+	client.getConfig(),
+])
+const sections = resolveCollectionNav(collections, { locale: config.locale })
 // [{ items: [{ collection, children }] }, { group: 'English', items: [...] }]
 ```
 
-Nested collections (`parentCollection`) come back as `children` of their parent. `locale` is the language the labels are compared in and defaults to the runtime's locale.
+Nested collections (`parentCollection`) come back as `children` of their parent.
+
+The order is the same for every viewer and in every browser of a project. Labels are compared in the project's language, which is Astro's `i18n.defaultLocale`: the sidecar serves it as `locale` in `GET /cms/v1/config`, and the in-page editor and the collections admin use the same value. Always pass that one, never the visitor's browser language. A project that declares no `i18n.defaultLocale` (or a value that is not a usable locale) is compared as English, where a diacritic only breaks a tie, so "Č" sorts with "C". Digits compare as numbers ("Sekce 2" before "Sekce 10").
 
 ## Component Operations
 

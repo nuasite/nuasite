@@ -42,7 +42,9 @@ const entry = await client.getEntry('posts', 'hello-world')
 - **`resolveCollectionNav(collections, { locale? })`** — re-exported from `@nuasite/cms-types`. How a
   collection browser lists what `getCollections()` returned: `hidden` collections left out, sorted by
   `order` then label (the sidecar's own order is arbitrary), nested under `parentCollection`, split
-  into `group` sections. Render from it instead of sorting locally, so every browser agrees.
+  into `group` sections. Render from it instead of sorting locally, so every browser agrees. Pass
+  `locale` from `getConfig()` (the project's language, Astro's `i18n.defaultLocale`), not the
+  viewer's: the helper never reads the runtime locale, and without one it compares labels as English.
 
 The structural contract (collections/fields/entries/media) is re-used 1:1 from
 [`@nuasite/cms-types`](../cms-types). The default React UI built on this SDK is

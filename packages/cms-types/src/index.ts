@@ -508,6 +508,13 @@ export interface CmsListStyle {
 /** Project-level CMS config safe to expose through the headless API. */
 export interface CmsConfig {
 	listStyles?: CmsListStyle[]
+	/**
+	 * The project's default language, from Astro's `i18n.defaultLocale` — absent when the
+	 * project declares none. It is what a collection browser passes to `resolveCollectionNav`
+	 * so labels are compared in the project's language rather than the viewer's. Served as
+	 * declared, so it is not guaranteed to be a BCP 47 tag (Astro accepts a path like `'spanish'`).
+	 */
+	locale?: string
 }
 
 // ============================================================================

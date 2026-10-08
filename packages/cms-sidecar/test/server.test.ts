@@ -160,6 +160,7 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 			import { defineConfig } from '@nuasite/nua/config'
 
 			export default defineConfig({
+				i18n: { defaultLocale: 'cs', locales: ['cs', 'en'] },
 				nua: {
 					cms: {
 						cmsConfig: {
@@ -181,6 +182,8 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 			{ label: 'Fajfky', class: 'checkmarks' },
 			{ label: 'Růžové tečky', class: 'dots-pink' },
 		])
+		// The project's language, for a client to order collection labels by.
+		expect(config.locale).toBe('cs')
 	})
 
 	test('GET …/entries (default) is sparse: light header, NO body', async () => {

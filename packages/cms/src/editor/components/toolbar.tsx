@@ -107,7 +107,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 			// The collection browser's arrangement, flattened: nested (child) collections sit
 			// indented under their parent. The menu has no headings, so a `group` only decides
 			// where its collections are listed.
-			const ordered = getCollectionNav(collectionDefinitions).flatMap(section =>
+			const ordered = getCollectionNav(collectionDefinitions, signals.config.value.locale).flatMap(section =>
 				section.items.flatMap(({ collection, children }) => [
 					{ def: collection, indented: false },
 					...children.map(child => ({ def: child, indented: true })),

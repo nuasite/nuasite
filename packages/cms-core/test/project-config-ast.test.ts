@@ -66,6 +66,46 @@ describe('parseProjectCmsConfigSource', () => {
 	})
 })
 
+// The project's language is what collection labels are compared in. Astro already has a
+// place for it, so it is read from there rather than asked for a second time.
+describe('parseProjectCmsConfigSource — locale from i18n.defaultLocale', () => {
+	const withI18n = (i18n: string, prelude = '') => `
+		import { defineConfig } from '@nuasite/nua/config'
+		${prelude}
+		export default defineConfig({
+			i18n: ${i18n},
+		})
+	`
+
+	test('reads the default locale', () => {
+		expect(parseProjectCmsConfigSource(withI18n(`{ defaultLocale: 'cs', locales: ['cs', 'en'] }`)).locale).toBe('cs')
+	})
+
+	test('is independent of the nua block — either may be absent', () => {
+		const config = parseProjectCmsConfigSource(withI18n(`{ defaultLocale: 'cs', locales: ['cs'] }`))
+		expect(config).toEqual({ listStyles: [], locale: 'cs' })
+		expect(parseProjectCmsConfigSource(CONFIG_SOURCE)).toEqual({ listStyles: LIST_STYLES })
+	})
+
+	test('resolves a top-level const', () => {
+		expect(parseProjectCmsConfigSource(withI18n('{ defaultLocale: DEFAULT_LOCALE }', `const DEFAULT_LOCALE = 'cs'`)).locale).toBe('cs')
+	})
+
+	test('a value it cannot read statically, or an empty one, is left out', () => {
+		expect('locale' in parseProjectCmsConfigSource(withI18n('{ defaultLocale: process.env.LOCALE }'))).toBe(false)
+		expect('locale' in parseProjectCmsConfigSource(withI18n('{ defaultLocale: DEFAULT_LOCALE }', `import { DEFAULT_LOCALE } from './i18n'`))).toBe(
+			false,
+		)
+		expect('locale' in parseProjectCmsConfigSource(withI18n(`{ defaultLocale: '' }`))).toBe(false)
+		expect('locale' in parseProjectCmsConfigSource(withI18n(`{ locales: ['cs'] }`))).toBe(false)
+	})
+
+	test('is served as declared, tag or not', () => {
+		// Astro accepts a path here; whether it is usable as a locale is the consumer's question.
+		expect(parseProjectCmsConfigSource(withI18n(`{ defaultLocale: 'spanish' }`)).locale).toBe('spanish')
+	})
+})
+
 describe('parseProjectCmsConfig', () => {
 	test('reads astro.config.ts from the project root', async () => {
 		const root = await tempRootWith('astro.config.ts', CONFIG_SOURCE)

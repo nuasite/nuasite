@@ -32,7 +32,8 @@ export function CollectionsBrowser() {
 
 	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}
 
-	const sections = useMemo(() => getCollectionNav(collectionDefinitions), [collectionDefinitions])
+	const locale = config.value.locale
+	const sections = useMemo(() => getCollectionNav(collectionDefinitions, locale), [collectionDefinitions, locale])
 
 	const [search, setSearch] = useState('')
 	const selectedDef = selected ? collectionDefinitions[selected] : undefined
