@@ -64,9 +64,11 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		 * collections are listed in the same order for every editor and in every collection browser.
 		 * Defaults to Astro's `i18n.defaultLocale`; without either, labels are compared as English.
 		 *
-		 * Must be a string literal (or a top-level `const` holding one) at `nua.cms.cmsConfig.locale`
-		 * of the Astro config: a standalone sidecar reads it from that file's source, and a value
-		 * it cannot read there is ignored by the in-page editor too, so the two never disagree.
+		 * Must be a string literal (or a top-level `const` holding one) in the Astro config, where
+		 * the CMS options are passed — the `nua.cms` block, `nuaCms({ … })` or `nua({ cms: { … } })`
+		 * in `integrations`. A standalone sidecar reads it from that file's source, and a value it
+		 * cannot read there is ignored by the in-page editor too (with a warning), so the two never
+		 * disagree.
 		 */
 		locale?: string
 		/** Open the entry editor's metadata (frontmatter) panel by default instead of collapsed. */
@@ -311,8 +313,14 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					// resolved config at hand — so the in-page editor and every sidecar client are
 					// given the same value, including when neither can read it: a `cmsConfig.locale`
 					// that is not a literal is dropped here (`undefined` does not serialize), not
-					// passed through.
+					// passed through — with a warning, since the option was set and did nothing.
 					const { locale } = await parseProjectCmsConfig(createNodeFs(getProjectRoot()))
+					if (cmsConfig?.locale !== undefined && cmsConfig.locale !== locale) {
+						logger.warn(
+							`cmsConfig.locale "${cmsConfig.locale}" cannot be read from the Astro config source, so it is ignored`
+								+ `${locale ? ` and "${locale}" is used` : ''}. Declare it as a string literal where the CMS options are passed.`,
+						)
+					}
 					const configScript = `window.NuaCmsConfig = ${JSON.stringify({ ...resolvedCmsConfig, locale })};`
 
 					injectScript(

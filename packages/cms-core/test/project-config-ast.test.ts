@@ -148,6 +148,72 @@ describe('parseProjectCmsConfigSource — explicit locale from nua.cms.cmsConfig
 	})
 })
 
+// The CMS options do not have to sit in the `nua.cms` block: both READMEs document calling
+// the integration directly. The integration gets the value either way, so the source reader
+// has to find it either way — or the sidecar and the in-page editor are told different things.
+describe('parseProjectCmsConfigSource — the integration called directly in `integrations`', () => {
+	const CMS_CONFIG = `{ locale: 'cs', listStyles: [{ label: 'Fajfky', class: 'checkmarks' }] }`
+	const EXPECTED = { listStyles: [{ label: 'Fajfky', class: 'checkmarks' }], locale: 'cs' }
+
+	test('nuaCms({ cmsConfig }) from @nuasite/cms', () => {
+		const parsed = parseProjectCmsConfigSource(`
+			import nuaCms from '@nuasite/cms'
+			import { defineConfig } from 'astro/config'
+			export default defineConfig({ integrations: [nuaCms({ cmsConfig: ${CMS_CONFIG} })] })
+		`)
+		expect(parsed).toEqual(EXPECTED)
+	})
+
+	test('nua({ cms: { cmsConfig } }) from @nuasite/nua/integration and from @nuasite/nua', () => {
+		for (const importLine of [`import nua from '@nuasite/nua/integration'`, `import nua from '@nuasite/nua'`, `import { nua } from '@nuasite/nua'`]) {
+			const parsed = parseProjectCmsConfigSource(`
+				${importLine}
+				import { defineConfig } from 'astro/config'
+				export default defineConfig({ integrations: [mdx(), nua({ cms: { cmsConfig: ${CMS_CONFIG} } })] })
+			`)
+			expect(parsed).toEqual(EXPECTED)
+		}
+	})
+
+	test('the call is recognised by its import, whatever it is named locally', () => {
+		const parsed = parseProjectCmsConfigSource(`
+			import { default as cms } from '@nuasite/cms'
+			const cmsOptions = { cmsConfig: ${CMS_CONFIG} }
+			const cmsIntegration = cms(cmsOptions)
+			export default { integrations: [cmsIntegration] }
+		`)
+		expect(parsed).toEqual(EXPECTED)
+	})
+
+	test('a same-named function from somewhere else is not the integration', () => {
+		const parsed = parseProjectCmsConfigSource(`
+			import nuaCms from './my-cms'
+			export default { integrations: [nuaCms({ cmsConfig: ${CMS_CONFIG} })] }
+		`)
+		expect(parsed).toEqual({ listStyles: [] })
+	})
+
+	test('i18n.defaultLocale still backs up a direct call that declares no locale', () => {
+		const parsed = parseProjectCmsConfigSource(`
+			import nuaCms from '@nuasite/cms'
+			export default { i18n: { defaultLocale: 'cs' }, integrations: [nuaCms({ cmsConfig: { locale: process.env.CMS_LOCALE } }), nuaCms()] }
+		`)
+		expect(parsed.locale).toBe('cs')
+	})
+
+	test('the nua.cms block is consulted first', () => {
+		const parsed = parseProjectCmsConfigSource(`
+			import nuaCms from '@nuasite/cms'
+			import { defineConfig } from '@nuasite/nua/config'
+			export default defineConfig({
+				integrations: [nuaCms({ cmsConfig: { locale: 'en' } })],
+				nua: { cms: { cmsConfig: { locale: 'cs' } } },
+			})
+		`)
+		expect(parsed.locale).toBe('cs')
+	})
+})
+
 describe('parseProjectCmsConfig', () => {
 	test('reads astro.config.ts from the project root', async () => {
 		const root = await tempRootWith('astro.config.ts', CONFIG_SOURCE)

@@ -39,6 +39,7 @@ nuaCms({
 		debug: false,
 		theme: undefined,
 		themePreset: undefined,
+		locale: undefined, // Project language for ordering collection labels; read from this file's source, so a string literal (see "Collection Browser")
 	},
 
 	// --- Backend ---
@@ -370,7 +371,9 @@ export default defineConfig({
 })
 ```
 
-Without `cmsConfig.locale`, Astro's `i18n.defaultLocale` is used, so a site that already declares its languages needs nothing more. A single-language site should set `cmsConfig.locale` rather than add an `i18n` block, which would change how Astro routes. Both are read from the source of the Astro config, at exactly these paths (`nua.cms.cmsConfig.locale`, `i18n.defaultLocale`), because that is all a standalone sidecar has. So either value must be a string literal (or a top-level `const` holding one), and a value that cannot be read that way is ignored everywhere, the in-page editor included. The sidecar serves the result as `locale` in `GET /cms/v1/config`, and the in-page editor and the collections admin use the same value. Always pass that one, never the visitor's browser language.
+Without `cmsConfig.locale`, Astro's `i18n.defaultLocale` is used, so a site that already declares its languages needs nothing more. A single-language site should set `cmsConfig.locale` rather than add an `i18n` block, which would change how Astro routes.
+
+Both are read from the source of the Astro config, because that is all a standalone sidecar has. `cmsConfig` is found where the CMS options are passed: the `nua.cms` block above, or the integration called in `integrations` (`nuaCms({ cmsConfig })` imported from `@nuasite/cms`, `nua({ cms: { cmsConfig } })` imported from `@nuasite/nua` or `@nuasite/nua/integration`). Either value must be a string literal (or a top-level `const` holding one). A `cmsConfig.locale` that cannot be read that way is ignored everywhere, the in-page editor included, and the dev server logs a warning saying so. The sidecar serves the result as `locale` in `GET /cms/v1/config`, and the in-page editor and the collections admin use the same value. Always pass that one, never the visitor's browser language.
 
 A project that declares neither (or a value that is not a usable locale) is compared as English, where a diacritic only breaks a tie, so "Č" sorts with "C". Digits compare as numbers ("Sekce 2" before "Sekce 10").
 
