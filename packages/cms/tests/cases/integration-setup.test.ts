@@ -105,7 +105,7 @@ describe('nuaCms integration — dev setup wiring', () => {
 	}
 
 	async function collectionLabel(url: string, pick: (body: unknown) => unknown): Promise<unknown> {
-		const body: unknown = await (await fetch(url)).json()
+		const body: unknown = await (await Bun.fetch(url)).json()
 		const blog = pick(body)
 		return isRecord(blog) ? blog.label : undefined
 	}
@@ -145,6 +145,17 @@ describe('nuaCms integration — dev setup wiring', () => {
 			expect(warnings[0]).toContain('ignored')
 		})
 
+		test('a locale the source does not show loses to i18n.defaultLocale, and the warning names what is used', async () => {
+			const source = `{ i18n: { defaultLocale: 'en', locales: ['en', 'cs'] }, integrations: [nuaCms({ cmsConfig: { locale: pickLocale() } })] }`
+			await ctx.writeFile('astro.config.ts', astroConfig(source))
+			const { injected, warnings } = await startDev({ cmsConfig: { locale: 'cs' } })
+			// What the sidecar reads from the same file is `en`, so that is what the editor gets.
+			expect(injectedConfig(injected).locale).toBe('en')
+			expect(warnings).toHaveLength(1)
+			expect(warnings[0]).toContain('cmsConfig.locale "cs"')
+			expect(warnings[0]).toContain('"en" is used')
+		})
+
 		test('the rest of cmsConfig is passed through as before', async () => {
 			await ctx.writeFile('astro.config.ts', astroConfig(`{ integrations: [nuaCms()] }`))
 			const config = injectedConfig((await startDev({ cmsConfig: { debug: true, highlightColor: '#ff0000' } })).injected)
@@ -166,14 +177,14 @@ describe('nuaCms integration — dev setup wiring', () => {
 		test('the rescan an entry create triggers', async () => {
 			const { baseUrl } = await startDev(OVERRIDES)
 
-			const created = await fetch(`${baseUrl}/_nua/cms/markdown/create`, {
+			const created = await Bun.fetch(`${baseUrl}/_nua/cms/markdown/create`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ collection: 'blog', title: 'Second', slug: 'second' }),
 			})
 			expect(created.status).toBe(200)
 
-			const manifest: unknown = await (await fetch(`${baseUrl}/cms-manifest.json`)).json()
+			const manifest: unknown = await (await Bun.fetch(`${baseUrl}/cms-manifest.json`)).json()
 			const blog = fromManifest(manifest)
 			// The rescan happened — the new entry is counted — and the label did not fall back to `cms.label`.
 			expect(isRecord(blog) ? blog.entryCount : undefined).toBe(2)

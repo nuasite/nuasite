@@ -177,11 +177,12 @@ export const collections = { blog }
 		httpServer = served.server
 		const baseUrl = await served.baseUrl
 
-		const collections: unknown = await (await fetch(`${baseUrl}${ADMIN_API_PREFIX}/cms/v1/collections`)).json()
+		// `Bun.fetch`, not the global: other files in the run leave that one stubbed or unset.
+		const collections: unknown = await (await Bun.fetch(`${baseUrl}${ADMIN_API_PREFIX}/cms/v1/collections`)).json()
 		const blog = Array.isArray(collections) ? collections.find(item => collectionName(item) === 'blog') : undefined
 		expect(isRecord(blog) ? blog.label : undefined).toBe('Aktuality')
 		// The project model is built from the same scan.
-		const project: unknown = await (await fetch(`${baseUrl}${ADMIN_API_PREFIX}/cms/v1/project`)).json()
+		const project: unknown = await (await Bun.fetch(`${baseUrl}${ADMIN_API_PREFIX}/cms/v1/project`)).json()
 		const projectBlog = isRecord(project) && Array.isArray(project.collections)
 			? project.collections.find(item => collectionName(item) === 'blog')
 			: undefined

@@ -4,12 +4,15 @@ import { act } from 'preact/test-utils'
 import { CollectionsBrowser } from '../../../src/editor/components/collections-browser'
 import { CreatePageModal } from '../../../src/editor/components/create-page-modal'
 import { Toolbar } from '../../../src/editor/components/toolbar'
+import { DEFAULT_CONFIG } from '../../../src/editor/config'
 import {
-	closeCollectionsBrowser,
 	config,
+	isBgImageOverlayOpen,
+	isMarkdownPreview,
+	isSelectMode,
 	manifest,
 	openCollectionsBrowser,
-	resetCreatePageState,
+	resetAllState,
 	setCreatePageMode,
 	setCreatePageOpen,
 } from '../../../src/editor/signals'
@@ -50,11 +53,22 @@ const ALL_HIDDEN: Record<string, CollectionDefinition> = {
 const IN_CZECH = ['FAQ', '> Otázky', 'Cukr', 'Čísla', 'Hry', 'Chaty', 'News']
 
 let container: HTMLElement
-const initialConfig = config.value
-const initialManifest = manifest.value
-const initialLang = document.documentElement.lang
+// Editor state is module-level signals shared by every test file in the run. Each test here
+// starts from a known state rather than from whatever the previous file left, and puts back
+// what it found.
+let found: { config: typeof config.value; manifest: typeof manifest.value; lang: string }
+
+/** Everything that decides whether the toolbar renders, and with a Menu button. */
+function resetEditorState(): void {
+	resetAllState()
+	isSelectMode.value = false
+	isMarkdownPreview.value = false
+	isBgImageOverlayOpen.value = false
+}
 
 beforeEach(() => {
+	found = { config: config.value, manifest: manifest.value, lang: document.documentElement.lang }
+	resetEditorState()
 	container = document.createElement('div')
 	document.body.appendChild(container)
 	document.documentElement.lang = 'en'
@@ -63,17 +77,16 @@ beforeEach(() => {
 afterEach(() => {
 	render(null, container)
 	container.remove()
-	closeCollectionsBrowser()
-	resetCreatePageState()
-	config.value = initialConfig
-	manifest.value = initialManifest
-	document.documentElement.lang = initialLang
+	resetEditorState()
+	config.value = found.config
+	manifest.value = found.manifest
+	document.documentElement.lang = found.lang
 })
 
 /** Set what the editor knows of the project: its collections, and its language (`undefined`: none declared). */
 function project(collectionDefinitions: Record<string, CollectionDefinition>, locale: string | undefined): void {
-	manifest.value = { ...initialManifest, collectionDefinitions }
-	config.value = { ...initialConfig, locale }
+	manifest.value = { entries: {}, components: {}, componentDefinitions: {}, collectionDefinitions }
+	config.value = { ...DEFAULT_CONFIG, locale }
 }
 
 async function mount<P extends object>(component: ComponentType<P>, props: P): Promise<void> {

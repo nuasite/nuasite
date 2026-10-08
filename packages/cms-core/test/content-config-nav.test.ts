@@ -132,7 +132,7 @@ describe('scanCollections — collection-browser keys reach the collection defin
 			'src/content.config.ts': `import { defineCmsCollection, n } from '@nuasite/cms'
 const cases = defineCmsCollection({
 	schema: n.object({ title: n.text() }),
-	cms: { label: 'Případy', order: 1 },
+	cms: { label: 'Případy', order: 0 },
 })
 const press = defineCmsCollection({
 	schema: n.object({ title: n.text() }),
@@ -145,7 +145,8 @@ export const collections = { 'pripady-pripady': cases, 'press-releases': press }
 		const collections = await scanCollections(createNodeFs(root))
 
 		expect(collections['pripady-pripady']?.label).toBe('Případy')
-		expect(collections['pripady-pripady']?.order).toBe(1)
+		// Zero is a position — the first one — not an absent order.
+		expect(collections['pripady-pripady']?.order).toBe(0)
 		expect(collections['pripady-pripady']?.group).toBeUndefined()
 		// No `cms.label`: the name-derived default stays.
 		expect(collections['press-releases']?.label).toBe('Press Releases')

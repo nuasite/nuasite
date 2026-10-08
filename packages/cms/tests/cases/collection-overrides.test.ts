@@ -99,7 +99,7 @@ describe('collection overrides from the Astro config', () => {
 			await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 			const address: string | AddressInfo | null = server.address()
 			if (address === null || typeof address === 'string') throw new Error('expected a TCP address')
-			const response = await fetch(`http://127.0.0.1:${address.port}/_nua/cms/${route}`, {
+			const response = await Bun.fetch(`http://127.0.0.1:${address.port}/_nua/cms/${route}`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify(body),
