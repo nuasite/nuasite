@@ -106,6 +106,48 @@ describe('parseProjectCmsConfigSource — locale from i18n.defaultLocale', () =>
 	})
 })
 
+// Most sites are single-language and have no `i18n` block, and adding one changes how Astro
+// routes. `nua.cms.cmsConfig.locale` names the language without touching that, and wins.
+describe('parseProjectCmsConfigSource — explicit locale from nua.cms.cmsConfig', () => {
+	const config = (cmsConfig: string, i18n?: string, prelude = '') => `
+		import { defineConfig } from '@nuasite/nua/config'
+		${prelude}
+		export default defineConfig({
+			${i18n === undefined ? '' : `i18n: ${i18n},`}
+			nua: { cms: { cmsConfig: ${cmsConfig} } },
+		})
+	`
+
+	test('is read on its own, with no i18n block', () => {
+		expect(parseProjectCmsConfigSource(config(`{ locale: 'cs' }`))).toEqual({ listStyles: [], locale: 'cs' })
+	})
+
+	test('precedence: explicit, then i18n.defaultLocale, then nothing', () => {
+		expect(parseProjectCmsConfigSource(config(`{ locale: 'cs' }`, `{ defaultLocale: 'en', locales: ['en', 'cs'] }`)).locale).toBe('cs')
+		expect(parseProjectCmsConfigSource(config(`{ openMetadataByDefault: true }`, `{ defaultLocale: 'en', locales: ['en', 'cs'] }`)).locale).toBe('en')
+		expect('locale' in parseProjectCmsConfigSource(config(`{ openMetadataByDefault: true }`))).toBe(false)
+	})
+
+	test('sits next to listStyles in the same block', () => {
+		const parsed = parseProjectCmsConfigSource(config(`{ locale: 'cs', listStyles: [{ label: 'Fajfky', class: 'checkmarks' }] }`))
+		expect(parsed).toEqual({ listStyles: [{ label: 'Fajfky', class: 'checkmarks' }], locale: 'cs' })
+	})
+
+	test('resolves a top-level const', () => {
+		expect(parseProjectCmsConfigSource(config('{ locale: LOCALE }', undefined, `const LOCALE = 'cs'`)).locale).toBe('cs')
+	})
+
+	test('a non-literal explicit locale counts as absent: i18n.defaultLocale applies, or nothing', () => {
+		for (const unreadable of ['process.env.CMS_LOCALE', 'pickLocale()', '42', `''`]) {
+			expect(parseProjectCmsConfigSource(config(`{ locale: ${unreadable} }`, `{ defaultLocale: 'en' }`)).locale).toBe('en')
+			expect('locale' in parseProjectCmsConfigSource(config(`{ locale: ${unreadable} }`))).toBe(false)
+		}
+		// An import is as opaque to the source reader as a call.
+		const imported = config('{ locale: LOCALE }', undefined, `import { LOCALE } from './site'`)
+		expect('locale' in parseProjectCmsConfigSource(imported)).toBe(false)
+	})
+})
+
 describe('parseProjectCmsConfig', () => {
 	test('reads astro.config.ts from the project root', async () => {
 		const root = await tempRootWith('astro.config.ts', CONFIG_SOURCE)

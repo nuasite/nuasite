@@ -59,6 +59,16 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		themePreset?: string
 		features?: CmsFeatures
 		listStyles?: Array<{ label: string; class: string }>
+		/**
+		 * The project's language as a BCP 47 tag (`'cs'`). Collection labels are compared in it, so
+		 * collections are listed in the same order for every editor and in every collection browser.
+		 * Defaults to Astro's `i18n.defaultLocale`; without either, labels are compared as English.
+		 *
+		 * Must be a string literal (or a top-level `const` holding one) at `nua.cms.cmsConfig.locale`
+		 * of the Astro config: a standalone sidecar reads it from that file's source, and a value
+		 * it cannot read there is ignored by the in-page editor too, so the two never disagree.
+		 */
+		locale?: string
 		/** Open the entry editor's metadata (frontmatter) panel by default instead of collapsed. */
 		openMetadataByDefault?: boolean
 		/**
@@ -298,10 +308,12 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 					// The project's language, for ordering collection labels. Read from the config
 					// source by the same function the sidecar's `/config` uses — rather than from the
-					// resolved Astro config at hand — so the in-page editor and every sidecar client
-					// are given the same value, including when neither can read it.
+					// resolved config at hand — so the in-page editor and every sidecar client are
+					// given the same value, including when neither can read it: a `cmsConfig.locale`
+					// that is not a literal is dropped here (`undefined` does not serialize), not
+					// passed through.
 					const { locale } = await parseProjectCmsConfig(createNodeFs(getProjectRoot()))
-					const configScript = `window.NuaCmsConfig = ${JSON.stringify({ ...resolvedCmsConfig, ...(locale ? { locale } : {}) })};`
+					const configScript = `window.NuaCmsConfig = ${JSON.stringify({ ...resolvedCmsConfig, locale })};`
 
 					injectScript(
 						'page',

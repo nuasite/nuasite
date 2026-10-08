@@ -130,16 +130,28 @@ function parseConfigListStyles(configObject: ObjectExpression, bindings: Binding
 	return parseListStyles(listStylesNode, bindings)
 }
 
-/** Astro's `i18n.defaultLocale` of the config object, when it is a non-empty static string. */
-function parseDefaultLocale(configObject: ObjectExpression, bindings: Bindings): string | undefined {
-	const i18n = objectAtPath(configObject, ['i18n'], bindings)
-	const defaultLocaleNode = i18n ? objectPropertyValue(i18n, 'defaultLocale', bindings) : null
-	return (defaultLocaleNode && staticString(defaultLocaleNode, bindings)) || undefined
+/** The string at `path` → `key` of the config object, when it is a non-empty static string. */
+function staticStringAt(configObject: ObjectExpression, path: string[], key: string, bindings: Bindings): string | undefined {
+	const parent = objectAtPath(configObject, path, bindings)
+	const node = parent ? objectPropertyValue(parent, key, bindings) : null
+	return (node && staticString(node, bindings)) || undefined
+}
+
+/**
+ * The project's language: `nua.cms.cmsConfig.locale` when declared, otherwise Astro's
+ * `i18n.defaultLocale`. The explicit key comes first because most sites are single-language
+ * and have no `i18n` block — adding one changes how Astro routes, which is not a lever to
+ * pull for the sake of sorting labels. A value that cannot be read statically counts as
+ * absent, so an unreadable explicit locale falls through to `i18n.defaultLocale`.
+ */
+function parseLocale(configObject: ObjectExpression, bindings: Bindings): string | undefined {
+	return staticStringAt(configObject, ['nua', 'cms', 'cmsConfig'], 'locale', bindings)
+		?? staticStringAt(configObject, ['i18n'], 'defaultLocale', bindings)
 }
 
 /**
  * Parse the project-level CMS config from an Astro config source string:
- * `nua.cms.cmsConfig.listStyles`, and the project's language from `i18n.defaultLocale`.
+ * `nua.cms.cmsConfig.listStyles`, and the project's language (see {@link parseLocale}).
  */
 export function parseProjectCmsConfigSource(source: string): CmsConfig {
 	const ast = parseSource(source)
@@ -149,7 +161,7 @@ export function parseProjectCmsConfigSource(source: string): CmsConfig {
 	const configObject = configObjectFromDefaultExport(ast, bindings)
 	if (!configObject) return EMPTY_CONFIG
 
-	const locale = parseDefaultLocale(configObject, bindings)
+	const locale = parseLocale(configObject, bindings)
 	return { listStyles: parseConfigListStyles(configObject, bindings), ...(locale ? { locale } : {}) }
 }
 

@@ -160,10 +160,11 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 			import { defineConfig } from '@nuasite/nua/config'
 
 			export default defineConfig({
-				i18n: { defaultLocale: 'cs', locales: ['cs', 'en'] },
+				i18n: { defaultLocale: 'en', locales: ['en', 'cs'] },
 				nua: {
 					cms: {
 						cmsConfig: {
+							locale: 'cs',
 							listStyles: [
 								{ label: 'Fajfky', class: 'checkmarks' },
 								{ label: 'Růžové tečky', class: 'dots-pink' },
@@ -182,7 +183,8 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 			{ label: 'Fajfky', class: 'checkmarks' },
 			{ label: 'Růžové tečky', class: 'dots-pink' },
 		])
-		// The project's language, for a client to order collection labels by.
+		// The project's language, for a client to order collection labels by: the explicit
+		// `cmsConfig.locale`, ahead of Astro's `i18n.defaultLocale`.
 		expect(config.locale).toBe('cs')
 	})
 

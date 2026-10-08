@@ -356,7 +356,23 @@ const sections = resolveCollectionNav(collections, { locale: config.locale })
 
 Nested collections (`parentCollection`) come back as `children` of their parent.
 
-The order is the same for every viewer and in every browser of a project. Labels are compared in the project's language, which is Astro's `i18n.defaultLocale`: the sidecar serves it as `locale` in `GET /cms/v1/config`, and the in-page editor and the collections admin use the same value. Always pass that one, never the visitor's browser language. A project that declares no `i18n.defaultLocale` (or a value that is not a usable locale) is compared as English, where a diacritic only breaks a tie, so "Č" sorts with "C". Digits compare as numbers ("Sekce 2" before "Sekce 10").
+The order is the same for every viewer and in every browser of a project. Labels are compared in the project's language, declared in the Astro config:
+
+```typescript
+import { defineConfig } from '@nuasite/nua/config'
+
+export default defineConfig({
+	nua: {
+		cms: {
+			cmsConfig: { locale: 'cs' },
+		},
+	},
+})
+```
+
+Without `cmsConfig.locale`, Astro's `i18n.defaultLocale` is used, so a site that already declares its languages needs nothing more. A single-language site should set `cmsConfig.locale` rather than add an `i18n` block, which would change how Astro routes. Both are read from the source of the Astro config, at exactly these paths (`nua.cms.cmsConfig.locale`, `i18n.defaultLocale`), because that is all a standalone sidecar has. So either value must be a string literal (or a top-level `const` holding one), and a value that cannot be read that way is ignored everywhere, the in-page editor included. The sidecar serves the result as `locale` in `GET /cms/v1/config`, and the in-page editor and the collections admin use the same value. Always pass that one, never the visitor's browser language.
+
+A project that declares neither (or a value that is not a usable locale) is compared as English, where a diacritic only breaks a tie, so "Č" sorts with "C". Digits compare as numbers ("Sekce 2" before "Sekce 10").
 
 ## Component Operations
 
