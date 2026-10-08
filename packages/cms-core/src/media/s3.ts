@@ -1,6 +1,7 @@
 import type { MediaFolderItem, MediaListResult, MediaStorageAdapter, MediaUploadResult } from '@nuasite/cms-types'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
+import { MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID } from './errors'
 import { getFileExtension, mimeFromExt } from './local'
 
 export interface S3StorageOptions {
@@ -17,6 +18,16 @@ export interface S3StorageOptions {
 const s3Module = '@aws-sdk/client-s3'
 async function loadS3(): Promise<any> {
 	return import(/* @vite-ignore */ s3Module)
+}
+
+/**
+ * S3 keys are literal, so `.` and `..` name nothing special there. Whatever sits in
+ * front of the bucket (a CDN, a proxy, the URL built from the key) may still resolve
+ * them, so the adapter neither builds nor accepts one in what a caller supplies: a
+ * folder, or the part of a key after the configured prefix.
+ */
+function hasDotSegment(value: string): boolean {
+	return value.split('/').some((s) => s === '.' || s === '..')
 }
 
 export function createS3StorageAdapter(options: S3StorageOptions): MediaStorageAdapter {
@@ -54,6 +65,7 @@ export function createS3StorageAdapter(options: S3StorageOptions): MediaStorageA
 
 			const limit = opts?.limit ?? 50
 			const folder = opts?.folder ?? ''
+			if (hasDotSegment(folder)) return { items: [], folders: [], hasMore: false } satisfies MediaListResult
 
 			const listPrefix = [prefix, folder].filter(Boolean).join('/')
 			const delimiterPrefix = listPrefix ? `${listPrefix}/` : ''
@@ -103,6 +115,7 @@ export function createS3StorageAdapter(options: S3StorageOptions): MediaStorageA
 		},
 
 		async upload(file, filename, contentType, uploadOpts) {
+			if (hasDotSegment(uploadOpts?.folder ?? '')) return { success: false, error: MEDIA_INVALID_FOLDER }
 			const { PutObjectCommand } = await loadS3()
 			const client = await getClient()
 
@@ -131,6 +144,11 @@ export function createS3StorageAdapter(options: S3StorageOptions): MediaStorageA
 		},
 
 		async delete(id) {
+			// An id is the object key `list` and `upload` hand out, so it always sits under the
+			// configured prefix. Anything else in the bucket is not this adapter's to remove.
+			// The prefix is the operator's and taken as configured; only what follows it is checked.
+			const inPrefix = prefix ? id.startsWith(`${prefix}/`) : id !== ''
+			if (!inPrefix || hasDotSegment(id.slice(prefix ? prefix.length + 1 : 0))) return { success: false, error: MEDIA_INVALID_ID }
 			try {
 				const { DeleteObjectCommand } = await loadS3()
 				const client = await getClient()
@@ -143,8 +161,10 @@ export function createS3StorageAdapter(options: S3StorageOptions): MediaStorageA
 				await client.send(command)
 				return { success: true }
 			} catch (error) {
+				// Prefixed, so no text the SDK or the service comes up with can pass for one of the
+				// adapter's own refusals.
 				const message = error instanceof Error ? error.message : String(error)
-				return { success: false, error: message }
+				return { success: false, error: `Delete failed: ${message}` }
 			}
 		},
 	}

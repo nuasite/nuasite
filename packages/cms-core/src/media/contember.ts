@@ -1,4 +1,5 @@
-import type { MediaStorageAdapter } from '@nuasite/cms-types'
+import type { MediaStorageAdapter, MediaUploadResult } from '@nuasite/cms-types'
+import { MEDIA_INVALID_ID } from './errors'
 
 export interface ContemberStorageOptions {
 	/** Base URL of the worker API, e.g. 'https://api.example.com' */
@@ -69,10 +70,17 @@ export function createContemberStorageAdapter(options: ContemberStorageOptions):
 
 			const data: unknown = await res.json()
 			const payload = (data && typeof data === 'object') ? data : {}
-			return { success: true, ...payload }
+			const result: MediaUploadResult = { success: true, ...payload }
+			// Whatever the service reports stays marked as its own, like the status above, so it
+			// cannot read as one of the adapter's refusals.
+			if (result.error !== undefined) result.error = `Upload failed: ${String(result.error)}`
+			return result
 		},
 
 		async delete(id) {
+			// `encodeURIComponent` keeps the id one path segment, but leaves `.` and `..` as they
+			// are, and a URL resolves those away: the request would address a different endpoint.
+			if (id === '' || id === '.' || id === '..') return { success: false, error: MEDIA_INVALID_ID }
 			const res = await fetch(`${base}/${encodeURIComponent(id)}`, {
 				method: 'DELETE',
 				headers: headers(),

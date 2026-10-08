@@ -1,4 +1,5 @@
 export { type ContemberStorageOptions, createContemberStorageAdapter } from './contember'
+export { MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID, MEDIA_NOT_FOUND } from './errors'
 export { createLocalStorageAdapter, getFileExtension, type LocalStorageOptions, MIME_BY_EXT, mimeFromExt } from './local'
 export { listProjectImages, type ListProjectImagesOptions, uploadsDirRelativeToRoot } from './project-images'
 export { createS3StorageAdapter, type S3StorageOptions } from './s3'

@@ -1,4 +1,13 @@
-import { type CmsCore, type CmsFileSystem, listProjectImages, parseProjectCmsConfig, resolvePathnameFromSpec } from '@nuasite/cms-core'
+import {
+	type CmsCore,
+	type CmsFileSystem,
+	listProjectImages,
+	MEDIA_INVALID_FOLDER,
+	MEDIA_INVALID_ID,
+	MEDIA_NOT_FOUND,
+	parseProjectCmsConfig,
+	resolvePathnameFromSpec,
+} from '@nuasite/cms-core'
 import type {
 	CmsConfig,
 	CollectionDefinition,
@@ -97,6 +106,22 @@ function mutationResponse(result: MutationResult, fallback: ErrorCode = 'validat
 	const message = result.error ?? 'Mutation failed'
 	const code: ErrorCode = /not found/i.test(message) ? 'not_found' : fallback
 	return error(code, message, result.sourcePath)
+}
+
+/**
+ * Map a failed media adapter result to an HTTP response. An id or folder the adapter
+ * refuses is the caller's mistake → 400, a file that is not there → 404; everything
+ * else is a storage failure → 500. The adapter says which by answering with one of
+ * cms-core's exact strings: the text of any other error decides nothing, since it may
+ * come from an SDK or an upstream service.
+ */
+function mediaFailure(message: string): Response {
+	const code: ErrorCode = message === MEDIA_INVALID_ID || message === MEDIA_INVALID_FOLDER
+		? 'validation'
+		: message === MEDIA_NOT_FOUND
+		? 'not_found'
+		: 'io_error'
+	return error(code, message)
 }
 
 async function parseJson<T>(req: Request): Promise<{ ok: true; value: T } | { ok: false; response: Response }> {
@@ -654,7 +679,12 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			return error('not_found', `No route: ${req.method} ${pathname}`)
 		}
 		const rest = pathname.slice(API_PREFIX.length) || '/'
-		const segments = rest.split('/').filter(Boolean).map(decodeURIComponent)
+		let segments: string[]
+		try {
+			segments = rest.split('/').filter(Boolean).map(decodeURIComponent)
+		} catch {
+			return error('validation', 'Malformed percent-encoding in the request path')
+		}
 		const method = req.method
 
 		try {
@@ -989,6 +1019,18 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		return json(result)
 	}
 
+	/** The media routes, with anything an adapter throws answered as a path-free `io_error`. */
+	async function routeMedia(method: string, tail: string[], req: Request, url: URL): Promise<Response> {
+		try {
+			return await answerMedia(method, tail, req, url)
+		} catch (cause) {
+			// Whatever an adapter throws may spell out a filesystem path, and left uncaught it
+			// is rendered by the runtime's error page. The detail goes to the log instead.
+			console.error('[cms-sidecar] media request failed:', cause)
+			return error('io_error', 'Media storage failed')
+		}
+	}
+
 	/**
 	 * `GET /media` lists the storage adapter alone by default. `?includeProjectImages`
 	 * (bare, or `=true` / `=1`; root only, no `folder`) merges in the project scan behind
@@ -996,7 +1038,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 	 * feature. An unrecognised flag value, or a merge cursor followed without the flag,
 	 * is a 400 rather than a silently different listing.
 	 */
-	async function routeMedia(method: string, tail: string[], req: Request, url: URL): Promise<Response> {
+	async function answerMedia(method: string, tail: string[], req: Request, url: URL): Promise<Response> {
 		const adapter = core.media
 		if (!adapter) return error('unsupported', 'Media storage not configured')
 
@@ -1035,16 +1077,20 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 				const parsed = await parseJson<CreateFolderBody>(req)
 				if (!parsed.ok) return parsed.response
 				if (!adapter.createFolder) return error('unsupported', 'Folder creation not supported by this adapter')
-				if (typeof parsed.value.folder !== 'string' || parsed.value.folder.includes('..')) {
+				// The body is whatever JSON the caller sent, `null` included.
+				const body: Partial<CreateFolderBody> | null = parsed.value
+				const folder = body?.folder
+				if (typeof folder !== 'string' || folder.includes('..')) {
 					return error('validation', 'A valid "folder" is required')
 				}
-				const result = await adapter.createFolder(parsed.value.folder)
-				return result.success ? json(result) : error('io_error', result.error ?? 'Failed to create folder')
+				const result = await adapter.createFolder(folder)
+				return result.success ? json(result) : mediaFailure(result.error ?? 'Failed to create folder')
 			}
 			if (!contentType.includes('multipart/form-data')) {
 				return error('validation', 'Expected multipart/form-data or application/json')
 			}
-			const form = await req.formData()
+			const form = await req.formData().catch(() => null)
+			if (form === null) return error('validation', 'Malformed multipart/form-data body')
 			const file = form.get('file')
 			if (!(file instanceof File)) return error('validation', 'No "file" found in the form data')
 			if (file.size > maxUploadSize) {
@@ -1053,13 +1099,13 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			const buffer = Buffer.from(await file.arrayBuffer())
 			const folder = url.searchParams.get('folder') ?? undefined
 			const result = await adapter.upload(buffer, file.name, file.type || 'application/octet-stream', { folder })
-			return result.success ? json(result) : error('io_error', result.error ?? 'Upload failed')
+			return result.success ? json(result) : mediaFailure(result.error ?? 'Upload failed')
 		}
 
 		// DELETE /media/:id
 		if (id !== undefined && method === 'DELETE') {
 			const result = await adapter.delete(id)
-			return result.success ? json({ success: true }) : error('io_error', result.error ?? 'Delete failed')
+			return result.success ? json({ success: true }) : mediaFailure(result.error ?? 'Delete failed')
 		}
 
 		return error('not_found', `No route: ${method} /cms/v1/media${id ? `/${id}` : ''}`)

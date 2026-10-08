@@ -429,7 +429,15 @@ export async function handleCmsApiRoute(ctx: RouteContext): Promise<void> {
 			sendError(res, 'Not found', 404)
 			return
 		}
-		sendJson(res, await ctx.mediaAdapter!.delete(decodeURIComponent(id)))
+		let decoded: string
+		try {
+			decoded = decodeURIComponent(id)
+		} catch {
+			sendError(res, 'Invalid media id')
+			return
+		}
+		const result = await ctx.mediaAdapter!.delete(decoded)
+		sendJson(res, result, result.success ? 200 : 400)
 		return
 	}
 
