@@ -209,4 +209,28 @@ describe('collections-admin sidebar', () => {
 		await settle()
 		expect(menu()).toEqual(IN_CZECH)
 	})
+	test('a config re-read does not take an already visible menu away', async () => {
+		// Same deep link: the menu is on screen in the fallback order. The retry starts a config
+		// read that never answers — the client has no timeout — and the menu must stay up for it.
+		let configReads = 0
+		let entriesHealthy = false
+		let answer: (response: Response) => void = () => {}
+		window.location.hash = '#/c/faq'
+		await mount({
+			config: () => (++configReads === 1 ? failed() : new Promise<Response>((resolve) => (answer = resolve))),
+			entries: () => (entriesHealthy ? json({ entries: [], hasMore: false }) : failed()),
+		})
+		expect(menu()).toEqual(IN_FALLBACK)
+
+		entriesHealthy = true
+		await act(async () => container.querySelector<HTMLButtonElement>('.nua-cadmin-retry')?.click())
+		await settle()
+		expect(configReads).toBe(2)
+		expect(menu()).toEqual(IN_FALLBACK)
+
+		// And when it does answer, the menu takes the locale.
+		answer(json({ locale: 'cs' } satisfies CmsConfig))
+		await settle()
+		expect(menu()).toEqual(IN_CZECH)
+	})
 })
