@@ -339,6 +339,8 @@ const redirects = defineCmsCollection({
 
 The block is read from the config **source**, so the values must be literals (or a top-level `const` holding one); anything else is ignored. Because they travel with the collection scan, they reach every consumer, including the standalone [`@nuasite/cms-sidecar`](../cms-sidecar) a hosted admin talks to. The `collections[name].label` option of the integration wins over `cms.label` wherever the integration itself serves collections: the in-page editor and the local `/_nua/admin`. A standalone sidecar does not load the Astro config, so there `cms.label` is the label.
 
+One limitation, shared with the other keys of the block: a collection the scanner cannot place at all (no inline `schema` object and no `loader: glob(...)`) is skipped together with its `cms` block, so `hidden` or `label` declared on it does nothing.
+
 Browsers arrange the list with `resolveCollectionNav` from `@nuasite/cms-types` (re-exported by `@nuasite/cms-client`), so a custom collections UI lists collections the same way:
 
 ```typescript

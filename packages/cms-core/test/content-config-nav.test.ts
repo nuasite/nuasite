@@ -69,6 +69,27 @@ export const collections = { cases }
 		expect(parsed?.group).toBeUndefined()
 	})
 
+	// Known limitation, shared with every other key of the block: a collection the parser can
+	// place neither by an inline schema nor by a `glob()` loader is skipped whole, and its
+	// `cms` block with it. Registering it would change what the content check counts and
+	// walks, so it is pinned here and documented rather than changed in passing.
+	test('a collection with no readable schema and no glob loader is skipped, cms block included', () => {
+		const skipped = (definition: string) =>
+			parseConfigSource(`import { defineCmsCollection } from '@nuasite/cms'
+import { file, glob } from 'astro/loaders'
+import { caseSchema } from './schemas'
+const cases = defineCmsCollection(${definition})
+export const collections = { cases }
+`).get('cases')
+
+		expect(skipped(`{ cms: { hidden: true, label: 'Případy' } }`)).toBeUndefined()
+		expect(skipped(`{ schema: caseSchema, cms: { hidden: true, label: 'Případy' } }`)).toBeUndefined()
+		expect(skipped(`{ loader: file('src/data/cases.json'), schema: caseSchema, cms: { hidden: true } }`)).toBeUndefined()
+		// A glob loader is enough to place it, whatever the schema is.
+		const placed = skipped(`{ loader: glob({ pattern: '*.md', base: './src/content/cases' }), schema: caseSchema, cms: { hidden: true } }`)
+		expect(placed?.hidden).toBe(true)
+	})
+
 	test('no cms block at all leaves every key undefined', () => {
 		const parsed = parseConfigSource(`import { defineCollection } from 'astro:content'
 import { glob } from 'astro/loaders'
