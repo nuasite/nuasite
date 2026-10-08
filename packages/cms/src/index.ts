@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { createLocalStorageAdapter } from '@nuasite/cms-core'
 import remarkDirective from 'remark-directive'
 import { processBuildOutput } from './build-processor'
+import type { CollectionOverrides } from './collection-overrides'
 import { ComponentRegistry } from './component-registry'
 import { getProjectRoot, resetProjectRoot } from './config'
 import { createDevMiddleware } from './dev-middleware'
@@ -103,15 +104,7 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	 * Per-collection overrides for the CMS browser.
 	 * Highest priority — overrides scanner defaults and frontmatter comment directives.
 	 */
-	collections?: Record<string, {
-		/**
-		 * Display label shown in the CMS (overrides the name-derived default, e.g. "Jsem Otazky" → "Otázky").
-		 * Wins over `defineCmsCollection({ cms: { label } })`, but only inside this integration — a
-		 * standalone sidecar does not load the Astro config, so declare the label there to reach it.
-		 */
-		label?: string
-		fields?: Record<string, { position?: 'sidebar' | 'header'; group?: string }>
-	}>
+	collections?: CollectionOverrides
 	/**
 	 * Enable polling for file watching.
 	 * Set to `true` on filesystems that don't support native events (e.g. network mounts).
@@ -248,29 +241,8 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					}
 				}
 
-				const collectionDefinitions = await scanCollections(contentDir)
-
-				// Apply per-collection field overrides from astro config (highest priority)
-				if (options.collections) {
-					for (const [collectionName, overrides] of Object.entries(options.collections)) {
-						const def = collectionDefinitions[collectionName]
-						if (!def) continue
-						if (overrides.label) def.label = overrides.label
-						if (!overrides.fields) continue
-						for (const field of def.fields) {
-							const fieldOverride = overrides.fields[field.name]
-							if (!fieldOverride) continue
-							// `positionDeclared` alongside it, for the same reason the config and directive paths
-							// set it: on the wire this `'sidebar'` is the one the scanner also guesses, and a
-							// layout that cannot tell them apart overrides the highest-priority answer there is.
-							if (fieldOverride.position) {
-								field.position = fieldOverride.position
-								field.positionDeclared = true
-							}
-							if (fieldOverride.group) field.group = fieldOverride.group
-						}
-					}
-				}
+				// With the per-collection overrides from astro config applied (highest priority)
+				const collectionDefinitions = await scanCollections(contentDir, options.collections)
 
 				manifestWriter.setCollectionDefinitions(collectionDefinitions)
 
@@ -420,7 +392,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					manifestWriter,
 					componentDefinitions,
 					idCounter,
-					{ enableCmsApi, mediaAdapter, isPublicStaticFile, maxUploadSize },
+					{ enableCmsApi, mediaAdapter, isPublicStaticFile, maxUploadSize, collectionOverrides: options.collections },
 				)
 				logger.info('CMS dev middleware initialized')
 				if (enableCmsApi) {
@@ -436,6 +408,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					createLocalAdminMiddleware(server, {
 						contentDir,
 						componentDirs,
+						collectionOverrides: options.collections,
 						mediaAdapter: media ?? createLocalStorageAdapter(),
 						maxUploadSize,
 						entryModuleId: VIRTUAL_ADMIN_ENTRY,

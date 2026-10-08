@@ -33,6 +33,7 @@ import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
 // (sandbox) mode never registers this middleware, so it never imports the peer.
 import type { CmsSidecarServer, createServer as CreateSidecarServer } from '@nuasite/cms-sidecar'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides'
 import { getProjectRoot } from './config'
 import { readBody } from './handlers/request-utils'
 import type { MediaStorageAdapter } from './media/types'
@@ -50,6 +51,8 @@ export interface LocalAdminOptions {
 	contentDir: string
 	/** Component directories, used by the core for MDX import resolution. */
 	componentDirs: string[]
+	/** Astro-config `collections` overrides, applied to every scan the sidecar serves. */
+	collectionOverrides?: CollectionOverrides
 	/** Media adapter for the sidecar's `/media` routes (defaults to `local` in this mode). */
 	mediaAdapter?: MediaStorageAdapter
 	/** Max upload size in bytes for sidecar media uploads. */
@@ -173,7 +176,14 @@ function makeLazySidecar(options: LocalAdminOptions, peerLoader: AdminPeerLoader
 			componentDirs: options.componentDirs,
 		})
 		server = createServer({
-			core,
+			// The sidecar serves what `core.scanCollections()` returns, and a standalone one has
+			// only the content config to go by. This one runs inside the integration, which also
+			// holds the Astro-config overrides — the highest-priority answer — so they go on top
+			// here, and `/_nua/admin` names a collection the same as the in-page editor does.
+			core: {
+				...core,
+				scanCollections: async () => applyCollectionOverrides(await core.scanCollections(), options.collectionOverrides),
+			},
 			fs,
 			root,
 			// In-process: the core ships with the site's @nuasite/cms version, so the

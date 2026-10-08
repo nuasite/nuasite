@@ -2,6 +2,7 @@ import { createCmsCore, createNodeFs, resolvePathnameFromSpec } from '@nuasite/c
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
+import type { CollectionOverrides } from './collection-overrides'
 import { getProjectRoot } from './config'
 import { handleCmsApiRoute } from './handlers/api-routes'
 import { buildMapPattern, detectArrayPattern, extractArrayElementProps, parseInlineArrayName } from './handlers/array-ops'
@@ -68,6 +69,8 @@ export interface DevMiddlewareOptions {
 	isPublicStaticFile?: (urlPath: string) => boolean
 	/** Maximum upload size in bytes for /_nua/cms/media/upload. */
 	maxUploadSize: number
+	/** Astro-config `collections` overrides, re-applied to the rescan an entry create or delete triggers. */
+	collectionOverrides?: CollectionOverrides
 }
 
 export function createDevMiddleware(
@@ -154,6 +157,7 @@ export function createDevMiddleware(
 				contentDir: config.contentDir,
 				mediaAdapter: options.mediaAdapter,
 				maxUploadSize: options.maxUploadSize,
+				collectionOverrides: options.collectionOverrides,
 			})
 				.catch((error) => {
 					console.error('[astro-cms] API error:', error)

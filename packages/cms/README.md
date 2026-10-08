@@ -337,7 +337,7 @@ const redirects = defineCmsCollection({
 | `group`  | `string` | Section heading the collection is listed under. Ungrouped collections come first, then each group as its own section. |
 | `hidden` | `true`   | Leaves the collection out of collection browsers. It stays resolvable: reference pickers and entry URLs still work.   |
 
-The block is read from the config **source**, so the values must be literals (or a top-level `const` holding one); anything else is ignored. Because they travel with the collection scan, they reach every consumer, including the standalone [`@nuasite/cms-sidecar`](../cms-sidecar) a hosted admin talks to. The `collections[name].label` option of the integration still wins over `cms.label`, but it is applied inside the Astro integration only and never reaches a sidecar.
+The block is read from the config **source**, so the values must be literals (or a top-level `const` holding one); anything else is ignored. Because they travel with the collection scan, they reach every consumer, including the standalone [`@nuasite/cms-sidecar`](../cms-sidecar) a hosted admin talks to. The `collections[name].label` option of the integration wins over `cms.label` wherever the integration itself serves collections: the in-page editor and the local `/_nua/admin`. A standalone sidecar does not load the Astro config, so there `cms.label` is the label.
 
 Browsers arrange the list with `resolveCollectionNav` from `@nuasite/cms-types` (re-exported by `@nuasite/cms-client`), so a custom collections UI lists collections the same way:
 
