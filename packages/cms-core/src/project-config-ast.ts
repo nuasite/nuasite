@@ -152,33 +152,88 @@ function collectCmsIntegrationImports(ast: File): Map<string, string[]> {
 }
 
 /**
+ * What the default export's config goes through before Astro sees it: the `defineConfig` of
+ * `@nuasite/nua/config`, which adds the nua integration on its own; Astro's, or no call at
+ * all, where a `nua` key means nothing; or a function this reader does not know.
+ */
+function defaultExportWrapper(ast: File, bindings: Bindings): 'nua' | 'astro' | 'unknown' {
+	const exported = ast.program.body.find(stmt => stmt.type === 'ExportDefaultDeclaration')
+	const declaration = exported?.type === 'ExportDefaultDeclaration' ? resolveExpression(exported.declaration, bindings) : null
+	if (declaration?.type !== 'CallExpression') return 'astro'
+	const callee = declaration.callee
+	if (callee.type !== 'Identifier') return 'unknown'
+	for (const stmt of ast.program.body) {
+		if (stmt.type !== 'ImportDeclaration' || !stmt.specifiers.some(specifier => specifier.local.name === callee.name)) continue
+		if (stmt.source.value === '@nuasite/nua/config') return 'nua'
+		if (stmt.source.value === 'astro/config') return 'astro'
+	}
+	return 'unknown'
+}
+
+/**
+ * A CMS instance as far as this reader is concerned: its `cmsConfig` object, `null` when it
+ * declares none that can be read, `undefined` when there is no instance at all.
+ */
+type CmsInstance = ObjectExpression | null | undefined
+
+/**
+ * The CMS instance a nua integration runs, given the value of its `cms` option (`null` when
+ * the option is not set). nua runs a CMS unless told `cms: false`; `true`, nothing, or a
+ * value that cannot be read are all an instance — only an object can carry a `cmsConfig`.
+ */
+function nuaCmsInstance(cms: Node | null, bindings: Bindings): CmsInstance {
+	if (cms?.type === 'BooleanLiteral' && !cms.value) return undefined
+	return cms?.type === 'ObjectExpression' ? objectAtPath(cms, ['cmsConfig'], bindings) : null
+}
+
+/** The CMS instance the config's own `nua` key stands for, if anything reads that key. */
+function wrapperCmsInstance(ast: File, configObject: ObjectExpression, bindings: Bindings): CmsInstance {
+	const wrapper = defaultExportWrapper(ast, bindings)
+	if (wrapper === 'astro') return undefined
+
+	const nua = objectPropertyValue(configObject, 'nua', bindings)
+	const cms = nua?.type === 'ObjectExpression' ? objectPropertyValue(nua, 'cms', bindings) : null
+	if (wrapper === 'unknown') {
+		// Somebody's own wrapper: whether it adds nua cannot be known from here. A `nua.cms`
+		// block is taken as a sign that it does; without one, nothing is assumed.
+		return cms?.type === 'ObjectExpression' ? nuaCmsInstance(cms, bindings) : undefined
+	}
+	// The nua wrapper adds the integration whether or not the config mentions `nua` — only
+	// `nua: false` stops it — so the instance is there even with nothing to read from.
+	if (nua?.type === 'BooleanLiteral' && !nua.value) return undefined
+	return nuaCmsInstance(cms, bindings)
+}
+
+/**
  * The `cmsConfig` object of the CMS instance whose configuration the page ends up with, or
  * null when that instance declares none (or none can be read).
  *
- * The CMS options reach the integration three ways: the `nua.cms` block of `defineConfig`
- * from `@nuasite/nua/config`, or the integration called directly in `integrations` —
+ * The CMS options reach the integration three ways: the `nua` key of `defineConfig` from
+ * `@nuasite/nua/config`, or the integration called directly in `integrations` —
  * `nuaCms({ … })`, `nua({ cms: { … } })`. A call is recognised by where its callee is
  * imported from, not by its name.
  *
- * A site picks one. When a config declares several, each call is its own CMS instance and
- * every instance assigns `window.NuaCmsConfig`, so the one that registers last is the one
- * the page gets: `nua` adds its CMS through `updateConfig`, which lands behind everything
- * listed in `integrations` — so the `nua.cms` block, then the last `nua({ cms })` call, then
- * the last `nuaCms()` call. Exactly one object is the answer; taking `listStyles` from one
- * instance and `locale` from another would describe a configuration no page ever has.
+ * A site picks one. A config that uses several runs several CMS instances, every one of them
+ * assigns `window.NuaCmsConfig`, and the page keeps the last assignment. Which one that is was
+ * established by running such configs through Astro's own dev setup, not by reading hook
+ * code: nua registers its CMS behind everything listed in `integrations`, so
+ *
+ * - nua's CMS — the wrapper's, or a listed `nua()` call's — beats every `nuaCms()` call,
+ *   wherever it stands and whether or not it carries a `cmsConfig`;
+ * - without one, the last `nuaCms()` call is it.
+ *
+ * Exactly one object is the answer; `listStyles` from one instance and `locale` from another
+ * would describe a configuration no page ever has. Two nua integrations in one config (the
+ * wrapper plus a listed `nua()`, or `nua()` twice) is not a working setup — their page
+ * scripts collide — so nothing is promised for it beyond an answer.
  */
 function effectiveCmsConfig(ast: File, configObject: ObjectExpression, bindings: Bindings): ObjectExpression | null {
-	const block = objectAtPath(configObject, ['nua', 'cms'], bindings)
-	if (block) return objectAtPath(block, ['cmsConfig'], bindings)
+	let fromNua = wrapperCmsInstance(ast, configObject, bindings)
+	let fromCms: CmsInstance
 
 	const integrations = objectPropertyValue(configObject, 'integrations', bindings)
-	if (integrations?.type !== 'ArrayExpression') return null
-
-	// `undefined`: no such call. `null`: an instance that declares no readable `cmsConfig`.
-	let lastFromNua: ObjectExpression | null | undefined
-	let lastFromCms: ObjectExpression | null | undefined
 	const integrationImports = collectCmsIntegrationImports(ast)
-	for (const element of integrations.elements) {
+	for (const element of integrations?.type === 'ArrayExpression' ? integrations.elements : []) {
 		if (!element || element.type === 'SpreadElement') continue
 		const call = resolveExpression(element, bindings)
 		if (call.type !== 'CallExpression' || call.callee.type !== 'Identifier') continue
@@ -189,15 +244,12 @@ function effectiveCmsConfig(ast: File, configObject: ObjectExpression, bindings:
 		const options = firstArg && firstArg.type !== 'SpreadElement' ? resolveExpression(firstArg, bindings) : null
 		const optionsObject = options?.type === 'ObjectExpression' ? options : null
 		if (optionsPath.length === 0) {
-			lastFromCms = optionsObject && objectAtPath(optionsObject, ['cmsConfig'], bindings)
-			continue
+			fromCms = optionsObject && objectAtPath(optionsObject, ['cmsConfig'], bindings)
+		} else if (fromNua === undefined) {
+			fromNua = nuaCmsInstance(optionsObject && objectPropertyValue(optionsObject, 'cms', bindings), bindings)
 		}
-		// `nua({ cms: false })` runs no CMS at all, so it is not an instance to consider.
-		const cms = optionsObject && objectPropertyValue(optionsObject, 'cms', bindings)
-		if (cms?.type === 'BooleanLiteral' && !cms.value) continue
-		lastFromNua = cms?.type === 'ObjectExpression' ? objectAtPath(cms, ['cmsConfig'], bindings) : null
 	}
-	return lastFromNua !== undefined ? lastFromNua : lastFromCms ?? null
+	return fromNua !== undefined ? fromNua : fromCms ?? null
 }
 
 /** `listStyles` of the `cmsConfig` object; empty when absent or not an array. */

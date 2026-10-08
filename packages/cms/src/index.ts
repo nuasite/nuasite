@@ -66,9 +66,9 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		 *
 		 * Must be a string literal (or a top-level `const` holding one) in the Astro config, where
 		 * the CMS options are passed — the `nua.cms` block, `nuaCms({ … })` or `nua({ cms: { … } })`
-		 * in `integrations`. A standalone sidecar reads it from that file's source, and a value it
-		 * cannot read there is ignored by the in-page editor too (with a warning), so the two never
-		 * disagree.
+		 * in `integrations`. A standalone sidecar reads it from that file's source, for the one CMS
+		 * instance a page ends up with, and a value it does not get that way is ignored by the
+		 * in-page editor too (with a warning), so the two never disagree.
 		 */
 		locale?: string
 		/** Open the entry editor's metadata (frontmatter) panel by default instead of collapsed. */
@@ -312,13 +312,20 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					// source by the same function the sidecar's `/config` uses — rather than from the
 					// resolved config at hand — so the in-page editor and every sidecar client are
 					// given the same value, including when neither can read it: a `cmsConfig.locale`
-					// that is not a literal is dropped here (`undefined` does not serialize), not
-					// passed through — with a warning, since the option was set and did nothing.
+					// the source does not give for this page is dropped here (`undefined` does not
+					// serialize), not passed through — with a warning, since the option was set and
+					// did nothing.
 					const { locale } = await parseProjectCmsConfig(createNodeFs(getProjectRoot()))
 					if (cmsConfig?.locale !== undefined && cmsConfig.locale !== locale) {
+						// Two different reasons end up here, and the log line cannot tell which: the value
+						// is not a literal in the source, or it is, on a CMS instance that is not the one
+						// a page ends up with. Naming only the first sends the second looking for a fix
+						// they have already made.
 						logger.warn(
-							`cmsConfig.locale "${cmsConfig.locale}" cannot be read from the Astro config source, so it is ignored`
-								+ `${locale ? ` and "${locale}" is used` : ''}. Declare it as a string literal where the CMS options are passed.`,
+							`cmsConfig.locale "${cmsConfig.locale}" differs from what the Astro config source gives`
+								+ ` (${locale ? `"${locale}"` : 'nothing'}), so ${locale ? `"${locale}"` : 'no locale'} is used.`
+								+ ` Either it is not a string literal there, or another CMS instance in the config is the one in effect`
+								+ ` (nua runs its own CMS, which takes over from a nuaCms() listed next to it).`,
 						)
 					}
 					const configScript = `window.NuaCmsConfig = ${JSON.stringify({ ...resolvedCmsConfig, locale })};`

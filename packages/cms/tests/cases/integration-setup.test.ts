@@ -22,9 +22,10 @@ const blog = defineCmsCollection({
 export const collections = { blog }
 `
 
-const astroConfig = (body: string) =>
+/** An Astro config source. `defineConfig` is Astro's unless the case is about the nua wrapper's. */
+const astroConfig = (body: string, defineConfigFrom = 'astro/config') =>
 	`import nuaCms from '@nuasite/cms'
-import { defineConfig } from 'astro/config'
+import { defineConfig } from '${defineConfigFrom}'
 export default defineConfig(${body})
 `
 
@@ -114,7 +115,7 @@ describe('nuaCms integration — dev setup wiring', () => {
 
 	describe('the project locale reaches window.NuaCmsConfig', () => {
 		test('from the nua.cms block', async () => {
-			await ctx.writeFile('astro.config.ts', astroConfig(`{ nua: { cms: { cmsConfig: { locale: 'cs' } } } }`))
+			await ctx.writeFile('astro.config.ts', astroConfig(`{ nua: { cms: { cmsConfig: { locale: 'cs' } } } }`, '@nuasite/nua/config'))
 			const { injected, warnings } = await startDev({ cmsConfig: { locale: 'cs' } })
 			expect(injectedConfig(injected).locale).toBe('cs')
 			expect(warnings).toEqual([])
@@ -142,7 +143,17 @@ describe('nuaCms integration — dev setup wiring', () => {
 			expect('locale' in injectedConfig(injected)).toBe(false)
 			expect(warnings).toHaveLength(1)
 			expect(warnings[0]).toContain('cmsConfig.locale "cs"')
-			expect(warnings[0]).toContain('ignored')
+			expect(warnings[0]).toContain('no locale is used')
+		})
+
+		test('a literal locale on a CMS instance that is not the one in effect: the warning does not blame the literal', async () => {
+			// The nua wrapper runs its own CMS behind this one, and that is the instance a page gets.
+			// The locale here *is* a string literal, so "declare it as a literal" would be no help.
+			await ctx.writeFile('astro.config.ts', astroConfig(`{ integrations: [nuaCms({ cmsConfig: { locale: 'cs' } })] }`, '@nuasite/nua/config'))
+			const { injected, warnings } = await startDev({ cmsConfig: { locale: 'cs' } })
+			expect('locale' in injectedConfig(injected)).toBe(false)
+			expect(warnings).toHaveLength(1)
+			expect(warnings[0]).toContain('another CMS instance')
 		})
 
 		test('a locale the source does not show loses to i18n.defaultLocale, and the warning names what is used', async () => {
@@ -154,6 +165,7 @@ describe('nuaCms integration — dev setup wiring', () => {
 			expect(warnings).toHaveLength(1)
 			expect(warnings[0]).toContain('cmsConfig.locale "cs"')
 			expect(warnings[0]).toContain('"en" is used')
+			expect(warnings[0]).toContain('string literal')
 		})
 
 		test('the rest of cmsConfig is passed through as before', async () => {

@@ -214,63 +214,164 @@ describe('parseProjectCmsConfigSource — the integration called directly in `in
 	})
 })
 
-// A config that hands the CMS its options more than once runs more than one CMS instance, and
-// the page ends up with the configuration of the one that registers last. The reader answers
-// from that one object — never `listStyles` from one instance and `locale` from another.
-describe('parseProjectCmsConfigSource — several CMS instances in one config', () => {
-	const FAJFKY = `[{ label: 'Fajfky', class: 'checkmarks' }]`
-	const parse = (body: string) =>
+// Which `cmsConfig` the page ends up with, pinned as a whole. A config can hand the CMS its
+// options through the `nua` key of the nua wrapper, through `nua()` or through `nuaCms()`, and
+// one that uses several runs several CMS instances: every one assigns `window.NuaCmsConfig`
+// and the page keeps the last. The reader answers from that one instance — never `listStyles`
+// from one and `locale` from another.
+//
+// The expectations are not derived from reading hook code (that went wrong twice). Each row
+// marked ✓ was run through Astro 6.1.4's own dev setup (`resolveConfig`, `createSettings`,
+// `runHookConfigSetup`), its injected page scripts evaluated in order, and the resulting
+// `window.NuaCmsConfig` compared with this reader. That run takes seconds per config and
+// leans on Astro internals, so it lives outside the suite; this table is its record.
+describe('parseProjectCmsConfigSource — which CMS instance the page gets', () => {
+	/** `defineConfig` from the nua wrapper: it adds the nua integration by itself. */
+	const WRAPPER = `import { defineConfig } from '@nuasite/nua/config'`
+	/** Astro's own `defineConfig`: nothing reads a `nua` key. */
+	const ASTRO = `import { defineConfig } from 'astro/config'`
+
+	const parse = (defineConfigImport: string, body: string, exported = `defineConfig(${body})`) =>
 		parseProjectCmsConfigSource(`
 			import nuaCms from '@nuasite/cms'
-			import nua from '@nuasite/nua/integration'
-			import { defineConfig } from '@nuasite/nua/config'
-			export default defineConfig(${body})
+			import nua from '@nuasite/nua'
+			${defineConfigImport}
+			export default ${exported}
 		`)
 
-	test('the nua.cms block wins whole: nothing is borrowed from a direct call', () => {
-		const parsed = parse(`{
-			integrations: [nuaCms({ cmsConfig: { locale: 'cs' } })],
-			nua: { cms: { cmsConfig: { listStyles: ${FAJFKY} } } },
-		}`)
-		expect(parsed).toEqual({ listStyles: [{ label: 'Fajfky', class: 'checkmarks' }] })
+	/** An options object whose `cmsConfig` is recognisable in the answer by its list style, with an optional locale. */
+	const cms = (name: string, locale?: string) =>
+		`{ cmsConfig: { ${locale ? `locale: '${locale}', ` : ''}listStyles: [{ label: '${name}', class: '${name}' }] } }`
+	const from = (name: string, locale?: string) => ({ listStyles: [{ label: name, class: name }], ...(locale ? { locale } : {}) })
+	const NOTHING = { listStyles: [] }
+
+	const rows: Array<[name: string, defineConfigImport: string, body: string, expected: object]> = [
+		// One instance, each way of declaring it. ✓
+		['wrapper: the nua.cms block', WRAPPER, `{ nua: { cms: ${cms('block', 'cs')} } }`, from('block', 'cs')],
+		['wrapper: the block through a top-level const', WRAPPER, `{ nua: { cms: BLOCK } }`, from('block', 'cs')],
+		['wrapper: no nua key at all', WRAPPER, `{}`, NOTHING],
+		['wrapper: a block that declares only a locale', WRAPPER, `{ nua: { cms: { cmsConfig: { locale: 'cs' } } } }`, { listStyles: [], locale: 'cs' }],
+		['astro: nuaCms()', ASTRO, `{ integrations: [nuaCms(${cms('cms', 'cs')})] }`, from('cms', 'cs')],
+		['astro: nua({ cms })', ASTRO, `{ integrations: [nua({ cms: ${cms('nua', 'cs')} })] }`, from('nua', 'cs')],
+		['astro: a non-literal locale is not read', ASTRO, `{ integrations: [nuaCms({ cmsConfig: { locale: process.env.NOPE ?? 'cs' } })] }`, NOTHING],
+
+		// The wrapper always runs nua, and nua's CMS registers behind every listed nuaCms(). ✓
+		['wrapper, no nua key + nuaCms(): the wrapper', WRAPPER, `{ integrations: [nuaCms(${cms('cms', 'cs')})] }`, NOTHING],
+		['wrapper, nua: {} + nuaCms(): the wrapper', WRAPPER, `{ nua: {}, integrations: [nuaCms(${cms('cms', 'cs')})] }`, NOTHING],
+		['wrapper, cms: true + nuaCms(): the wrapper', WRAPPER, `{ nua: { cms: true }, integrations: [nuaCms(${cms('cms', 'cs')})] }`, NOTHING],
+		[
+			'wrapper, another nua option + nuaCms(): the wrapper',
+			WRAPPER,
+			`{ nua: { sitemap: false }, integrations: [nuaCms(${cms('cms', 'cs')})] }`,
+			NOTHING,
+		],
+		[
+			'wrapper block + nuaCms(): the block, whole',
+			WRAPPER,
+			`{ nua: { cms: ${cms('block', 'cs')} }, integrations: [nuaCms(${cms('cms', 'de')})] }`,
+			from('block', 'cs'),
+		],
+		[
+			'wrapper block without cmsConfig + nuaCms(): still the block',
+			WRAPPER,
+			`{ nua: { cms: { usePolling: false } }, integrations: [nuaCms(${cms('cms', 'cs')})] }`,
+			NOTHING,
+		],
+		// …unless the wrapper is told not to run nua, or nua not to run a CMS. ✓
+		['wrapper, cms: false + nuaCms(): the call', WRAPPER, `{ nua: { cms: false }, integrations: [nuaCms(${cms('cms', 'cs')})] }`, from('cms', 'cs')],
+		['wrapper, nua: false + nuaCms(): the call', WRAPPER, `{ nua: false, integrations: [nuaCms(${cms('cms', 'cs')})] }`, from('cms', 'cs')],
+		['wrapper, nua: false + nua({ cms }): the call', WRAPPER, `{ nua: false, integrations: [nua({ cms: ${cms('nua', 'cs')} })] }`, from('nua', 'cs')],
+
+		// Under Astro's defineConfig only the calls count; a `nua` key is not read by anything. ✓
+		[
+			'astro: a stray nua key is ignored',
+			ASTRO,
+			`{ nua: { cms: ${cms('block', 'de')} }, integrations: [nuaCms(${cms('cms', 'cs')})] }`,
+			from('cms', 'cs'),
+		],
+		[
+			'astro: of two nuaCms() calls, the later',
+			ASTRO,
+			`{ integrations: [nuaCms(${cms('first', 'cs')}), nuaCms(${cms('second', 'de')})] }`,
+			from('second', 'de'),
+		],
+		['astro: a later bare nuaCms() leaves nothing to read', ASTRO, `{ integrations: [nuaCms(${cms('first', 'cs')}), nuaCms()] }`, NOTHING],
+		[
+			'astro: nua({ cms }) before nuaCms(): nua',
+			ASTRO,
+			`{ integrations: [nua({ cms: ${cms('nua', 'cs')} }), nuaCms(${cms('cms', 'de')})] }`,
+			from('nua', 'cs'),
+		],
+		[
+			'astro: nuaCms() before nua({ cms }): nua',
+			ASTRO,
+			`{ integrations: [nuaCms(${cms('cms', 'de')}), nua({ cms: ${cms('nua', 'cs')} })] }`,
+			from('nua', 'cs'),
+		],
+		// A nua() with no CMS options still runs nua's default CMS, and that one wins. ✓
+		['astro: nuaCms() + bare nua(): nua, with nothing to read', ASTRO, `{ integrations: [nuaCms(${cms('cms', 'cs')}), nua()] }`, NOTHING],
+		[
+			'astro: nuaCms() + nua({ cms: true }): nua, with nothing to read',
+			ASTRO,
+			`{ integrations: [nuaCms(${cms('cms', 'cs')}), nua({ cms: true })] }`,
+			NOTHING,
+		],
+		[
+			'astro: nuaCms() + nua({ cms: false }): the call',
+			ASTRO,
+			`{ integrations: [nuaCms(${cms('cms', 'cs')}), nua({ cms: false })] }`,
+			from('cms', 'cs'),
+		],
+
+		// i18n.defaultLocale backs up whichever instance it is — it never borrows one's locale. ✓
+		[
+			'astro: i18n + nuaCms({ locale }) + bare nuaCms()',
+			ASTRO,
+			`{ i18n: { defaultLocale: 'en' }, integrations: [nuaCms(${cms('first', 'cs')}), nuaCms()] }`,
+			{ listStyles: [], locale: 'en' },
+		],
+		['wrapper: i18n + nuaCms() without a locale', WRAPPER, `{ i18n: { defaultLocale: 'en' }, integrations: [nuaCms(${cms('cms')})] }`, {
+			listStyles: [],
+			locale: 'en',
+		}],
+		['wrapper: the block locale ahead of i18n', WRAPPER, `{ i18n: { defaultLocale: 'en' }, nua: { cms: { cmsConfig: { locale: 'cs' } } } }`, {
+			listStyles: [],
+			locale: 'cs',
+		}],
+	]
+
+	for (const [name, defineConfigImport, body, expected] of rows) {
+		test(name, () => {
+			expect(parse(`const BLOCK = ${cms('block', 'cs')}\n${defineConfigImport}`, body)).toEqual(expected)
+		})
+	}
+
+	test('a config exported as a plain object goes straight to Astro, so its nua key is not read', () => {
+		const body = `{ nua: { cms: ${cms('block', 'de')} }, integrations: [nuaCms(${cms('cms', 'cs')})] }`
+		expect(parse('', body, body)).toEqual(from('cms', 'cs'))
 	})
 
-	test('a nua.cms block without cmsConfig still is the instance the page gets', () => {
-		const parsed = parse(`{
-			integrations: [nuaCms({ cmsConfig: { locale: 'cs', listStyles: ${FAJFKY} } })],
-			nua: { cms: { collections: {} } },
-		}`)
-		expect(parsed).toEqual({ listStyles: [] })
+	// Not verifiable against Astro: what a site's own wrapper does with `nua` cannot be known from
+	// the config. A `nua.cms` block is taken as a sign that it is read; without one nothing is assumed.
+	test('an unknown defineConfig: a nua.cms block is believed, its absence is not', () => {
+		const OWN = `import { defineConfig } from './config/define'`
+		expect(parse(OWN, `{ nua: { cms: ${cms('block', 'cs')} }, integrations: [nuaCms(${cms('cms', 'de')})] }`)).toEqual(from('block', 'cs'))
+		expect(parse(OWN, `{ integrations: [nuaCms(${cms('cms', 'cs')})] }`)).toEqual(from('cms', 'cs'))
 	})
 
-	test('of two nuaCms() calls, the later one', () => {
-		const parsed = parse(`{ integrations: [nuaCms({ cmsConfig: { locale: 'en', listStyles: ${FAJFKY} } }), nuaCms({ cmsConfig: { locale: 'cs' } })] }`)
-		expect(parsed).toEqual({ listStyles: [], locale: 'cs' })
-	})
-
-	test('a later call that declares no cmsConfig leaves nothing to read', () => {
-		expect(parse(`{ integrations: [nuaCms({ cmsConfig: { locale: 'cs', listStyles: ${FAJFKY} } }), nuaCms()] }`)).toEqual({ listStyles: [] })
-	})
-
-	test('nua({ cms }) registers its CMS behind everything listed, so it wins over nuaCms() wherever it stands', () => {
-		const nuaCall = `nua({ cms: { cmsConfig: { locale: 'cs' } } })`
-		const cmsCall = `nuaCms({ cmsConfig: { locale: 'en', listStyles: ${FAJFKY} } })`
-		expect(parse(`{ integrations: [${nuaCall}, ${cmsCall}] }`)).toEqual({ listStyles: [], locale: 'cs' })
-		expect(parse(`{ integrations: [${cmsCall}, ${nuaCall}] }`)).toEqual({ listStyles: [], locale: 'cs' })
-	})
-
-	test('nua({ cms: false }) runs no CMS, so it is not in the running', () => {
-		const parsed = parse(`{ integrations: [nuaCms({ cmsConfig: { locale: 'cs' } }), nua({ cms: false })] }`)
-		expect(parsed.locale).toBe('cs')
-	})
-
-	test('i18n.defaultLocale backs up whichever instance it is', () => {
-		const parsed = parse(`{
-			i18n: { defaultLocale: 'en' },
-			integrations: [nuaCms({ cmsConfig: { locale: 'cs' } })],
-			nua: { cms: { cmsConfig: { listStyles: ${FAJFKY} } } },
-		}`)
-		expect(parsed.locale).toBe('en')
+	// Two nua integrations in one config do not work: each injects the same top-level `const`
+	// into the page script, which then fails to parse. Nothing is promised for these but an answer.
+	test('two nua integrations: unsupported, but the reader does not throw', () => {
+		for (
+			const [defineConfigImport, body] of [
+				[WRAPPER, `{ nua: { cms: ${cms('block', 'cs')} }, integrations: [nua({ cms: ${cms('nua', 'de')} })] }`],
+				[WRAPPER, `{ integrations: [nua({ cms: false }), nua()] }`],
+				[ASTRO, `{ integrations: [nua({ cms: ${cms('first', 'cs')} }), nua({ cms: ${cms('second', 'de')} })] }`],
+				[ASTRO, `{ integrations: [nua(), nua(...args), nua(options), nuaCms(...args)] }`],
+			] as const
+		) {
+			expect(Array.isArray(parse(defineConfigImport, body).listStyles)).toBe(true)
+		}
 	})
 })
 
