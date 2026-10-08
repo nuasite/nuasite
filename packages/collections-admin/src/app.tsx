@@ -194,11 +194,13 @@ function Sidebar({ collections, locale, loading, error, activeCollection, onSele
 const ENTRIES_PAGE_SIZE = 50
 const ENTRIES_FIELDS = 'slug,title,draft,pathname'
 
-function EntriesTable({ client, collection, onOpen, onCreate }: {
+function EntriesTable({ client, collection, onOpen, onCreate, onRetry }: {
 	client: CmsClient
 	collection: string
 	onOpen: (slug: string) => void
 	onCreate: () => void
+	/** Runs alongside this table's own reload when "Try again" is clicked. */
+	onRetry: () => void
 }) {
 	const [rows, setRows] = useState<CollectionEntryInfo[]>([])
 	const [cursor, setCursor] = useState<string | undefined>(undefined)
@@ -240,7 +242,17 @@ function EntriesTable({ client, collection, onOpen, onCreate }: {
 	}, [loadPage])
 
 	if (loading) return <Spinner label="Loading entries…" />
-	if (error) return <ErrorState error={error} onRetry={() => void loadPage(undefined, false)} />
+	if (error) {
+		return (
+			<ErrorState
+				error={error}
+				onRetry={() => {
+					onRetry()
+					void loadPage(undefined, false)
+				}}
+			/>
+		)
+	}
 
 	const toolbar = (
 		<div className="nua-cadmin-entries-toolbar">
@@ -334,14 +346,21 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 	// The project's language orders the menu. The menu waits for it so it does not render once
 	// in the fallback order and then reshuffle; a failed read just leaves that fallback.
 	const configState = useAsync(() => client.getConfig(), [client])
-	// Retry is offered when the collections failed to load — in the menu and in the main pane,
-	// and both go through here. Whatever broke the collections usually broke the config read
-	// too, and that one fails silently — so retry it as well, or one bad moment leaves the
-	// whole session on the fallback order.
+	// The config read fails silently, so it has no retry control of its own: every "try again"
+	// in the app re-runs it for as long as the project's language is not known. Not only once
+	// it has failed — a retry can be clicked while the first read is still in flight and about
+	// to fail, and then nothing would be left on screen to click. Re-running a pending read
+	// costs one request; `useAsync` drops the superseded reply.
+	const retryConfig = useCallback(() => {
+		if (!configState.data) configState.reload()
+	}, [configState.data, configState.reload])
+	// Whatever broke the collections usually broke the config read too, or one bad moment
+	// leaves the whole session on the fallback order. The menu and the main pane both offer
+	// this retry.
 	const reloadMenu = useCallback(() => {
 		collectionsState.reload()
-		if (configState.error) configState.reload()
-	}, [collectionsState.reload, configState.error, configState.reload])
+		retryConfig()
+	}, [collectionsState.reload, retryConfig])
 
 	const activeCollectionName = state.view !== 'list' ? state.collection : undefined
 	const activeCollection = activeCollectionName ? collections.find((c) => c.name === activeCollectionName) : undefined
@@ -390,6 +409,7 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 								collection={state.collection}
 								onOpen={(slug) => goDetail(state.collection, slug)}
 								onCreate={() => goCreate(state.collection)}
+								onRetry={retryConfig}
 							/>
 						)
 						: null}

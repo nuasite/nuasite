@@ -76,11 +76,12 @@ const settle = () =>
  * Mount the app against a sidecar that answers the two reads the menu is built from. The app
  * makes its own client from `apiBase`, so the wire is the one seam there is.
  */
-async function mount(routes: { collections?: Reply; config: Reply }): Promise<void> {
+async function mount(routes: { collections?: Reply; config: Reply; entries?: Reply }): Promise<void> {
 	const serve = async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
 		const url = input instanceof Request ? input.url : String(input)
 		if (url === `${API_BASE}/collections`) return (routes.collections ?? (() => json(COLLECTIONS)))()
 		if (url === `${API_BASE}/config`) return routes.config()
+		if (routes.entries && url.startsWith(`${API_BASE}/collections/`) && url.includes('/entries')) return routes.entries()
 		return json({ error: `Unexpected request: ${url}`, code: 'not_found' }, 404)
 	}
 	globalThis.fetch = Object.assign(serve, { preconnect: Bun.fetch.preconnect })
@@ -167,4 +168,45 @@ describe('collections-admin sidebar', () => {
 			expect(menu()).toEqual(IN_CZECH)
 		})
 	}
+	test('a retry clicked while the first config read is still in flight does not strand the session', async () => {
+		// Collections fail fast and show their retry at once; the config read is slower and has
+		// not failed *yet*. If retry only re-ran a config read already known to have failed, the
+		// first one would fail a moment later with nothing left on screen to click.
+		let failFirstConfigRead: () => void = () => {}
+		let collectionsHealthy = false
+		let configReads = 0
+		await mount({
+			collections: () => (collectionsHealthy ? json(COLLECTIONS) : failed()),
+			config: () =>
+				++configReads === 1
+					? new Promise<Response>((resolve) => (failFirstConfigRead = () => resolve(failed())))
+					: json({ locale: 'cs' } satisfies CmsConfig),
+		})
+
+		collectionsHealthy = true
+		await act(async () => container.querySelector<HTMLButtonElement>('.nua-cadmin-nav-error')?.click())
+		await settle()
+		failFirstConfigRead()
+		await settle()
+
+		expect(menu()).toEqual(IN_CZECH)
+	})
+
+	test('on a deep link, the entries pane retry brings the locale back too', async () => {
+		// Collections load, so the menu offers no retry; the config and the entries do not. The
+		// only "Try again" on screen belongs to the entries pane.
+		let healthy = false
+		window.location.hash = '#/c/faq'
+		await mount({
+			config: () => (healthy ? json({ locale: 'cs' } satisfies CmsConfig) : failed()),
+			entries: () => (healthy ? json({ entries: [], hasMore: false }) : failed()),
+		})
+		expect(menu()).toEqual(IN_FALLBACK)
+		expect(container.querySelector('.nua-cadmin-nav-error')).toBeNull()
+
+		healthy = true
+		await act(async () => container.querySelector<HTMLButtonElement>('.nua-cadmin-retry')?.click())
+		await settle()
+		expect(menu()).toEqual(IN_CZECH)
+	})
 })
