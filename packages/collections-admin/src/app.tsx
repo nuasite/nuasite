@@ -334,6 +334,13 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 	// The project's language orders the menu. The menu waits for it so it does not render once
 	// in the fallback order and then reshuffle; a failed read just leaves that fallback.
 	const configState = useAsync(() => client.getConfig(), [client])
+	// Retry is offered when the collections failed to load. Whatever broke them usually broke
+	// the config read too, and that one fails silently — so retry it as well, or one bad
+	// moment leaves the whole session on the fallback order.
+	const reloadMenu = useCallback(() => {
+		collectionsState.reload()
+		if (configState.error) configState.reload()
+	}, [collectionsState.reload, configState.error, configState.reload])
 
 	const activeCollectionName = state.view !== 'list' ? state.collection : undefined
 	const activeCollection = activeCollectionName ? collections.find((c) => c.name === activeCollectionName) : undefined
@@ -352,7 +359,7 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 				error={collectionsState.error}
 				activeCollection={activeCollectionName}
 				onSelect={goEntries}
-				onReload={collectionsState.reload}
+				onReload={reloadMenu}
 				onClose={onClose}
 			/>
 

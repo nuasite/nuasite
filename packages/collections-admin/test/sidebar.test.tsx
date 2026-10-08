@@ -32,8 +32,19 @@ const COLLECTIONS: CollectionDefinition[] = [
 	collection('cisla', { label: 'Čísla' }),
 ]
 
+/** `order` first with its nested collection, then by label, then the group under its heading. The hidden one is nowhere. */
+const IN_CZECH = ['FAQ', '  Otázky', 'Cukr', 'Čísla', 'Hry', 'Chaty', '## English', 'News']
+/** The fixed fallback: compared as English, "Č" with "C" and "Ch" as two letters. */
+const IN_FALLBACK = ['FAQ', '  Otázky', 'Chaty', 'Čísla', 'Cukr', 'Hry', '## English', 'News']
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+const failed = () => json({ error: 'Sidecar is restarting', code: 'unknown' }, 503)
+
+type Reply = () => Response | Promise<Response>
+
 const originalFetch = globalThis.fetch
 let root: Root | undefined
+let container: HTMLElement
 
 afterEach(async () => {
 	await act(async () => root?.unmount())
@@ -42,31 +53,36 @@ afterEach(async () => {
 	document.body.innerHTML = ''
 })
 
+/** Let pending replies land and React flush. */
+const settle = () =>
+	act(async () => {
+		await new Promise(resolve => setTimeout(resolve, 0))
+	})
+
 /**
  * Mount the app against a sidecar that answers the two reads the menu is built from. The app
  * makes its own client from `apiBase`, so the wire is the one seam there is.
  */
-async function mountWith(config: CmsConfig | 'unavailable'): Promise<string[]> {
-	const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+async function mount(routes: { collections?: Reply; config: Reply }): Promise<void> {
 	const serve = async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
 		const url = input instanceof Request ? input.url : String(input)
-		if (url === `${API_BASE}/collections`) return json(COLLECTIONS)
-		if (url === `${API_BASE}/config`) return config === 'unavailable' ? json({ error: 'No route', code: 'not_found' }, 404) : json(config)
+		if (url === `${API_BASE}/collections`) return (routes.collections ?? (() => json(COLLECTIONS)))()
+		if (url === `${API_BASE}/config`) return routes.config()
 		return json({ error: `Unexpected request: ${url}`, code: 'not_found' }, 404)
 	}
 	globalThis.fetch = Object.assign(serve, { preconnect: originalFetch.preconnect })
 
-	const container = document.createElement('div')
+	container = document.createElement('div')
 	document.body.appendChild(container)
 	root = createRoot(container)
 	await act(async () => {
 		root?.render(createElement(CollectionsAdminApp, { apiBase: API_BASE }))
 	})
-	// The two reads resolve on their own turns; let both land.
-	await act(async () => {
-		await new Promise(resolve => setTimeout(resolve, 0))
-	})
+	await settle()
+}
 
+/** The menu as rendered, row by row: `## heading`, an indented nested collection, or a label. */
+function menu(): string[] {
 	return [...container.querySelectorAll('.nua-cadmin-nav > *')].map((element) => {
 		if (element.classList.contains('nua-cadmin-nav-group')) return `## ${element.textContent}`
 		const label = element.querySelector('.nua-cadmin-nav-label')?.textContent ?? element.textContent ?? ''
@@ -76,26 +92,45 @@ async function mountWith(config: CmsConfig | 'unavailable'): Promise<string[]> {
 
 describe('collections-admin sidebar', () => {
 	test('lists collections by the shared arrangement, in the project locale', async () => {
-		expect(await mountWith({ locale: 'cs' })).toEqual([
-			// `order` first, its nested collection indented under it…
-			'FAQ',
-			'  Otázky',
-			// …then by label as Czech sorts it: "Č" after "C", "Ch" after "H"…
-			'Cukr',
-			'Čísla',
-			'Hry',
-			'Chaty',
-			// …then the group, under its heading. The hidden collection is nowhere.
-			'## English',
-			'News',
-		])
+		await mount({ config: () => json({ locale: 'cs' } satisfies CmsConfig) })
+		expect(menu()).toEqual(IN_CZECH)
 	})
 
 	test('a project that declares no locale gets the fixed fallback order', async () => {
-		expect(await mountWith({ listStyles: [] })).toEqual(['FAQ', '  Otázky', 'Chaty', 'Čísla', 'Cukr', 'Hry', '## English', 'News'])
+		await mount({ config: () => json({ listStyles: [] } satisfies CmsConfig) })
+		expect(menu()).toEqual(IN_FALLBACK)
 	})
 
 	test('an unreadable config does not take the menu down with it', async () => {
-		expect(await mountWith('unavailable')).toEqual(['FAQ', '  Otázky', 'Chaty', 'Čísla', 'Cukr', 'Hry', '## English', 'News'])
+		await mount({ config: failed })
+		expect(menu()).toEqual(IN_FALLBACK)
+	})
+
+	test('the menu waits for the project locale instead of rendering once and reshuffling', async () => {
+		let release: (response: Response) => void = () => {}
+		await mount({ config: () => new Promise<Response>((resolve) => (release = resolve)) })
+		// Collections have landed, the locale has not: nothing is listed in the fallback order.
+		expect(menu()).toEqual(['Loading…'])
+
+		release(json({ locale: 'cs' } satisfies CmsConfig))
+		await settle()
+		expect(menu()).toEqual(IN_CZECH)
+	})
+
+	test('retry re-reads a config that failed along with the collections', async () => {
+		// One bad moment takes both reads down; only the collections failure is visible.
+		let healthy = false
+		await mount({
+			collections: () => (healthy ? json(COLLECTIONS) : failed()),
+			config: () => (healthy ? json({ locale: 'cs' } satisfies CmsConfig) : failed()),
+		})
+		const retry = container.querySelector<HTMLButtonElement>('.nua-cadmin-nav-error')
+		expect(retry?.textContent).toBe('Failed to load — retry')
+
+		healthy = true
+		await act(async () => retry?.click())
+		await settle()
+		// Not the fallback order: the locale came back with the retry too.
+		expect(menu()).toEqual(IN_CZECH)
 	})
 })
