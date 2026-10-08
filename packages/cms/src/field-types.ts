@@ -227,6 +227,12 @@ export const n = {
  * is read by the Nua CMS scanner from the config **source**; at runtime it is
  * stripped, so the returned value is exactly the Astro collection config.
  *
+ * The same block carries how the collection appears where collections are listed:
+ * `label` (display name), `order` (lower first), `group` (section heading) and
+ * `hidden` (left out of collection browsers, still resolvable). Being read from the
+ * source, they reach every consumer of the scan — including a standalone sidecar,
+ * which never sees the Astro config.
+ *
  * Astro's own `defineCollection` stamps `type: 'content_layer'` on any collection
  * that declares a `loader`, and Astro's content-config parser then *requires* that
  * type (a loader collection without it is rejected with "Invalid input"). Because
@@ -242,6 +248,8 @@ export const n = {
  *   loader: glob({ pattern: '**​/*.yaml', base: './content/product' }),
  *   schema: ({ image }) => n.object({ ... }),
  *   cms: {
+ *     label: 'Products',
+ *     order: 1,
  *     display: 'tabs',
  *     sidebar: ['line', 'is_bestseller'],
  *     sections: [{ title: 'Basics', fields: ['title', 'perex'] }],

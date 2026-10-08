@@ -229,6 +229,17 @@ export interface CollectionLayout {
 	 * to whatever really renders it. Ignored without `fragment`.
 	 */
 	previewOf?: string
+	/** Display label of the collection. Overrides the name-derived default (`pripady-pripady` → "Pripady Pripady"). */
+	label?: string
+	/**
+	 * Leave the collection out of collection browsers. It stays fully resolvable — reference
+	 * pickers, entry routes and the scan still see it.
+	 */
+	hidden?: true
+	/** Position in collection browsers — lower comes first. Collections without one follow all ordered ones. */
+	order?: number
+	/** Section heading the collection is listed under in collection browsers. */
+	group?: string
 }
 
 /** Per-entry metadata for collection browsing */
@@ -253,7 +264,10 @@ export interface CollectionEntryInfo {
 export interface CollectionDefinition {
 	/** Collection identifier (directory name) */
 	name: string
-	/** Human-readable label for the collection */
+	/**
+	 * Human-readable label for the collection: `defineCmsCollection({ cms: { label } })` when
+	 * declared, otherwise derived from the name.
+	 */
 	label: string
 	/** Path to the collection directory */
 	path: string
@@ -305,6 +319,19 @@ export interface CollectionDefinition {
 	 * `previewPathname`; never claims the page as the entry's own.
 	 */
 	previewOf?: string
+	/**
+	 * The collection is left out of collection browsers, from
+	 * `defineCmsCollection({ cms: { hidden } })`. A presentation flag only: the definition is
+	 * still served, so reference pickers and entry routes keep resolving it.
+	 */
+	hidden?: true
+	/**
+	 * Position in collection browsers, from `defineCmsCollection({ cms: { order } })` — lower
+	 * comes first, and collections without one follow all ordered ones.
+	 */
+	order?: number
+	/** Section heading the collection is listed under, from `defineCmsCollection({ cms: { group } })`. */
+	group?: string
 }
 
 /** Represents a content collection entry (markdown file) */

@@ -904,6 +904,53 @@ describe('cms-sidecar — a fragment collection is served without a fabricated U
 	})
 })
 
+/**
+ * `cms: { label, hidden, order, group }` in the content config is the one channel that
+ * reaches a host talking to the standalone sidecar — the Astro config's
+ * `nua.cms.collections[name].label` is applied inside the integration and never gets here.
+ */
+describe('cms-sidecar — collection-browser metadata from the content config', () => {
+	async function serverWithNavKeys(): Promise<CmsSidecarServer> {
+		const { server, root } = await freshServer()
+		const configPath = path.join(root, 'src', 'content', 'config.ts')
+		const config = await fs.readFile(configPath, 'utf8')
+		await fs.writeFile(
+			configPath,
+			config
+				.replace('const blog = defineCollection({', `const blog = defineCollection({\n\tcms: { label: 'Články', order: 1, group: 'Obsah' },`)
+				.replace('const authors = defineCollection({', `const authors = defineCollection({\n\tcms: { label: 'Autoři', hidden: true },`),
+		)
+		return server
+	}
+
+	test('GET /collections serves label, order and group', async () => {
+		const defs = await jsonOf<CollectionDefinition[]>(await call(await serverWithNavKeys(), 'GET', '/collections'))
+		const blog = defs.find(d => d.name === 'blog')
+		expect(blog?.label).toBe('Články')
+		expect(blog?.order).toBe(1)
+		expect(blog?.group).toBe('Obsah')
+		// Undeclared: the name-derived label, and no keys on the wire.
+		const people = defs.find(d => d.name === 'people')
+		expect(people?.label).toBe('People')
+		expect(people && ('order' in people || 'group' in people || 'hidden' in people)).toBe(false)
+	})
+
+	test('a hidden collection is flagged, not filtered — it is listed, readable and referenced', async () => {
+		const server = await serverWithNavKeys()
+		const defs = await jsonOf<CollectionDefinition[]>(await call(server, 'GET', '/collections'))
+		const authors = defs.find(d => d.name === 'authors')
+		expect(authors?.hidden).toBe(true)
+		expect(authors?.label).toBe('Autoři')
+		// The reference picker of `blog.author` still resolves through it…
+		expect(defs.find(d => d.name === 'blog')?.fields.find(f => f.name === 'author')?.collection).toBe('authors')
+		// …and so do its entry routes.
+		const list = await call(server, 'GET', '/collections/authors/entries?draft=all')
+		expect(list.status).toBe(200)
+		expect((await jsonOf<EntriesListResult>(list)).entries.map(e => e.slug).sort()).toEqual(['jane-doe', 'john-smith'])
+		expect((await call(server, 'GET', '/collections/authors/entries/jane-doe')).status).toBe(200)
+	})
+})
+
 describe('cms-sidecar merged media listing (?includeProjectImages)', () => {
 	/**
 	 * A third-party adapter reduced to what the merge actually consumes: a caller-supplied

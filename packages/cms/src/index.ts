@@ -104,7 +104,11 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	 * Highest priority — overrides scanner defaults and frontmatter comment directives.
 	 */
 	collections?: Record<string, {
-		/** Display label shown in the CMS (overrides the name-derived default, e.g. "Jsem Otazky" → "Otázky"). */
+		/**
+		 * Display label shown in the CMS (overrides the name-derived default, e.g. "Jsem Otazky" → "Otázky").
+		 * Wins over `defineCmsCollection({ cms: { label } })`, but only inside this integration — a
+		 * standalone sidecar does not load the Astro config, so declare the label there to reach it.
+		 */
 		label?: string
 		fields?: Record<string, { position?: 'sidebar' | 'header'; group?: string }>
 	}>
