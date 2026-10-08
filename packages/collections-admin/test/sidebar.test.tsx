@@ -1,5 +1,5 @@
 import type { CmsConfig, CollectionDefinition } from '@nuasite/cms-types'
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { CollectionsAdminApp } from '../src/app'
@@ -42,14 +42,27 @@ const failed = () => json({ error: 'Sidecar is restarting', code: 'unknown' }, 5
 
 type Reply = () => Response | Promise<Response>
 
-const originalFetch = globalThis.fetch
 let root: Root | undefined
 let container: HTMLElement
+// The app reads two globals: `fetch`, and `window.location.hash` for its route. Other files in
+// the run leave both in odd states (`fetch` unset or stubbed, `location` replaced by a bare
+// object). Each test here installs its own for the duration and puts back what it found, so
+// it neither depends on that nor adds to it.
+let fetchBefore: typeof globalThis.fetch
+let locationBefore: PropertyDescriptor | undefined
+
+beforeEach(() => {
+	fetchBefore = globalThis.fetch
+	locationBefore = Object.getOwnPropertyDescriptor(window, 'location')
+	Object.defineProperty(window, 'location', { value: { hash: '' }, writable: true, configurable: true })
+})
 
 afterEach(async () => {
 	await act(async () => root?.unmount())
 	root = undefined
-	globalThis.fetch = originalFetch
+	globalThis.fetch = fetchBefore
+	if (locationBefore) Object.defineProperty(window, 'location', locationBefore)
+	else Reflect.deleteProperty(window, 'location')
 	document.body.innerHTML = ''
 })
 
@@ -70,7 +83,7 @@ async function mount(routes: { collections?: Reply; config: Reply }): Promise<vo
 		if (url === `${API_BASE}/config`) return routes.config()
 		return json({ error: `Unexpected request: ${url}`, code: 'not_found' }, 404)
 	}
-	globalThis.fetch = Object.assign(serve, { preconnect: originalFetch.preconnect })
+	globalThis.fetch = Object.assign(serve, { preconnect: Bun.fetch.preconnect })
 
 	container = document.createElement('div')
 	document.body.appendChild(container)
@@ -106,6 +119,12 @@ describe('collections-admin sidebar', () => {
 		expect(menu()).toEqual(IN_FALLBACK)
 	})
 
+	test('a project whose collections are all hidden has nothing to list', async () => {
+		const hidden = [collection('redirects', { hidden: true }), collection('tags', { hidden: true })]
+		await mount({ collections: () => json(hidden), config: () => json({ locale: 'cs' } satisfies CmsConfig) })
+		expect(menu()).toEqual(['No content types'])
+	})
+
 	test('the menu waits for the project locale instead of rendering once and reshuffling', async () => {
 		let release: (response: Response) => void = () => {}
 		await mount({ config: () => new Promise<Response>((resolve) => (release = resolve)) })
@@ -117,20 +136,35 @@ describe('collections-admin sidebar', () => {
 		expect(menu()).toEqual(IN_CZECH)
 	})
 
-	test('retry re-reads a config that failed along with the collections', async () => {
-		// One bad moment takes both reads down; only the collections failure is visible.
-		let healthy = false
-		await mount({
-			collections: () => (healthy ? json(COLLECTIONS) : failed()),
-			config: () => (healthy ? json({ locale: 'cs' } satisfies CmsConfig) : failed()),
-		})
-		const retry = container.querySelector<HTMLButtonElement>('.nua-cadmin-nav-error')
-		expect(retry?.textContent).toBe('Failed to load — retry')
+	// One bad moment takes both reads down; only the collections failure is visible. It is
+	// offered for retry in two places, and either has to bring the locale back with it.
+	for (
+		const [where, selector, label] of [['the menu', '.nua-cadmin-nav-error', 'Failed to load — retry'], [
+			'the main pane',
+			'.nua-cadmin-retry',
+			'Try again',
+		]] as const
+	) {
+		test(`retry from ${where} re-reads a config that failed along with the collections`, async () => {
+			let healthy = false
+			let configReads = 0
+			await mount({
+				collections: () => (healthy ? json(COLLECTIONS) : failed()),
+				config: () => {
+					configReads++
+					return healthy ? json({ locale: 'cs' } satisfies CmsConfig) : failed()
+				},
+			})
+			const retry = container.querySelector<HTMLButtonElement>(selector)
+			expect(retry?.textContent).toBe(label)
+			expect(configReads).toBe(1)
 
-		healthy = true
-		await act(async () => retry?.click())
-		await settle()
-		// Not the fallback order: the locale came back with the retry too.
-		expect(menu()).toEqual(IN_CZECH)
-	})
+			healthy = true
+			await act(async () => retry?.click())
+			await settle()
+			// Not the fallback order: the locale came back with the retry too.
+			expect(configReads).toBe(2)
+			expect(menu()).toEqual(IN_CZECH)
+		})
+	}
 })

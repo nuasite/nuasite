@@ -334,9 +334,10 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 	// The project's language orders the menu. The menu waits for it so it does not render once
 	// in the fallback order and then reshuffle; a failed read just leaves that fallback.
 	const configState = useAsync(() => client.getConfig(), [client])
-	// Retry is offered when the collections failed to load. Whatever broke them usually broke
-	// the config read too, and that one fails silently — so retry it as well, or one bad
-	// moment leaves the whole session on the fallback order.
+	// Retry is offered when the collections failed to load — in the menu and in the main pane,
+	// and both go through here. Whatever broke the collections usually broke the config read
+	// too, and that one fails silently — so retry it as well, or one bad moment leaves the
+	// whole session on the fallback order.
 	const reloadMenu = useCallback(() => {
 		collectionsState.reload()
 		if (configState.error) configState.reload()
@@ -379,7 +380,7 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 				<div className="nua-cadmin-body">
 					{state.view === 'list'
 						? (collectionsState.error
-							? <ErrorState error={collectionsState.error} onRetry={collectionsState.reload} />
+							? <ErrorState error={collectionsState.error} onRetry={reloadMenu} />
 							: <EmptyState label="Pick a content type from the left to browse its entries." />)
 						: null}
 					{state.view === 'entries'
