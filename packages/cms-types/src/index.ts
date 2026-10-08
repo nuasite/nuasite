@@ -901,6 +901,12 @@ export {
 } from './field-values'
 
 // ============================================================================
+// Collection browser arrangement — see `collection-nav.ts` for the rule every browser applies
+// ============================================================================
+
+export { type CollectionNavItem, type CollectionNavOptions, type CollectionNavSection, resolveCollectionNav } from './collection-nav'
+
+// ============================================================================
 // Slug derivation — see `slug.ts` for why the server and the clients share it
 // ============================================================================
 

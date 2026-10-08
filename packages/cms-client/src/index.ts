@@ -6,8 +6,9 @@
  * to get right the same way — the entry-draft form model (field coercion,
  * wire ↔ native mapping), the form layout plan (`form-layout`), the
  * save/conflict token dance (`entry-saver`), whole-collection loading
- * (`entries`), media preview resolution (`media`) and the slug rules the server
- * writes by (re-exported from `@nuasite/cms-types`).
+ * (`entries`), media preview resolution (`media`), and the slug rules the server
+ * writes by and the collection browser arrangement (both re-exported from
+ * `@nuasite/cms-types`).
  *
  * Any host builds its own collections UI on top of this: webmaster's native
  * tab, the `@nuasite/collections-admin` default SPA, or a third party. The
@@ -19,8 +20,17 @@
 // Surface the field-type contract values from the SDK so UI consumers can drive
 // field widgets off one import — and so `@nuasite/cms-types` is a genuine runtime
 // dependency (not type-only), matching the shared-contract intent.
-export { ENTRY_SLUG_FIELD, FIELD_TYPES, isFieldType, nextFreeSlug, slugify, withEntrySlug, withRenamedEntrySlug } from '@nuasite/cms-types'
-export type { CmsConfig, CmsListStyle } from '@nuasite/cms-types'
+export {
+	ENTRY_SLUG_FIELD,
+	FIELD_TYPES,
+	isFieldType,
+	nextFreeSlug,
+	resolveCollectionNav,
+	slugify,
+	withEntrySlug,
+	withRenamedEntrySlug,
+} from '@nuasite/cms-types'
+export type { CmsConfig, CmsListStyle, CollectionNavItem, CollectionNavOptions, CollectionNavSection } from '@nuasite/cms-types'
 export * from './client'
 export * from './entries'
 export * from './entry-saver'

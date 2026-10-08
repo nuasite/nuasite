@@ -39,6 +39,10 @@ const entry = await client.getEntry('posts', 'hello-world')
   (CDN, `data:`, a repository path via the sidecar, an Astro `image()` path against its entry).
 - **`slugify` / `nextFreeSlug`** — re-exported from `@nuasite/cms-types`. A host deriving a slug
   is predicting the sidecar's write, so both sides run the same function.
+- **`resolveCollectionNav(collections, { locale? })`** — re-exported from `@nuasite/cms-types`. How a
+  collection browser lists what `getCollections()` returned: `hidden` collections left out, sorted by
+  `order` then label (the sidecar's own order is arbitrary), nested under `parentCollection`, split
+  into `group` sections. Render from it instead of sorting locally, so every browser agrees.
 
 The structural contract (collections/fields/entries/media) is re-used 1:1 from
 [`@nuasite/cms-types`](../cms-types). The default React UI built on this SDK is
