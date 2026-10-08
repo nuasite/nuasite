@@ -27,13 +27,13 @@ function outline(sections: CollectionNavSection[]): Array<[group: string | undef
 describe('resolveCollectionNav — which collections are listed', () => {
 	test('a hidden collection is left out, and the input is not touched', () => {
 		const input = [collection('blog'), collection('redirects', { hidden: true })]
-		expect(outline(resolveCollectionNav(input))).toEqual([[undefined, ['blog']]])
+		expect(outline(resolveCollectionNav(input, { locale: undefined }))).toEqual([[undefined, ['blog']]])
 		expect(input.map(c => c.name)).toEqual(['blog', 'redirects'])
 	})
 
 	test('nothing to list is no sections at all', () => {
-		expect(resolveCollectionNav([])).toEqual([])
-		expect(resolveCollectionNav([collection('redirects', { hidden: true })])).toEqual([])
+		expect(resolveCollectionNav([], { locale: undefined })).toEqual([])
+		expect(resolveCollectionNav([collection('redirects', { hidden: true })], { locale: undefined })).toEqual([])
 	})
 })
 
@@ -46,7 +46,7 @@ describe('resolveCollectionNav — ordering', () => {
 			collection('cases', { label: 'Cases', order: 1 }),
 			collection('pinned', { label: 'Pinned', order: -1 }),
 			collection('home', { label: 'Home', order: 0 }),
-		])
+		], { locale: undefined })
 		expect(outline(sections)).toEqual([[undefined, ['pinned', 'home', 'cases', 'news', 'authors', 'tags']]])
 	})
 
@@ -54,7 +54,7 @@ describe('resolveCollectionNav — ordering', () => {
 		const sections = resolveCollectionNav([
 			collection('a-technical-name', { label: 'Zprávy' }),
 			collection('z-technical-name', { label: 'Aktuality' }),
-		])
+		], { locale: undefined })
 		expect(outline(sections)).toEqual([[undefined, ['z-technical-name', 'a-technical-name']]])
 	})
 
@@ -78,7 +78,7 @@ describe('resolveCollectionNav — ordering', () => {
 			collection('s10', { label: 'Sekce 10' }),
 			collection('s2', { label: 'Sekce 2' }),
 			collection('s1', { label: 'Sekce 1' }),
-		])
+		], { locale: undefined })
 		expect(outline(sections)).toEqual([[undefined, ['s1', 's2', 's10']]])
 	})
 
@@ -114,8 +114,8 @@ describe('resolveCollectionNav — ordering', () => {
 		}
 
 		test('no locale: labels are compared as English', () => {
-			expect(outline(resolveCollectionNav(czechLabels))).toEqual([[undefined, asEnglish]])
-			expect(collatorLocales(() => resolveCollectionNav(czechLabels))).toEqual(['en'])
+			expect(outline(resolveCollectionNav(czechLabels, { locale: undefined }))).toEqual([[undefined, asEnglish]])
+			expect(collatorLocales(() => resolveCollectionNav(czechLabels, { locale: undefined }))).toEqual(['en'])
 		})
 
 		test('a tag the runtime has no collation for is not handed to Intl', () => {
@@ -176,7 +176,7 @@ describe('resolveCollectionNav — nesting under parentCollection', () => {
 			collection('jsem-uvod', { label: 'Úvod', parentCollection: 'jsem', order: 1 }),
 			collection('jsem', { label: 'Jsem' }),
 			collection('blog', { label: 'Blog' }),
-		])
+		], { locale: undefined })
 		expect(outline(sections)).toEqual([[undefined, ['blog', 'jsem > jsem-uvod, jsem-kroky, jsem-otazky']]])
 	})
 
@@ -185,12 +185,12 @@ describe('resolveCollectionNav — nesting under parentCollection', () => {
 			collection('jsem-otazky', { parentCollection: 'jsem', order: 1 }),
 			collection('jsem', { order: 5 }),
 			collection('blog', { order: 2 }),
-		])
+		], { locale: undefined })
 		expect(outline(sections)).toEqual([[undefined, ['blog', 'jsem > jsem-otazky']]])
 	})
 
 	test('a child whose parent is missing falls back to the top level', () => {
-		const sections = resolveCollectionNav([collection('jsem-otazky', { parentCollection: 'jsem' }), collection('blog')])
+		const sections = resolveCollectionNav([collection('jsem-otazky', { parentCollection: 'jsem' }), collection('blog')], { locale: undefined })
 		expect(outline(sections)).toEqual([[undefined, ['blog', 'jsem-otazky']]])
 	})
 
@@ -200,7 +200,7 @@ describe('resolveCollectionNav — nesting under parentCollection', () => {
 			collection('jsem-otazky', { parentCollection: 'jsem' }),
 			collection('blog'),
 			collection('blog-drafts', { parentCollection: 'blog', hidden: true }),
-		])
+		], { locale: undefined })
 		expect(outline(sections)).toEqual([[undefined, ['blog', 'jsem-otazky']]])
 	})
 
@@ -212,7 +212,7 @@ describe('resolveCollectionNav — nesting under parentCollection', () => {
 			collection('x', { parentCollection: 'y' }),
 			collection('y', { parentCollection: 'x' }),
 			collection('z', { parentCollection: 'z' }),
-		])
+		], { locale: undefined })
 		expect(outline(sections)).toEqual([[undefined, ['a > b', 'c', 'x', 'y', 'z']]])
 	})
 })
@@ -226,7 +226,7 @@ describe('resolveCollectionNav — sections', () => {
 			collection('cases', { label: 'Případy', order: 1 }),
 			collection('news', { label: 'Aktuality', order: 2 }),
 			collection('tags', { label: 'Štítky' }),
-		])
+		], { locale: undefined })
 		// `Reference` precedes `English`: its only member is ordered, English's are not.
 		expect(outline(sections)).toEqual([
 			[undefined, ['cases', 'news', 'tags']],
@@ -236,7 +236,7 @@ describe('resolveCollectionNav — sections', () => {
 	})
 
 	test('with every collection grouped there is no leading ungrouped section', () => {
-		const sections = resolveCollectionNav([collection('news-en', { group: 'English' }), collection('news', { group: 'Česky' })])
+		const sections = resolveCollectionNav([collection('news-en', { group: 'English' }), collection('news', { group: 'Česky' })], { locale: undefined })
 		expect(sections.map(section => section.group)).toEqual(['Česky', 'English'])
 	})
 
@@ -246,7 +246,7 @@ describe('resolveCollectionNav — sections', () => {
 			collection('faq-en-items', { parentCollection: 'faq-en', group: 'Elsewhere' }),
 			collection('faq-items', { parentCollection: 'faq', group: 'English' }),
 			collection('faq'),
-		])
+		], { locale: undefined })
 		expect(outline(sections)).toEqual([
 			[undefined, ['faq > faq-items']],
 			['English', ['faq-en > faq-en-items']],
@@ -258,7 +258,7 @@ describe('resolveCollectionNav — sections', () => {
 			collection('faq-en', { group: 'English', hidden: true }),
 			collection('faq-en-items', { parentCollection: 'faq-en', group: 'English' }),
 			collection('blog'),
-		])
+		], { locale: undefined })
 		expect(outline(sections)).toEqual([
 			[undefined, ['blog']],
 			['English', ['faq-en-items']],

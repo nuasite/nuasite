@@ -265,8 +265,11 @@ export interface CollectionDefinition {
 	/** Collection identifier (directory name) */
 	name: string
 	/**
-	 * Human-readable label for the collection: `defineCmsCollection({ cms: { label } })` when
-	 * declared, otherwise derived from the name.
+	 * Human-readable label for the collection. From a scan it is
+	 * `defineCmsCollection({ cms: { label } })` when declared, otherwise derived from the name.
+	 * The `@nuasite/cms` integration lays `nua.cms.collections[name].label` from the Astro
+	 * config over that, so in what it serves (the in-page editor, the local `/_nua/admin`) the
+	 * Astro-config label wins; a standalone sidecar never sees it.
 	 */
 	label: string
 	/** Path to the collection directory */

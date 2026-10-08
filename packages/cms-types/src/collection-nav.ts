@@ -52,16 +52,17 @@ export interface CollectionNavOptions {
 	 * Pass the project's own — `CmsConfig.locale`, which the sidecar serves at `/config` — and
 	 * never the viewer's, or the same project lists differently from one browser to the next.
 	 *
-	 * Without one, or with a tag the runtime has no collation for, labels are compared as
-	 * English: diacritics only break ties, so "Č" sorts with "C".
+	 * Required, so that not knowing it is something a caller says rather than forgets: with
+	 * `undefined`, or a tag the runtime has no collation for, labels are compared as English,
+	 * where diacritics only break ties and "Č" sorts with "C".
 	 */
-	locale?: Intl.LocalesArgument
+	locale: string | undefined
 }
 
 /** The collation used when the project's language is unknown or unusable. */
 const FALLBACK_LOCALE = 'en'
 
-function labelCollator(locale: Intl.LocalesArgument): Intl.Collator {
+function labelCollator(locale: string | undefined): Intl.Collator {
 	// WHY not hand `locale` straight to `Intl.Collator`: for `undefined`, and for any tag it
 	// has no data for (`'und'`, an Astro locale path like `'spanish'`), it silently uses the
 	// runtime's default locale — the viewer's, which is the one thing the order may not
@@ -77,7 +78,7 @@ function labelCollator(locale: Intl.LocalesArgument): Intl.Collator {
 }
 
 /** Arrange collections for a collection browser. Pure; the input is not modified. */
-export function resolveCollectionNav(collections: readonly CollectionDefinition[], options: CollectionNavOptions = {}): CollectionNavSection[] {
+export function resolveCollectionNav(collections: readonly CollectionDefinition[], options: CollectionNavOptions): CollectionNavSection[] {
 	const collator = labelCollator(options.locale)
 	const sorted = collections.filter(collection => !collection.hidden).sort((a, b) => {
 		const orderA = a.order ?? Number.POSITIVE_INFINITY
@@ -88,7 +89,7 @@ export function resolveCollectionNav(collections: readonly CollectionDefinition[
 
 	const byName = new Map(sorted.map(collection => [collection.name, collection]))
 	const visibleParent = (collection: CollectionDefinition): CollectionDefinition | undefined =>
-		collection.parentCollection === undefined || collection.parentCollection === collection.name ? undefined : byName.get(collection.parentCollection)
+		collection.parentCollection === undefined ? undefined : byName.get(collection.parentCollection)
 
 	const itemsByName = new Map<string, CollectionNavItem>()
 	const ungrouped: CollectionNavItem[] = []
@@ -97,6 +98,8 @@ export function resolveCollectionNav(collections: readonly CollectionDefinition[
 
 	for (const collection of sorted) {
 		const parent = visibleParent(collection)
+		// Nested only under a parent that is itself top level — which also keeps a collection
+		// naming itself, or two naming each other, from nesting out of the list.
 		if (parent && !visibleParent(parent)) {
 			nested.push([parent, collection])
 			continue
