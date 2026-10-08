@@ -1,5 +1,6 @@
+import { type CollectionNavSection, resolveCollectionNav } from '@nuasite/cms-types'
 import type { MediaUploadContext } from '../types'
-import type { CmsManifest, ComponentDefinition, ComponentInstance, FieldDefinition, ManifestEntry } from './types'
+import type { CmsManifest, CollectionDefinition, ComponentDefinition, ComponentInstance, FieldDefinition, ManifestEntry } from './types'
 
 type GetManifestEntry = (manifest: CmsManifest, id: string) => ManifestEntry | undefined
 export const getManifestEntry: GetManifestEntry = (manifest, id) => manifest.entries[id]
@@ -32,6 +33,16 @@ export function getCollectionField(
 ): FieldDefinition | undefined {
 	if (!collectionName || !fieldName) return undefined
 	return manifest.collectionDefinitions?.[collectionName]?.fields.find(f => f.name === fieldName)
+}
+
+/**
+ * The manifest's collections as a collection browser lists them — hidden ones left out,
+ * ordered, nested and sectioned by the rule every browser shares (`resolveCollectionNav`).
+ * Labels are compared in the page's language: the editor runs inside the site, so
+ * `<html lang>` is the language they are written in.
+ */
+export function getCollectionNav(collectionDefinitions: Record<string, CollectionDefinition>): CollectionNavSection[] {
+	return resolveCollectionNav(Object.values(collectionDefinitions), { locale: document.documentElement.lang || undefined })
 }
 
 /**

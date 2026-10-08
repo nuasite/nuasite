@@ -303,6 +303,55 @@ n.date().orderBy('desc') // descending (newest first)
 
 The direction defaults to `'asc'` if omitted. Entries with a missing order field sort to the end.
 
+### Collection Browser
+
+`defineCmsCollection` is a drop-in for Astro's `defineCollection` that also accepts a `cms` block. Four of its keys describe how the collection appears wherever collections are listed:
+
+```typescript
+import { defineCmsCollection, n } from '@nuasite/cms'
+import { glob } from 'astro/loaders'
+
+const cases = defineCmsCollection({
+	loader: glob({ pattern: '**/*.md', base: 'src/content/pripady-pripady' }),
+	schema: n.object({ title: n.text() }),
+	cms: { label: 'Případy', order: 1 },
+})
+
+const casesEn = defineCmsCollection({
+	loader: glob({ pattern: '**/*.md', base: 'src/content/pripady-en' }),
+	schema: n.object({ title: n.text() }),
+	cms: { label: 'Cases', group: 'English' },
+})
+
+const redirects = defineCmsCollection({
+	loader: glob({ pattern: '**/*.yaml', base: 'src/content/redirects' }),
+	schema: n.object({ from: n.text(), to: n.text() }),
+	cms: { hidden: true },
+})
+```
+
+| Key      | Type     | Effect                                                                                                                |
+| -------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `label`  | `string` | Display label. Overrides the name-derived default (`pripady-pripady` → "Pripady Pripady").                            |
+| `order`  | `number` | Position in the list, lower first. Collections without an `order` follow all ordered ones, sorted by label.           |
+| `group`  | `string` | Section heading the collection is listed under. Ungrouped collections come first, then each group as its own section. |
+| `hidden` | `true`   | Leaves the collection out of collection browsers. It stays resolvable: reference pickers and entry URLs still work.   |
+
+The block is read from the config **source**, so the values must be literals (or a top-level `const` holding one); anything else is ignored. Because they travel with the collection scan, they reach every consumer, including the standalone [`@nuasite/cms-sidecar`](../cms-sidecar) a hosted admin talks to. The `collections[name].label` option of the integration still wins over `cms.label`, but it is applied inside the Astro integration only and never reaches a sidecar.
+
+Browsers arrange the list with `resolveCollectionNav` from `@nuasite/cms-types` (re-exported by `@nuasite/cms-client`), so a custom collections UI lists collections the same way:
+
+```typescript
+import { resolveCollectionNav } from '@nuasite/cms-client'
+
+const sections = resolveCollectionNav(await client.getCollections(), {
+	locale: 'cs',
+})
+// [{ items: [{ collection, children }] }, { group: 'English', items: [...] }]
+```
+
+Nested collections (`parentCollection`) come back as `children` of their parent. `locale` is the language the labels are compared in and defaults to the runtime's locale.
+
 ## Component Operations
 
 Components in `componentDirs` (default: `src/components/`) are scanned for props and registered as insertable/removable elements. The editor can:

@@ -17,7 +17,7 @@
  */
 
 import { type CmsClient, CmsClientError, createClient } from '@nuasite/cms-client'
-import type { CollectionDefinition, CollectionEntryInfo } from '@nuasite/cms-types'
+import { type CollectionDefinition, type CollectionEntryInfo, resolveCollectionNav } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EntryCreate } from './entry-create'
 import { EntryEditor } from './entry-editor'
@@ -143,16 +143,10 @@ function Sidebar({ collections, loading, error, activeCollection, onSelect, onRe
 	onReload: () => void
 	onClose?: () => void
 }) {
-	// Group glob-nested collections (e.g. `jsem-otazky` under `jsem`) below their
-	// parent, indented, so the menu mirrors the content structure.
-	const childrenByParent = new Map<string, CollectionDefinition[]>()
-	for (const c of collections) {
-		if (!c.parentCollection) continue
-		const arr = childrenByParent.get(c.parentCollection) ?? []
-		arr.push(c)
-		childrenByParent.set(c.parentCollection, arr)
-	}
-	const topLevel = collections.filter((c) => !c.parentCollection)
+	// The arrangement every collection browser shares: hidden collections left out, declared
+	// order and sections, and glob-nested collections (e.g. `jsem-otazky` under `jsem`)
+	// indented below their parent so the menu mirrors the content structure.
+	const sections = resolveCollectionNav(collections)
 
 	const item = (c: CollectionDefinition, depth: number) => (
 		<button
@@ -179,9 +173,12 @@ function Sidebar({ collections, loading, error, activeCollection, onSelect, onRe
 				{error
 					? <button type="button" className="nua-cadmin-nav-state nua-cadmin-nav-error" onClick={onReload}>Failed to load — retry</button>
 					: null}
-				{!loading && !error && collections.length === 0 ? <div className="nua-cadmin-nav-state">No content types</div> : null}
+				{!loading && !error && sections.length === 0 ? <div className="nua-cadmin-nav-state">No content types</div> : null}
 				{!loading && !error
-					? topLevel.flatMap((c) => [item(c, 0), ...(childrenByParent.get(c.name) ?? []).map((child) => item(child, 1))])
+					? sections.flatMap((section) => [
+						section.group ? <div key={`group:${section.group}`} className="nua-cadmin-nav-group">{section.group}</div> : null,
+						...section.items.flatMap(({ collection, children }) => [item(collection, 0), ...children.map((child) => item(child, 1))]),
+					])
 					: null}
 			</nav>
 		</aside>

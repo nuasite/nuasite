@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import {
 	getAvailableComponentNames,
+	getCollectionNav,
 	getComponentDefinition,
 	getComponentDefinitions,
 	getComponentInstance,
@@ -9,7 +10,7 @@ import {
 	getManifestEntryCount,
 	hasManifestEntry,
 } from '../../../src/editor/manifest'
-import type { CmsManifest } from '../../../src/editor/types'
+import type { CmsManifest, CollectionDefinition } from '../../../src/editor/types'
 
 const newManifest: CmsManifest = {
 	entries: {
@@ -93,4 +94,33 @@ test('getAvailableComponentNames returns component names', () => {
 	const names = getAvailableComponentNames(newManifest)
 	expect(names).toContain('Hero')
 	expect(names).toHaveLength(1)
+})
+
+test('getCollectionNav arranges collections in the language of the page', () => {
+	const collection = (name: string, extra: Partial<CollectionDefinition>): CollectionDefinition => ({
+		name,
+		label: name,
+		path: `src/content/${name}`,
+		entryCount: 0,
+		fields: [],
+		fileExtension: 'md',
+		...extra,
+	})
+	const definitions = {
+		clanky: collection('clanky', { label: 'Články' }),
+		cukr: collection('cukr', { label: 'Cukr' }),
+		redirects: collection('redirects', { hidden: true }),
+	}
+	const names = () => getCollectionNav(definitions).flatMap(section => section.items.map(item => item.collection.name))
+
+	const previousLang = document.documentElement.lang
+	try {
+		// Czech sorts "Č" as its own letter after "C"; English only breaks a tie on the caron.
+		document.documentElement.lang = 'cs'
+		expect(names()).toEqual(['cukr', 'clanky'])
+		document.documentElement.lang = 'en'
+		expect(names()).toEqual(['clanky', 'cukr'])
+	} finally {
+		document.documentElement.lang = previousLang
+	}
 })

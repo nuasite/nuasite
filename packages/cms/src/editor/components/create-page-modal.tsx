@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { slugify } from '../../shared'
+import { getCollectionNav } from '../manifest'
 import { checkSlugExists, createPage, duplicatePage, getLayouts } from '../markdown-api'
 import {
 	config,
@@ -391,7 +392,11 @@ function DuplicatePageForm() {
 
 function CollectionPicker() {
 	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}
-	const collections = useMemo(() => Object.values(collectionDefinitions), [collectionDefinitions])
+	// Offered as the collection browser lists them: hidden collections left out, same order.
+	const collections = useMemo(
+		() => getCollectionNav(collectionDefinitions).flatMap(section => section.items.flatMap(({ collection, children }) => [collection, ...children])),
+		[collectionDefinitions],
+	)
 
 	// Single collection — skip picker and go straight to editor
 	useEffect(() => {
