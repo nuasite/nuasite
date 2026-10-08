@@ -214,6 +214,66 @@ describe('parseProjectCmsConfigSource — the integration called directly in `in
 	})
 })
 
+// A config that hands the CMS its options more than once runs more than one CMS instance, and
+// the page ends up with the configuration of the one that registers last. The reader answers
+// from that one object — never `listStyles` from one instance and `locale` from another.
+describe('parseProjectCmsConfigSource — several CMS instances in one config', () => {
+	const FAJFKY = `[{ label: 'Fajfky', class: 'checkmarks' }]`
+	const parse = (body: string) =>
+		parseProjectCmsConfigSource(`
+			import nuaCms from '@nuasite/cms'
+			import nua from '@nuasite/nua/integration'
+			import { defineConfig } from '@nuasite/nua/config'
+			export default defineConfig(${body})
+		`)
+
+	test('the nua.cms block wins whole: nothing is borrowed from a direct call', () => {
+		const parsed = parse(`{
+			integrations: [nuaCms({ cmsConfig: { locale: 'cs' } })],
+			nua: { cms: { cmsConfig: { listStyles: ${FAJFKY} } } },
+		}`)
+		expect(parsed).toEqual({ listStyles: [{ label: 'Fajfky', class: 'checkmarks' }] })
+	})
+
+	test('a nua.cms block without cmsConfig still is the instance the page gets', () => {
+		const parsed = parse(`{
+			integrations: [nuaCms({ cmsConfig: { locale: 'cs', listStyles: ${FAJFKY} } })],
+			nua: { cms: { collections: {} } },
+		}`)
+		expect(parsed).toEqual({ listStyles: [] })
+	})
+
+	test('of two nuaCms() calls, the later one', () => {
+		const parsed = parse(`{ integrations: [nuaCms({ cmsConfig: { locale: 'en', listStyles: ${FAJFKY} } }), nuaCms({ cmsConfig: { locale: 'cs' } })] }`)
+		expect(parsed).toEqual({ listStyles: [], locale: 'cs' })
+	})
+
+	test('a later call that declares no cmsConfig leaves nothing to read', () => {
+		expect(parse(`{ integrations: [nuaCms({ cmsConfig: { locale: 'cs', listStyles: ${FAJFKY} } }), nuaCms()] }`)).toEqual({ listStyles: [] })
+	})
+
+	test('nua({ cms }) registers its CMS behind everything listed, so it wins over nuaCms() wherever it stands', () => {
+		const nuaCall = `nua({ cms: { cmsConfig: { locale: 'cs' } } })`
+		const cmsCall = `nuaCms({ cmsConfig: { locale: 'en', listStyles: ${FAJFKY} } })`
+		expect(parse(`{ integrations: [${nuaCall}, ${cmsCall}] }`)).toEqual({ listStyles: [], locale: 'cs' })
+		expect(parse(`{ integrations: [${cmsCall}, ${nuaCall}] }`)).toEqual({ listStyles: [], locale: 'cs' })
+	})
+
+	test('nua({ cms: false }) runs no CMS, so it is not in the running', () => {
+		const parsed = parse(`{ integrations: [nuaCms({ cmsConfig: { locale: 'cs' } }), nua({ cms: false })] }`)
+		expect(parsed.locale).toBe('cs')
+	})
+
+	test('i18n.defaultLocale backs up whichever instance it is', () => {
+		const parsed = parse(`{
+			i18n: { defaultLocale: 'en' },
+			integrations: [nuaCms({ cmsConfig: { locale: 'cs' } })],
+			nua: { cms: { cmsConfig: { listStyles: ${FAJFKY} } } },
+		}`)
+		expect(parsed.locale).toBe('en')
+	})
+})
+
 describe('parseProjectCmsConfig', () => {
 	test('reads astro.config.ts from the project root', async () => {
 		const root = await tempRootWith('astro.config.ts', CONFIG_SOURCE)

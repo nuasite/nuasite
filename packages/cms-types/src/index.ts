@@ -512,9 +512,10 @@ export interface CmsListStyle {
 export interface CmsConfig {
 	listStyles?: CmsListStyle[]
 	/**
-	 * The project's language: `nua.cms.cmsConfig.locale` when the Astro config declares it,
-	 * otherwise Astro's `i18n.defaultLocale` — absent when the project declares neither as a
-	 * string literal. It is what a collection browser passes to `resolveCollectionNav` so
+	 * The project's language: `cmsConfig.locale` where the Astro config passes the CMS its
+	 * options (the `nua.cms` block, or `nuaCms({ … })` / `nua({ cms: { … } })` in
+	 * `integrations`), otherwise Astro's `i18n.defaultLocale` — absent when the project
+	 * declares neither as a string literal. It is what a collection browser passes to `resolveCollectionNav` so
 	 * labels are compared in the project's language rather than the viewer's. Served as
 	 * declared, so it is not guaranteed to be a BCP 47 tag (Astro accepts a path like `'spanish'`).
 	 */

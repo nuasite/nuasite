@@ -152,45 +152,58 @@ function collectCmsIntegrationImports(ast: File): Map<string, string[]> {
 }
 
 /**
- * Every `cmsConfig` object the Astro config declares, in the order they are consulted.
+ * The `cmsConfig` object of the CMS instance whose configuration the page ends up with, or
+ * null when that instance declares none (or none can be read).
  *
- * The CMS options reach the integration three ways, and a site picks one: the `nua.cms` block
- * of `defineConfig` from `@nuasite/nua/config`, or the integration called directly in
- * `integrations` — `nuaCms({ … })`, `nua({ cms: { … } })`. A reader that knew only the first
- * served nothing for a site using the others, while the integration itself had the value.
- * A call is recognised by where its callee is imported from, not by its name.
+ * The CMS options reach the integration three ways: the `nua.cms` block of `defineConfig`
+ * from `@nuasite/nua/config`, or the integration called directly in `integrations` —
+ * `nuaCms({ … })`, `nua({ cms: { … } })`. A call is recognised by where its callee is
+ * imported from, not by its name.
+ *
+ * A site picks one. When a config declares several, each call is its own CMS instance and
+ * every instance assigns `window.NuaCmsConfig`, so the one that registers last is the one
+ * the page gets: `nua` adds its CMS through `updateConfig`, which lands behind everything
+ * listed in `integrations` — so the `nua.cms` block, then the last `nua({ cms })` call, then
+ * the last `nuaCms()` call. Exactly one object is the answer; taking `listStyles` from one
+ * instance and `locale` from another would describe a configuration no page ever has.
  */
-function cmsConfigObjects(ast: File, configObject: ObjectExpression, bindings: Bindings): ObjectExpression[] {
-	const found: ObjectExpression[] = []
-	const fromBlock = objectAtPath(configObject, ['nua', 'cms', 'cmsConfig'], bindings)
-	if (fromBlock) found.push(fromBlock)
+function effectiveCmsConfig(ast: File, configObject: ObjectExpression, bindings: Bindings): ObjectExpression | null {
+	const block = objectAtPath(configObject, ['nua', 'cms'], bindings)
+	if (block) return objectAtPath(block, ['cmsConfig'], bindings)
 
 	const integrations = objectPropertyValue(configObject, 'integrations', bindings)
-	if (integrations?.type !== 'ArrayExpression') return found
+	if (integrations?.type !== 'ArrayExpression') return null
 
+	// `undefined`: no such call. `null`: an instance that declares no readable `cmsConfig`.
+	let lastFromNua: ObjectExpression | null | undefined
+	let lastFromCms: ObjectExpression | null | undefined
 	const integrationImports = collectCmsIntegrationImports(ast)
 	for (const element of integrations.elements) {
 		if (!element || element.type === 'SpreadElement') continue
 		const call = resolveExpression(element, bindings)
 		if (call.type !== 'CallExpression' || call.callee.type !== 'Identifier') continue
 		const optionsPath = integrationImports.get(call.callee.name)
+		if (!optionsPath) continue
+
 		const firstArg = call.arguments[0]
-		if (!optionsPath || !firstArg || firstArg.type === 'SpreadElement') continue
-		const options = resolveExpression(firstArg, bindings)
-		if (options.type !== 'ObjectExpression') continue
-		const fromCall = objectAtPath(options, [...optionsPath, 'cmsConfig'], bindings)
-		if (fromCall) found.push(fromCall)
+		const options = firstArg && firstArg.type !== 'SpreadElement' ? resolveExpression(firstArg, bindings) : null
+		const optionsObject = options?.type === 'ObjectExpression' ? options : null
+		if (optionsPath.length === 0) {
+			lastFromCms = optionsObject && objectAtPath(optionsObject, ['cmsConfig'], bindings)
+			continue
+		}
+		// `nua({ cms: false })` runs no CMS at all, so it is not an instance to consider.
+		const cms = optionsObject && objectPropertyValue(optionsObject, 'cms', bindings)
+		if (cms?.type === 'BooleanLiteral' && !cms.value) continue
+		lastFromNua = cms?.type === 'ObjectExpression' ? objectAtPath(cms, ['cmsConfig'], bindings) : null
 	}
-	return found
+	return lastFromNua !== undefined ? lastFromNua : lastFromCms ?? null
 }
 
-/** The first `listStyles` array among the `cmsConfig` objects; empty when none declares one. */
-function parseConfigListStyles(cmsConfigs: ObjectExpression[], bindings: Bindings): CmsListStyle[] {
-	for (const cmsConfig of cmsConfigs) {
-		const listStylesNode = objectPropertyValue(cmsConfig, 'listStyles', bindings)
-		if (listStylesNode?.type === 'ArrayExpression') return parseListStyles(listStylesNode, bindings)
-	}
-	return []
+/** `listStyles` of the `cmsConfig` object; empty when absent or not an array. */
+function parseConfigListStyles(cmsConfig: ObjectExpression | null, bindings: Bindings): CmsListStyle[] {
+	const listStylesNode = cmsConfig ? objectPropertyValue(cmsConfig, 'listStyles', bindings) : null
+	return listStylesNode?.type === 'ArrayExpression' ? parseListStyles(listStylesNode, bindings) : []
 }
 
 /** The value of `key` in `object`, when it is a non-empty static string. */
@@ -206,18 +219,14 @@ function staticStringOf(object: ObjectExpression | null, key: string, bindings: 
  * pull for the sake of sorting labels. A value that cannot be read statically counts as
  * absent, so an unreadable explicit locale falls through to `i18n.defaultLocale`.
  */
-function parseLocale(cmsConfigs: ObjectExpression[], configObject: ObjectExpression, bindings: Bindings): string | undefined {
-	for (const cmsConfig of cmsConfigs) {
-		const explicit = staticStringOf(cmsConfig, 'locale', bindings)
-		if (explicit) return explicit
-	}
-	return staticStringOf(objectAtPath(configObject, ['i18n'], bindings), 'defaultLocale', bindings)
+function parseLocale(cmsConfig: ObjectExpression | null, configObject: ObjectExpression, bindings: Bindings): string | undefined {
+	return staticStringOf(cmsConfig, 'locale', bindings) ?? staticStringOf(objectAtPath(configObject, ['i18n'], bindings), 'defaultLocale', bindings)
 }
 
 /**
  * Parse the project-level CMS config from an Astro config source string: `listStyles` and
  * the project's language (see {@link parseLocale}), from wherever the config hands the
- * integration its `cmsConfig` (see {@link cmsConfigObjects}).
+ * integration its `cmsConfig` (see {@link effectiveCmsConfig}).
  */
 export function parseProjectCmsConfigSource(source: string): CmsConfig {
 	const ast = parseSource(source)
@@ -227,9 +236,9 @@ export function parseProjectCmsConfigSource(source: string): CmsConfig {
 	const configObject = configObjectFromDefaultExport(ast, bindings)
 	if (!configObject) return EMPTY_CONFIG
 
-	const cmsConfigs = cmsConfigObjects(ast, configObject, bindings)
-	const locale = parseLocale(cmsConfigs, configObject, bindings)
-	return { listStyles: parseConfigListStyles(cmsConfigs, bindings), ...(locale ? { locale } : {}) }
+	const cmsConfig = effectiveCmsConfig(ast, configObject, bindings)
+	const locale = parseLocale(cmsConfig, configObject, bindings)
+	return { listStyles: parseConfigListStyles(cmsConfig, bindings), ...(locale ? { locale } : {}) }
 }
 
 const ASTRO_CONFIG_FILES = ['astro.config.ts', 'astro.config.mts', 'astro.config.mjs', 'astro.config.js']

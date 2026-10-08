@@ -58,8 +58,8 @@ export interface CmsConfig {
 	/** Maximum upload size in bytes for media uploads (injected by the integration). */
 	maxUploadSize?: number
 	/**
-	 * The project's language: `nua.cms.cmsConfig.locale`, otherwise Astro's `i18n.defaultLocale`
-	 * (injected by the integration, read from the config source). Collection labels are compared
+	 * The project's language: `cmsConfig.locale` where the Astro config passes the CMS its options,
+	 * otherwise Astro's `i18n.defaultLocale` (injected by the integration, read from the config source). Collection labels are compared
 	 * in it, so the list is ordered the same on every page and for every editor.
 	 */
 	locale?: string
