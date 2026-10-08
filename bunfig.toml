@@ -3,4 +3,4 @@ linker = "hoisted"
 peer = false
 
 [test]
-preload = ['./happydom.ts']
+preload = ['./happydom.ts', './packages/cms/tests/utils/preact-jsx.ts']
