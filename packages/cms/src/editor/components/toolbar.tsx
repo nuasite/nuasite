@@ -2,7 +2,7 @@ import type { ComponentChildren, FunctionComponent } from 'preact'
 import { useRef, useState } from 'preact/hooks'
 import { CMS_VERSION, Z_INDEX } from '../constants'
 import { cn } from '../lib/cn'
-import { getCollectionNav } from '../manifest'
+import { getCollectionNavList } from '../manifest'
 import * as signals from '../signals'
 import { showConfirmDialog } from '../signals'
 import { STRINGS } from '../strings'
@@ -104,22 +104,15 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	if (collectionDefinitions) {
 		const entries = Object.entries(collectionDefinitions)
 		if (entries.length > 0) {
-			// The collection browser's arrangement, flattened: nested (child) collections sit
-			// indented under their parent. The menu has no headings, so a `group` only decides
-			// where its collections are listed.
-			const ordered = getCollectionNav(collectionDefinitions, signals.config.value.locale).flatMap(section =>
-				section.items.flatMap(({ collection, children }) => [
-					{ def: collection, indented: false },
-					...children.map(child => ({ def: child, indented: true })),
-				])
-			)
-
+			// Listed as the collection browser arranges them, nested (child) collections indented
+			// under their parent. The menu has no headings, so a `group` only decides where its
+			// collections are listed.
 			const contentItems: MenuItem[] = collectionManagementEnabled
-				? ordered.map(({ def, indented }) => ({
-					label: def.label,
+				? getCollectionNavList(collectionDefinitions, signals.config.value.locale).map(({ collection, nested }) => ({
+					label: collection.label,
 					icon: <GridIcon />,
-					indented,
-					onClick: () => callbacks.onOpenCollection?.(def.name),
+					indented: nested,
+					onClick: () => callbacks.onOpenCollection?.(collection.name),
 				}))
 				: []
 

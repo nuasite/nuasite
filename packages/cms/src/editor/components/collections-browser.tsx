@@ -231,16 +231,23 @@ export function CollectionsBrowser() {
 		)
 	}
 
-	// Empty state
+	// Empty state. Nothing listed is not the same as nothing there: with collections that are
+	// all `hidden`, telling the editor to add files would be wrong.
 	if (sections.length === 0) {
 		return (
 			<ModalBackdrop onClose={handleClose}>
 				<ModalHeader title="Collections" onClose={handleClose} />
 				<div class="p-8 text-center">
-					<div class="text-white/60 mb-4">No content collections found.</div>
-					<p class="text-white/40 text-sm">
-						Add markdown files to <code class="bg-white/10 px-1.5 py-0.5 rounded">src/content/</code> subdirectories to enable collections.
-					</p>
+					{Object.keys(collectionDefinitions).length === 0
+						? (
+							<>
+								<div class="text-white/60 mb-4">No content collections found.</div>
+								<p class="text-white/40 text-sm">
+									Add markdown files to <code class="bg-white/10 px-1.5 py-0.5 rounded">src/content/</code> subdirectories to enable collections.
+								</p>
+							</>
+						)
+						: <div class="text-white/60">No collections to show here.</div>}
 				</div>
 			</ModalBackdrop>
 		)

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import {
 	getAvailableComponentNames,
 	getCollectionNav,
+	getCollectionNavList,
 	getComponentDefinition,
 	getComponentDefinitions,
 	getComponentInstance,
@@ -128,4 +129,30 @@ test('getCollectionNav orders by the project locale, whatever page the editor is
 	} finally {
 		document.documentElement.lang = previousLang
 	}
+})
+
+// What the toolbar's Content menu and the "New Page" picker render, row for row.
+test('getCollectionNavList flattens the arrangement for the lists that have no headings', () => {
+	const definitions = {
+		'news-en': collection('news-en', { label: 'News', group: 'English' }),
+		redirects: collection('redirects', { hidden: true }),
+		'faq-items': collection('faq-items', { label: 'Otázky', parentCollection: 'faq' }),
+		cukr: collection('cukr', { label: 'Cukr' }),
+		faq: collection('faq', { label: 'FAQ', order: 1 }),
+		cisla: collection('cisla', { label: 'Čísla' }),
+	}
+
+	expect(getCollectionNavList(definitions, 'cs').map(({ collection, nested }) => `${nested ? '> ' : ''}${collection.name}`)).toEqual([
+		'faq',
+		'> faq-items',
+		'cukr',
+		'cisla',
+		// A group's collections follow the ungrouped ones; the hidden collection is not offered.
+		'news-en',
+	])
+})
+
+test('getCollectionNavList is empty when every collection is hidden — nothing to offer', () => {
+	expect(getCollectionNavList({ redirects: collection('redirects', { hidden: true }) }, undefined)).toEqual([])
+	expect(getCollectionNavList({}, undefined)).toEqual([])
 })

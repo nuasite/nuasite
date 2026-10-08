@@ -48,6 +48,23 @@ export function getCollectionNav(collectionDefinitions: Record<string, Collectio
 }
 
 /**
+ * The same arrangement as one flat list, for the places that list collections without
+ * section headings (the toolbar menu, the "New Page" picker). `nested` marks a collection
+ * listed under its parent; a `group` still decides where its collections sit.
+ */
+export function getCollectionNavList(
+	collectionDefinitions: Record<string, CollectionDefinition>,
+	locale: string | undefined,
+): Array<{ collection: CollectionDefinition; nested: boolean }> {
+	return getCollectionNav(collectionDefinitions, locale).flatMap(section =>
+		section.items.flatMap(({ collection, children }) => [
+			{ collection, nested: false },
+			...children.map(child => ({ collection: child, nested: true })),
+		])
+	)
+}
+
+/**
  * Build the upload context that routes a media upload to an Astro `image()`
  * field's entry-relative location. Returns undefined when the field isn't
  * astroImage or any piece of the (collection, slug, field) triple is missing.
