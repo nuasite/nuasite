@@ -327,17 +327,27 @@ describe('parseProjectCmsConfigSource — which CMS instance the page gets', () 
 		[
 			'astro: i18n + nuaCms({ locale }) + bare nuaCms()',
 			ASTRO,
-			`{ i18n: { defaultLocale: 'en' }, integrations: [nuaCms(${cms('first', 'cs')}), nuaCms()] }`,
+			`{ i18n: { defaultLocale: 'en', locales: ['en', 'cs'] }, integrations: [nuaCms(${cms('first', 'cs')}), nuaCms()] }`,
 			{ listStyles: [], locale: 'en' },
 		],
-		['wrapper: i18n + nuaCms() without a locale', WRAPPER, `{ i18n: { defaultLocale: 'en' }, integrations: [nuaCms(${cms('cms')})] }`, {
-			listStyles: [],
-			locale: 'en',
-		}],
-		['wrapper: the block locale ahead of i18n', WRAPPER, `{ i18n: { defaultLocale: 'en' }, nua: { cms: { cmsConfig: { locale: 'cs' } } } }`, {
-			listStyles: [],
-			locale: 'cs',
-		}],
+		[
+			'wrapper: i18n + nuaCms() without a locale',
+			WRAPPER,
+			`{ i18n: { defaultLocale: 'en', locales: ['en', 'cs'] }, integrations: [nuaCms(${cms('cms')})] }`,
+			{
+				listStyles: [],
+				locale: 'en',
+			},
+		],
+		[
+			'wrapper: the block locale ahead of i18n',
+			WRAPPER,
+			`{ i18n: { defaultLocale: 'en', locales: ['en', 'cs'] }, nua: { cms: { cmsConfig: { locale: 'cs' } } } }`,
+			{
+				listStyles: [],
+				locale: 'cs',
+			},
+		],
 	]
 
 	for (const [name, defineConfigImport, body, expected] of rows) {
@@ -345,6 +355,42 @@ describe('parseProjectCmsConfigSource — which CMS instance the page gets', () 
 			expect(parse(`const BLOCK = ${cms('block', 'cs')}\n${defineConfigImport}`, body)).toEqual(expected)
 		})
 	}
+
+	// What matters is what the callee *is*, not what the file calls it. ✓
+	test('the wrapper imported under another name is still the wrapper', () => {
+		const ALIASED = `import { defineConfig as defineNuaConfig } from '@nuasite/nua/config'`
+		const body = `{ integrations: [nuaCms(${cms('cms', 'cs')})] }`
+		expect(parse(ALIASED, body, `defineNuaConfig(${body})`)).toEqual(NOTHING)
+		// …and Astro's own under the wrapper's usual name is not.
+		const SWAPPED = `import { defineConfig as defineNuaConfig } from 'astro/config'`
+		expect(parse(SWAPPED, body, `defineNuaConfig(${body})`)).toEqual(from('cms', 'cs'))
+	})
+
+	// Type-only syntax is gone by the time the config runs, so it may not hide a value from the
+	// reader either. Each of these reads `cs` at runtime. ✓
+	describe('through TypeScript-only wrappers', () => {
+		const typed: Array<[name: string, defineConfigImport: string, body: string, exported?: string]> = [
+			['a const declared `as const`', `const LOCALE = 'cs' as const\n${WRAPPER}`, `{ nua: { cms: { cmsConfig: { locale: LOCALE } } } }`],
+			['the config object `satisfies` a type', WRAPPER, `{ nua: { cms: { cmsConfig: { locale: 'cs' } } } } satisfies NuaConfig`],
+			['the cms options `as any`', WRAPPER, `{ nua: { cms: { cmsConfig: { locale: 'cs' } } as any } }`],
+			['an angle-bracket assertion', WRAPPER, `{ nua: { cms: <any>{ cmsConfig: { locale: 'cs' } } } }`],
+			['a non-null assertion on a const', `const CMS = { cmsConfig: { locale: 'cs' } }\n${WRAPPER}`, `{ nua: { cms: CMS! } }`],
+			['a const object declared `as const`', `const CMS = { cmsConfig: { locale: 'cs' } } as const\n${WRAPPER}`, `{ nua: { cms: CMS } }`],
+			['the defineConfig call cast', WRAPPER, `{}`, `defineConfig({ nua: { cms: { cmsConfig: { locale: 'cs' } } } }) as unknown as AstroUserConfig`],
+			[
+				'a plain exported object that `satisfies` a type',
+				ASTRO,
+				`{}`,
+				`{ integrations: [nuaCms({ cmsConfig: { locale: 'cs' } })] } satisfies AstroUserConfig`,
+			],
+			['a call argument `as const`', ASTRO, `{ integrations: [nuaCms({ cmsConfig: { locale: 'cs' } } as const)] }`],
+		]
+		for (const [name, defineConfigImport, body, exported] of typed) {
+			test(name, () => {
+				expect(parse(defineConfigImport, body, exported).locale).toBe('cs')
+			})
+		}
+	})
 
 	test('a config exported as a plain object goes straight to Astro, so its nua key is not read', () => {
 		const body = `{ nua: { cms: ${cms('block', 'de')} }, integrations: [nuaCms(${cms('cms', 'cs')})] }`

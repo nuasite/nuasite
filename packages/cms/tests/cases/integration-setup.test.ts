@@ -168,6 +168,17 @@ describe('nuaCms integration — dev setup wiring', () => {
 			expect(warnings[0]).toContain('string literal')
 		})
 
+		test('a literal locale that reaches the call by a route the source reader cannot follow: the warning says that too', async () => {
+			// One CMS instance, a string literal — and still nothing to read, because the options
+			// are not written where the integration is called.
+			const source = `{ integrations: [nuaCms(cmsOptions())] }`
+			await ctx.writeFile('astro.config.ts', `const cmsOptions = () => ({ cmsConfig: { locale: 'cs' } })\n${astroConfig(source)}`)
+			const { injected, warnings } = await startDev({ cmsConfig: { locale: 'cs' } })
+			expect('locale' in injectedConfig(injected)).toBe(false)
+			expect(warnings).toHaveLength(1)
+			expect(warnings[0]).toContain('not written where the integration is called')
+		})
+
 		test('the rest of cmsConfig is passed through as before', async () => {
 			await ctx.writeFile('astro.config.ts', astroConfig(`{ integrations: [nuaCms()] }`))
 			const config = injectedConfig((await startDev({ cmsConfig: { debug: true, highlightColor: '#ff0000' } })).injected)

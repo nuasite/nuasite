@@ -317,15 +317,18 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					// did nothing.
 					const { locale } = await parseProjectCmsConfig(createNodeFs(getProjectRoot()))
 					if (cmsConfig?.locale !== undefined && cmsConfig.locale !== locale) {
-						// Two different reasons end up here, and the log line cannot tell which: the value
-						// is not a literal in the source, or it is, on a CMS instance that is not the one
-						// a page ends up with. Naming only the first sends the second looking for a fix
-						// they have already made.
+						// Three different reasons end up here, and the log line cannot tell which: the value
+						// is not a literal in the source; it is, on a CMS instance that is not the one a
+						// page ends up with; or it is, and the options reach the integration by a route the
+						// source reader cannot follow. Naming only the first sends the others looking for a
+						// fix they have already made.
 						logger.warn(
 							`cmsConfig.locale "${cmsConfig.locale}" differs from what the Astro config source gives`
 								+ ` (${locale ? `"${locale}"` : 'nothing'}), so ${locale ? `"${locale}"` : 'no locale'} is used.`
-								+ ` Either it is not a string literal there, or another CMS instance in the config is the one in effect`
-								+ ` (nua runs its own CMS, which takes over from a nuaCms() listed next to it).`,
+								+ ` Either it is not a string literal there; or another CMS instance in the config is the one in effect`
+								+ ` (nua runs its own CMS, which takes over from a nuaCms() listed next to it);`
+								+ ` or the CMS options are not written where the integration is called in the config`
+								+ ` (they come from a helper, an import, a spread, a conditional or nested \`integrations\` entry, or mergeConfig).`,
 						)
 					}
 					const configScript = `window.NuaCmsConfig = ${JSON.stringify({ ...resolvedCmsConfig, locale })};`

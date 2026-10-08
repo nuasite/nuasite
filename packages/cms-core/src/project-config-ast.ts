@@ -36,14 +36,30 @@ function collectBindings(ast: File): Bindings {
 	return bindings
 }
 
-function resolveExpression(node: Node, bindings: Bindings, visited: Set<string> = new Set()): Node {
+/**
+ * The expression under the wrappers that exist for the type checker only — `x as T`,
+ * `x satisfies T`, `x!`, `<T>x`. They are gone at runtime, so a config that works there must
+ * read the same here: `const LOCALE = 'cs' as const`, `defineConfig({ … } satisfies NuaConfig)`.
+ */
+function withoutTypeWrappers(node: Node): Node {
 	let current = node
+	while (
+		current.type === 'TSAsExpression' || current.type === 'TSSatisfiesExpression' || current.type === 'TSNonNullExpression'
+		|| current.type === 'TSTypeAssertion'
+	) {
+		current = current.expression
+	}
+	return current
+}
+
+function resolveExpression(node: Node, bindings: Bindings, visited: Set<string> = new Set()): Node {
+	let current = withoutTypeWrappers(node)
 	while (current.type === 'Identifier') {
 		if (visited.has(current.name)) return current
 		visited.add(current.name)
 		const next = bindings.get(current.name)
 		if (!next) return current
-		current = next
+		current = withoutTypeWrappers(next)
 	}
 	return current
 }
