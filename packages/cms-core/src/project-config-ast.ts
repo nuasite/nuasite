@@ -176,7 +176,8 @@ function defaultExportWrapper(ast: File, bindings: Bindings): 'nua' | 'astro' | 
 	const exported = ast.program.body.find(stmt => stmt.type === 'ExportDefaultDeclaration')
 	const declaration = exported?.type === 'ExportDefaultDeclaration' ? resolveExpression(exported.declaration, bindings) : null
 	if (declaration?.type !== 'CallExpression') return 'astro'
-	const callee = declaration.callee
+	// `(defineConfig as any)(…)` and `defineConfig!(…)` call the same function.
+	const callee = withoutTypeWrappers(declaration.callee)
 	if (callee.type !== 'Identifier') return 'unknown'
 	for (const stmt of ast.program.body) {
 		if (stmt.type !== 'ImportDeclaration' || !stmt.specifiers.some(specifier => specifier.local.name === callee.name)) continue
@@ -252,8 +253,10 @@ function effectiveCmsConfig(ast: File, configObject: ObjectExpression, bindings:
 	for (const element of integrations?.type === 'ArrayExpression' ? integrations.elements : []) {
 		if (!element || element.type === 'SpreadElement') continue
 		const call = resolveExpression(element, bindings)
-		if (call.type !== 'CallExpression' || call.callee.type !== 'Identifier') continue
-		const optionsPath = integrationImports.get(call.callee.name)
+		// The callee as it is at runtime: `(nuaCms as any)(…)` is a `nuaCms` call like any other.
+		const callee = call.type === 'CallExpression' ? withoutTypeWrappers(call.callee) : null
+		if (call.type !== 'CallExpression' || callee?.type !== 'Identifier') continue
+		const optionsPath = integrationImports.get(callee.name)
 		if (!optionsPath) continue
 
 		const firstArg = call.arguments[0]

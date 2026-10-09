@@ -392,6 +392,48 @@ describe('parseProjectCmsConfigSource — which CMS instance the page gets', () 
 		}
 	})
 
+	// The same goes for a wrapper on the function being called: it is still that function. ✓
+	describe('through a type wrapper on the callee', () => {
+		const wrappedCallees: Array<[name: string, defineConfigImport: string, body: string, expected: object, exported?: string]> = [
+			['(nuaCms as any)(…)', ASTRO, `{ integrations: [(nuaCms as any)(${cms('cms', 'cs')})] }`, from('cms', 'cs')],
+			['nuaCms!(…)', ASTRO, `{ integrations: [nuaCms!(${cms('cms', 'cs')})] }`, from('cms', 'cs')],
+			['(<any>nuaCms)(…)', ASTRO, `{ integrations: [(<any>nuaCms)(${cms('cms', 'cs')})] }`, from('cms', 'cs')],
+			['(nua as any)({ cms })', ASTRO, `{ integrations: [(nua as any)({ cms: ${cms('nua', 'cs')} })] }`, from('nua', 'cs')],
+			[
+				'a wrapped later nuaCms() is still the later one',
+				ASTRO,
+				`{ integrations: [nuaCms(${cms('first', 'cs')}), (nuaCms as any)(${cms('second', 'de')})] }`,
+				from('second', 'de'),
+			],
+			[
+				'a wrapped nua() still beats nuaCms()',
+				ASTRO,
+				`{ integrations: [(nua as any)({ cms: ${cms('nua', 'cs')} }), nuaCms(${cms('cms', 'de')})] }`,
+				from('nua', 'cs'),
+			],
+			[
+				'(defineConfig as any)(…) from the wrapper is the wrapper',
+				WRAPPER,
+				`{}`,
+				NOTHING,
+				`(defineConfig as any)({ integrations: [nuaCms(${cms('cms', 'cs')})] })`,
+			],
+			['defineConfig!(…) from the wrapper is the wrapper', WRAPPER, `{}`, NOTHING, `defineConfig!({ integrations: [nuaCms(${cms('cms', 'cs')})] })`],
+			[
+				'(defineConfig satisfies unknown)(…) from Astro ignores a nua key',
+				ASTRO,
+				`{}`,
+				from('cms', 'cs'),
+				`(defineConfig satisfies unknown)({ nua: { cms: ${cms('block', 'de')} }, integrations: [nuaCms(${cms('cms', 'cs')})] })`,
+			],
+		]
+		for (const [name, defineConfigImport, body, expected, exported] of wrappedCallees) {
+			test(name, () => {
+				expect(parse(defineConfigImport, body, exported)).toEqual(expected)
+			})
+		}
+	})
+
 	test('a config exported as a plain object goes straight to Astro, so its nua key is not read', () => {
 		const body = `{ nua: { cms: ${cms('block', 'de')} }, integrations: [nuaCms(${cms('cms', 'cs')})] }`
 		expect(parse('', body, body)).toEqual(from('cms', 'cs'))

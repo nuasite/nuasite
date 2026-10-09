@@ -233,4 +233,24 @@ describe('collections-admin sidebar', () => {
 		await settle()
 		expect(menu()).toEqual(IN_CZECH)
 	})
+	test('a retry leaves a config that is already known alone', async () => {
+		// The project's language is known and the menu is in its order; only the entries failed.
+		// Retrying them must not re-read the config: while that read is out the locale is gone,
+		// and the menu would drop to the fallback order — for good, if the read never answers.
+		let configReads = 0
+		let entriesHealthy = false
+		window.location.hash = '#/c/faq'
+		await mount({
+			config: () => (++configReads === 1 ? json({ locale: 'cs' } satisfies CmsConfig) : new Promise<Response>(() => {})),
+			entries: () => (entriesHealthy ? json({ entries: [], hasMore: false }) : failed()),
+		})
+		expect(menu()).toEqual(IN_CZECH)
+
+		entriesHealthy = true
+		await act(async () => container.querySelector<HTMLButtonElement>('.nua-cadmin-retry')?.click())
+		await settle()
+		expect(container.querySelector('.nua-cadmin-retry')).toBeNull()
+		expect(configReads).toBe(1)
+		expect(menu()).toEqual(IN_CZECH)
+	})
 })
