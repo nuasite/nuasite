@@ -228,6 +228,22 @@ describe('createNodeFs', () => {
 	})
 
 	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('glob does not read a starting directory its pattern cannot match under', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('a/secret/b.md', '')
+		const secret = path.join(root, 'a/secret')
+		await fs.chmod(secret, 0o000)
+		try {
+			// Nothing can match a pattern that ends in a slash or in a `.` segment.
+			expect(await cfs.glob('a/secret/')).toEqual([])
+			expect(await cfs.glob('a/secret/.')).toEqual([])
+			await expect(cfs.glob('a/secret/*.md')).rejects.toThrow('Cannot read directory "a/secret" (EACCES)')
+		} finally {
+			await fs.chmod(secret, 0o755)
+		}
+	})
+
+	// Root reads any directory, so there is nothing to observe under it.
 	test.skipIf(process.getuid?.() === 0)('a linked directory that cannot be read fails the walk like an unlinked one', async () => {
 		const cfs = createNodeFs(root)
 		await cfs.writeFile('data/a.md', '')

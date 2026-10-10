@@ -180,6 +180,9 @@ export function createNodeFs(root: string): CmsFileSystem {
 				maxDirectories: options?.maxDirectories,
 				directoriesLeft: options?.maxDirectories,
 			}
+			// Asked of the starting directory as of any other, so that one the pattern cannot match
+			// under is not read, and not a reason to fail when it cannot be.
+			if (!walk.mayHold(relativeTo(resolvedRoot, absBase))) return []
 			const files = await walkFiles(walk, absBase, new Set())
 			return files.filter(rel => matcher.test(rel))
 		},
