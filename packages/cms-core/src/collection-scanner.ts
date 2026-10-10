@@ -400,16 +400,19 @@ function assembleCollectionDefinition(
 /**
  * Compute the root-relative base path of a collection's source directory.
  * `basePath` is root-relative (e.g. `src/content/blog` for the default layout,
- * or a glob loader base like `src/content/jsem`). When it matches the default
- * `<contentDir>/<name>` location, the canonical default path is returned;
- * otherwise the (already root-relative) base path is returned verbatim.
+ * or a glob loader base as the config spells it, like `./src/content/jsem/`).
+ * When it matches the default `<contentDir>/<name>` location, the canonical
+ * default path is returned; otherwise the base path is returned normalized,
+ * without the leading `./` and trailing slash, so it is a prefix of each entry's
+ * `sourcePath` — except when the base is the project root, which is reported as `.`.
  */
 function getCollectionSourceBasePath(basePath: string, collectionName: string, contentDir: string): string {
 	const defaultCollectionPath = path.join(contentDir, collectionName)
-	if (path.normalize(basePath) === path.normalize(defaultCollectionPath)) {
+	const normalizedBasePath = normalizeBasePath(basePath)
+	if (normalizedBasePath === path.normalize(defaultCollectionPath)) {
 		return path.join(contentDir, collectionName)
 	}
-	return basePath
+	return normalizedBasePath
 }
 
 async function buildCollectionDefinition(
@@ -540,6 +543,7 @@ async function buildDataCollectionDefinition(
 	}
 
 	return assembleCollectionDefinition(collectionName, contentDir, fieldMap, entryInfos, sources.length, {
+		path: sourceBasePath,
 		type: 'data',
 		fileExtension: ext,
 	})
