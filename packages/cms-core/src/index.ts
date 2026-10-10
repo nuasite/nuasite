@@ -46,7 +46,7 @@ export {
 	withoutBlankArrayItems,
 	type WriteModelField,
 } from './editor-write-model'
-export { globToRegExp } from './fs/glob'
+export { globMayMatchUnder, globToRegExp } from './fs/glob'
 export { createNodeFs } from './fs/node-fs'
 export type { CmsFileSystem } from './fs/types'
 export {

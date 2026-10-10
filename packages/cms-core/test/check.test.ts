@@ -125,6 +125,32 @@ export const collections = { people${extra ? ', articles' : ''} }
 		expect(report.findings[0]!.code).toBe('entry/syntax')
 	})
 
+	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('a collection with a directory that cannot be read is one error that names it', async () => {
+		await write({
+			'src/content.config.ts': config('n.object({ name: n.text() })').replace(`'*.md'`, `'**/*.md'`),
+			'src/content/people/ada.md': '---\nname: Ada\n---\n',
+			'src/content/people/2024/bob.md': '---\nname: Bob\n---\n',
+		})
+		const locked = path.join(root, 'src/content/people/2024')
+		await fs.chmod(locked, 0o000)
+
+		try {
+			const report = await check()
+			expect(report.findings).toEqual([{
+				severity: 'error',
+				code: 'config/unreadable-dir',
+				file: 'src/content/people',
+				field: 'people',
+				message: 'Collection "people" could not be read: Cannot read directory "src/content/people/2024" (EACCES).',
+			}])
+			// Not the one entry that happened to be listed before the walk failed.
+			expect(report.entries).toBe(0)
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
 	test('a declared collection whose directory is missing is an error', async () => {
 		await write({ 'src/content.config.ts': config('n.object({ name: n.text() })') })
 

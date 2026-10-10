@@ -1,7 +1,7 @@
 import type { Dirent } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { globToRegExp } from './glob'
+import { globMayMatchUnder, globToRegExp } from './glob'
 import type { CmsFileSystem } from './types'
 
 /**
@@ -29,19 +29,30 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 	return error instanceof Error && 'code' in error
 }
 
-/** Recursively list files under `absDir`, returning forward-slash paths relative to `absRoot`. */
-async function walkFiles(absRoot: string, absDir: string): Promise<string[]> {
+/**
+ * Recursively list files under `absDir`, returning forward-slash paths relative to `absRoot`.
+ * `mayHold` says whether a directory (root-relative) could hold anything the caller is after.
+ */
+async function walkFiles(absRoot: string, absDir: string, mayHold: (dir: string) => boolean): Promise<string[]> {
 	let dirEntries: Dirent[]
 	try {
 		dirEntries = await fs.readdir(absDir, { withFileTypes: true })
-	} catch {
-		return []
+	} catch (error) {
+		// Only a directory that is not there is an empty one. One that cannot be read
+		// (EACCES) must not pass for it: the caller would take its files for absent.
+		if (!isNodeError(error)) throw error
+		if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return []
+		const directory = path.relative(absRoot, absDir).split(path.sep).join('/') || '.'
+		// Nothing the caller wants can be in there, so not reading it loses nothing.
+		if (!mayHold(directory)) return []
+		// Named by its root-relative path: the runtime's own message spells out the absolute one.
+		throw new Error(`Cannot read directory "${directory}" (${error.code ?? 'unknown error'})`, { cause: error })
 	}
 	const out: string[] = []
 	for (const entry of dirEntries) {
 		const abs = path.join(absDir, entry.name)
 		if (entry.isDirectory()) {
-			out.push(...await walkFiles(absRoot, abs))
+			out.push(...await walkFiles(absRoot, abs, mayHold))
 		} else if (entry.isFile()) {
 			out.push(path.relative(absRoot, abs).split(path.sep).join('/'))
 		}
@@ -130,7 +141,7 @@ export function createNodeFs(root: string): CmsFileSystem {
 			const baseRel = staticPrefixDir(pattern)
 			const absBase = resolve(baseRel)
 			const matcher = globToRegExp(pattern)
-			const files = await walkFiles(resolvedRoot, absBase)
+			const files = await walkFiles(resolvedRoot, absBase, dir => globMayMatchUnder(pattern, dir))
 			return files.filter(rel => matcher.test(rel))
 		},
 

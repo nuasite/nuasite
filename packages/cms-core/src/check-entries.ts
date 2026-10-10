@@ -30,6 +30,8 @@ export interface LoadedCollection {
 	base: string
 	/** False when the loader base directory is not there at all. */
 	exists: boolean
+	/** Why the collection's files could not be listed, when they could not: its `entries` are then no account of it. */
+	unreadable?: string
 	entries: LoadedEntry[]
 }
 
@@ -103,8 +105,18 @@ export async function loadCollections(fs: CmsFileSystem, config: ParsedConfig): 
 			continue
 		}
 
+		let files: string[]
+		try {
+			files = await collectEntryFiles(fs, collection, base)
+		} catch (error) {
+			// A directory under the base that cannot be read. Which entries it holds is unknown,
+			// so the collection is handed on as unreadable instead of as whatever was listed so far.
+			loaded.set(name, { name, base, exists: true, unreadable: error instanceof Error ? error.message : String(error), entries: [] })
+			continue
+		}
+
 		const entries: LoadedEntry[] = []
-		for (const file of await collectEntryFiles(fs, collection, base)) {
+		for (const file of files) {
 			const parsed = parseEntry(file, await fs.readFile(file))
 			entries.push({
 				file,
