@@ -117,6 +117,35 @@ describe('createNodeFs', () => {
 		}
 	})
 
+	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('glob passes over an unreadable directory deeper than its pattern goes', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('docs/a.md', '')
+		await cfs.writeFile('docs/x/y/z.md', '')
+		const locked = path.join(root, 'docs/x/y')
+		await fs.chmod(locked, 0o000)
+		try {
+			// `docs/*` names files in `docs`; nothing two levels below it can match.
+			expect(await cfs.glob('docs/*')).toEqual(['docs/a.md'])
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
+	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('an unreadable root is named `.` and the runtime error is kept as the cause', async () => {
+		const locked = path.join(root, 'site')
+		await fs.mkdir(locked)
+		await fs.chmod(locked, 0o000)
+		try {
+			const failure = await createNodeFs(locked).glob('**/*.md').then(() => null, (error: Error) => error)
+			expect(failure?.message).toBe('Cannot read directory "." (EACCES)')
+			expect(failure?.cause).toMatchObject({ code: 'EACCES' })
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
 	test('globMayMatchUnder rules a directory out only when no match can run through it', () => {
 		const cases: Array<[glob: string, dir: string, expected: boolean]> = [
 			['src/data/*.md', 'src/data', true],
@@ -125,6 +154,8 @@ describe('createNodeFs', () => {
 			['src/data/*.md', 'src/other', false],
 			// The last segment names a file: a directory it happens to match has nothing below for it.
 			['src/*', 'src/x', false],
+			// A directory deeper than the pattern has segments for.
+			['docs/*', 'docs/x/y', false],
 			['*.md', 'notes.md', false],
 			['./src/data/*.md', 'src/data', true],
 			['*/blog/*.md', 'site', true],
