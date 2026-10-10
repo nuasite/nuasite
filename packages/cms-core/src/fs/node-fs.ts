@@ -29,9 +29,12 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 	return error instanceof Error && 'code' in error
 }
 
+const relativeTo = (absRoot: string, abs: string): string => path.relative(absRoot, abs).split(path.sep).join('/') || '.'
+
 /**
  * Recursively list files under `absDir`, returning forward-slash paths relative to `absRoot`.
- * `mayHold` says whether a directory (root-relative) could hold anything the caller is after.
+ * `mayHold` says whether a directory (root-relative) could hold anything the caller is
+ * after. One that cannot is not entered at all.
  */
 async function walkFiles(absRoot: string, absDir: string, mayHold: (dir: string) => boolean): Promise<string[]> {
 	let dirEntries: Dirent[]
@@ -42,19 +45,18 @@ async function walkFiles(absRoot: string, absDir: string, mayHold: (dir: string)
 		// (EACCES) must not pass for it: the caller would take its files for absent.
 		if (!isNodeError(error)) throw error
 		if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return []
-		const directory = path.relative(absRoot, absDir).split(path.sep).join('/') || '.'
-		// Nothing the caller wants can be in there, so not reading it loses nothing.
-		if (!mayHold(directory)) return []
 		// Named by its root-relative path: the runtime's own message spells out the absolute one.
-		throw new Error(`Cannot read directory "${directory}" (${error.code ?? 'unknown error'})`, { cause: error })
+		throw new Error(`Cannot read directory "${relativeTo(absRoot, absDir)}" (${error.code ?? 'unknown error'})`, { cause: error })
 	}
 	const out: string[] = []
 	for (const entry of dirEntries) {
 		const abs = path.join(absDir, entry.name)
 		if (entry.isDirectory()) {
-			out.push(...await walkFiles(absRoot, abs, mayHold))
+			// Nothing the caller wants can be in a directory its pattern cannot reach, so it is
+			// neither read nor, when it cannot be read, a reason to fail.
+			if (mayHold(relativeTo(absRoot, abs))) out.push(...await walkFiles(absRoot, abs, mayHold))
 		} else if (entry.isFile()) {
-			out.push(path.relative(absRoot, abs).split(path.sep).join('/'))
+			out.push(relativeTo(absRoot, abs))
 		}
 	}
 	return out

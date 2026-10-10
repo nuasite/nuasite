@@ -1,5 +1,5 @@
-import { createNodeFs, globMayMatchUnder } from '@nuasite/cms-core'
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { createNodeFs, globMayMatchUnder, globToRegExp } from '@nuasite/cms-core'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -173,6 +173,45 @@ describe('createNodeFs', () => {
 			['*.md', '.', true],
 		]
 		for (const [glob, dir, expected] of cases) expect([glob, dir, globMayMatchUnder(glob, dir)]).toEqual([glob, dir, expected])
+	})
+
+	test('glob does not read a directory its pattern cannot reach into', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('site/blog/a.md', '')
+		await cfs.writeFile('site/blog/2024/b.md', '')
+		await cfs.writeFile('site/news/c.md', '')
+		await cfs.writeFile('node_modules/pkg/lib/readme.md', '')
+		const readdir = spyOn(fs, 'readdir')
+		try {
+			expect(await cfs.glob('*/blog/*.md')).toEqual(['site/blog/a.md'])
+			const read = readdir.mock.calls.map(([dir]) => path.relative(root, String(dir))).sort()
+			// The root, its two directories and `site/blog`: nothing below `node_modules`, `site/news` or `blog/2024`.
+			expect(read).toEqual(['', 'node_modules', 'site', 'site/blog'])
+		} finally {
+			readdir.mockRestore()
+		}
+	})
+
+	// What the walk leaves out must be nothing the pattern matches: every directory on the way
+	// to a matching file has to count as one the pattern may match under.
+	test('globMayMatchUnder never rules out a directory that holds a match', () => {
+		const segments = ['*', '**', '*.md', 'a', 'b', '{a,b}', '?', 'a*', '**a.md', '{a,b/c}', '.', 'a.md', '{,b/}*.md']
+		const files = ['a.md', 'a/a.md', 'b/a.md', 'a/b/a.md', 'b/c/a.md', 'a/b/c/a.md', 'ba.md', 'a/ba.md', 'a/a/a/a.md', 'c/a.md']
+		const patterns = segments.flatMap(one => [one, ...segments.flatMap(two => [`${one}/${two}`, ...segments.map(three => `${one}/${two}/${three}`)])])
+		const ruledOut: string[] = []
+		for (const pattern of patterns) {
+			const matcher = globToRegExp(pattern)
+			for (const file of files) {
+				if (!matcher.test(file)) continue
+				const parts = file.split('/').slice(0, -1)
+				for (let depth = 1; depth <= parts.length; depth++) {
+					const dir = parts.slice(0, depth).join('/')
+					if (!globMayMatchUnder(pattern, dir)) ruledOut.push(`${pattern} matches ${file} but rules out ${dir}`)
+				}
+			}
+		}
+		expect(patterns.length).toBeGreaterThan(2000)
+		expect(ruledOut).toEqual([])
 	})
 
 	test('stat returns mtimeMs and size', async () => {
