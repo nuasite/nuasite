@@ -411,7 +411,8 @@ export interface CollectionScanReport {
 	 * - `partial`: read, but not all of what it declares is known: the `collections` export
 	 *   is not an object literal (built by a call, re-exported from another module), the
 	 *   literal has a spread, a `__proto__` or a computed key that is not a string in it, the
-	 *   file mentions `collections` in a way that may add to it, or the project has two content
+	 *   file mentions `collections` in a way that may add to it or imports a content config
+	 *   (which may be itself), or the project has two content
 	 *   config files and the one that was read need not be the one Astro uses. `unresolved`
 	 *   covers the names that could be read; others may exist.
 	 */

@@ -73,7 +73,9 @@ is read whatever the loader says, and only as deep as `<slug>.<ext>` and
 - the same with a `pattern` the scan cannot run, or a list of literal patterns: any file
   under the base, since the pattern could select it;
 - a declaration without a `loader`: every file under `<content dir>/<name>`, paths with a
-  segment starting with `_` aside;
+  segment starting with `_` aside. Astro resolves the name as a URL against the content
+  directory, so a name it reads as another path (`a#b`, `a?b`, `a%20b`, a backslash, a
+  tab) is unknown;
 - a content directory nothing declares, when the config exports `collections` and no
   declared collection is seen to have a loader: its markdown files at any depth, `_`
   paths aside. With a loader anywhere in the config, or without that export, Astro
@@ -83,11 +85,12 @@ is read whatever the loader says, and only as deep as `<slug>.<ext>` and
   anywhere), a pattern with a `..` segment, and a `base` the scan cannot look under.
 
 A pattern the scan can run is made of `*`, `**`, `?` and `{a,b}` with plain alternatives.
-It cannot run a character class, an extglob, an escape, a brace without a comma (`{a}` is
-a file name to Astro), or a brace that holds another brace, a range, a wildcard or an empty
+It cannot run a character class, an extglob, an escape, a `|` (alternation to Astro), a
+`+` behind a brace (a quantifier), a brace without a comma (`{a}` is a file name to
+Astro), or a brace that holds another brace, a range (`{x,1..3}`), a wildcard or an empty
 alternative; nor the shapes Astro's glob reads wider than the scan does: a `..` segment,
-also one a brace completes (`..{/drafts,x}`), a trailing slash, a negation behind `./`, and
-a final `/**`, which to Astro also matches a file named by what stands before it.
+also one a brace completes (`..{/drafts,x}`), a trailing slash, a negation behind `./`,
+and a final `/**`, which to Astro also matches a file named by what stands before it.
 
 A `base` the scan can look under is one Astro reads as the same relative directory. Astro
 resolves the base as a URL against the project root, so these are not: an absolute path or
@@ -102,13 +105,17 @@ too many makes a report, never a miss. An image next to an entry is not an entry
 
 Dotfiles and files in dot directories are counted only when the pattern asks for them, as
 Astro's glob keeps `*` and `**` from matching a leading dot. A pattern asks by naming the
-dot at the start of a segment or of an alternative (`.well-known/*.json`). And, among the
-patterns the scan cannot run, by a character class or an extglob, which match a leading dot
-like any other character: in the last segment a dotfile (`**/[^_]*.md` loads
-`guide/.wip.md`), in an earlier one a dot directory (`[^_]*/**/*.md` loads `.cache/a.md`).
-`**/[^_]*.md` does not load `.obsidian/note.md`, and that file is not counted. `_` files
-are counted for a glob loader: Astro loads them when the pattern matches, and the scan
-skips them.
+dot at the start of a segment or of an alternative (`.well-known/*.json`). It also asks
+with a `*` or a `?` at the start of an alternative, right behind a brace or behind a `|`:
+Astro's glob guards a wildcard against a leading dot only at the start of the pattern and
+behind a slash, so `{guide/,notes/}*.md` loads `guide/.wip.md` and `**/{*.md,*.mdx}` does
+too. In a pattern the scan does not run, such a wildcard counts every dot path under the
+base. And, among the patterns the scan cannot run, by a character class or an extglob,
+which match a leading dot like any other character: in the last segment a dotfile
+(`**/[^_]*.md` loads `guide/.wip.md`), in an earlier one a dot directory (`[^_]*/**/*.md`
+loads `.cache/a.md`). `**/[^_]*.md` does not load `.obsidian/note.md`, and that file is
+not counted. `_` files are counted for a glob loader: Astro loads them when the pattern
+matches, and the scan skips them.
 
 Symbolic links are followed, as Astro follows them: a linked file counts under the
 link's own path, and a linked directory is walked as often as a path leads into it. The
@@ -165,28 +172,32 @@ the flag above from `content/config.*` there.
   `src`. The same is said when where Astro loads content from cannot be told: the `srcDir`,
   or the `root` every loader's `base` is resolved against. What is declared is unknown.
 - `partial`: the config was read, but not all of what it declares is known. The
-  `collections` export is not an object literal (built by a call, re-exported from
-  another module, a `let`), the literal has a spread, a method, a `__proto__` or a computed
-  key that is not a string in it, the file mentions `collections` in a way that may add to
-  it (`Object.assign(collections, …)`, and any other mention the list below does not name), or the project has two content config files and the
-  one that was read need not be the one Astro uses. `unresolved` covers the names that
-  could be read; others may exist.
+  `collections` export is not an object literal (built by a call, re-exported from another
+  module, a `let`), the literal has a spread, a method, a `__proto__` or a computed key
+  that is not a string in it, the file mentions `collections` in a way that may add to it
+  (`Object.assign(collections, …)`, and any other mention the list below does not name),
+  the file imports a content config (which may be itself, and then it can change what it
+  exports without naming it), or the project has two content config files and the one that
+  was read need not be the one Astro uses. `unresolved` covers the names that could be
+  read; others may exist.
 
 `srcDir` and `root` are read off the code of the Astro config file Astro uses (the first
 of `astro.config.mjs`, `.js`, `.ts`, `.mts`). `srcDir` is where the content config and the
 content directory are; `root` is what every loader's `base` is resolved against, and the
 scan takes it to be the project root. Which mention of either name is Astro's option
 cannot be told without running the file: it may name another plugin's option, a variable,
-a member. So every mention in the code has to be a property given a plain string, with
-the string as the whole value. All `srcDir`s have to name the same directory inside the
-project, and every `root` has to be `'.'` or `'./'`. Anything else gives `unreadable`: a
-value that is not a plain string (a template with a hole, a concatenation, a call, a
-variable), a shorthand, a variable, a parameter or a member of that name, a second
-`srcDir` that disagrees, a path that is absolute or starts with `..`, and a file that
-does not parse. Comments are not code and set nothing. Either name given an object
-literal is another option of that name (Astro's are strings) and is passed over. A directory
-named by `srcDir` with no content config in it settles nothing, and `src` is then judged
-as usual.
+a member. So every mention in the code has to be a property given a plain string, with the
+string as the whole value. A mention is the name as an identifier, or a string that is
+exactly the name, anywhere in the code: a string can be made a key in more ways than can
+be listed (`Object.defineProperty(config, 'srcDir', …)`, `const KEY = 'root'`). All
+`srcDir`s have to name the same directory inside the project, and every `root` has to be
+`'.'` or `'./'`. Anything else gives `unreadable`: a value that is not a plain string (a
+template with a hole, a concatenation, a call, a variable), a shorthand, a variable, a
+parameter or a member of that name, a second `srcDir` that disagrees, a path that is
+absolute or starts with `..`, and a file that does not parse. Comments are not code and
+set nothing. Either name given an object literal is another option of that name (Astro's
+are strings) and is passed over. A directory named by `srcDir` with no content config in
+it settles nothing, and `src` is then judged as usual.
 
 `as`, `satisfies`, a numeric or quoted key and a `const` of the same file are read
 through, but a `const` only when the file leaves no doubt that it still holds what it was
@@ -222,7 +233,9 @@ A collection behind a name that is not followed is `unsupported-loader`; `collec
 itself behind one is `partial`.
 
 An object literal is read only as far as its own keys settle what it holds. A key given
-twice holds what it was given last. A getter, a setter or a method for `loader`, `base`
+twice holds what it was given last. A declaration or a set of `glob` options with a `this`
+anywhere in it is not read: an accessor or a method can change the literal it sits in
+without naming it. A getter, a setter or a method for `loader`, `base`
 or `pattern`, a `__proto__`, and a spread or a computed key after the `loader` (anywhere
 among the options of `glob`) leave that part unknown.
 
@@ -234,15 +247,19 @@ among the options of `glob`) leave that part unknown.
 - **`unresolved: []` with `contentConfig` `ok` or `missing`** is the all-clear: as far as
   the limits below allow, every entry file Astro loads into a collection is an entry of
   some scanned collection. `missing` is one because Astro loads nothing without a
-  content config. A site with no collections is an ordinary site.
+  content config. A site with no collections is an ordinary site. A consumer that wants to
+  be careful about the first limit below may take `missing` for an all-clear only when the
+  site also has no content directory: a site with content and no content config is where a
+  moved `srcDir` that the reader could not see would show.
 - **`unreadable` or `partial`** means collections may exist that `unresolved` cannot name.
 
 ### What an all-clear still does not prove
 
 - That `srcDir` and `root` are what the Astro config file's code says. One set where the
-  names do not stand (an imported options object that is spread in, a wrapper around
-  `defineConfig`, a key put together as `['src' + 'Dir']`) is not seen, and the report then
-  speaks about `src` under the project root.
+  names do not stand is not seen, and the report then speaks about `src` under the project
+  root: an imported options object that is spread in, a wrapper around `defineConfig`, a key
+  put together from parts (`['src' + 'Dir']`, `JSON.parse('{"srcDir":"./app"}')`), and an
+  integration from another module that moves either through `updateConfig`.
 - That Astro is run on that config file from that directory. `astro --config <file>` and
   `astro --root <dir>` move both, and the sidecar cannot know how Astro is started.
 - That nothing changed a value from outside the file: another module that imports what
@@ -280,7 +297,14 @@ Some reports are stricter than Astro:
 - An Astro config with a variable, a parameter or a member named `root`, or another
   plugin's option of that name given a string (`vite: { root: … }`), is `unreadable`.
 - A pattern with a class or an extglob counts dot paths below the base that the pattern
-  would not reach (`[^_]*.md` next to `guide/.wip.md`).
+  would not reach (`[^_]*.md` next to `guide/.wip.md`), and so does a pattern the scan does
+  not run with a wildcard at the start of an alternative (`**/{*.md,*.mdx}` next to
+  `.obsidian/note.md`).
+- An Astro config with the string `'root'` or `'srcDir'` anywhere in its code, also where it
+  is no key (`label: 'root'`), is `unreadable`.
+- A declaration or a set of `glob` options with a `this` in it, also one that changes nothing.
+- A content config that imports a file named `content.config` or `content/config` from
+  anywhere is `partial`.
 
 ## Media storage
 

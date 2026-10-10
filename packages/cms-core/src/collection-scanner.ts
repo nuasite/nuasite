@@ -1255,15 +1255,16 @@ export function collectionScanReport(collections: Record<string, CollectionDefin
 
 /**
  * Patterns the `CmsFileSystem` port does not run the way Astro's glob does. Syntax it reads
- * literally or wrongly: a character class, an extglob, an escape, a brace without a comma
- * (the name `{a}` to Astro, or a range), and inside a brace another brace or a wildcard. And
+ * literally or wrongly: a character class, an extglob, an escape, a `|` (alternation to
+ * Astro), a `+` behind a brace (a quantifier), a brace without a comma (the name `{a}` to
+ * Astro), and inside a brace another brace, a range (`{x,1..3}`) or a wildcard. And
  * shapes Astro's glob reads wider than the port: a `..` segment, also one a brace completes
  * (`..{/drafts,x}`), a trailing slash (also one an empty brace alternative leaves behind), a
  * negation behind `./`, and a final `/**`, which to Astro also matches a file named by what
  * stands before it. What such a pattern matches here says nothing about what the loader loads.
  * A lone leading `!` is not among them: it matches nothing in Astro, and nothing here.
  */
-const UNSUPPORTED_GLOB_SYNTAX = /[[\]()\\]|\{[^}]*(?:\{|[*?]|,,)|\{,|,\}|\{[^,}]*\}|(?:^|[/{},])\.\.(?:[/{},]|$)|\/$|^(?:\.\/)+!|.\/\*\*$/
+const UNSUPPORTED_GLOB_SYNTAX = /[[\]()\\|]|\}\+|\{[^}]*(?:\{|\.\.|[*?]|,,)|\{,|,\}|\{[^,}]*\}|(?:^|[/{},])\.\.(?:[/{},]|$)|\/$|^(?:\.\/)+!|.\/\*\*$/
 
 /**
  * A `..` segment in a pattern leads out of the base, so the files under the base do not bound
@@ -1339,6 +1340,8 @@ async function declaredEntryFiles(
 	declaration: DeclaredCollection,
 ): Promise<{ files: string[]; exact: boolean } | null> {
 	if (declaration.noLoader) {
+		// Astro resolves the name as a URL against the content directory, like a base.
+		if (!readsAsRelativeDirectory(declaration.name)) return null
 		return { exact: true, files: await contentDirectoryFiles(fs, path.join(contentDir, declaration.name), ENTRY_FILE) }
 	}
 
@@ -1372,8 +1375,11 @@ async function declaredEntryFiles(
  * Whether a loader pattern can match `file` (relative to the base) as far as leading dots go.
  * Astro's glob keeps `*` and `**` from matching one, so a dotfile or a file in a dot directory
  * is loaded only when the pattern asks for it. It does by naming a dot at the start of a
- * segment or of an alternative, and then nothing is ruled out here. And by a character class
- * or an extglob (in patterns the scan does not run), which take a leading dot like any other
+ * segment or of an alternative. And by a wildcard at the start of an alternative, right
+ * behind a brace or behind a `|`: Astro's glob guards `*` and `?` against a leading dot only
+ * at the start of the pattern and behind a slash, so `{guide/,notes/}*.md` takes
+ * `guide/.wip.md`. In both cases nothing is ruled out here. And by a character class or an
+ * extglob (in patterns the scan does not run), which take a leading dot like any other
  * character: in the last segment a dotfile, in an earlier one a dot directory. Where a brace
  * or an extglob spans a slash the segments cannot be told apart, and either takes both.
  */
@@ -1382,7 +1388,7 @@ function mayTakeDotPath(pattern: string, file: string): boolean {
 	const dotFile = segments.pop()!.startsWith('.')
 	const dotDirectory = segments.some(segment => segment.startsWith('.'))
 	if (!dotFile && !dotDirectory) return true
-	if (/(?:^|[/{,!\\])\.[^./]/.test(pattern)) return true
+	if (/(?:^|[/{},|!\\])\.[^./]|[{,}|][*?]/.test(pattern)) return true
 	const cut = pattern.lastIndexOf('/')
 	const blurred = /[{(][^})]*\//.test(pattern)
 	const takesDot = (part: string): boolean => /[[(]/.test(blurred ? pattern : part)

@@ -499,21 +499,42 @@ export const collections = { blog: posts, news: posts }
 	// Astro's glob keeps `*` and `**` from matching a leading dot. A character class or an
 	// extglob matches one like any other character: in the last segment a dotfile, in an
 	// earlier one a dot directory. The scan runs neither, so what they may take is a candidate.
-	const DOT_PATHS: Array<[label: string, pattern: string | string[], files: string[], reported: boolean]> = [
-		["the docs' idiom over a dotfile in a subdirectory", '**/[^_]*.md', ['guide/index.md', 'guide/.wip.md'], true],
-		['the same with a brace of extensions', '**/[^_]*.{md,mdx}', ['guide/index.md', 'guide/.wip.mdx'], true],
-		['the same in a list of patterns', ['**/[^_]*.md', '!**/drafts/**'], ['guide/index.md', 'guide/.wip.md'], true],
-		['a negated extglob over a dotfile', '**/!(_*).md', ['guide/index.md', 'guide/.wip.md'], true],
+	const UNRUN = 'unsupported-loader'
+	const RUN = 'unlisted-entries'
+	const DOT_PATHS: Array<[label: string, pattern: string | string[], files: string[], reported: false | typeof UNRUN | typeof RUN]> = [
+		["the docs' idiom over a dotfile in a subdirectory", '**/[^_]*.md', ['guide/index.md', 'guide/.wip.md'], UNRUN],
+		['the same with a brace of extensions', '**/[^_]*.{md,mdx}', ['guide/index.md', 'guide/.wip.mdx'], UNRUN],
+		['the same in a list of patterns', ['**/[^_]*.md', '!**/drafts/**'], ['guide/index.md', 'guide/.wip.md'], UNRUN],
+		['a negated extglob over a dotfile', '**/!(_*).md', ['guide/index.md', 'guide/.wip.md'], UNRUN],
 		['a class in the last segment and a dot directory: not loaded', '**/[^_]*.md', ['.obsidian/note.md', '.obsidian/.x.md'], false],
-		['a class in a directory segment over a dot directory', '[^_]*/**/*.md', ['.hid/h.md'], true],
+		['a class in a directory segment over a dot directory', '[^_]*/**/*.md', ['.hid/h.md'], UNRUN],
+		['a class in a middle segment over a dot directory', 'x/[^_]*/a.md', ['x/index.md', 'x/.c/a.md'], UNRUN],
 		['a class in a directory segment and a dotfile: not loaded', '[^_]*/*.md', ['guide/index.md', 'guide/.wip.md'], false],
-		['an extglob in a directory segment over a dot directory', '!(_*)/*.md', ['.hid/h.md'], true],
-		['a class in a brace that spans a slash, over a dot directory', '{[^_]*/,}*.md', ['.hid/h.md'], true],
-		['a class in a brace that spans a slash, over a dotfile', '{[^_]*.md,sub/index.md}', ['guide/index.md', 'guide/.wip.md'], true],
-		['an escaped dot', 'guide/\\.wip.md', ['guide/index.md', 'guide/.wip.md'], true],
-		['a dot in a class', '{*,[.]hid/*}.md', ['.hid/h.md'], true],
-		['a dot in an extglob', '@(.hid|x)/*.md', ['.hid/h.md'], true],
+		['an extglob in a directory segment over a dot directory', '!(_*)/*.md', ['.hid/h.md'], UNRUN],
+		['a class in a brace that spans a slash, over a dot directory', '{[^_]*/,}*.md', ['.hid/h.md'], UNRUN],
+		['a class in a brace that spans a slash, over a dotfile', '{[^_]*.md,sub/index.md}', ['guide/index.md', 'guide/.wip.md'], UNRUN],
+		['an extglob that spans a slash, over a dotfile', '@(guide/+(x)|notes/)index.md', ['guide/index.md', 'guide/.wip.md'], UNRUN],
+		['an escaped dot', 'guide/\\.wip.md', ['guide/index.md', 'guide/.wip.md'], UNRUN],
+		['a dot in a class', '{*,[.]hid/*}.md', ['.hid/h.md'], UNRUN],
+		['a dot in an extglob', '@(.hid|x)/*.md', ['.hid/h.md'], UNRUN],
 		['a pattern the scan runs over a dotfile: not loaded', '**/*.md', ['guide/index.md', 'guide/.wip.md'], false],
+		// Astro's glob guards `*` and `?` against a leading dot only at the start of the pattern
+		// and behind a slash. At the start of an alternative, right behind a brace or behind a
+		// `|` they take one.
+		['a wildcard at the start of an alternative', '**/{*.md,*.mdx}', ['guide/index.md', 'guide/.wip.md'], UNRUN],
+		['a wildcard at the start of a first alternative', '{*,zz}/index.md', ['guide/index.md', '.hid/index.md'], UNRUN],
+		['a wildcard at the start of a later alternative', '{guide,*}/index.md', ['guide/index.md', '.hid/index.md'], UNRUN],
+		['a wildcard right behind a brace', '{guide/,notes/}*.md', ['guide/index.md', 'guide/.wip.md'], RUN],
+		['a question mark right behind a brace', '{guide/,notes/}?wip.md', ['guide/index.md', 'guide/.wip.md'], RUN],
+		['a wildcard behind a `|`', '*.md|*/*.md', ['.hid/h.md'], UNRUN],
+		['a dot named right behind a brace', '{guide/,notes/}.wip.md', ['guide/index.md', 'guide/.wip.md'], RUN],
+		['a dot named as a later alternative', '{guide,.hid}/*.md', ['guide/index.md', '.hid/h.md'], RUN],
+		['a dot named behind a `|`', '*.md|.hid/*.md', ['.hid/h.md'], UNRUN],
+		// The cost of that rule: in a pattern the scan does not run, such a wildcard counts every
+		// dot path under the base, also one Astro does not load. A pattern the scan runs is
+		// bounded by what it matches.
+		['a wildcard in a brace and a dot directory Astro does not load', '**/{*.md,*.mdx}', ['.obsidian/note.md'], UNRUN],
+		['a wildcard behind a brace and a dot directory it does not reach', '{post,page}*.md', ['.obsidian/note.md'], false],
 	]
 	test.each(DOT_PATHS)('dot paths under %s', async (_label, pattern, files, reported) => {
 		await write({
@@ -526,7 +547,27 @@ export const collections = { blog: posts, news: posts }
 
 		// The directory walk reads `a.md` and `guide/index.md`, and nothing that starts with a dot below the top.
 		expect(listed(collections)['blog']!.filter(file => file.includes('/.'))).toEqual([])
-		expect(report.unresolved.map(u => [u.name, u.reason])).toEqual(reported ? [['blog', 'unsupported-loader']] : [])
+		expect(report.unresolved.map(u => [u.name, u.reason])).toEqual(reported ? [['blog', reported]] : [])
+	})
+
+	// Syntax Astro's glob reads and the port takes for plain characters, or the other way round:
+	// what the port matches says nothing about what Astro loads.
+	test.each([
+		['a range next to an alternative', '{one,1..3}.md', ['one.md', '2.md'], ['data/blog/one.md']],
+		['three dots in a brace', '{a...c,one}.md', ['one.md', 'b.md'], ['data/blog/one.md']],
+		['a range of directories', '{draft,2020..2024}/*.md', ['draft/a.md', '2/y.md'], ['data/blog/draft/a.md']],
+		['a `|` between two patterns', '*.md|*.mdx', ['one.md', 'two.mdx'], undefined],
+		['a `+` behind a brace', '{one,two}+.md', ['one.md', 'oneone.md'], undefined],
+	])('a pattern with %s is not run', async (_label, pattern, files, portLists) => {
+		await write({
+			...Object.fromEntries(files.map(file => [`data/blog/${file}`, ENTRY])),
+			'src/content.config.ts': config(globbed('blog', './data/blog', pattern)),
+		})
+
+		const { collections, report } = await scan()
+
+		expect(listed(collections)['blog']).toEqual(portLists)
+		expect(report.unresolved).toEqual([{ name: 'blog', reason: 'unsupported-loader', base: 'data/blog', pattern }])
 	})
 
 	describe('unlisted entries: files the collection loads are not entries of the scan', () => {
@@ -811,6 +852,20 @@ export const collections = { blog: posts, news: posts }
 				{ name: 'team', reason: 'unlisted-entries', base: 'content/team' },
 			])
 		})
+	})
+
+	// Under nua's flag Astro resolves the name of a loader-less collection as a URL against the
+	// content directory. A name it reads as another path is not looked under as spelled.
+	test.each(['a#b', 'a?b', 'a%20b', 'a\\b', 'a\tb'])('a declaration without a loader named %j is unknown', async name => {
+		await write({
+			'src/content/a/one.md': ENTRY,
+			'src/content.config.ts': config(`${JSON.stringify(name)}: defineCollection({ schema: z.object({ title: z.string() }) })`),
+		})
+
+		const { collections, report } = await scan()
+
+		expect(listed(collections)).toEqual({ a: ['src/content/a/one.md'] })
+		expect(report.unresolved).toEqual([{ name, reason: 'unsupported-loader', base: path.join('src/content', name) }])
 	})
 
 	describe('empty collection', () => {
@@ -1163,7 +1218,10 @@ export const collections = { blog: posts, news: posts }
 			// A comment is not code: it sets nothing, and it does not disagree with anything.
 			['a mention in a comment only', `// srcDir: './app',`, { ...APP_CONFIG, ...SRC_CONFIG }, 'ok'],
 			['a mention in a comment next to the real one', `/* srcDir: './src' */ srcDir: './app',`, APP_CONFIG, 'unreadable'],
-			['the name as a string that is not a key', `label: 'srcDir',`, { ...APP_CONFIG, ...SRC_CONFIG }, 'ok'],
+			// A string can be made a key in more ways than can be listed, so the name as a string anywhere counts.
+			['the name as a string that is not a key', `label: 'srcDir',`, { ...APP_CONFIG, ...SRC_CONFIG }, 'unreadable'],
+			['the name of the root as a string that is not a key', `label: \`root\`,`, SRC_CONFIG, 'unreadable'],
+			['a string that only holds the name', `label: 'the srcDir and the root',`, { ...APP_CONFIG, ...SRC_CONFIG }, 'ok'],
 			['a source directory outside the project', `srcDir: '../outside/app',`, SRC_CONFIG, 'unreadable'],
 			['an absolute source directory', `srcDir: '/srv/site/app',`, SRC_CONFIG, 'unreadable'],
 			// `root` is what every loader's base is resolved against. The scan takes it to be the project root.
@@ -1214,6 +1272,14 @@ export const collections = { blog: posts, news: posts }
 			['a member assigned', `const config = {}\nconfig.srcDir = './app'\nexport default config\n`],
 			['a member assigned by its name as a string', `const config = {}\nconfig['root'] = './site'\nexport default config\n`],
 			['a variable named root', `const root = process.cwd()\nexport default {}\n`],
+			[
+				'a property defined by name',
+				`const config = {}\nObject.defineProperty(config, 'srcDir', { value: './app', enumerable: true })\nexport default config\n`,
+			],
+			['a property set through Reflect', `const config = {}\nReflect.set(config, 'root', './site')\nexport default config\n`],
+			['a key held by a constant', `const KEY = 'srcDir'\nexport default { [KEY]: './app' }\n`],
+			['a key from a list of entries', `export default Object.fromEntries([['root', './site']])\n`],
+			['a key assigned in a loop', `const config = {}\nfor (const key of ['srcDir']) config[key] = './app'\nexport default config\n`],
 			['a parameter named root', `export default make(root => ({}))\n`],
 			['a config that does not parse', `export default { srcDir: './src' \n`],
 		])('an Astro config with %s leaves the place unknown', async (_label, astroConfig) => {
@@ -1268,6 +1334,15 @@ export const collections = { blog: posts, news: posts }
 			['looped over', `export const collections = { ${AUTHORS} }\nfor (const name in collections) register(name)`],
 			['mentioned in a function', `export const collections = { ${AUTHORS} }\nexport const all = () => collections`],
 			['next to an `eval`', `export const collections = { ${AUTHORS} }\neval('1')`],
+			// A config that imports itself can change what it exports without naming it.
+			['imported by its own file', `import * as self from './content.config'\nexport const collections = { ${AUTHORS} }\nself.collections.docs = docs`],
+			['imported by its own file, by its full name', `import * as self from '../src/content.config.ts'\nexport const collections = { ${AUTHORS} }`],
+			[
+				'imported by its own file as a legacy config',
+				`import * as self from './config'\nimport '../content/config.js'\nexport const collections = { ${AUTHORS} }`,
+			],
+			['imported by its own file at run time', `export const collections = { ${AUTHORS} }\nconst self = await import('./content.config')`],
+			['re-exported from its own file', `export const collections = { ${AUTHORS} }\nexport * as self from './content.config'`],
 		])('`collections` %s is partial', async (_label, source) => {
 			await write({ ...NEWS, 'src/content.config.ts': IMPORTS + source })
 
@@ -1327,6 +1402,7 @@ export const collections = ${collections}
 			],
 			['a property and a member of its name', 'export const meta = { blog: 1, OPTIONS: 2, other: site.blog, more: site.OPTIONS }'],
 			['a wrapper that changes nothing', 'export const typed = { again: blog as unknown } satisfies object'],
+			['a declaration that is only a type', 'declare function blog(id: string): void\ndeclare class Holder { OPTIONS(blog: string): void }'],
 			["another module's export of its name", "import { blog as other } from './other'\nexport { other as OPTIONS }"],
 		])('`blog` is what it was declared as next to %s', async (_label, extra) => {
 			await write({ 'data/blog/a.md': ENTRY, 'src/content.config.ts': mentioning(extra) })
@@ -1347,6 +1423,13 @@ export const collections = ${collections}
 			['a computed key of its name', 'export const meta = { [blog]: 1 }'],
 			['a computed member of its name', 'export const part = site[blog]'],
 			['a `keys` method of something else', 'export const keys = site.keys(blog)'],
+			['an enum member', 'enum Kind { First = blog as any }'],
+			['a namespace', 'namespace Setup { export const again = tweak(blog) }'],
+			['a parameter property of its name', 'export class Holder { constructor(public blog: unknown) {} }'],
+			['an instantiation expression', 'export const typed = blog<string>'],
+			['an export assignment', 'export = blog'],
+			['an import alias', 'import alias = blog'],
+			['an import alias of a member', 'import alias = blog.loader'],
 			['a method called on it', `blog.setLoader(${ALT})`],
 			['a call that takes it', 'tweak(blog)'],
 			['a call that takes it, kept in a constant', 'const kept = tweak(blog)'],
@@ -1483,6 +1566,18 @@ export const collections = { blog: defineCmsCollection({ loader: glob({ base: '.
 			expect((await scan()).report).toEqual(NOTHING)
 		})
 
+		test('the `meta` of `import.meta` is not a mention of a constant named `meta`', async () => {
+			await write({
+				'data/blog/a.md': ENTRY,
+				'src/content.config.ts': `${IMPORTS}const meta = { base: './data/blog', pattern: '*.md' }
+export const here = import.meta.url
+export const collections = { blog: defineCollection({ loader: glob(meta) }) }
+`,
+			})
+
+			expect((await scan()).report).toEqual(NOTHING)
+		})
+
 		test('a local `Object` is not the one whose `keys` only reads', async () => {
 			const keys = 'export const keys = Object.keys(blog)'
 			await write({ 'data/blog/a.md': ENTRY, 'src/content.config.ts': mentioning(keys) })
@@ -1543,10 +1638,45 @@ export const collections = { blog: defineCollection({ loader: glob({ base: BASE,
 			['a spread before the loader, which the loader replaces', `defineCollection({ ...shared, loader: ${BLOG_GLOB} })`, []],
 			['a prototype that may supply a loader', `defineCollection({ __proto__: { loader: ${ALT} } } as any)`, [BLOG_UNKNOWN]],
 			['a prototype next to a loader', `defineCollection({ loader: ${BLOG_GLOB}, __proto__: shared })`, [BLOG_UNKNOWN]],
+			// An accessor or a method can change the literal it sits in without naming anything.
+			[
+				'a getter among the glob options that mentions `this`',
+				`defineCollection({ loader: glob({ base: './data/blog', pattern: '*.md', get generateId() { this.base = './data/other'; return undefined } }) })`,
+				[
+					BLOG_UNKNOWN,
+				],
+			],
+			[
+				'a method of the declaration that mentions `this`',
+				`defineCollection({ loader: ${BLOG_GLOB}, schema() { this.loader = ${ALT}; return undefined } })`,
+				[BLOG_UNKNOWN],
+			],
+			[
+				'a getter of the declaration that mentions `this`, before the loader',
+				`defineCollection({ get schema() { this.loader = ${ALT}; return undefined }, loader: ${BLOG_GLOB} })`,
+				[
+					BLOG_UNKNOWN,
+				],
+			],
+			[
+				'a getter among the glob options that mentions nothing',
+				`defineCollection({ loader: glob({ base: './data/blog', pattern: '*.md', get generateId() { return undefined } }) })`,
+				[],
+			],
 		])('an object literal with %s', async (_label, declaration, unresolved) => {
 			await write({ 'data/blog/a.md': ENTRY, 'src/content.config.ts': config(`blog: ${declaration}`) })
 
 			expect((await scan()).report).toEqual({ contentConfig: 'ok', unresolved })
+		})
+
+		test('glob options behind a constant are not read either when they mention `this`', async () => {
+			const source = (accessor: string): string =>
+				config(`blog: defineCollection({ loader: glob(GLOB_OPTIONS) })`, `const GLOB_OPTIONS = { base: './data/blog', pattern: '*.md', ${accessor} }`)
+			await write({ 'data/blog/a.md': ENTRY, 'src/content.config.ts': source(`get generateId() { return undefined }`) })
+			expect((await scan()).report).toEqual(NOTHING)
+
+			await write({ 'src/content.config.ts': source(`get generateId() { this.base = './data/other'; return undefined }`) })
+			expect((await scan()).report.unresolved).toEqual([BLOG_UNKNOWN])
 		})
 
 		test('a name given twice in `collections` holds what it was given last; a prototype hides names', async () => {

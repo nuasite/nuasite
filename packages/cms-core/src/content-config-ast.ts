@@ -773,10 +773,12 @@ function isGlobCallee(callee: t.Node): boolean {
 
 /**
  * Every mention of the string option `name` in the code of a config file, comments aside: as
- * an identifier anywhere, and as a string where it is a key. One that is the key of a property
- * given a plain string is that string. Any other mention is `null`: another kind of value (a
- * call, a concatenation, a variable), a shorthand, a variable, a parameter or a member of
- * that name. A key given an object literal is left out: it is not a string option, so it is
+ * an identifier or as a string of exactly that name, anywhere. One that is the key of a
+ * property given a plain string is that string. Any other mention is `null`: another kind of
+ * value (a call, a concatenation, a variable), a shorthand, a variable, a parameter or a
+ * member of that name, and the name as a string that is not such a key, since a string can be
+ * made a key in more ways than can be listed (`Object.defineProperty(config, 'srcDir', …)`,
+ * `const KEY = 'srcDir'`). A key given an object literal is left out: it is not a string option, so it is
  * another option of that name. `null` instead of a list for a file that does not parse.
  *
  * For telling whether an option is set to a known value wherever the file could set it,
@@ -795,8 +797,7 @@ export function configOptionMentions(source: string, name: string): Array<string
 			: node.type === 'TemplateLiteral' && node.expressions.length === 0
 			? node.quasis[0]?.value.cooked
 			: undefined
-		const computedMember = (parent?.type === 'MemberExpression' || parent?.type === 'OptionalMemberExpression') && key === 'property' && parent.computed
-		const named = node.type === 'Identifier' ? node.name === name : asString === name && (isKey || computedMember)
+		const named = node.type === 'Identifier' ? node.name === name : asString === name
 		if (!named) return
 		// `[name]: …` is keyed by a variable of that name, not by the name.
 		if (!isKey || (node.type === 'Identifier' && parent.computed)) mentions.push(null)
@@ -811,21 +812,22 @@ const READER_CALLS = ['glob', 'file', 'defineCollection', 'defineCmsCollection']
 /** Wrappers that change nothing about a value, the ones {@link resolveExpression} sees through. */
 const VALUE_WRAPPERS = new Set(['TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression', 'TSTypeAssertion'])
 
-/** TypeScript nodes that hold code and not only types; every other `TS…` node is skipped by {@link walkValues}. */
+/**
+ * TypeScript nodes that hold code and not only types; every other `TS…` node is skipped by
+ * {@link walkValues}. `TSQualifiedName` is among them for `import alias = blog.loader`, which
+ * compiles to a variable; in a type it is below a node that is skipped.
+ */
 const TS_NODES_WITH_CODE = new Set([
 	...VALUE_WRAPPERS,
 	'TSInstantiationExpression',
 	'TSEnumDeclaration',
-	'TSEnumBody',
 	'TSEnumMember',
 	'TSModuleDeclaration',
 	'TSModuleBlock',
 	'TSExportAssignment',
 	'TSImportEqualsDeclaration',
-	'TSExternalModuleReference',
+	'TSQualifiedName',
 	'TSParameterProperty',
-	'TSDeclareFunction',
-	'TSDeclareMethod',
 ])
 
 /** Keys of a node that hold no code. */
@@ -981,7 +983,8 @@ function followedConstants(ast: t.File, bindings: Bindings): { followed: Binding
 			&& key === 'key' && !parent.computed
 		const isMemberName = (parent.type === 'MemberExpression' || parent.type === 'OptionalMemberExpression') && key === 'property' && !parent.computed
 		const isModuleName = (parent.type === 'ExportSpecifier' && key === 'exported') || (parent.type === 'ImportSpecifier' && key === 'imported')
-		if (isMemberKey || isMemberName || isModuleName) return
+		// Nor is the `meta` of `import.meta`.
+		if (isMemberKey || isMemberName || isModuleName || parent.type === 'MetaProperty') return
 
 		if (name === 'eval' || name === 'Function') anythingMayChange = true
 
@@ -1099,6 +1102,8 @@ function readDeclaredCollections(ast: t.File): Pick<ContentConfigRead, 'declared
 		}
 	}
 
+	// A config that imports itself can change what it exports without naming it: `self.collections.x = …`.
+	if (importsContentConfig(ast)) outOfSight = true
 	if (!collections) return { declared: [], partial: outOfSight || exportedUndeclared, exportsCollections }
 
 	const { followed, trusted } = followedConstants(ast, bindings)
@@ -1156,6 +1161,32 @@ function literalMember(object: t.ObjectExpression, key: string): t.Node | null |
 	return member.type === 'ObjectProperty' ? member.value : null
 }
 
+/** A `this` anywhere below `node`: an accessor or a method of a literal can change the literal without naming it. */
+function mentionsThis(node: t.Node): boolean {
+	let found = false
+	walkNodes(node, inner => {
+		if (inner.type === 'ThisExpression') found = true
+	})
+	return found
+}
+
+/** A module specifier that may be the content config itself, whatever directory it is given from. */
+const CONTENT_CONFIG_SPECIFIER = /(?:^|\/)content(?:\.|\/)config(?:\.[cm]?[jt]s)?$/
+
+/** Does the file import a content config, which may be itself? What it exports can then be changed through the import. */
+function importsContentConfig(ast: t.File): boolean {
+	let found = false
+	walkNodes(ast, node => {
+		const source = node.type === 'ImportDeclaration' || node.type === 'ExportNamedDeclaration'
+			? node.source
+			: node.type === 'CallExpression' && node.callee.type === 'Import'
+			? node.arguments[0]
+			: undefined
+		if (source?.type === 'StringLiteral' && CONTENT_CONFIG_SPECIFIER.test(source.value)) found = true
+	})
+	return found
+}
+
 /** The loader facts of a {@link DeclaredCollection}, read off the value its `collections` key holds. */
 function readDeclaredLoader(value: t.Node, bindings: Bindings, trusted: Set<string>): Omit<DeclaredCollection, 'name'> {
 	const isCallOf = (node: t.Node, names: string[]): node is t.CallExpression & { callee: t.Identifier } =>
@@ -1164,7 +1195,7 @@ function readDeclaredLoader(value: t.Node, bindings: Bindings, trusted: Set<stri
 	const declaration = resolveExpression(value, bindings)
 	if (!isCallOf(declaration, ['defineCollection', 'defineCmsCollection']) || !declaration.arguments[0]) return {}
 	const options = resolveExpression(declaration.arguments[0], bindings)
-	if (options.type !== 'ObjectExpression') return {}
+	if (options.type !== 'ObjectExpression' || mentionsThis(options)) return {}
 
 	// The last `loader` is the one that counts. A spread or a key that cannot be read after it
 	// may replace it, and a `__proto__` may supply one where the literal names none.
@@ -1189,7 +1220,7 @@ function readDeclaredLoader(value: t.Node, bindings: Bindings, trusted: Set<stri
 
 	const globOptions = resolveExpression(call.arguments[0], bindings)
 	// A spread, a key that cannot be read or a `__proto__` may supply either option, so no literal next to one can be trusted.
-	if (globOptions.type !== 'ObjectExpression' || !isPlainLiteralObject(globOptions)) return facts
+	if (globOptions.type !== 'ObjectExpression' || !isPlainLiteralObject(globOptions) || mentionsThis(globOptions)) return facts
 	const base = literalMember(globOptions, 'base')
 	const pattern = literalMember(globOptions, 'pattern')
 	// Without a `base`, Astro's glob loads from the project root.
