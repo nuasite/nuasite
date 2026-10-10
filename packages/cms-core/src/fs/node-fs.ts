@@ -36,9 +36,9 @@ interface Walk {
 	mayHold: (dir: string) => boolean
 	/** Enter linked directories and list linked files, which the walk otherwise leaves out. */
 	followSymlinks: boolean
-	/** How many directories may be read, and how many of those are left; `undefined` for as many as there are. */
-	maxDirectories: number | undefined
-	directoriesLeft: number | undefined
+	/** How many directories may be read behind links, and how many of those are left; `undefined` for as many as there are. */
+	maxLinkedDirectories: number | undefined
+	linkedDirectoriesLeft: number | undefined
 }
 
 const relativeTo = (absRoot: string, abs: string): string => path.relative(absRoot, abs).split(path.sep).join('/') || '.'
@@ -51,8 +51,10 @@ const relativeTo = (absRoot: string, abs: string): string => path.relative(absRo
  * back into one of them is entered once and not again.
  */
 async function walkFiles(walk: Walk, absDir: string, linked: ReadonlySet<string>): Promise<string[]> {
-	if (walk.directoriesLeft !== undefined && walk.directoriesLeft-- <= 0) {
-		throw new Error(`More than ${walk.maxDirectories} directories to list`)
+	// The tree itself is as large as it is. What links add to it has no such bound: they can
+	// lead anywhere, and into each other.
+	if (linked.size > 0 && walk.linkedDirectoriesLeft !== undefined && walk.linkedDirectoriesLeft-- <= 0) {
+		throw new Error(`More than ${walk.maxLinkedDirectories} directories to list behind symbolic links`)
 	}
 	let dirEntries: Dirent[]
 	try {
@@ -177,8 +179,8 @@ export function createNodeFs(root: string): CmsFileSystem {
 				absRoot: resolvedRoot,
 				mayHold: dir => globMayMatchUnder(pattern, dir),
 				followSymlinks: options?.followSymlinks ?? false,
-				maxDirectories: options?.maxDirectories,
-				directoriesLeft: options?.maxDirectories,
+				maxLinkedDirectories: options?.maxLinkedDirectories,
+				linkedDirectoriesLeft: options?.maxLinkedDirectories,
 			}
 			// Asked of the starting directory as of any other, so that one the pattern cannot match
 			// under is not read, and not a reason to fail when it cannot be.

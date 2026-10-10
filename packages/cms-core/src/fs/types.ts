@@ -30,10 +30,11 @@ export interface CmsFileSystem {
 	 * link back into a directory already entered through a link on the same path is not
 	 * entered again. An implementation that ignores the option keeps leaving them out.
 	 *
-	 * `maxDirectories` bounds the walk: when listing would have to read more directories than
-	 * that, the call rejects instead of answering with a part of the files.
+	 * `maxLinkedDirectories` bounds what following links adds to the walk: when listing would
+	 * have to read more directories than that behind links, the call rejects instead of
+	 * answering with a part of the files. Directories reached without a link do not count.
 	 */
-	glob(pattern: string, options?: { followSymlinks?: boolean; maxDirectories?: number }): Promise<string[]>
+	glob(pattern: string, options?: { followSymlinks?: boolean; maxLinkedDirectories?: number }): Promise<string[]>
 	/** File metadata. Rejects when the path does not exist. */
 	stat(path: string): Promise<{ mtimeMs: number; size: number }>
 }

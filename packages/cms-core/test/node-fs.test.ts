@@ -214,17 +214,39 @@ describe('createNodeFs', () => {
 		expect(ruledOut).toEqual([])
 	})
 
-	test('glob gives up, and says so, when it would have to read more directories than it may', async () => {
+	test('glob gives up, and says so, when links would have it read more directories than it may', async () => {
 		const cfs = createNodeFs(root)
 		await cfs.writeFile('data/a.md', '')
-		await cfs.writeFile('data/x/b.md', '')
-		await cfs.writeFile('data/y/c.md', '')
+		await cfs.writeFile('data/x/y/z/b.md', '')
+		await cfs.writeFile('shared/more/c.md', '')
+		await cfs.writeFile('shared/more/2024/d.md', '')
+		await fs.symlink('../shared/more', path.join(root, 'data/more'))
+		const all = ['data/a.md', 'data/more/2024/d.md', 'data/more/c.md', 'data/x/y/z/b.md']
 
-		// `data`, `data/x` and `data/y` are three directories.
-		expect((await cfs.glob('data/**/*.md', { maxDirectories: 3 })).sort()).toEqual(['data/a.md', 'data/x/b.md', 'data/y/c.md'])
-		await expect(cfs.glob('data/**/*.md', { maxDirectories: 2 })).rejects.toThrow('More than 2 directories to list')
-		// A directory the pattern cannot reach into is not read, so it does not count.
-		expect(await cfs.glob('data/*.md', { maxDirectories: 1 })).toEqual(['data/a.md'])
+		// `more` and `more/2024` are two directories behind a link.
+		expect((await cfs.glob('data/**/*.md', { followSymlinks: true, maxLinkedDirectories: 2 })).sort()).toEqual(all)
+		await expect(cfs.glob('data/**/*.md', { followSymlinks: true, maxLinkedDirectories: 1 })).rejects.toThrow(
+			'More than 1 directories to list behind symbolic links',
+		)
+		// The tree itself is as large as it is: `data`, `x`, `y` and `z` do not count.
+		expect((await cfs.glob('data/x/**/*.md', { followSymlinks: true, maxLinkedDirectories: 0 })).sort()).toEqual(['data/x/y/z/b.md'])
+		// A directory the pattern cannot reach into is not read, so it does not count either.
+		expect((await cfs.glob('data/*/*.md', { followSymlinks: true, maxLinkedDirectories: 1 })).sort()).toEqual(['data/more/c.md'])
+	})
+
+	test('directories linked into each other end at the bound, not in a walk without end', async () => {
+		const cfs = createNodeFs(root)
+		const count = 6
+		for (let i = 0; i < count; i++) await cfs.writeFile(`data/d${i}/x.md`, '')
+		for (let i = 0; i < count; i++) {
+			for (let j = 0; j < count; j++) {
+				if (i !== j) await fs.symlink(`../d${j}`, path.join(root, `data/d${i}/to${j}`))
+			}
+		}
+
+		// Every chain of links that does not come back to a directory already on it is a path of its own.
+		await expect(cfs.glob('data/**/*.md', { followSymlinks: true, maxLinkedDirectories: 500 })).rejects.toThrow('More than 500 directories')
+		expect(await cfs.glob('data/**/*.md')).toHaveLength(count)
 	})
 
 	// Root reads any directory, so there is nothing to observe under it.

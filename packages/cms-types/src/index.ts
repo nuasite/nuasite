@@ -340,11 +340,13 @@ export interface CollectionEntry {
  * - `unsupported-loader`: the scan cannot tell what the collection loads, so it cannot vouch
  *   for it. Its `loader` is not a `glob()` with a `base` it can look under and a `pattern`
  *   it can read (a `file()` loader, a custom loader, a helper call, a spread among the
- *   options, a base Astro resolves to another directory than the path spells, a value
- *   something in the config may change), or the pattern is one the scan does not run the
- *   way Astro does while a file under the `base` is not an entry of the scan.
+ *   options, a base Astro resolves to another directory than the path spells, a name the
+ *   config mentions in a way that may change what it holds), or the pattern is one the
+ *   scan does not run the way Astro does while a file under the `base` is not an entry of
+ *   the scan.
  * - `scan-failed`: reading the collection, or looking where its loader loads from, threw,
- *   or would have meant listing more directories than the report reads for one collection.
+ *   or would have meant listing more directories behind symbolic links than the report
+ *   reads for one collection.
  * - `unlisted-entries`: files the collection is known to load are not entries of the scan.
  *   They could not be read or parsed, or the scan does not take them for entries: a format
  *   other than md, mdx, json or yaml, a path with a segment starting with `_`, a file nested
@@ -402,13 +404,14 @@ export interface CollectionScanReport {
 	 *   out, whatever content directories it lists.
 	 * - `unreadable`: a content config exists, or may exist, and none of it was read: it does
 	 *   not parse, it is a `.js`, `.mjs` or `.mts` file, or it is under a `srcDir` other than
-	 *   `src`. Also when the `srcDir` cannot be told from the text of the Astro config (it is
-	 *   not a plain string, two mentions disagree, it leads out of the project). What it
-	 *   declares is unknown.
+	 *   `src`. Also when where Astro loads content from cannot be told from the code of the
+	 *   Astro config: a `srcDir` that is not a plain string, two that disagree, one that leads
+	 *   out of the project, or a `root` other than the project root. What is declared is
+	 *   unknown.
 	 * - `partial`: read, but not all of what it declares is known: the `collections` export
 	 *   is not an object literal (built by a call, re-exported from another module), the
-	 *   literal has a spread or a computed key that is not a string in it, something in the
-	 *   file may add to `collections` after it is declared, or the project has two content
+	 *   literal has a spread, a `__proto__` or a computed key that is not a string in it, the
+	 *   file mentions `collections` in a way that may add to it, or the project has two content
 	 *   config files and the one that was read need not be the one Astro uses. `unresolved`
 	 *   covers the names that could be read; others may exist.
 	 */

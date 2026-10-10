@@ -10,6 +10,7 @@ import path from 'node:path'
 import { isMap, isPair, isScalar, parse as parseYaml, parseDocument } from 'yaml'
 import {
 	classifyEmptyContentConfig,
+	configOptionMentions,
 	CONTENT_CONFIG_PATHS,
 	type ContentConfigRead,
 	type DeclaredCollection,
@@ -1254,20 +1255,27 @@ export function collectionScanReport(collections: Record<string, CollectionDefin
 
 /**
  * Patterns the `CmsFileSystem` port does not run the way Astro's glob does. Syntax it reads
- * literally or wrongly: a character class, an extglob, an escape, and inside a brace another
- * brace, a range or a wildcard. And shapes Astro's glob reads wider than the port: a `..`
- * segment, a trailing slash (also one an empty brace alternative leaves behind), a negation
- * behind `./`, and a final `/**`, which to Astro also matches a file named by what stands
- * before it. What such a pattern matches here says nothing about what the loader loads.
+ * literally or wrongly: a character class, an extglob, an escape, a brace without a comma
+ * (the name `{a}` to Astro, or a range), and inside a brace another brace or a wildcard. And
+ * shapes Astro's glob reads wider than the port: a `..` segment, also one a brace completes
+ * (`..{/drafts,x}`), a trailing slash (also one an empty brace alternative leaves behind), a
+ * negation behind `./`, and a final `/**`, which to Astro also matches a file named by what
+ * stands before it. What such a pattern matches here says nothing about what the loader loads.
  * A lone leading `!` is not among them: it matches nothing in Astro, and nothing here.
  */
-const UNSUPPORTED_GLOB_SYNTAX = /[[\]()\\]|\{[^}]*(?:\{|\.\.|[*?]|,,)|\{,|,\}|(?:^|\/)\.\.(?:\/|$)|\/$|^(?:\.\/)+!|.\/\*\*$/
+const UNSUPPORTED_GLOB_SYNTAX = /[[\]()\\]|\{[^}]*(?:\{|[*?]|,,)|\{,|,\}|\{[^,}]*\}|(?:^|[/{},])\.\.(?:[/{},]|$)|\/$|^(?:\.\/)+!|.\/\*\*$/
 
-/** A `..` segment in a pattern leads out of the base, so the files under the base do not bound it. */
-const LEAVES_THE_BASE = /(?:^|\/)\.\.(?:\/|$)/
+/**
+ * A `..` segment in a pattern leads out of the base, so the files under the base do not bound
+ * it. A brace next to the dots may be what makes them a segment.
+ */
+const LEAVES_THE_BASE = /(?:^|[/{},])\.\.(?:[/{},]|$)/
 
-/** How many directories the report reads for one collection before it gives up on it. */
-const REPORT_DIRECTORY_LIMIT = 20_000
+/**
+ * How many directories behind symbolic links the report reads for one collection before it
+ * gives up on it. Links can lead into a tree of any size, and into each other.
+ */
+const REPORT_LINKED_DIRECTORY_LIMIT = 20_000
 
 /**
  * Files that may be entries. Astro's glob loads md, mdx (with the integration), json, yaml,
@@ -1316,7 +1324,7 @@ function declaredLocation(declaration: DeclaredCollection, contentDir: string): 
  * `legacy.collectionsBackwardsCompat` flag that nua sets.
  */
 async function contentDirectoryFiles(fs: CmsFileSystem, directory: string, entryFile: RegExp): Promise<string[]> {
-	const files = await globLoaderFiles(fs, directory, '**/*', { followSymlinks: true, maxDirectories: REPORT_DIRECTORY_LIMIT })
+	const files = await globLoaderFiles(fs, directory, '**/*', { followSymlinks: true, maxLinkedDirectories: REPORT_LINKED_DIRECTORY_LIMIT })
 	return files.filter(file => entryFile.test(file)).map(file => path.join(directory, file))
 }
 
@@ -1350,15 +1358,35 @@ async function declaredEntryFiles(
 	// are candidates. Unless one leads out of the base, and the whole project is not walked
 	// on that off chance either.
 	if (!exact && (base === '.' || patterns.some(one => LEAVES_THE_BASE.test(one)))) return null
-	const matches = await fs.glob(path.join(base, exact ? pattern : '**/*'), { followSymlinks: true, maxDirectories: REPORT_DIRECTORY_LIMIT })
-	// Astro's glob leaves dotfiles out unless the pattern names one (a segment or a brace
-	// alternative that starts with a dot). It does load `_` files, which the scan skips, so
-	// those stay in.
-	const namesDotfile = patterns.some(one => /(?:^|[/{,!])\.[^./]/.test(one))
-	const files = matches.filter(file =>
-		ENTRY_FILE.test(file) && (namesDotfile || !path.relative(base, file).split(/[/\\]/).some(segment => segment.startsWith('.')))
-	)
+	const matches = await fs.glob(path.join(base, exact ? pattern : '**/*'), {
+		followSymlinks: true,
+		maxLinkedDirectories: REPORT_LINKED_DIRECTORY_LIMIT,
+	})
+	// Astro's glob leaves dot paths out unless the pattern asks for them. It does load `_`
+	// files, which the scan skips, so those stay in.
+	const files = matches.filter(file => ENTRY_FILE.test(file) && patterns.some(one => mayTakeDotPath(one, path.relative(base, file))))
 	return { exact, files }
+}
+
+/**
+ * Whether a loader pattern can match `file` (relative to the base) as far as leading dots go.
+ * Astro's glob keeps `*` and `**` from matching one, so a dotfile or a file in a dot directory
+ * is loaded only when the pattern asks for it. It does by naming a dot at the start of a
+ * segment or of an alternative, and then nothing is ruled out here. And by a character class
+ * or an extglob (in patterns the scan does not run), which take a leading dot like any other
+ * character: in the last segment a dotfile, in an earlier one a dot directory. Where a brace
+ * or an extglob spans a slash the segments cannot be told apart, and either takes both.
+ */
+function mayTakeDotPath(pattern: string, file: string): boolean {
+	const segments = file.split(/[/\\]/)
+	const dotFile = segments.pop()!.startsWith('.')
+	const dotDirectory = segments.some(segment => segment.startsWith('.'))
+	if (!dotFile && !dotDirectory) return true
+	if (/(?:^|[/{,!\\])\.[^./]/.test(pattern)) return true
+	const cut = pattern.lastIndexOf('/')
+	const blurred = /[{(][^})]*\//.test(pattern)
+	const takesDot = (part: string): boolean => /[[(]/.test(blurred ? pattern : part)
+	return (!dotFile || takesDot(pattern.slice(cut + 1))) && (!dotDirectory || takesDot(pattern.slice(0, Math.max(cut, 0))))
 }
 
 /** Where Astro looks for its own config. It takes the first one there is. */
@@ -1366,23 +1394,27 @@ const ASTRO_CONFIG_PATHS = ['astro.config.mjs', 'astro.config.js', 'astro.config
 
 /**
  * The project's source directory when the Astro config moves it from `src`: the directory,
- * `undefined` for the default, or `null` when it cannot be told.
+ * `undefined` for the default, or `null` when where Astro loads content from cannot be told.
  *
- * Read off the text of the one config file Astro uses. Every `srcDir` in it has to be
- * `srcDir: '<literal>'` with the literal as the whole value, and all of them have to agree:
- * the word may stand in a comment or name another plugin's option, and which mention is
- * Astro's cannot be told without evaluating the file. A directory outside the project is
- * where the port cannot look.
+ * Read off the code of the one config file Astro uses. Two of its options decide the place:
+ * `srcDir`, where the content config and the content directory are, and `root`, which every
+ * loader's `base` is resolved against. Which mention of either name is Astro's option cannot
+ * be told without evaluating the file (it may name another plugin's option, a variable, a
+ * member), so every one of them has to be a property given a plain string: all `srcDir`s the
+ * same directory inside the project, every `root` the project root itself, which the scan
+ * takes it to be. Either name given an object literal is not Astro's option, which is a string.
  */
 async function customSrcDir(fs: CmsFileSystem): Promise<string | null | undefined> {
 	for (const configPath of ASTRO_CONFIG_PATHS) {
 		const source = await fs.readFile(configPath).catch(() => null)
 		if (source === null) continue
-		const mentions = source.match(/\bsrcDir\b/g)?.length ?? 0
-		if (mentions === 0) return undefined
-		const literals = [...source.matchAll(/\bsrcDir['"]?\s*:\s*(['"`])([^'"`$\\]+)\1\s*(?=[,}\r\n]|$)/g)].map(match => normalizeBasePath(match[2]!))
-		if (literals.length !== mentions || new Set(literals).size !== 1) return null
-		const srcDir = literals[0]!
+		const roots = configOptionMentions(source, 'root')
+		const srcDirs = configOptionMentions(source, 'srcDir')
+		if (roots === null || srcDirs === null) return null
+		if (roots.some(root => root === null || normalizeBasePath(root) !== '.')) return null
+		if (srcDirs.length === 0) return undefined
+		const [srcDir, ...others] = srcDirs.map(literal => (literal === null ? null : normalizeBasePath(literal)))
+		if (srcDir === null || srcDir === undefined || others.some(other => other !== srcDir)) return null
 		if (srcDir === 'src') return undefined
 		return path.isAbsolute(srcDir) || srcDir.startsWith('..') ? null : srcDir
 	}
@@ -1397,7 +1429,8 @@ async function customSrcDir(fs: CmsFileSystem): Promise<string | null | undefine
 async function contentConfigStatus(fs: CmsFileSystem, config: ContentConfigRead): Promise<CollectionScanReport['contentConfig']> {
 	const configPaths = [...CONTENT_CONFIG_PATHS, ...UNREAD_CONTENT_CONFIG_PATHS]
 	const srcDir = await customSrcDir(fs)
-	// With a source directory that cannot be told, neither can whether it holds a config.
+	// Where Astro loads from cannot be told, so neither can whether a config is there, nor
+	// whether what the scan found under the project root is what Astro loads.
 	if (srcDir === null) return 'unreadable'
 	if (srcDir !== undefined) {
 		// The reader only looks under `src`, so a config found here was not read. Nothing here
