@@ -17,6 +17,7 @@ import type {
 	CollectionDefinition,
 	CollectionEntry,
 	CollectionEntryInfo,
+	CollectionScanReport,
 	ComponentDefinition,
 	MediaListResult,
 	MediaUploadResult,
@@ -64,7 +65,15 @@ export interface CmsProjectModel {
 	collections: CollectionDefinition[]
 	pages: CmsPageEntry[]
 	capabilities: CmsCapabilities
+	/**
+	 * What the scan behind `collections` could not vouch for. `undefined` from a sidecar that
+	 * does not report: read that as unknown, never as an empty `unresolved`.
+	 */
+	collectionScan?: CollectionScanReport
 }
+
+// The report's own types, so a host reading `getProject()` needs one import.
+export type { CollectionScanReport, UnresolvedCollection, UnresolvedCollectionReason } from '@nuasite/cms-types'
 
 /** `GET …/entries` — projected entries plus an opaque continuation cursor. */
 export interface CmsEntriesListResult {

@@ -923,3 +923,107 @@ describe('shared collection scan', () => {
 		expect((await jsonOf<EntriesListResult>(await before)).entries.map(e => e.slug)).not.toContain('new-post')
 	})
 })
+
+/**
+ * `GET /project` says which collections the scan behind its `collections` cannot vouch for.
+ * It rides on that answer because it is the one that is an object: `/collections` is a bare
+ * array, and a field an older client ignores cannot be added to it.
+ */
+describe('cms-sidecar — collection scan report', () => {
+	type Core = ReturnType<typeof createCmsCore>
+
+	async function projectWith(wrapCore: (core: Core) => Core = core => core): Promise<{ server: CmsSidecarServer; root: string }> {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cms-sidecar-report-'))
+		await fs.cp(FIXTURE_ROOT, root, { recursive: true })
+		cleanups.push(root)
+		const nodeFs = createNodeFs(root)
+		const core = wrapCore(createCmsCore(nodeFs, { componentDirs: ['src/components'] }))
+		return { server: createServer({ core, fs: nodeFs, root, coreVersion: '0.42.1' }), root }
+	}
+
+	/** Declare a collection the scan cannot follow and break one it could. */
+	async function leaveTwoUnresolved(root: string): Promise<void> {
+		const configPath = path.join(root, 'src', 'content', 'config.ts')
+		const config = await fs.readFile(configPath, 'utf8')
+		await fs.writeFile(
+			configPath,
+			config.replace('{ blog, authors, people }', `{ blog, authors, people, glossary: defineCollection({ loader: file('src/data/glossary.json') }) }`),
+		)
+		await fs.writeFile(path.join(root, 'src', 'content', 'docs', 'broken.md'), '---\ntitle: [unclosed\n---\n')
+	}
+
+	test('a project the scan reads whole reports an empty list, which is not the same as no report', async () => {
+		const { server } = await projectWith()
+		const model = await jsonOf<ProjectModel>(await call(server, 'GET', '/project'))
+		expect(model.collectionScan).toEqual({ contentConfig: 'ok', unresolved: [] })
+	})
+
+	test('GET /project names what the scan left out; GET /collections keeps its shape', async () => {
+		const { server, root } = await projectWith()
+		await leaveTwoUnresolved(root)
+		const warn = spyOn(console, 'warn').mockImplementation(() => {})
+
+		const model = await jsonOf<ProjectModel>(await call(server, 'GET', '/project'))
+		const defs = await jsonOf<CollectionDefinition[]>(await call(server, 'GET', '/collections'))
+		warn.mockRestore()
+
+		expect(model.collectionScan).toEqual({
+			contentConfig: 'ok',
+			unresolved: [
+				{ name: 'docs', reason: 'scan-failed', base: 'src/content/docs' },
+				{ name: 'glossary', reason: 'unsupported-loader', file: 'src/data/glossary.json' },
+			],
+		})
+		// Neither is among the collections, in either answer.
+		expect(model.collections.map(c => c.name).sort()).toEqual(['authors', 'blog', 'people', 'settings', 'team'])
+		expect(Array.isArray(defs)).toBe(true)
+		expect(defs.map(c => c.name).sort()).toEqual(['authors', 'blog', 'people', 'settings', 'team'])
+	})
+
+	test('GET /project takes its collections and their report from one and the same scan', async () => {
+		let scans = 0
+		const { server } = await projectWith(core => ({
+			...core,
+			// Every scan after the first answers for a different project: one without `blog`.
+			scanCollections: async () => {
+				const collections = await core.scanCollections()
+				if (scans++ > 0) delete collections['blog']
+				return collections
+			},
+		}))
+
+		const model = await jsonOf<ProjectModel>(await call(server, 'GET', '/project'))
+
+		expect(scans).toBe(1)
+		expect(model.collections.map(c => c.name)).toContain('blog')
+		expect(model.collectionScan).toEqual({ contentConfig: 'ok', unresolved: [] })
+	})
+
+	test('a core that does not report leaves the field out', async () => {
+		const { server, root } = await projectWith(core => ({ ...core, collectionScanReport: undefined }))
+		await leaveTwoUnresolved(root)
+		const warn = spyOn(console, 'warn').mockImplementation(() => {})
+
+		const model = await jsonOf<ProjectModel>(await call(server, 'GET', '/project'))
+		warn.mockRestore()
+
+		expect('collectionScan' in model).toBe(false)
+		expect(model.collections.map(c => c.name).sort()).toEqual(['authors', 'blog', 'people', 'settings', 'team'])
+	})
+
+	test('a core that edits what its scan returned still reports for that scan', async () => {
+		const { server } = await projectWith(core => ({
+			...core,
+			scanCollections: async () => {
+				const collections = await core.scanCollections()
+				collections['blog']!.label = 'Články'
+				return collections
+			},
+		}))
+
+		const model = await jsonOf<ProjectModel>(await call(server, 'GET', '/project'))
+
+		expect(model.collections.find(c => c.name === 'blog')?.label).toBe('Články')
+		expect(model.collectionScan).toEqual({ contentConfig: 'ok', unresolved: [] })
+	})
+})

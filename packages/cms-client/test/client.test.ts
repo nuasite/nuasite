@@ -1,6 +1,6 @@
 import type { MutationResult } from '@nuasite/cms-types'
 import { afterEach, describe, expect, test } from 'bun:test'
-import { type CmsClient, CmsClientError, createClient, isMediaUnavailable } from '../src/client'
+import { type CmsClient, CmsClientError, type CollectionScanReport, createClient, isMediaUnavailable } from '../src/client'
 
 const API_BASE = 'http://host.test/cms'
 
@@ -88,6 +88,20 @@ describe('createClient — reads', () => {
 		expect(calls[0]?.method).toBe('GET')
 		expect(calls[0]?.url).toBe(`${API_BASE}/config`)
 		expect(calls[0]?.credentials).toBe('include')
+	})
+
+	test('getProject hands on the scan report, and its absence from a sidecar that sends none', async () => {
+		const model = { collections: [], pages: [], capabilities: { coreVersion: '0.56.4', features: [] } }
+		const collectionScan: CollectionScanReport = {
+			contentConfig: 'ok',
+			unresolved: [{ name: 'authors', reason: 'unsupported-loader', file: 'src/data/authors.json' }],
+		}
+		const { client, calls } = withFetch([() => jsonResponse({ ...model, collectionScan }), () => jsonResponse(model)])
+
+		expect((await client.getProject()).collectionScan).toEqual(collectionScan)
+		// Not reported stays `undefined`, never an empty list: what that means is the caller's call.
+		expect((await client.getProject()).collectionScan).toBeUndefined()
+		expect(calls[0]?.url).toBe(`${API_BASE}/project`)
 	})
 })
 

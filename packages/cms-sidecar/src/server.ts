@@ -678,9 +678,13 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 
 			case 'project':
 				if (method === 'GET') {
-					const [collections, pages] = await Promise.all([scanList(), listPages(fs)])
+					const [scanned, pages] = await Promise.all([collectionsScan.get(), listPages(fs)])
 					const capabilities: Capabilities = { coreVersion, features: [...SIDECAR_FEATURES] }
-					const model: ProjectModel = { collections, pages, capabilities }
+					const model: ProjectModel = { collections: Object.values(scanned), pages, capabilities }
+					// The report of the very scan `collections` came from. Left out, not sent empty,
+					// when the core has none: a client must be able to tell the two apart.
+					const collectionScan = core.collectionScanReport?.(scanned)
+					if (collectionScan !== undefined) model.collectionScan = collectionScan
 					return json(model)
 				}
 				break
