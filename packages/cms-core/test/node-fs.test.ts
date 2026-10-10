@@ -214,6 +214,58 @@ describe('createNodeFs', () => {
 		expect(ruledOut).toEqual([])
 	})
 
+	test('glob gives up, and says so, when it would have to read more directories than it may', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('data/a.md', '')
+		await cfs.writeFile('data/x/b.md', '')
+		await cfs.writeFile('data/y/c.md', '')
+
+		// `data`, `data/x` and `data/y` are three directories.
+		expect((await cfs.glob('data/**/*.md', { maxDirectories: 3 })).sort()).toEqual(['data/a.md', 'data/x/b.md', 'data/y/c.md'])
+		await expect(cfs.glob('data/**/*.md', { maxDirectories: 2 })).rejects.toThrow('More than 2 directories to list')
+		// A directory the pattern cannot reach into is not read, so it does not count.
+		expect(await cfs.glob('data/*.md', { maxDirectories: 1 })).toEqual(['data/a.md'])
+	})
+
+	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('a linked directory that cannot be read fails the walk like an unlinked one', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('data/a.md', '')
+		await cfs.writeFile('shared/locked/b.md', '')
+		const locked = path.join(root, 'shared/locked')
+		await fs.symlink('../shared/locked', path.join(root, 'data/more'))
+		await fs.chmod(locked, 0o000)
+		try {
+			expect(await cfs.glob('data/**/*.md')).toEqual(['data/a.md'])
+			await expect(cfs.glob('data/**/*.md', { followSymlinks: true })).rejects.toThrow('Cannot read directory "data/more" (EACCES)')
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
+	test('glob leaves symbolic links out unless asked to follow them', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('data/a.md', '')
+		await cfs.writeFile('shared/linked.md', '')
+		await cfs.writeFile('shared/more/x.md', '')
+		await fs.symlink('../shared/linked.md', path.join(root, 'data/linked.md'))
+		await fs.symlink('../shared/more', path.join(root, 'data/more'))
+		await fs.symlink('.', path.join(root, 'data/self'))
+		await fs.symlink('./nowhere.md', path.join(root, 'data/dangling.md'))
+
+		expect(await cfs.glob('data/**/*.md')).toEqual(['data/a.md'])
+		// Listed under the link's own path. A link back into its own directory is entered once, a
+		// link that leads nowhere is no file.
+		expect((await cfs.glob('data/**/*.md', { followSymlinks: true })).sort()).toEqual([
+			'data/a.md',
+			'data/linked.md',
+			'data/more/x.md',
+			'data/self/a.md',
+			'data/self/linked.md',
+			'data/self/more/x.md',
+		])
+	})
+
 	test('stat returns mtimeMs and size', async () => {
 		const cfs = createNodeFs(root)
 		await cfs.writeFile('f.txt', 'abcd')

@@ -1,6 +1,7 @@
 import type {
 	AddRedirectRequest,
 	CollectionDefinition,
+	CollectionScanReport,
 	ComponentDefinition,
 	CreatePageRequest,
 	DeletePageRequest,
@@ -14,7 +15,7 @@ import type {
 	RedirectOperationResponse,
 	UpdateRedirectRequest,
 } from '@nuasite/cms-types'
-import { scanCollections } from './collection-scanner'
+import { collectionScanReport, scanCollections } from './collection-scanner'
 import { scanComponentDefinitions } from './component-registry'
 import { type ParseCache } from './content-config-ast'
 import type { CmsFileSystem } from './fs/types'
@@ -70,6 +71,13 @@ export interface CmsCore {
 	// READ / SCAN
 	/** Scan all content collections, returning their inferred definitions keyed by name. */
 	scanCollections(): Promise<Record<string, CollectionDefinition>>
+	/**
+	 * What the scan that returned `collections` could not vouch for — pass the record
+	 * `scanCollections()` resolved to. `undefined` when it has no report: read that as "not
+	 * reported", never as "nothing unresolved". Optional, so a core built before the report
+	 * existed is still a `CmsCore`.
+	 */
+	collectionScanReport?(collections: Record<string, CollectionDefinition>): CollectionScanReport | undefined
 	/** Resolve the Astro component definitions used for MDX import injection. */
 	scanComponents(): Promise<Record<string, ComponentDefinition>>
 	/** Read a single entry's frontmatter + body, or `null` when it does not exist. */
@@ -119,8 +127,10 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 
 	return {
 		scanCollections() {
-			return scanCollections(fs, contentDir, parseCache)
+			// The one scan every reader of this core shares, so it carries the report.
+			return scanCollections(fs, contentDir, parseCache, { report: true })
 		},
+		collectionScanReport,
 		scanComponents() {
 			return scanComponentDefinitions(fs, componentDirs)
 		},

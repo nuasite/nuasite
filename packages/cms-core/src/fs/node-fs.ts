@@ -29,14 +29,31 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 	return error instanceof Error && 'code' in error
 }
 
+/** What one walk is after, and how far it may go. */
+interface Walk {
+	absRoot: string
+	/** Whether a directory (root-relative) could hold anything the caller is after. */
+	mayHold: (dir: string) => boolean
+	/** Enter linked directories and list linked files, which the walk otherwise leaves out. */
+	followSymlinks: boolean
+	/** How many directories may be read, and how many of those are left; `undefined` for as many as there are. */
+	maxDirectories: number | undefined
+	directoriesLeft: number | undefined
+}
+
 const relativeTo = (absRoot: string, abs: string): string => path.relative(absRoot, abs).split(path.sep).join('/') || '.'
 
 /**
- * Recursively list files under `absDir`, returning forward-slash paths relative to `absRoot`.
- * `mayHold` says whether a directory (root-relative) could hold anything the caller is
- * after. One that cannot is not entered at all.
+ * Recursively list files under `absDir`, returning forward-slash paths relative to the root.
+ * A directory that cannot hold anything the caller is after is not entered at all.
+ *
+ * `linked` holds the real paths of the linked directories on the way down, so that a link
+ * back into one of them is entered once and not again.
  */
-async function walkFiles(absRoot: string, absDir: string, mayHold: (dir: string) => boolean): Promise<string[]> {
+async function walkFiles(walk: Walk, absDir: string, linked: ReadonlySet<string>): Promise<string[]> {
+	if (walk.directoriesLeft !== undefined && walk.directoriesLeft-- <= 0) {
+		throw new Error(`More than ${walk.maxDirectories} directories to list`)
+	}
 	let dirEntries: Dirent[]
 	try {
 		dirEntries = await fs.readdir(absDir, { withFileTypes: true })
@@ -46,17 +63,30 @@ async function walkFiles(absRoot: string, absDir: string, mayHold: (dir: string)
 		if (!isNodeError(error)) throw error
 		if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return []
 		// Named by its root-relative path: the runtime's own message spells out the absolute one.
-		throw new Error(`Cannot read directory "${relativeTo(absRoot, absDir)}" (${error.code ?? 'unknown error'})`, { cause: error })
+		throw new Error(`Cannot read directory "${relativeTo(walk.absRoot, absDir)}" (${error.code ?? 'unknown error'})`, { cause: error })
 	}
 	const out: string[] = []
 	for (const entry of dirEntries) {
 		const abs = path.join(absDir, entry.name)
-		if (entry.isDirectory()) {
+		let isDirectory = entry.isDirectory()
+		let isFile = entry.isFile()
+		let within = linked
+		if (walk.followSymlinks && entry.isSymbolicLink()) {
+			// A link that leads nowhere is not a file anyone loads.
+			const target = await fs.stat(abs).catch(() => null)
+			// Without a real path the link is entered as it is: a directory that cannot be read
+			// then fails the walk, as it would unlinked.
+			const real = target?.isDirectory() ? await fs.realpath(abs).catch(() => abs) : null
+			isFile = target?.isFile() ?? false
+			isDirectory = real !== null && !linked.has(real)
+			if (real !== null) within = new Set([...linked, real])
+		}
+		if (isDirectory) {
 			// Nothing the caller wants can be in a directory its pattern cannot reach, so it is
 			// neither read nor, when it cannot be read, a reason to fail.
-			if (mayHold(relativeTo(absRoot, abs))) out.push(...await walkFiles(absRoot, abs, mayHold))
-		} else if (entry.isFile()) {
-			out.push(relativeTo(absRoot, abs))
+			if (walk.mayHold(relativeTo(walk.absRoot, abs))) out.push(...await walkFiles(walk, abs, within))
+		} else if (isFile) {
+			out.push(relativeTo(walk.absRoot, abs))
 		}
 	}
 	return out
@@ -139,11 +169,18 @@ export function createNodeFs(root: string): CmsFileSystem {
 			}
 		},
 
-		async glob(pattern) {
+		async glob(pattern, options) {
 			const baseRel = staticPrefixDir(pattern)
 			const absBase = resolve(baseRel)
 			const matcher = globToRegExp(pattern)
-			const files = await walkFiles(resolvedRoot, absBase, dir => globMayMatchUnder(pattern, dir))
+			const walk: Walk = {
+				absRoot: resolvedRoot,
+				mayHold: dir => globMayMatchUnder(pattern, dir),
+				followSymlinks: options?.followSymlinks ?? false,
+				maxDirectories: options?.maxDirectories,
+				directoriesLeft: options?.maxDirectories,
+			}
+			const files = await walkFiles(walk, absBase, new Set())
 			return files.filter(rel => matcher.test(rel))
 		},
 

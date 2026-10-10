@@ -13,11 +13,13 @@ export {
 export { checkAgainstSchemas, type LiveCheckInput } from './check-live'
 export { checkFieldShapes, type ShapeCheckInput } from './check-shape'
 export { checkEditorWrites, type WriteCheckInput } from './check-write'
-export { scanCollections } from './collection-scanner'
+export { collectionScanReport, scanCollections } from './collection-scanner'
 export { scanComponentDefinitions } from './component-registry'
 export {
 	classifyEmptyContentConfig,
 	CONTENT_CONFIG_PATHS,
+	type ContentConfigRead,
+	type DeclaredCollection,
 	type EmptyContentConfigReason,
 	type ParseCache,
 	parseConfigSource,
@@ -26,6 +28,8 @@ export {
 	type ParsedConfig,
 	type ParsedField,
 	type ParsedReference,
+	readContentConfig,
+	UNREAD_CONTENT_CONFIG_PATHS,
 } from './content-config-ast'
 export { createCmsCore } from './core'
 export type { CmsCore, CmsCoreOptions } from './core'

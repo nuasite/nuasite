@@ -81,8 +81,52 @@ export interface ParsedCollection {
 
 export type ParsedConfig = Map<string, ParsedCollection>
 
+/**
+ * A key of the config's `collections` export, whether or not the rest of its declaration
+ * could be read. `ParsedConfig` only holds the collections with a readable schema or glob
+ * pattern; this is every name, so a scan can tell a collection it could not locate from one
+ * that does not exist.
+ *
+ * The loader facts are stricter than `ParsedCollection`'s: an option is only reported when
+ * nothing next to it (a spread) could replace it, because a scan report vouches by them.
+ */
+export interface DeclaredCollection {
+	name: string
+	/** Literal `base` of a `glob()` loader; `.` when the options name none, which is the project root to Astro. */
+	loaderBase?: string
+	/** Literal `pattern` of a `glob()` loader. */
+	loaderPattern?: string
+	/** The patterns of a `glob()` loader that takes a list of them, when every one is a literal. */
+	loaderPatterns?: string[]
+	/** Literal path of a `file()` loader. */
+	loaderFile?: string
+	/** The declaration has a `loader`, whatever it is. */
+	hasLoader?: true
+	/** The declaration has no `loader` at all: its entries are the files of `<contentDir>/<name>`. */
+	noLoader?: true
+}
+
+/** One read of a content config: what {@link parseContentConfig} returns, and what the config declares beyond it. */
+export interface ContentConfigRead {
+	parsed: ParsedConfig
+	/** Every collection name the reader could make out. */
+	declared: DeclaredCollection[]
+	/**
+	 * The reader could not see the whole `collections` export, so `declared` may be missing
+	 * names: the export is not an object literal (a call, a re-export from another module),
+	 * the literal has a spread, a method or a computed key in it, or something in the file
+	 * may add to `collections` after it is declared.
+	 */
+	partial: boolean
+	/**
+	 * The file exports `collections`, or may through `export *`. Astro takes no collections
+	 * from a content config that does not, whatever the file declares without exporting it.
+	 */
+	exportsCollections: boolean
+}
+
 /** Cached parse result keyed by config path; invalidated by mtime. */
-export type ParseCache = Map<string, { mtimeMs: number; parsed: ParsedConfig }>
+export type ParseCache = Map<string, { mtimeMs: number } & ContentConfigRead>
 
 const FIELD_HELPER_TYPES = new Set([
 	'text',
@@ -249,6 +293,19 @@ function parseSource(source: string): t.File | null {
 export const CONTENT_CONFIG_PATHS = ['src/content/config.ts', 'src/content.config.ts'] as const
 
 /**
+ * Where Astro also takes a content config from and this reader does not look. A project with
+ * one of these has a config; it is only out of the reader's sight.
+ */
+export const UNREAD_CONTENT_CONFIG_PATHS = [
+	'src/content.config.mjs',
+	'src/content.config.js',
+	'src/content.config.mts',
+	'src/content/config.mjs',
+	'src/content/config.js',
+	'src/content/config.mts',
+] as const
+
+/**
  * Why `parseContentConfig` came back empty. Three different facts share that one return value, and
  * only two of them are a defect: a site with no content collections is a legitimate site.
  */
@@ -283,6 +340,19 @@ export async function classifyEmptyContentConfig(fs: CmsFileSystem): Promise<Emp
  * re-reading and re-parsing an unchanged config file.
  */
 export async function parseContentConfig(fs: CmsFileSystem, cache: ParseCache): Promise<ParsedConfig> {
+	return (await readContentConfig(fs, cache)).parsed
+}
+
+/**
+ * {@link parseContentConfig}, plus every collection name the config declares — including the
+ * ones the parsed map leaves out because neither a schema nor a glob pattern could be read.
+ * Same file choice and the same cache.
+ */
+export async function readContentConfig(fs: CmsFileSystem, cache: ParseCache): Promise<ContentConfigRead> {
+	// A config whose parsed map came back empty may still declare names, all of them unreadable
+	// declarations, or export a `collections` the reader cannot see into. The first such read
+	// is the answer when no config parses to anything.
+	let unparsed: ContentConfigRead | undefined
 	for (const configPath of CONTENT_CONFIG_PATHS) {
 		let stat: Awaited<ReturnType<CmsFileSystem['stat']>>
 		try {
@@ -291,25 +361,27 @@ export async function parseContentConfig(fs: CmsFileSystem, cache: ParseCache): 
 			continue
 		}
 
-		const cached = cache.get(configPath)
-		if (cached && cached.mtimeMs === stat.mtimeMs) {
-			if (cached.parsed.size > 0) return cached.parsed
-			continue
+		let cached = cache.get(configPath)
+		if (!cached || cached.mtimeMs !== stat.mtimeMs) {
+			const content = await fs.readFile(configPath)
+			cached = { mtimeMs: stat.mtimeMs, ...readConfigSource(content) }
+			cache.set(configPath, cached)
 		}
-
-		const content = await fs.readFile(configPath)
-		const parsed = parseConfigSource(content, configPath)
-		cache.set(configPath, { mtimeMs: stat.mtimeMs, parsed })
-		if (parsed.size > 0) return parsed
+		if (cached.parsed.size > 0) return cached
+		if (!unparsed && (cached.declared.length > 0 || cached.exportsCollections)) unparsed = cached
 	}
-	return new Map()
+	return unparsed ?? { parsed: new Map(), declared: [], partial: false, exportsCollections: false }
 }
 
 /** Exported for unit testing — operates on a source string directly. */
 export function parseConfigSource(source: string, _sourcePath?: string): ParsedConfig {
+	return readConfigSource(source).parsed
+}
+
+function readConfigSource(source: string): ContentConfigRead {
 	const result: ParsedConfig = new Map()
 	const ast = parseSource(source)
-	if (!ast) return result
+	if (!ast) return { parsed: result, declared: [], partial: false, exportsCollections: false }
 
 	// Single pass: collect every top-level `const X = <expr>` binding (so we can
 	// later resolve Identifier references like `cs: TestimonialTranslation`),
@@ -464,7 +536,7 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 		})
 	}
 
-	return result
+	return { parsed: result, ...readDeclaredCollections(ast) }
 }
 
 /**
@@ -697,6 +769,252 @@ function extractStaticString(node: t.Node, bindings: Bindings): string | undefin
 
 function isGlobCallee(callee: t.Node): boolean {
 	return callee.type === 'Identifier' && callee.name === 'glob'
+}
+
+/**
+ * Every collection name the file's `collections` export declares, and whether that is all of
+ * them. Reads more forms than the parse above follows (`as`, `satisfies`, a same-file
+ * variable, a numeric key): naming a collection commits to nothing, while parsing one gives
+ * it a schema and a place in every scan.
+ *
+ * Identifiers are followed through module-level `const`s only. Everything read here sits at
+ * module level, where a same-named local elsewhere in the file cannot reach, and a `let` may
+ * hold something else by the time the loader runs.
+ */
+function readDeclaredCollections(ast: t.File): Pick<ContentConfigRead, 'declared' | 'partial' | 'exportsCollections'> {
+	const bindings: Bindings = new Map()
+	let collections: t.Node | undefined
+	let exportsCollections = false
+	// `collections` comes from where this reader does not look: another module, another local
+	// name, a `let`, a destructuring…
+	let outOfSight = false
+	// …or would, unless this file declares it: `export * from`, `export { collections }` of an import.
+	let exportedUndeclared = false
+	for (const stmt of ast.program.body) {
+		if (stmt.type === 'ExportAllDeclaration') {
+			exportedUndeclared = true
+			exportsCollections = true
+			continue
+		}
+		if (stmt.type === 'ExportNamedDeclaration') {
+			for (const specifier of stmt.specifiers) {
+				const exported = specifier.exported.type === 'Identifier' ? specifier.exported.name : specifier.exported.value
+				if (exported !== 'collections') continue
+				exportsCollections = true
+				if (stmt.source || specifier.type !== 'ExportSpecifier' || specifier.local.name !== 'collections') outOfSight = true
+				else exportedUndeclared = true
+			}
+		}
+		const varDecl = stmt.type === 'ExportNamedDeclaration' && stmt.declaration?.type === 'VariableDeclaration'
+			? stmt.declaration
+			: stmt.type === 'VariableDeclaration'
+			? stmt
+			: null
+		for (const decl of varDecl?.declarations ?? []) {
+			if (stmt.type === 'ExportNamedDeclaration') {
+				declaredPatternNames(decl.id, name => {
+					if (name === 'collections') exportsCollections = true
+				})
+			}
+			if (varDecl?.kind === 'const' && decl.id.type === 'Identifier' && decl.init) {
+				bindings.set(decl.id.name, decl.init)
+				if (decl.id.name === 'collections') collections = decl.init
+				continue
+			}
+			declaredPatternNames(decl.id, name => {
+				if (name === 'collections') outOfSight = true
+			})
+		}
+	}
+
+	const declared: DeclaredCollection[] = []
+	if (!collections) return { declared, partial: outOfSight || exportedUndeclared, exportsCollections }
+
+	// A value something in the file may change (`blog.loader = …`, `Object.assign(options, …)`)
+	// need not be what it was declared as by the time Astro reads it. Such a name is not
+	// followed, which leaves whatever it stands for unknown. A string or a number cannot be
+	// changed in place, and a `const` cannot be given another.
+	const changed = namesChangedAfterDeclaration(ast)
+	for (const [name, init] of bindings) {
+		const value = resolveExpression(init, new Map())
+		const fixed = value.type === 'StringLiteral' || value.type === 'TemplateLiteral' || value.type === 'NumericLiteral'
+		if (changed.has(name) && !fixed) bindings.delete(name)
+	}
+
+	const object = resolveExpression(collections, bindings)
+	if (object.type !== 'ObjectExpression') return { declared, partial: true, exportsCollections }
+
+	// What `collections` holds by the time Astro reads it may be more than the declaration says.
+	let partial = outOfSight || changed.has('collections')
+	for (const prop of object.properties) {
+		// A spread, a method or a computed key that is not a string (`[name]: …` is not the name
+		// it spells) hides a name.
+		const name = prop.type !== 'ObjectProperty'
+			? null
+			: !prop.computed && prop.key.type === 'NumericLiteral'
+			? String(prop.key.value)
+			: staticKeyName(prop)
+		if (prop.type !== 'ObjectProperty' || name === null) {
+			partial = true
+			continue
+		}
+		declared.push({ name, ...readDeclaredLoader(prop.value, bindings) })
+	}
+	return { declared, partial, exportsCollections }
+}
+
+/** Calls that leave what they are handed as it was: the loaders' own, and a read of the keys. */
+function leavesArgumentsAlone(callee: t.Node): boolean {
+	if (callee.type === 'Identifier') return callee.name === 'glob' || callee.name === 'file' || isDefineCollectionCallee(callee)
+	return callee.type === 'MemberExpression' && !callee.computed
+		&& callee.object.type === 'Identifier' && callee.object.name === 'Object'
+		&& callee.property.type === 'Identifier' && callee.property.name === 'keys'
+}
+
+/**
+ * Names whose value something in the file may change after declaring it. Changing is being
+ * the object of an assignment, an update or a `delete` (`blog.loader = …`), or being handed
+ * to a call other than the loaders' own (`Object.assign(blog, …)`, `tweak({ blog })`). A
+ * name changes with the one that was read out of it or holds it
+ * (`const posts = blog; posts.loader = …`). Reading is not changing: `OPTIONS.base` on its
+ * own, a type query, an export and `Object.keys(…)` leave a name as it was declared.
+ */
+function namesChangedAfterDeclaration(ast: t.File): Set<string> {
+	const changed = new Set<string>()
+	/** A name → the names its value was read out of, or holds. */
+	const reaches = new Map<string, Set<string>>()
+
+	/** The names a value is rooted in: `a.b.c` is `a`, `{ a, ...b }` and `[a, b]` are both. */
+	const rootsOf = (node: t.Node | null | undefined, roots: Set<string> = new Set()): Set<string> => {
+		switch (node?.type) {
+			case 'Identifier':
+				roots.add(node.name)
+				break
+			case 'MemberExpression':
+			case 'OptionalMemberExpression':
+				rootsOf(node.object, roots)
+				break
+			case 'TSAsExpression':
+			case 'TSSatisfiesExpression':
+			case 'TSNonNullExpression':
+			case 'TSTypeAssertion':
+			case 'ParenthesizedExpression':
+				rootsOf(node.expression, roots)
+				break
+			case 'SpreadElement':
+				rootsOf(node.argument, roots)
+				break
+			case 'ObjectProperty':
+				rootsOf(node.value, roots)
+				break
+			case 'ObjectExpression':
+				for (const prop of node.properties) rootsOf(prop, roots)
+				break
+			case 'ArrayExpression':
+				for (const element of node.elements) rootsOf(element, roots)
+		}
+		return roots
+	}
+	const change = (node: t.Node): void => {
+		for (const name of rootsOf(node)) changed.add(name)
+	}
+	const reach = (names: Iterable<string>, node: t.Node | null | undefined): void => {
+		const roots = rootsOf(node)
+		for (const name of names) reaches.set(name, new Set([...reaches.get(name) ?? [], ...roots]))
+	}
+
+	walkNodes(ast, node => {
+		switch (node.type) {
+			case 'AssignmentExpression':
+				if (node.left.type !== 'Identifier') change(node.left)
+				reach(rootsOf(node.left), node.right)
+				return
+			case 'UpdateExpression':
+				change(node.argument)
+				return
+			case 'UnaryExpression':
+				if (node.operator === 'delete') change(node.argument)
+				return
+			case 'VariableDeclarator': {
+				const names: string[] = []
+				declaredPatternNames(node.id, name => names.push(name))
+				reach(names, node.init)
+				return
+			}
+			case 'CallExpression':
+			case 'OptionalCallExpression':
+			case 'NewExpression':
+				if (!leavesArgumentsAlone(node.callee)) node.arguments.forEach(change)
+		}
+	})
+
+	const pending = [...changed]
+	for (let name = pending.pop(); name !== undefined; name = pending.pop()) {
+		for (const reached of reaches.get(name) ?? []) {
+			if (changed.has(reached)) continue
+			changed.add(reached)
+			pending.push(reached)
+		}
+	}
+	return changed
+}
+
+/**
+ * The key an object member is stored under, or `null` when it cannot be told: a spread, or
+ * a computed key that is not a string (`['loader']` is `loader`; `[key]` could be anything).
+ */
+function staticKeyName(prop: t.ObjectExpression['properties'][number]): string | null {
+	if (prop.type === 'SpreadElement') return null
+	if (prop.computed) return prop.key.type === 'StringLiteral' ? prop.key.value : null
+	return propertyKeyName(prop.key)
+}
+
+/** The loader facts of a {@link DeclaredCollection}, read off the value its `collections` key holds. */
+function readDeclaredLoader(value: t.Node, bindings: Bindings): Omit<DeclaredCollection, 'name'> {
+	const declaration = resolveExpression(value, bindings)
+	if (declaration.type !== 'CallExpression' || !isDefineCollectionCallee(declaration.callee) || !declaration.arguments[0]) return {}
+	const options = resolveExpression(declaration.arguments[0], bindings)
+	if (options.type !== 'ObjectExpression') return {}
+
+	// The last `loader` is the one that counts, and a spread or a key that cannot be read
+	// after it may replace it.
+	let loader: t.Node | 'unknown' | undefined
+	for (const prop of options.properties) {
+		const key = staticKeyName(prop)
+		if (key === null) loader = 'unknown'
+		else if (key === 'loader') loader = prop.type === 'ObjectProperty' ? prop.value : 'unknown'
+	}
+	if (loader === undefined) return { noLoader: true }
+	if (loader === 'unknown') return {}
+
+	const facts: Omit<DeclaredCollection, 'name'> = { hasLoader: true }
+	const call = resolveExpression(loader, bindings)
+	if (call.type !== 'CallExpression' || call.callee.type !== 'Identifier' || !call.arguments[0]) return facts
+	if (call.callee.name === 'file') {
+		const file = extractStaticString(call.arguments[0], bindings)
+		if (file !== undefined) facts.loaderFile = file
+		return facts
+	}
+	if (!isGlobCallee(call.callee)) return facts
+
+	const globOptions = resolveExpression(call.arguments[0], bindings)
+	// A spread or a key that cannot be read may replace either option, so no literal next to one can be trusted.
+	if (globOptions.type !== 'ObjectExpression' || globOptions.properties.some(prop => staticKeyName(prop) === null)) return facts
+	const { base, pattern } = extractGlobLoaderOptions(call, bindings)
+	const namesBase = globOptions.properties.some(prop => staticKeyName(prop) === 'base')
+	// Without a `base`, Astro's glob loads from the project root.
+	if (base !== undefined || !namesBase) facts.loaderBase = base ?? '.'
+	if (pattern !== undefined) facts.loaderPattern = pattern
+	else {
+		// A list of patterns is a union with its `!` members taken out again.
+		const list = globOptions.properties.findLast(prop => staticKeyName(prop) === 'pattern')
+		const elements = list?.type === 'ObjectProperty' ? resolveExpression(list.value, bindings) : undefined
+		const patterns = elements?.type === 'ArrayExpression'
+			? elements.elements.map(element => element ? extractStaticString(element, bindings) : undefined)
+			: []
+		if (patterns.length > 0 && patterns.every(one => one !== undefined)) facts.loaderPatterns = patterns
+	}
+	return facts
 }
 
 /**
