@@ -15,6 +15,32 @@ describe('Astro frontmatter', () => {
 		expect(analysis.imports).toEqual([{ source: 'astro:content' }])
 		expect(analysis.collectionCalls[0]).toMatchObject({ accessor: 'getCollection', collectionName: 'posts' })
 	})
+
+	test('accepts the fence spellings @astrojs/compiler accepts', () => {
+		const body = "import { getCollection } from 'astro:content'\nconst posts = await getCollection('posts')"
+		const sources = {
+			'blank lines before the opening fence': `\n\n---\n${body}\n---\n<h1 />`,
+			'CRLF blank line before the opening fence': `\r\n---\r\n${body.replace('\n', '\r\n')}\r\n---\r\n<h1 />`,
+			'indented opening fence': `   ---\n${body}\n---\n<h1 />`,
+			'whitespace-only lines before the opening fence': `\t\n  \n---\n${body}\n---\n<h1 />`,
+			'trailing spaces after both fences': `---  \n${body}\n--- \t\n<h1 />`,
+			'indented closing fence': `---\n${body}\n  ---\n<h1 />`,
+		}
+
+		for (const [label, source] of Object.entries(sources)) {
+			expect({ label, names: analyzeAstroSource(source).collectionCalls.map(call => call.collectionName) }).toEqual({
+				label,
+				names: ['posts'],
+			})
+		}
+	})
+
+	test('reads no frontmatter when anything but whitespace precedes the opening fence', () => {
+		const body = "import { getCollection } from 'astro:content'\nconst posts = await getCollection('posts')"
+		for (const source of [`<h1>Title</h1>\n---\n${body}\n---\n`, `----\n${body}\n---\n`, `---const a = 1\n${body}\n---\n`]) {
+			expect(analyzeAstroSource(source)).toEqual({ imports: [], collectionCalls: [], collectionBindings: [] })
+		}
+	})
 })
 
 describe('Astro content imports and calls', () => {

@@ -85,28 +85,26 @@ function childNodes(node: t.Node): t.Node[] {
 	return children
 }
 
-/** Extract frontmatter only when the opening fence is the first line, after an optional BOM. */
-function extractAstroFrontmatter(source: string): string | null {
-	const fenceStart = source.charCodeAt(0) === 0xFEFF ? 1 : 0
-	if (source.slice(fenceStart, fenceStart + 3) !== '---') return null
+/** Matches the opening fence: an optional BOM, any leading whitespace, `---`, then the end of that line. */
+const OPENING_FENCE = /^﻿?\s*---[ \t]*\r?\n/
 
-	let codeStart = fenceStart + 3
-	if (source.slice(codeStart, codeStart + 2) === '\r\n') {
-		codeStart += 2
-	} else if (source.charCodeAt(codeStart) === 10) {
-		codeStart++
-	} else {
-		return null
-	}
+/**
+ * Extract the frontmatter of an Astro component.
+ *
+ * Mirrors `@astrojs/compiler` on the fences it accepts: blank lines or indentation before the
+ * opening `---`, and spaces or tabs around either fence. Anything other than whitespace before
+ * the opening fence means there is no frontmatter to read.
+ */
+function extractAstroFrontmatter(source: string): string | null {
+	const opening = OPENING_FENCE.exec(source)
+	if (!opening) return null
+	const codeStart = opening[0].length
 
 	let lineStart = codeStart
 	while (lineStart <= source.length) {
 		const newline = source.indexOf('\n', lineStart)
-		const rawLineEnd = newline === -1 ? source.length : newline
-		const lineEnd = rawLineEnd > lineStart && source.charCodeAt(rawLineEnd - 1) === 13
-			? rawLineEnd - 1
-			: rawLineEnd
-		if (source.slice(lineStart, lineEnd) === '---') {
+		const lineEnd = newline === -1 ? source.length : newline
+		if (source.slice(lineStart, lineEnd).trim() === '---') {
 			let codeEnd = lineStart
 			if (codeEnd > codeStart && source.charCodeAt(codeEnd - 1) === 10) {
 				codeEnd--
