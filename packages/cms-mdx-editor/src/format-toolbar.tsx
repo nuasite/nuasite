@@ -2,8 +2,12 @@
  * Rich-text toolbar shared by the body editor and the nested slot editor. Reflects
  * and toggles inline/block formatting on the bound Milkdown editor; optionally
  * surfaces an image button (opens the media library) and an "insert component"
- * button (body editor only). The nested slot editor passes neither, matching the
+ * button (body editor only). The nested slot editor offers neither, matching the
  * original mini-editor's formatting-only toolbar.
+ *
+ * "Edit image" appears in both whenever an image is selected: alt text and caption
+ * of an image already in the text, plus "Replace image" when a media source is
+ * given. Without one, the alt and caption are still editable.
  */
 import { type Editor, editorViewCtx } from '@milkdown/core'
 import {
@@ -23,8 +27,18 @@ import { useEffect, useState } from 'react'
 import { ImagePopover } from './image-popover'
 import { LinkPopover } from './link-popover'
 import { MediaLibrary } from './media-library'
+import { mediaPreviewSrc } from './media-preview'
 import type { MediaContext, MediaSource } from './media-source'
-import { type ActiveFormats, defaultActiveFormats, isInListType, removeLinkMark, setupFormatTracking, toggleHeading } from './milkdown-utils'
+import {
+	type ActiveFormats,
+	defaultActiveFormats,
+	isInListType,
+	removeLinkMark,
+	type SelectedImage,
+	setupFormatTracking,
+	toggleHeading,
+	updateImage,
+} from './milkdown-utils'
 import { setListStyleCommand } from './styled-list-plugin'
 import { insertYoutubeCommand } from './youtube-plugin'
 import { YoutubePopover } from './youtube-popover'
@@ -85,7 +99,18 @@ export interface FormatToolbarProps {
 	mediaContext?: MediaContext
 	/** Upload field the image is filed under (e.g. 'body'). */
 	field?: string
+	/**
+	 * Offer "Insert image" when `media` is given. The slot editor turns it off: it passes `media`
+	 * only so an existing image can be previewed and replaced. Defaults to `true`.
+	 */
+	allowImageInsert?: boolean
 	onInsertComponent?: () => void
+}
+
+/** An existing image being edited, and the file it will point at once saved. */
+interface ImageEdit {
+	image: SelectedImage
+	src: string
 }
 
 // The toolbar root is the header of the body editor's flex column (`mdx-body-editor`):
@@ -155,12 +180,14 @@ function Btn({ active, title, onClick, style, children }: {
 	)
 }
 
-export function FormatToolbar({ editor, listStyles, media, mediaContext, field, onInsertComponent }: FormatToolbarProps) {
+export function FormatToolbar({ editor, listStyles, media, mediaContext, field, allowImageInsert = true, onInsertComponent }: FormatToolbarProps) {
 	const formats = useFormatTracking(editor)
 	const [linkOpen, setLinkOpen] = useState(false)
-	const [mediaOpen, setMediaOpen] = useState(false)
+	/** What a pick in the media library does: insert a new image, or replace the one being edited. */
+	const [mediaPurpose, setMediaPurpose] = useState<'insert' | 'replace' | null>(null)
 	const [youtubeOpen, setYoutubeOpen] = useState(false)
 	const [pendingImage, setPendingImage] = useState<{ url: string; alt: string } | null>(null)
+	const [imageEdit, setImageEdit] = useState<ImageEdit | null>(null)
 	const disabled = editor === null
 	const hasListStyles = (listStyles?.length ?? 0) > 0
 	const inList = formats.bulletList || formats.orderedList
@@ -172,6 +199,31 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 		const view = editor.ctx.get(editorViewCtx)
 		view.focus()
 		editor.action(callCommand(formats.link ? updateLinkCommand.key : toggleLinkCommand.key, { href: url }))
+	}
+
+	// Moving the selection off the image (or onto another one) abandons the edit, so what was typed
+	// can never land on an image other than the one it was opened for.
+	const selectedImage = formats.image
+	const editedImage = imageEdit?.image ?? null
+	useEffect(() => {
+		if (editedImage === null) return
+		if (selectedImage === null || selectedImage.pos !== editedImage.pos || selectedImage.src !== editedImage.src) setImageEdit(null)
+	}, [editedImage, selectedImage])
+
+	// Focus goes back to the editor either way: the slot editor reports its content on blur, and
+	// the popover's input took the focus away before the image changed.
+	const saveImage = (alt: string, caption: string) => {
+		const edit = imageEdit
+		setImageEdit(null)
+		if (!editor || !edit) return
+		const view = editor.ctx.get(editorViewCtx)
+		updateImage(view, edit.image, { src: edit.src, alt, title: caption })
+		view.focus()
+	}
+
+	const cancelImageEdit = () => {
+		setImageEdit(null)
+		editor?.ctx.get(editorViewCtx).focus()
 	}
 
 	const removeLink = () => {
@@ -236,7 +288,18 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 				<Btn active={youtubeOpen} title="Insert YouTube" onClick={() => !disabled && setYoutubeOpen(v => !v)}>YouTube</Btn>
 				<span style={sep} />
 				<Btn active={formats.link || linkOpen} title="Link" onClick={() => !disabled && setLinkOpen(v => !v)}>🔗 Link</Btn>
-				{media ? <Btn title="Insert image" onClick={() => !disabled && setMediaOpen(true)}>🖼 Image</Btn> : null}
+				{media && allowImageInsert ? <Btn title="Insert image" onClick={() => !disabled && setMediaPurpose('insert')}>🖼 Image</Btn> : null}
+				{selectedImage
+					? (
+						<Btn
+							active={imageEdit !== null}
+							title="Edit the alt text, caption or file of the selected image"
+							onClick={() => setImageEdit({ image: selectedImage, src: selectedImage.src })}
+						>
+							Edit image
+						</Btn>
+					)
+					: null}
 				{onInsertComponent
 					? (
 						<>
@@ -277,11 +340,31 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 				)
 				: null}
 
+			{imageEdit
+				? (
+					<div style={{ padding: '0 6px' }}>
+						<ImagePopover
+							key={imageEdit.image.pos}
+							mode="edit"
+							initialAlt={imageEdit.image.alt}
+							initialCaption={imageEdit.image.title}
+							previewSrc={mediaPreviewSrc(media, imageEdit.src, mediaContext)}
+							onReplace={media ? () => setMediaPurpose('replace') : undefined}
+							onApply={saveImage}
+							onClose={cancelImageEdit}
+						/>
+					</div>
+				)
+				: null}
+
 			{pendingImage
 				? (
 					<div style={{ padding: '0 6px' }}>
 						<ImagePopover
+							mode="insert"
 							initialAlt={pendingImage.alt}
+							initialCaption=""
+							previewSrc={mediaPreviewSrc(media, pendingImage.url, mediaContext)}
 							onApply={(alt, caption) => {
 								const { url } = pendingImage
 								setPendingImage(null)
@@ -293,7 +376,7 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 				)
 				: null}
 
-			{mediaOpen && media
+			{mediaPurpose && media
 				? (
 					<MediaLibrary
 						media={media}
@@ -301,10 +384,13 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 						field={field}
 						accept="image/*"
 						onSelect={(url, alt) => {
-							setMediaOpen(false)
-							if (editor) setPendingImage({ url, alt: alt ?? '' })
+							setMediaPurpose(null)
+							// A replacement keeps the alt and caption already in the popover: they describe this
+							// usage, and the author swapping the file has usually not changed what it shows.
+							if (mediaPurpose === 'replace') setImageEdit(edit => (edit ? { ...edit, src: url } : edit))
+							else if (editor) setPendingImage({ url, alt: alt ?? '' })
 						}}
-						onClose={() => setMediaOpen(false)}
+						onClose={() => setMediaPurpose(null)}
 					/>
 				)
 				: null}

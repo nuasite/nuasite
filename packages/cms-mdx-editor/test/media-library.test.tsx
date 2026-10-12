@@ -626,3 +626,141 @@ describe('MediaLibrary — filtering a paged listing', () => {
 		expect(itemIds(host)).toEqual(['spec.pdf', 'c.pdf'])
 	})
 })
+
+describe('MediaLibrary — default alt text', () => {
+	function editable(filename: string, annotation?: string): MediaItem {
+		return { ...mediaItem(filename), annotation, annotationEditable: true, thumbnailUrl: `https://cdn.example.com/thumb/${filename}` }
+	}
+
+	/** A source that stores annotations, with a scripted answer per call. */
+	function annotatingSource(
+		items: MediaItem[],
+		answer: () => Promise<{ success: boolean; error?: string }> = () => Promise.resolve({ success: true }),
+	) {
+		const updates: Array<{ id: string; annotation: string }> = []
+		const fake = fakeSource({ '': paginate([items]) }, {
+			updateMediaAnnotation(id, annotation) {
+				updates.push({ id, annotation })
+				return answer()
+			},
+		})
+		return { ...fake, updates }
+	}
+
+	const altAction = (host: HTMLElement, id: string): HTMLButtonElement | null => host.querySelector(`button[data-cms-media-alt="${id}"]`)
+	const annotationInput = (host: HTMLElement): HTMLInputElement => {
+		const input = host.querySelector('input[placeholder="Describe the image for screen readers"]')
+		if (!(input instanceof HTMLInputElement)) throw new Error('no annotation input')
+		return input
+	}
+
+	async function openAlt(host: HTMLElement, id: string): Promise<void> {
+		const button = altAction(host, id)
+		if (button === null) throw new Error(`no alt action for ${id}`)
+		await click(button)
+	}
+
+	async function selectItem(host: HTMLElement, id: string): Promise<void> {
+		const tile = host.querySelector(`[data-cms-media-item="${id}"]`)
+		if (!(tile instanceof HTMLElement)) throw new Error(`no tile ${id}`)
+		await click(tile)
+	}
+
+	test('is offered only for items that say so, and only when the source can store it', async () => {
+		const items = [editable('r2.png'), mediaItem('repo.png')]
+		const withUpdate = await mount({ media: annotatingSource(items).source })
+		expect(altAction(withUpdate, 'r2.png')).not.toBeNull()
+		expect(altAction(withUpdate, 'repo.png')).toBeNull()
+		await unmount()
+
+		const withoutUpdate = await mount({ media: fakeSource({ '': paginate([items]) }).source })
+		expect(altAction(withoutUpdate, 'r2.png')).toBeNull()
+	})
+
+	test('is not offered for a document, which has no alt text', async () => {
+		const pdf: MediaItem = { ...mediaItem('report.pdf', 'application/pdf'), annotationEditable: true }
+		const host = await mount({ media: annotatingSource([pdf]).source })
+		expect(altAction(host, 'report.pdf')).toBeNull()
+	})
+
+	test('opens on a preview, the filename and the stored text — without inserting the image', async () => {
+		const selected: string[] = []
+		const host = await mount({ media: annotatingSource([editable('team.png', 'The team')]).source, onSelect: url => selected.push(url) })
+		await openAlt(host, 'team.png')
+
+		const panel = host.querySelector('[data-cms-media-annotation="team.png"]')
+		expect(panel?.querySelector('img')?.getAttribute('src')).toBe('https://cdn.example.com/thumb/team.png')
+		expect(panel?.textContent).toContain('team.png')
+		expect(annotationInput(host).value).toBe('The team')
+		expect(itemIds(host)).toEqual([])
+		expect(selected).toEqual([])
+	})
+
+	test('saves the trimmed text, shows progress, and prefills it on the next insert', async () => {
+		let resolveSave: (value: { success: boolean }) => void = () => {}
+		const fake = annotatingSource([editable('team.png')], () => new Promise(resolve => (resolveSave = resolve)))
+		const selected: Array<{ url: string; alt?: string }> = []
+		const host = await mount({ media: fake.source, onSelect: (url, alt) => selected.push({ url, alt }) })
+
+		await openAlt(host, 'team.png')
+		await typeInto(annotationInput(host), '  The whole team  ')
+		await clickLabelled(host, 'Save')
+		expect(buttonLabelled(host, 'Saving…')).not.toBeNull()
+		expect(fake.updates).toEqual([{ id: 'team.png', annotation: 'The whole team' }])
+
+		resolveSave({ success: true })
+		await settle()
+		expect(itemIds(host)).toEqual(['team.png'])
+
+		await selectItem(host, 'team.png')
+		expect(selected).toEqual([{ url: '/uploads/team.png', alt: 'The whole team' }])
+	})
+
+	test('keeps the panel open with the error when the save fails', async () => {
+		const fake = annotatingSource([editable('team.png')], () => Promise.resolve({ success: false, error: 'Asset not found' }))
+		const host = await mount({ media: fake.source })
+
+		await openAlt(host, 'team.png')
+		await typeInto(annotationInput(host), 'The team')
+		await clickLabelled(host, 'Save')
+
+		expect(host.textContent).toContain('Asset not found')
+		expect(annotationInput(host).value).toBe('The team')
+		expect(buttonLabelled(host, 'Save')).not.toBeNull()
+	})
+
+	test('shows a thrown error too', async () => {
+		const fake = annotatingSource([editable('team.png')], () => Promise.reject(new Error('Network down')))
+		const host = await mount({ media: fake.source })
+
+		await openAlt(host, 'team.png')
+		await clickLabelled(host, 'Save')
+
+		expect(host.textContent).toContain('Network down')
+	})
+
+	test('Cancel goes back to the grid without saving', async () => {
+		const fake = annotatingSource([editable('team.png', 'Kept')])
+		const host = await mount({ media: fake.source })
+
+		await openAlt(host, 'team.png')
+		await typeInto(annotationInput(host), 'Discarded')
+		await clickLabelled(host, 'Cancel')
+
+		expect(fake.updates).toEqual([])
+		expect(itemIds(host)).toEqual(['team.png'])
+	})
+
+	test('an empty annotation is inserted as an empty alt; a missing one falls back to the filename', async () => {
+		const selected: Array<string | undefined> = []
+		const host = await mount({
+			media: fakeSource({ '': paginate([[editable('decorative.png', ''), mediaItem('plain.png')]]) }).source,
+			onSelect: (_url, alt) => selected.push(alt),
+		})
+
+		await selectItem(host, 'decorative.png')
+		await selectItem(host, 'plain.png')
+
+		expect(selected).toEqual(['', 'plain.png'])
+	})
+})

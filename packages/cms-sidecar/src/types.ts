@@ -90,6 +90,10 @@ export interface CreateFolderBody {
 	folder: string
 }
 
+export interface UpdateMediaAnnotationBody {
+	annotation: string
+}
+
 /** Parsed `GET …/entries` query. */
 export interface EntriesQuery {
 	/** "slug,title" | "*" ; absent = light header (slug/title/draft/pathname/sourcePath), never the body. */

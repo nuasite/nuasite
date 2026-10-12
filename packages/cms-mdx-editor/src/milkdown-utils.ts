@@ -7,6 +7,16 @@
 import { type Editor, editorViewCtx } from '@milkdown/core'
 import type { EditorView } from '@milkdown/prose/view'
 
+/** The image node the selection covers exactly — a click on an inline image selects the node itself. */
+export interface SelectedImage {
+	pos: number
+	src: string
+	alt: string
+	title: string
+}
+
+export type ImageAttrs = Omit<SelectedImage, 'pos'>
+
 export interface ActiveFormats {
 	bold: boolean
 	italic: boolean
@@ -18,6 +28,7 @@ export interface ActiveFormats {
 	listStyle: string | null
 	blockquote: boolean
 	heading: number | null
+	image: SelectedImage | null
 }
 
 export const defaultActiveFormats: ActiveFormats = {
@@ -31,6 +42,7 @@ export const defaultActiveFormats: ActiveFormats = {
 	listStyle: null,
 	blockquote: false,
 	heading: null,
+	image: null,
 }
 
 /** Detect active inline/block formats at the current selection. */
@@ -90,7 +102,41 @@ export function getActiveFormats(view: EditorView): ActiveFormats {
 		heading = typeof level === 'number' ? level : null
 	}
 
-	return { bold, italic, strikethrough, link, linkHref, bulletList, orderedList, listStyle, blockquote, heading }
+	return { bold, italic, strikethrough, link, linkHref, bulletList, orderedList, listStyle, blockquote, heading, image: getSelectedImage(view) }
+}
+
+function getSelectedImage(view: EditorView): SelectedImage | null {
+	const { doc, selection } = view.state
+	const node = doc.nodeAt(selection.from)
+	if (node === null || node.type.name !== 'image' || selection.to - selection.from !== node.nodeSize) return null
+	return { pos: selection.from, src: stringAttr(node.attrs.src), alt: stringAttr(node.attrs.alt), title: stringAttr(node.attrs.title) }
+}
+
+function stringAttr(value: unknown): string {
+	return typeof value === 'string' ? value : ''
+}
+
+/**
+ * Rewrite the attributes of the image at `image.pos`, leaving everything around it as it is.
+ * Does nothing when that position no longer holds the same image — the document changed while the
+ * image was being edited, and writing to whatever sits there now would hit the wrong one.
+ *
+ * Attribute steps rather than a node replacement, so the node selection survives the edit.
+ */
+export function updateImage(view: EditorView, image: SelectedImage, attrs: ImageAttrs): boolean {
+	const node = view.state.doc.nodeAt(image.pos)
+	if (node === null || node.type.name !== 'image' || stringAttr(node.attrs.src) !== image.src) return false
+	const tr = view.state.tr
+		.setNodeAttribute(image.pos, 'src', attrs.src)
+		.setNodeAttribute(image.pos, 'alt', attrs.alt)
+		.setNodeAttribute(image.pos, 'title', attrs.title)
+	view.dispatch(tr)
+	return true
+}
+
+function imagesEqual(a: SelectedImage | null, b: SelectedImage | null): boolean {
+	if (a === null || b === null) return a === b
+	return a.pos === b.pos && a.src === b.src && a.alt === b.alt && a.title === b.title
 }
 
 /** Whether the current selection is inside a list of the given node-type name. */
@@ -152,6 +198,7 @@ function formatsEqual(a: ActiveFormats, b: ActiveFormats): boolean {
 		&& a.listStyle === b.listStyle
 		&& a.blockquote === b.blockquote
 		&& a.heading === b.heading
+		&& imagesEqual(a.image, b.image)
 }
 
 /**

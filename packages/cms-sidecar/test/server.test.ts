@@ -780,6 +780,68 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		}
 	})
 
+	test('PATCH /media/:id is 501 when the adapter stores no annotations', async () => {
+		const { server } = await freshServer()
+		const res = await call(server, 'PATCH', `/media/${encodeURIComponent('photos/pic.png')}`, { annotation: 'A team photo' })
+		expect(res.status).toBe(501)
+		expect((await jsonOf<ApiError>(res)).code).toBe('unsupported')
+	})
+
+	test('PATCH /media/:id hands the decoded id and the annotation to the adapter, an empty one included', async () => {
+		const updates: Array<{ id: string; annotation: string }> = []
+		const { server } = await freshServerWithAdapter(() => ({
+			list: () => Promise.resolve({ items: [], folders: [], hasMore: false }),
+			upload: () => Promise.resolve({ success: false }),
+			delete: () => Promise.resolve({ success: true }),
+			updateAnnotation: (id, annotation) => {
+				updates.push({ id, annotation })
+				if (id === 'missing.png') return Promise.resolve({ success: false, error: MEDIA_NOT_FOUND })
+				if (id === 'broken.png') return Promise.resolve({ success: false, error: 'No such storage' })
+				return Promise.resolve({ success: true })
+			},
+		}))
+
+		const ok = await call(server, 'PATCH', `/media/${encodeURIComponent('photos/pic.png')}`, { annotation: '' })
+		expect(ok.status).toBe(200)
+		expect(await jsonOf<{ success: boolean }>(ok)).toEqual({ success: true })
+		expect(updates).toEqual([{ id: 'photos/pic.png', annotation: '' }])
+
+		const invalid = await call(server, 'PATCH', '/media/pic.png', { annotation: 42 })
+		expect(invalid.status).toBe(400)
+		expect(updates).toHaveLength(1)
+
+		const failed = await call(server, 'PATCH', '/media/broken.png', { annotation: 'x' })
+		expect(failed.status).toBe(500)
+		expect((await jsonOf<ApiError>(failed)).error).toBe('No such storage')
+
+		const missing = await call(server, 'PATCH', '/media/missing.png', { annotation: 'x' })
+		expect(missing.status).toBe(404)
+
+		expect((await call(server, 'PATCH', '/media/pic.png', null)).status).toBe(400)
+	})
+
+	test('a media id with an unencoded slash is not found, rather than acting on its first segment', async () => {
+		const updates: string[] = []
+		const deletes: string[] = []
+		const { server } = await freshServerWithAdapter(() => ({
+			list: () => Promise.resolve({ items: [], folders: [], hasMore: false }),
+			upload: () => Promise.resolve({ success: false }),
+			delete: id => {
+				deletes.push(id)
+				return Promise.resolve({ success: true })
+			},
+			updateAnnotation: id => {
+				updates.push(id)
+				return Promise.resolve({ success: true })
+			},
+		}))
+
+		expect((await call(server, 'PATCH', '/media/photos/pic.png', { annotation: 'x' })).status).toBe(404)
+		expect((await call(server, 'DELETE', '/media/photos/pic.png')).status).toBe(404)
+		expect(updates).toEqual([])
+		expect(deletes).toEqual([])
+	})
+
 	test('media list merges the project scan on ?includeProjectImages, minus the uploads dir', async () => {
 		const { server, root } = await freshServer()
 		await writeProjectImages(root, { 'public/assets/hero.png': PNG, 'src/assets/logo.png': PNG })

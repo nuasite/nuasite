@@ -20,5 +20,6 @@ export type {
 	RemoveArrayItemBody,
 	RenameEntryBody,
 	UpdateEntryBody,
+	UpdateMediaAnnotationBody,
 } from './types'
 export { STATUS_BY_CODE } from './types'

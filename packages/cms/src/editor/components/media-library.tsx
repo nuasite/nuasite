@@ -94,7 +94,8 @@ export function MediaLibrary() {
 	const handleSelectImage = useCallback(
 		(item: MediaItem) => {
 			if (insertCallback) {
-				const alt = item.annotation || item.filename || 'Image'
+				// `??`, not `||`: an annotation of '' is a deliberately empty alt.
+				const alt = item.annotation ?? (item.filename || 'Image')
 				insertCallback(item.url, alt)
 				handleClose()
 			}

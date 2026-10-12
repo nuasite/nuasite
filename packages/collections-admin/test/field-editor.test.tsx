@@ -27,6 +27,7 @@ const noopClient: CmsClient = {
 	mediaAssetUrl: (path) => `/cms/v1/asset?path=${encodeURIComponent(path)}`,
 	deleteMedia: () => Promise.reject(new Error('unused')),
 	createFolder: () => Promise.reject(new Error('unused')),
+	updateMediaAnnotation: () => Promise.reject(new Error('unused')),
 }
 
 const ctx: EditorContext = { client: noopClient, collection: 'blog', slug: 'hello' }

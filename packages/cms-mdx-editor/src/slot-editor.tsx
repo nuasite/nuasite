@@ -7,6 +7,9 @@
  *
  * Emits `onChange` on blur (not per keystroke) so typing never triggers a node-view
  * re-render that would clobber the focused editor.
+ *
+ * `media` serves an image already in the slot (its preview, "Replace image"); the toolbar
+ * still offers no image insertion here.
  */
 import { defaultValueCtx, Editor, rootCtx } from '@milkdown/core'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
@@ -15,11 +18,19 @@ import { gfm } from '@milkdown/preset-gfm'
 import { replaceAll } from '@milkdown/utils'
 import { useEffect, useRef, useState } from 'react'
 import { FormatToolbar } from './format-toolbar'
+import type { MediaContext, MediaSource } from './media-source'
 
 const wrapper: React.CSSProperties = { border: '1px solid #e4e4e7', borderRadius: 6, background: '#fff' }
 const host: React.CSSProperties = { padding: '6px 10px', minHeight: 60, fontSize: 13, lineHeight: 1.5, outline: 'none' }
 
-export function SlotEditor({ value, onChange }: { value: string; onChange: (markdown: string) => void }) {
+export interface SlotEditorProps {
+	value: string
+	onChange: (markdown: string) => void
+	media?: MediaSource
+	mediaContext?: MediaContext
+}
+
+export function SlotEditor({ value, onChange, media, mediaContext }: SlotEditorProps) {
 	const hostRef = useRef<HTMLDivElement>(null)
 	const editorRef = useRef<Editor | null>(null)
 	const [editor, setEditor] = useState<Editor | null>(null)
@@ -75,7 +86,7 @@ export function SlotEditor({ value, onChange }: { value: string; onChange: (mark
 
 	return (
 		<div style={wrapper}>
-			<FormatToolbar editor={editor} />
+			<FormatToolbar editor={editor} media={media} mediaContext={mediaContext} field="children" allowImageInsert={false} />
 			<div
 				ref={hostRef}
 				style={host}

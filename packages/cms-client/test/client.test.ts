@@ -217,6 +217,15 @@ describe('createClient — media + graceful degradation', () => {
 		expect(calls[0]?.method).toBe('DELETE')
 	})
 
+	test('updateMediaAnnotation PATCHes the annotation to /media/:id, encoding a nested id', async () => {
+		const { client, calls } = withFetch([() => jsonResponse({ success: true })])
+		const res = await client.updateMediaAnnotation('photos/team.jpg', '')
+		expect(res.success).toBe(true)
+		expect(calls[0]?.method).toBe('PATCH')
+		expect(calls[0]?.url).toBe(`${API_BASE}/media/photos%2Fteam.jpg`)
+		expect(calls[0]?.body).toEqual({ annotation: '' })
+	})
+
 	test('createFolder POSTs a JSON body to /media (the create-folder branch)', async () => {
 		const { client, calls } = withFetch([() => jsonResponse({ success: true })])
 		const res = await client.createFolder('photos/2026')
