@@ -809,6 +809,40 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(wrongTab.status).toBe(400)
 	})
 
+	test('a filtered listing outside the merge refuses a merged cursor instead of restarting', async () => {
+		// Both phases of a merged listing: the adapter phase (one upload per page) and the project
+		// phase (an offset into the filtered scan). Followed without the flag, or inside a folder,
+		// neither is a position in the listing asked for.
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/a.png': PNG, 'public/assets/b.png': PNG })
+		await uploadPng(server, 'one.png')
+		await uploadPng(server, 'two.png')
+
+		const adapterPhase = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&type=photo&limit=1'))
+		const projectPhase = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&type=photo&limit=3'))
+		expect(adapterPhase.hasMore).toBe(true)
+		expect(projectPhase.hasMore).toBe(true)
+
+		for (const merged of [adapterPhase.cursor!, projectPhase.cursor!]) {
+			const cursor = encodeURIComponent(merged)
+			for (const query of [`type=photo&limit=1&cursor=${cursor}`, `includeProjectImages=true&folder=logos&type=photo&limit=1&cursor=${cursor}`]) {
+				const res = await call(server, 'GET', `/media?${query}`)
+				expect(res.status).toBe(400)
+				expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+			}
+		}
+	})
+
+	test('a filtered listing answers a tampered cursor with a 400, not a storage failure', async () => {
+		const { server } = await freshServer()
+		const forged = Buffer.from(JSON.stringify({ v: 1, adapter: 'not-a-filtered-cursor', type: 'photo' })).toString('base64url')
+
+		const res = await call(server, 'GET', `/media?type=photo&cursor=${forged}`)
+
+		expect(res.status).toBe(400)
+		expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+	})
+
 	test('an unfiltered listing still hands the adapter cursor straight through', async () => {
 		const { server } = await freshServer()
 		await uploadPng(server, 'one.png')

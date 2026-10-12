@@ -4,7 +4,9 @@ import {
 	isUnsafeFolder,
 	listFilteredMedia,
 	listProjectImages,
+	MEDIA_CURSOR_TYPE_MISMATCH,
 	MEDIA_INVALID_FOLDER,
+	MediaCursorError,
 	mediaErrorStatus,
 	parseMediaTypeFilter,
 	parseProjectCmsConfig,
@@ -199,7 +201,8 @@ function cursorType(state: MediaCursorState): MediaTypeFilter {
 	return state.type ?? 'all'
 }
 
-const CURSOR_TYPE_MISMATCH = 'This cursor continues a listing filtered by a different ?type= — start the listing again when the filter changes'
+/** A merged-listing cursor followed somewhere the merge does not run: without the flag, or in a folder. */
+const MERGED_CURSOR_OUTSIDE_MERGE = 'This cursor continues an ?includeProjectImages listing: keep the flag set and drop ?folder when following it'
 
 function encodeMediaCursor(state: MediaCursorState): string {
 	return Buffer.from(JSON.stringify({ v: MEDIA_CURSOR_VERSION, ...state }), 'utf8').toString('base64url')
@@ -1022,7 +1025,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 	): Promise<Response> {
 		const decoded = decodeMediaCursor(rawCursor)
 		if (!decoded.ok) return error('validation', 'Invalid media cursor')
-		if (rawCursor !== undefined && cursorType(decoded.state) !== type) return error('validation', CURSOR_TYPE_MISMATCH)
+		if (rawCursor !== undefined && cursorType(decoded.state) !== type) return error('validation', MEDIA_CURSOR_TYPE_MISMATCH)
 		const { adapter: adapterCursor, project: projectOffset, folders: carriedFolders } = decoded.state
 
 		const items: MediaItem[] = []
@@ -1068,6 +1071,8 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		try {
 			return await answerMedia(method, tail, req, url)
 		} catch (cause) {
+			// A filtered cursor `listFilteredMedia` refused is the caller's mistake, not storage's.
+			if (cause instanceof MediaCursorError) return error('validation', cause.message)
 			// Whatever an adapter throws may spell out a filesystem path, and left uncaught it
 			// is rendered by the runtime's error page. The detail goes to the log instead.
 			console.error('[cms-sidecar] media request failed:', cause)
@@ -1111,9 +1116,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 					// Our own cursor means nothing to the adapter, which would parse it as an
 					// offset of NaN and answer with an empty, hasMore:false page — the library
 					// would look empty. Say what actually went wrong instead.
-					if (cursor !== undefined && decodeMediaCursor(cursor).ok) {
-						return error('validation', 'This cursor continues an ?includeProjectImages listing — keep the flag set and drop ?folder when following it')
-					}
+					if (cursor !== undefined && decodeMediaCursor(cursor).ok) return error('validation', MERGED_CURSOR_OUTSIDE_MERGE)
 					return json(await adapter.list({ limit, cursor, folder }))
 				}
 				// A filtered page ends wherever the source happened to be once the page was full, so
@@ -1122,9 +1125,17 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 				// wrong place in the listing.
 				const decoded = decodeMediaCursor(cursor)
 				if (!decoded.ok) return error('validation', 'Invalid media cursor')
-				if (cursor !== undefined && cursorType(decoded.state) !== type) return error('validation', CURSOR_TYPE_MISMATCH)
+				if (cursor !== undefined && cursorType(decoded.state) !== type) return error('validation', MEDIA_CURSOR_TYPE_MISMATCH)
+				// The cursors minted here carry only `adapter` and `type`. One with a project offset or
+				// the carried root folders comes from the merged listing, and its `adapter` (if any)
+				// is a position in the root's stream: following it here would restart the listing or
+				// answer from another folder's offset.
+				const { adapter: adapterCursor, project, folders: carried } = decoded.state
+				if (cursor !== undefined && (project !== undefined || carried !== undefined || adapterCursor === undefined)) {
+					return error('validation', MERGED_CURSOR_OUTSIDE_MERGE)
+				}
 
-				const page = await listFilteredMedia(options => adapter.list(options), { limit, cursor: decoded.state.adapter, folder, type })
+				const page = await listFilteredMedia(options => adapter.list(options), { limit, cursor: adapterCursor, folder, type })
 				return json({
 					...page,
 					cursor: page.cursor === undefined ? undefined : encodeMediaCursor({ adapter: page.cursor, type }),
