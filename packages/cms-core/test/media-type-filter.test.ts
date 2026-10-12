@@ -5,7 +5,7 @@
  * whenever the source still has matches, and the cursor on it has to be one the source minted, so
  * following it resumes the unfiltered listing exactly where this page left it.
  */
-import type { MediaItem, MediaListOptions, MediaListResult } from '@nuasite/cms-types'
+import { matchesMediaType, type MediaItem, type MediaListOptions, type MediaListResult } from '@nuasite/cms-types'
 import { describe, expect, test } from 'bun:test'
 import { listFilteredMedia, parseMediaTypeFilter } from '../src/media/type-filter'
 
@@ -111,5 +111,23 @@ describe('parseMediaTypeFilter', () => {
 	test('rejects anything else rather than silently listing everything', () => {
 		expect(parseMediaTypeFilter('image')).toBeNull()
 		expect(parseMediaTypeFilter('PHOTO')).toBeNull()
+	})
+})
+
+describe('matchesMediaType', () => {
+	test('reads a content type case-insensitively and without its parameters', () => {
+		expect(matchesMediaType('Image/SVG+XML', 'graphic')).toBe(true)
+		expect(matchesMediaType('image/svg+xml; charset=utf-8', 'graphic')).toBe(true)
+		expect(matchesMediaType('image/svg+xml; charset=utf-8', 'photo')).toBe(false)
+		expect(matchesMediaType('IMAGE/JPEG', 'photo')).toBe(true)
+		expect(matchesMediaType('Application/PDF', 'document')).toBe(true)
+		expect(matchesMediaType('VIDEO/MP4', 'video')).toBe(true)
+	})
+
+	test('files an icon under graphics whichever of its two registered types it was given', () => {
+		for (const type of ['image/x-icon', 'image/vnd.microsoft.icon']) {
+			expect(matchesMediaType(type, 'graphic')).toBe(true)
+			expect(matchesMediaType(type, 'photo')).toBe(false)
+		}
 	})
 })
