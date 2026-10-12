@@ -29,6 +29,11 @@ export interface MediaSource {
 	uploadMedia(file: File, context?: MediaUploadContext): Promise<MediaUploadResult>
 	createFolder?(folder: string): Promise<{ success: boolean; error?: string }>
 	/**
+	 * Replace an item's default alt text. Optional like `createFolder`; the gallery offers the
+	 * edit only when this exists *and* the item says `annotationEditable`.
+	 */
+	updateMediaAnnotation?(id: string, annotation: string): Promise<{ success: boolean; error?: string }>
+	/**
 	 * Loadable URL for a repository file at its runtime path (`/uploads/hero.webp`). Optional: a
 	 * host serving the project from the editor's own origin does not need one — see
 	 * {@link mediaPreviewSrc}, which is the only consumer.

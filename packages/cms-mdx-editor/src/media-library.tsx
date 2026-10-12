@@ -6,9 +6,11 @@
  * inline styles so it renders in any host.
  *
  * Opened from the body/slot toolbar (insert an image into prose) and from `image`
- * props in the block card. Degrades gracefully when the sidecar has no media
- * adapter (`501`): the gallery shows an "unavailable" hint and the manual-URL path
- * stays usable upstream.
+ * props in the block card. An item whose source stores annotations gets a separate
+ * "Alt" action for its default alt text (`MediaAnnotationEditor`), apart from the
+ * tile itself, so editing it never inserts the image. Degrades gracefully when the
+ * sidecar has no media adapter (`501`): the gallery shows an "unavailable" hint and
+ * the manual-URL path stays usable upstream.
  *
  * The listing is paged: each folder is read one `PAGE_SIZE` page at a time and the
  * rest is pulled in by an explicit "Load more".
@@ -22,6 +24,7 @@
  */
 import { filterMediaItems, type MediaFolderItem, type MediaItem, type MediaListResult, type MediaTypeFilter } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { MediaAnnotationEditor } from './media-annotation-editor'
 import { isMediaUnavailableError, type MediaContext, type MediaSource } from './media-source'
 
 /**
@@ -191,8 +194,10 @@ const grid: React.CSSProperties = {
 	padding: 16,
 	overflowY: 'auto',
 }
+const tileCell: React.CSSProperties = { position: 'relative' }
 const tile: React.CSSProperties = {
 	position: 'relative',
+	width: '100%',
 	aspectRatio: '1 / 1',
 	border: '1px solid #e4e4e7',
 	borderRadius: 8,
@@ -205,6 +210,19 @@ const tile: React.CSSProperties = {
 	alignItems: 'center',
 	justifyContent: 'center',
 	gap: 6,
+}
+const altAction: React.CSSProperties = {
+	position: 'absolute',
+	top: 6,
+	right: 6,
+	border: '1px solid #d4d4d8',
+	background: 'rgba(255,255,255,0.92)',
+	borderRadius: 4,
+	padding: '1px 6px',
+	font: 'inherit',
+	fontSize: 11,
+	color: '#3f3f46',
+	cursor: 'pointer',
 }
 const emptyPanel: React.CSSProperties = { padding: 32, textAlign: 'center', color: '#a1a1aa' }
 const pagerBar: React.CSSProperties = {
@@ -264,6 +282,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 	const [errorMsg, setErrorMsg] = useState<string | null>(null)
 	const [showNewFolder, setShowNewFolder] = useState(false)
 	const [newFolderName, setNewFolderName] = useState('')
+	const [annotating, setAnnotating] = useState<MediaItem | null>(null)
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const listingRef = useRef<Listing>(createListing('', 'all'))
 	const mountedRef = useRef(true)
@@ -386,6 +405,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 					url: result.url,
 					filename: result.filename ?? file.name,
 					annotation: result.annotation,
+					annotationEditable: result.annotationEditable,
 					contentType: file.type || 'application/octet-stream',
 					folder: currentFolder || undefined,
 				}
@@ -421,6 +441,13 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 		}
 		setNewFolderName('')
 		setShowNewFolder(false)
+	}
+
+	const updateAnnotation = media.updateMediaAnnotation?.bind(media)
+
+	const annotationSaved = (id: string, annotation: string) => {
+		setItems(prev => prev.map(item => (item.id === id ? { ...item, annotation } : item)))
+		setAnnotating(null)
 	}
 
 	// Applied even when the server already did: it is the same shared predicate, so it is a no-op
@@ -543,7 +570,16 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 					{errorMsg ? <div style={{ fontSize: 12, color: '#dc2626' }}>{errorMsg}</div> : null}
 				</div>
 
-				{loading
+				{annotating && updateAnnotation
+					? (
+						<MediaAnnotationEditor
+							item={annotating}
+							save={annotation => updateAnnotation(annotating.id, annotation)}
+							onSaved={annotation => annotationSaved(annotating.id, annotation)}
+							onCancel={() => setAnnotating(null)}
+						/>
+					)
+					: loading
 					? <div style={emptyPanel}>Loading…</div>
 					: visibleFolders.length === 0 && filteredItems.length === 0
 					? (
@@ -576,32 +612,47 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 								</button>
 							))}
 							{filteredItems.map(item => (
-								<button
-									key={item.id}
-									type="button"
-									style={tile}
-									title={item.filename}
-									data-cms-media-item={item.id}
-									onClick={() => onSelect(item.url, item.annotation || item.filename || 'Image')}
-								>
-									{item.contentType.startsWith('image/')
+								<div key={item.id} style={tileCell}>
+									<button
+										type="button"
+										style={tile}
+										title={item.filename}
+										data-cms-media-item={item.id}
+										// `??`, not `||`: an annotation of '' is a deliberately empty alt.
+										onClick={() => onSelect(item.url, item.annotation ?? (item.filename || 'Image'))}
+									>
+										{item.contentType.startsWith('image/')
+											? (
+												<img
+													src={item.thumbnailUrl ?? item.url}
+													alt={item.annotation || item.filename}
+													// `contain`, not `cover`: this grid exists to tell one asset from another, and a
+													// square crop of a wide photo throws away the part that identifies it.
+													style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+												/>
+											)
+											: <span style={{ fontSize: 30 }}>{item.contentType === 'application/pdf' ? '📄' : '📎'}</span>}
+										<span style={tileCaption}>{item.filename}</span>
+									</button>
+									{item.annotationEditable && updateAnnotation
 										? (
-											<img
-												src={item.thumbnailUrl ?? item.url}
-												alt={item.annotation || item.filename}
-												// `contain`, not `cover`: this grid exists to tell one asset from another, and a
-												// square crop of a wide photo throws away the part that identifies it.
-												style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-											/>
+											<button
+												type="button"
+												style={altAction}
+												title="Edit the default alt text"
+												data-cms-media-alt={item.id}
+												onClick={() => setAnnotating(item)}
+											>
+												Alt
+											</button>
 										)
-										: <span style={{ fontSize: 30 }}>{item.contentType === 'application/pdf' ? '📄' : '📎'}</span>}
-									<span style={tileCaption}>{item.filename}</span>
-								</button>
+										: null}
+								</div>
 							))}
 						</div>
 					)}
 
-				{!loading && hasMore
+				{!loading && !annotating && hasMore
 					? (
 						<div style={pagerBar}>
 							{loadingMore
