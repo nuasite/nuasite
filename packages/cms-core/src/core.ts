@@ -72,9 +72,10 @@ export interface CmsCore {
 	/**
 	 * Scan all content collections, returning their inferred definitions keyed by name.
 	 *
-	 * The scan carries a report (see {@link CmsCore.collectionScanReport}) unless asked for
-	 * `{ report: false }`. Building one costs a listing per declared collection, so a caller
-	 * that only wants the definitions opts out.
+	 * The scan carries a report (see {@link CmsCore.collectionScanReport}) only when asked for
+	 * `{ report: true }`. Building one costs a listing per declared collection, so it is paid
+	 * only where it is read. A wrapper around this method has to pass `options` on: one that
+	 * drops them leaves its caller without a report, which reads as "not reported".
 	 */
 	scanCollections(options?: { report?: boolean }): Promise<Record<string, CollectionDefinition>>
 	/**
@@ -133,7 +134,7 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 
 	return {
 		scanCollections(options) {
-			return scanCollections(fs, contentDir, parseCache, { report: options?.report ?? true })
+			return scanCollections(fs, contentDir, parseCache, { report: options?.report ?? false })
 		},
 		collectionScanReport,
 		scanComponents() {

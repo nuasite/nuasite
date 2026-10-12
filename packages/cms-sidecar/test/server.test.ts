@@ -985,8 +985,8 @@ describe('cms-sidecar — collection scan report', () => {
 		const { server } = await projectWith(core => ({
 			...core,
 			// Every scan after the first answers for a different project: one without `blog`.
-			scanCollections: async () => {
-				const collections = await core.scanCollections()
+			scanCollections: async options => {
+				const collections = await core.scanCollections(options)
 				if (scans++ > 0) delete collections['blog']
 				return collections
 			},
@@ -1037,8 +1037,8 @@ describe('cms-sidecar — collection scan report', () => {
 	test('a core that edits what its scan returned still reports for that scan', async () => {
 		const { server } = await projectWith(core => ({
 			...core,
-			scanCollections: async () => {
-				const collections = await core.scanCollections()
+			scanCollections: async options => {
+				const collections = await core.scanCollections(options)
 				collections['blog']!.label = 'Články'
 				return collections
 			},

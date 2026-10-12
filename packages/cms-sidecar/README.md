@@ -60,6 +60,10 @@ requests share one scan, but a request that comes after one has finished starts 
 Building it adds a listing per declared collection to that scan. The collection and entry
 routes scan without it and do not pay for it.
 
+`core.scanCollections()` builds no report unless asked for `{ report: true }`. A host that
+wraps the core's `scanCollections` has to pass its argument on: a wrapper that drops it makes
+`/project` answer without a report, which a consumer reads as "not vouched for".
+
 ### What is checked
 
 The report compares the scan with what Astro 6 loads under nua's defaults. `@nuasite/nua`

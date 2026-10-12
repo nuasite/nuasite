@@ -184,9 +184,10 @@ export const collections = { blog: posts, news: posts }
 		const glob = spyOn(nodeFs, 'glob')
 		expect(collectionScanReport(await scanCollections(nodeFs))).toBeUndefined()
 		expect(glob).not.toHaveBeenCalled()
-		// A core hands out the same report for what its own scan returned.
+		// A core hands out the same report for what its own scan returned, when asked for one.
 		const core = createCmsCore(createNodeFs(root))
-		expect(core.collectionScanReport?.(await core.scanCollections())?.unresolved.map(u => u.name)).toEqual(['authors'])
+		expect(core.collectionScanReport?.(await core.scanCollections({ report: true }))?.unresolved.map(u => u.name)).toEqual(['authors'])
+		expect(core.collectionScanReport?.(await core.scanCollections())).toBeUndefined()
 	})
 
 	test('a report that cannot be built does not fail the scan', async () => {
