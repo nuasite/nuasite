@@ -1,4 +1,13 @@
 export { resolveAssetCandidates } from './asset-paths'
+export {
+	analyzeAstroScript,
+	analyzeAstroSource,
+	type AstroCollectionBinding,
+	type AstroContentAccessor,
+	type AstroContentCall,
+	type AstroSourceAnalysis,
+	type AstroSourceImport,
+} from './astro-source-analysis'
 export { checkContent, type CheckContentOptions, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check'
 export {
 	collectionKind,
