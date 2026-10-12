@@ -404,7 +404,7 @@ function assembleCollectionDefinition(
  * When it matches the default `<contentDir>/<name>` location, the canonical
  * default path is returned; otherwise the base path is returned normalized,
  * without the leading `./` and trailing slash, so it is a prefix of each entry's
- * `sourcePath` — except when the base is the project root, which is reported as `.`.
+ * `sourcePath`, except when the base is the project root, which is reported as `.`.
  */
 function getCollectionSourceBasePath(basePath: string, collectionName: string, contentDir: string): string {
 	const defaultCollectionPath = path.join(contentDir, collectionName)
@@ -1046,9 +1046,11 @@ async function scanDataCollection(
 
 /**
  * Normalize a glob loader `base` (`./src/content/x`, `src/content/x/`) into a
- * root-relative path comparable with a collection definition's `path`.
+ * root-relative path comparable with a collection definition's `path`. The project
+ * root comes out as `.`. Entry reads and writes resolve their directory with this too,
+ * so they land where the scan reports a collection.
  */
-function normalizeBasePath(basePath: string): string {
+export function normalizeBasePath(basePath: string): string {
 	return path.normalize(basePath.replace(/^\.[/\\]+/, '')).replace(/[/\\]+$/, '')
 }
 

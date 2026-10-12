@@ -4,10 +4,10 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 // A data collection (JSON/YAML) declared with a glob loader whose `base` is not
-// `<contentDir>/<name>` used to report `path: <contentDir>/<name>` — a directory that need not
-// exist — while its entries' `sourcePath` pointed at the real base. These lock `path` to the
+// `<contentDir>/<name>` used to report `path: <contentDir>/<name>` (a directory that need not
+// exist) while its entries' `sourcePath` pointed at the real base. These lock `path` to the
 // directory that holds the entries, in the spelling the entries' `sourcePath` uses.
-describe('scanCollections — `path` of a collection with a custom loader base', () => {
+describe('scanCollections: `path` of a collection with a custom loader base', () => {
 	let root: string
 
 	beforeEach(async () => {
@@ -218,5 +218,39 @@ ${lines.join('\n')}
 		expect(await exists('src/data/team/bob.json')).toBe(false)
 		// Nothing was written to the default location on the way.
 		expect(await exists('src/content/team')).toBe(false)
+	})
+
+	test('a base spelled with a `..` segment reads and writes where the scan reports it', async () => {
+		await write({
+			'src/data/team/alice.json': '{"name":"Alice"}',
+			'src/content.config.ts': config(['team', '*.json', './src/content/../data/team/']),
+		})
+		const core = createCmsCore(createNodeFs(root))
+
+		const created = await core.createEntry({ collection: 'team', slug: 'bob', frontmatter: { name: 'Bob' }, fileExtension: 'json' })
+		expect(created.success).toBe(true)
+
+		const team = (await core.scanCollections())['team']!
+		expect(created.sourcePath).toBe(path.join(team.path, 'bob.json'))
+		expect((await core.getEntry('team', 'alice'))?.sourcePath).toBe(path.join(team.path, 'alice.json'))
+	})
+
+	test('a collection based at the project root writes there, not into the content dir', async () => {
+		await write({
+			'alice.json': '{"name":"Alice"}',
+			'src/content.config.ts': config(['team', '*.json', './']),
+		})
+		const core = createCmsCore(createNodeFs(root))
+
+		const before = (await core.scanCollections())['team']!
+		expect(before.path).toBe('.')
+		expect(before.entries!.map(e => e.sourcePath)).toEqual(['alice.json'])
+
+		const created = await core.createEntry({ collection: 'team', slug: 'bob', frontmatter: { name: 'Bob' }, fileExtension: 'json' })
+		expect(created.success).toBe(true)
+		expect(created.sourcePath).toBe('bob.json')
+		expect(await exists('bob.json')).toBe(true)
+		expect(await exists('src/content/team')).toBe(false)
+		expect((await core.getEntry('team', 'bob'))?.frontmatter).toEqual({ name: 'Bob' })
 	})
 })
