@@ -427,7 +427,7 @@ interface CollectionRoute {
 /**
  * Map each collection to the route that renders it, by parsing the Astro pages under
  * `src/pages` with {@link scanRouteCollections}. This is the only reliable source for an
- * entry's URL — it comes from the route, not the collection name (a `product` collection
+ * entry's URL: it comes from the route, not the collection name (a `product` collection
  * can live at `/products`, an `faq` collection on a single `/faq` page).
  *
  * - A *dynamic* route (`[...slug].astro`, or a `[slug]/index.astro` directory) renders one
