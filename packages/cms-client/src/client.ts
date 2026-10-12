@@ -271,6 +271,12 @@ export interface CmsClient {
 	deleteMedia(id: string): Promise<{ success: boolean; error?: string }>
 	/** Create an empty media subfolder (sidecar `POST /media` JSON). 501 if the adapter has none. */
 	createFolder(folder: string): Promise<{ success: boolean; error?: string }>
+	/**
+	 * Replace an item's default alt text (`PATCH /media/:id`). Call it only for items listed with
+	 * `annotationEditable` — a server that predates the route, or a source without annotation
+	 * storage, answers 404 / 501. `''` is stored as a deliberately empty alt.
+	 */
+	updateMediaAnnotation(id: string, annotation: string): Promise<{ success: boolean; error?: string }>
 }
 
 /**
@@ -462,6 +468,9 @@ export function createClient(apiBase: string): CmsClient {
 		createFolder(folder) {
 			// A JSON body to `POST /media` is the create-folder branch (multipart = upload).
 			return mutate<{ success: boolean; error?: string }>('/media', 'POST', { folder })
+		},
+		updateMediaAnnotation(id, annotation) {
+			return mutate<{ success: boolean; error?: string }>(`/media/${encodeURIComponent(id)}`, 'PATCH', { annotation })
 		},
 	}
 }

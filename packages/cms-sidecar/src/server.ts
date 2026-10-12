@@ -44,6 +44,7 @@ import {
 	type RenameEntryBody,
 	STATUS_BY_CODE,
 	type UpdateEntryBody,
+	type UpdateMediaAnnotationBody,
 } from './types'
 
 /** Features the sidecar advertises so older/newer clients can degrade gracefully. */
@@ -1144,6 +1145,19 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		if (id !== undefined && method === 'DELETE') {
 			const result = await adapter.delete(id)
 			return result.success ? json({ success: true }) : mediaFailure(result.error ?? 'Delete failed')
+		}
+
+		// PATCH /media/:id  { annotation }
+		if (id !== undefined && method === 'PATCH') {
+			if (!adapter.updateAnnotation) return error('unsupported', 'Annotations are not supported by this adapter')
+			const parsed = await parseJson<UpdateMediaAnnotationBody>(req)
+			if (!parsed.ok) return parsed.response
+			// The body is whatever JSON the caller sent, `null` included.
+			const body: Partial<UpdateMediaAnnotationBody> | null = parsed.value
+			const annotation = body?.annotation
+			if (typeof annotation !== 'string') return error('validation', 'A string "annotation" is required')
+			const result = await adapter.updateAnnotation(id, annotation)
+			return result.success ? json({ success: true }) : mediaFailure(result.error ?? 'Failed to update the annotation')
 		}
 
 		return error('not_found', `No route: ${method} /cms/v1/media${id ? `/${id}` : ''}`)

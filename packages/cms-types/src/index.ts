@@ -606,7 +606,17 @@ export interface MediaItem {
 	/** Optional pre-sized variant for grid rendering; falls back to `url`. */
 	thumbnailUrl?: string
 	filename: string
+	/**
+	 * Default alt text, prefilled when the item is inserted. Absent means none was ever set; `''`
+	 * is a deliberately empty alt (a decorative image) and must not fall back to the filename.
+	 */
 	annotation?: string
+	/**
+	 * The source stores annotations for this item, so `updateAnnotation` can change it. Per item,
+	 * because one listing merges sources that differ — and a client method alone proves nothing
+	 * about the server behind it.
+	 */
+	annotationEditable?: boolean
 	contentType: string
 	width?: number
 	height?: number
@@ -654,6 +664,8 @@ export interface MediaUploadResult {
 	url?: string
 	filename?: string
 	annotation?: string
+	/** See `MediaItem.annotationEditable`. */
+	annotationEditable?: boolean
 	id?: string
 	error?: string
 }
@@ -664,6 +676,12 @@ export interface MediaStorageAdapter {
 	delete(id: string): Promise<{ success: boolean; error?: string }>
 	/** Create an empty folder. Folders are also created implicitly on upload. */
 	createFolder?(folder: string): Promise<{ success: boolean; error?: string }>
+	/**
+	 * Replace an item's default alt text. Only for items listed with `annotationEditable`. Never
+	 * touches content that already uses the item — each usage keeps the alt it was inserted with.
+	 * Fails with `MEDIA_NOT_FOUND` / `MEDIA_INVALID_ID` like `delete` does.
+	 */
+	updateAnnotation?(id: string, annotation: string): Promise<{ success: boolean; error?: string }>
 	/**
 	 * Local filesystem info for direct file serving in dev (bypasses Vite's public dir cache),
 	 * and the marker that tells consumers where inside the project this adapter's files live —
