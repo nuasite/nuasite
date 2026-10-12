@@ -935,8 +935,8 @@ export { type CollectionNavItem, type CollectionNavOptions, type CollectionNavSe
 
 export { nextFreeSlug, slugify } from './slug'
 
-/**
- * The one runtime export of this package: the meaning of `MediaTypeFilter`, which both a server
- * filtering a page and a client filtering one it was handed unfiltered have to read the same way.
- */
+// ============================================================================
+// Media type tabs: see `media-type-filter.ts` for why the server and the galleries share them
+// ============================================================================
+
 export { filterMediaItems, matchesMediaType } from './media-type-filter'
