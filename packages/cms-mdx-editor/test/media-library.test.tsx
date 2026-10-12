@@ -8,7 +8,7 @@
  * Rendered for real (`react-dom/client` + `act` on happy-dom) rather than to static
  * markup: everything here lives in effects and state.
  */
-import type { MediaItem, MediaListResult, MediaUploadResult } from '@nuasite/cms-types'
+import { filterMediaItems, type MediaItem, type MediaListResult, type MediaTypeFilter, type MediaUploadResult } from '@nuasite/cms-types'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -33,6 +33,7 @@ interface ListCall {
 	folder?: string
 	cursor?: string
 	limit?: number
+	type?: MediaTypeFilter
 }
 
 function mediaItem(filename: string, contentType = 'image/png'): MediaItem {
@@ -80,6 +81,38 @@ function fakeSource(pages: Record<string, MediaListResult[]>, overrides: Partial
 		},
 		release() {
 			held.clear()
+			for (const resolve of pending.splice(0)) resolve()
+		},
+	}
+}
+
+/**
+ * A source that honours `?type=`: it filters each page and reports `appliedType`, which is how a
+ * server tells the gallery there is nothing left for it to filter or drain. A filtered page is
+ * filtered as it stands, so a page with no match comes back empty with more to come: what a
+ * server that bounds its work per page answers for a sparse tab. `hold` keeps the given listing
+ * call (1-based) in flight until `release()`.
+ */
+function filteringSource(pages: MediaListResult[], hold?: number) {
+	const calls: ListCall[] = []
+	const pending: Array<() => void> = []
+	const source: MediaSource = {
+		listMedia(options = {}) {
+			calls.push({ ...options })
+			const index = options.cursor === undefined ? 0 : Number.parseInt(options.cursor, 10)
+			const page = pages[index]
+			if (page === undefined) return Promise.reject(new Error(`no page ${index}`))
+			const type = options.type ?? 'all'
+			const result = type === 'all' ? page : { ...page, items: filterMediaItems(page.items, type), appliedType: type }
+			if (calls.length !== hold) return Promise.resolve(result)
+			return new Promise<MediaListResult>(resolve => pending.push(() => resolve(result)))
+		},
+		uploadMedia: () => Promise.reject(new Error('unused')),
+	}
+	return {
+		source,
+		calls,
+		release() {
 			for (const resolve of pending.splice(0)) resolve()
 		},
 	}
@@ -185,11 +218,11 @@ describe('MediaLibrary — paging', () => {
 		const host = await mount({ media: fake.source })
 
 		expect(itemIds(host)).toEqual(['a.png', 'b.png'])
-		expect(fake.calls[0]).toEqual({ folder: undefined, cursor: undefined, limit: PAGE_SIZE })
+		expect(fake.calls[0]).toEqual({ folder: undefined, cursor: undefined, limit: PAGE_SIZE, type: 'all' })
 
 		await click(loadMore(host))
 		expect(itemIds(host)).toEqual(['a.png', 'b.png', 'c.png'])
-		expect(fake.calls[1]).toEqual({ folder: undefined, cursor: '1', limit: PAGE_SIZE })
+		expect(fake.calls[1]).toEqual({ folder: undefined, cursor: '1', limit: PAGE_SIZE, type: 'all' })
 
 		await click(loadMore(host))
 		expect(itemIds(host)).toEqual(['a.png', 'b.png', 'c.png', 'd.png'])
@@ -231,12 +264,12 @@ describe('MediaLibrary — paging', () => {
 		await click(folderTile)
 
 		expect(itemIds(host)).toEqual(['p1.png'])
-		expect(fake.calls.at(-1)).toEqual({ folder: 'photos', cursor: undefined, limit: PAGE_SIZE })
+		expect(fake.calls.at(-1)).toEqual({ folder: 'photos', cursor: undefined, limit: PAGE_SIZE, type: 'all' })
 		expect(buttonLabelled(host, 'Load more')).toBeNull()
 
 		// Back to the root: page 1 again, not the cursor the root listing left off at.
 		await clickLabelled(host, 'root')
-		expect(fake.calls.at(-1)).toEqual({ folder: undefined, cursor: undefined, limit: PAGE_SIZE })
+		expect(fake.calls.at(-1)).toEqual({ folder: undefined, cursor: undefined, limit: PAGE_SIZE, type: 'all' })
 		expect(itemIds(host)).toEqual(['a.png'])
 	})
 
@@ -299,10 +332,12 @@ describe('MediaLibrary — paging', () => {
 		expect(buttonLabelled(host, 'Load more')).toBeNull()
 		expect(host.textContent).toContain('Stopped loading this folder early')
 
-		// A filter would otherwise drain — the stall must hold it too.
+		// A tab restarts the listing (the server may filter it), and the fresh one stalls the same
+		// way on its own second page — a drain must not resume past a cursor that does not advance.
 		await clickLabelled(host, 'Photos')
-		await settle()
-		expect(calls).toHaveLength(2)
+		await settleUntilQuiet(calls)
+		expect(calls).toHaveLength(4)
+		expect(host.textContent).toContain('Stopped loading this folder early')
 	})
 
 	test('caps the pages it follows when the server keeps minting fresh cursors', async () => {
@@ -317,11 +352,12 @@ describe('MediaLibrary — paging', () => {
 		}
 		const host = await mount({ media: source })
 
-		// A filter drains, and this server would keep the drain going forever.
+		// A tab restarts the listing, and this server would keep the drain going forever. The cap is
+		// per listing, so the restart's own page 1 sits on top of the first listing's single page.
 		await clickLabelled(host, 'Photos')
 		await settleUntilQuiet(calls)
 
-		expect(calls).toHaveLength(MAX_PAGES)
+		expect(calls).toHaveLength(MAX_PAGES + 1)
 		expect(host.textContent).toContain('Stopped loading this folder early')
 	})
 
@@ -414,7 +450,7 @@ describe('MediaLibrary — filtering a paged listing', () => {
 		expect(buttonLabelled(host, 'Load more')).toBeNull()
 	})
 
-	test('the type filter drains too', async () => {
+	test('a tab restarts the listing, and drains it when the server did not filter', async () => {
 		const fake = fakeSource({
 			'': paginate([[mediaItem('a.png')], [mediaItem('spec.pdf', 'application/pdf')]]),
 		})
@@ -422,7 +458,11 @@ describe('MediaLibrary — filtering a paged listing', () => {
 
 		await clickLabelled(host, 'Documents')
 
-		expect(fake.calls).toHaveLength(2)
+		// Page 1 again under the new tab, then the drain, because these pages carry no `appliedType`.
+		expect(fake.calls.slice(1)).toEqual([
+			{ folder: undefined, cursor: undefined, limit: PAGE_SIZE, type: 'document' },
+			{ folder: undefined, cursor: '1', limit: DRAIN_PAGE_SIZE, type: 'document' },
+		])
 		expect(itemIds(host)).toEqual(['spec.pdf'])
 	})
 
@@ -505,6 +545,84 @@ describe('MediaLibrary — filtering a paged listing', () => {
 
 		await clickLabelled(host, 'Photos')
 
-		expect(fake.calls[1]).toEqual({ folder: undefined, cursor: '1', limit: DRAIN_PAGE_SIZE })
+		expect(fake.calls[2]).toEqual({ folder: undefined, cursor: '1', limit: DRAIN_PAGE_SIZE, type: 'photo' })
+	})
+
+	test('does not drain a tab the server filtered — its first page is the answer', async () => {
+		// A source that honours `?type=`: it filters, and says so with `appliedType`. The filtered
+		// page comes back full, so there is nothing to top up either.
+		const docs = Array.from({ length: PAGE_SIZE }, (_, n) => mediaItem(`d${n}.pdf`, 'application/pdf'))
+		const fake = filteringSource(paginate([[mediaItem('a.png'), ...docs], [mediaItem('b.png')]]))
+		const host = await mount({ media: fake.source })
+
+		await clickLabelled(host, 'Documents')
+
+		expect(fake.calls.slice(1)).toEqual([{ folder: undefined, cursor: undefined, limit: PAGE_SIZE, type: 'document' }])
+		expect(itemIds(host)).toEqual(docs.map(d => d.id))
+	})
+
+	test('drains again when the tab goes back to one the server does not filter', async () => {
+		// needle sits on page 2, behind a full page the server filtered: the tab alone does not reach it.
+		const photos = Array.from({ length: PAGE_SIZE }, (_, n) => mediaItem(`p${n}.png`))
+		const fake = filteringSource(paginate([photos, [mediaItem('needle.png')]]))
+		const host = await mount({ media: fake.source })
+
+		await clickLabelled(host, 'Photos')
+		const afterTab = fake.calls.length
+
+		// Search is not part of the contract, so it still drains what the tab loaded.
+		await typeInto(searchBox(host), 'needle')
+
+		expect(fake.calls.length).toBeGreaterThan(afterTab)
+		expect(itemIds(host)).toEqual(['needle.png'])
+	})
+
+	test('keeps pulling a server-filtered tab whose pages come back short', async () => {
+		// Only the third page holds a document, so the first two filtered pages come back empty.
+		const fake = filteringSource(paginate([[mediaItem('a.png')], [mediaItem('b.png')], [mediaItem('spec.pdf', 'application/pdf')]]))
+		const host = await mount({ media: fake.source })
+
+		await clickLabelled(host, 'Documents')
+		await settleUntilQuiet(fake.calls)
+
+		expect(fake.calls.slice(1)).toEqual([
+			{ folder: undefined, cursor: undefined, limit: PAGE_SIZE, type: 'document' },
+			{ folder: undefined, cursor: '1', limit: PAGE_SIZE, type: 'document' },
+			{ folder: undefined, cursor: '2', limit: PAGE_SIZE, type: 'document' },
+		])
+		expect(itemIds(host)).toEqual(['spec.pdf'])
+	})
+
+	test('never says "No matching files." while the listing has more to come', async () => {
+		// An empty filtered page with more to come, whose next page then fails to load.
+		const [first] = paginate([[mediaItem('a.png')], [mediaItem('b.png')]])
+		const fake = filteringSource([first!])
+		const host = await mount({ media: fake.source })
+
+		await clickLabelled(host, 'Documents')
+		await settleUntilQuiet(fake.calls)
+
+		expect(host.textContent).not.toContain('No matching files.')
+		expect(host.textContent).toContain('No matches loaded yet.')
+		expect(buttonLabelled(host, 'Load more')).not.toBeNull()
+	})
+
+	test('a server-filtered tab says it is searching, not how many files it scanned', async () => {
+		// Call 3 is the top-up after the short Documents page; held so the pager can be read mid-flight.
+		const pages = paginate([[mediaItem('a.png'), mediaItem('spec.pdf', 'application/pdf')], [mediaItem('b.png')], [
+			mediaItem('c.pdf', 'application/pdf'),
+		]])
+		const fake = filteringSource(pages, 3)
+		const host = await mount({ media: fake.source })
+
+		await clickLabelled(host, 'Documents')
+
+		expect(fake.calls).toHaveLength(3)
+		expect(host.textContent).toContain('Searching…')
+		expect(host.textContent).not.toContain('files scanned')
+
+		fake.release()
+		await settleUntilQuiet(fake.calls)
+		expect(itemIds(host)).toEqual(['spec.pdf', 'c.pdf'])
 	})
 })

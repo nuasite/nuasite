@@ -750,6 +750,123 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(inFolder.hasMore).toBe(false)
 	})
 
+	test('media list filters by ?type and says so', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/hero.png': PNG, 'public/docs/spec.pdf': PNG })
+		await uploadPng(server, 'pic.png')
+
+		const photos = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&type=photo'))
+
+		expect(photos.appliedType).toBe('photo')
+		expect(photos.items.every(i => i.contentType.startsWith('image/'))).toBe(true)
+		expect(photos.items.some(i => i.url.endsWith('spec.pdf'))).toBe(false)
+	})
+
+	test('media list rejects an unknown ?type rather than listing everything', async () => {
+		const { server } = await freshServer()
+		const res = await call(server, 'GET', '/media?type=images')
+		expect(res.status).toBe(400)
+		expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+	})
+
+	test('media list refuses a cursor followed under a different ?type', async () => {
+		// The position a filtered cursor marks is a position in *that* tab's stream — in the merged
+		// listing it is an offset into the filtered scan. Answering from it under another tab would
+		// silently return the wrong slice, so it is a 400, like a lost ?includeProjectImages.
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/a.png': PNG, 'public/assets/b.png': PNG })
+
+		const first = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&type=photo&limit=1'))
+		expect(first.hasMore).toBe(true)
+		const cursor = encodeURIComponent(first.cursor!)
+
+		const sameTab = await call(server, 'GET', `/media?includeProjectImages=true&type=photo&limit=1&cursor=${cursor}`)
+		expect(sameTab.status).toBe(200)
+
+		for (const query of [`type=document&limit=1&cursor=${cursor}`, `limit=1&cursor=${cursor}`]) {
+			const res = await call(server, 'GET', `/media?includeProjectImages=true&${query}`)
+			expect(res.status).toBe(400)
+			expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+		}
+	})
+
+	test('a filtered adapter listing pages under its own cursor, and refuses one from another tab', async () => {
+		const { server } = await freshServer()
+		await uploadPng(server, 'one.png')
+		await uploadPng(server, 'two.png')
+
+		const first = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?type=photo&limit=1'))
+		expect(first.appliedType).toBe('photo')
+		expect(first.items).toHaveLength(1)
+		expect(first.hasMore).toBe(true)
+		const cursor = encodeURIComponent(first.cursor!)
+
+		const next = await jsonOf<MediaListResult>(await call(server, 'GET', `/media?type=photo&limit=1&cursor=${cursor}`))
+		expect(next.items).toHaveLength(1)
+		expect(next.items[0]!.url).not.toBe(first.items[0]!.url)
+
+		const wrongTab = await call(server, 'GET', `/media?type=graphic&limit=1&cursor=${cursor}`)
+		expect(wrongTab.status).toBe(400)
+	})
+
+	test('a filtered listing outside the merge refuses a merged cursor instead of restarting', async () => {
+		// Both phases of a merged listing: the adapter phase (one upload per page) and the project
+		// phase (an offset into the filtered scan). Followed without the flag, or inside a folder,
+		// neither is a position in the listing asked for.
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/assets/a.png': PNG, 'public/assets/b.png': PNG })
+		await uploadPng(server, 'one.png')
+		await uploadPng(server, 'two.png')
+
+		const adapterPhase = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&type=photo&limit=1'))
+		const projectPhase = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?includeProjectImages=true&type=photo&limit=3'))
+		expect(adapterPhase.hasMore).toBe(true)
+		expect(projectPhase.hasMore).toBe(true)
+
+		for (const merged of [adapterPhase.cursor!, projectPhase.cursor!]) {
+			const cursor = encodeURIComponent(merged)
+			for (const query of [`type=photo&limit=1&cursor=${cursor}`, `includeProjectImages=true&folder=logos&type=photo&limit=1&cursor=${cursor}`]) {
+				const res = await call(server, 'GET', `/media?${query}`)
+				expect(res.status).toBe(400)
+				expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+			}
+		}
+	})
+
+	test('a filtered listing answers a tampered cursor with a 400, not a storage failure', async () => {
+		const { server } = await freshServer()
+		const forged = Buffer.from(JSON.stringify({ v: 1, adapter: 'not-a-filtered-cursor', type: 'photo' })).toString('base64url')
+
+		const res = await call(server, 'GET', `/media?type=photo&cursor=${forged}`)
+
+		expect(res.status).toBe(400)
+		expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+	})
+
+	test('a filtered listing refuses a forged cursor that would widen the scan past the limit clamp', async () => {
+		const { server } = await freshServer()
+		await uploadPng(server, 'one.png')
+		const inner = Buffer.from(JSON.stringify({ fv: 1, type: 'photo', skip: 0, size: 1_000_000 })).toString('base64url')
+		const forged = Buffer.from(JSON.stringify({ v: 1, adapter: inner, type: 'photo' })).toString('base64url')
+
+		const res = await call(server, 'GET', `/media?type=photo&cursor=${forged}`)
+
+		expect(res.status).toBe(400)
+		expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+	})
+
+	test('an unfiltered listing still hands the adapter cursor straight through', async () => {
+		const { server } = await freshServer()
+		await uploadPng(server, 'one.png')
+		await uploadPng(server, 'two.png')
+
+		const first = await jsonOf<MediaListResult>(await call(server, 'GET', '/media?limit=1'))
+
+		expect(first.appliedType).toBeUndefined()
+		// The local adapter's cursor is a plain offset, not one of ours — unchanged by this.
+		expect(first.cursor).toBe('1')
+	})
+
 	test('media list rejects a cursor that is not a merge cursor', async () => {
 		const { server } = await freshServer()
 		const res = await call(server, 'GET', '/media?includeProjectImages=true&cursor=0')

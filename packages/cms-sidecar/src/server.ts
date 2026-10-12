@@ -2,12 +2,17 @@ import {
 	type CmsCore,
 	type CmsFileSystem,
 	isUnsafeFolder,
+	listFilteredMedia,
 	listProjectImages,
+	MEDIA_CURSOR_TYPE_MISMATCH,
 	MEDIA_INVALID_FOLDER,
+	MediaCursorError,
 	mediaErrorStatus,
+	parseMediaTypeFilter,
 	parseProjectCmsConfig,
 	resolvePathnameFromSpec,
 } from '@nuasite/cms-core'
+import { filterMediaItems } from '@nuasite/cms-types'
 import type {
 	CmsConfig,
 	CollectionDefinition,
@@ -18,6 +23,7 @@ import type {
 	MediaItem,
 	MediaListResult,
 	MediaStorageAdapter,
+	MediaTypeFilter,
 	MutationResult,
 } from '@nuasite/cms-types'
 import { hashContent, hashSource, KeyedMutex, SharedRun } from './concurrency'
@@ -57,6 +63,7 @@ export const SIDECAR_FEATURES: readonly string[] = [
 	'redirects.crud',
 	'media',
 	'media.project-images',
+	'media.type-filter',
 	'components',
 	'config',
 ]
@@ -161,6 +168,11 @@ function parseEntriesQuery(url: URL): EntriesQuery {
  * The cursor is self-identifying (`v`), so a caller that loses the
  * `?includeProjectImages` flag mid-scroll gets a 400 instead of having our private
  * cursor handed to the adapter, which would parse it as garbage.
+ *
+ * A `?type=` listing is paged by cursors we mint for the same reason, merged or not: every
+ * position one marks is a position in the *filtered* stream, so following it under a different tab
+ * would address a different list. An unfiltered listing still hands the adapter's own cursor
+ * through untouched, exactly as before.
  */
 interface MediaCursorState {
 	/** The adapter's own continuation cursor. */
@@ -175,9 +187,22 @@ interface MediaCursorState {
 	 * media root's only (the merge is disabled for `?folder=`), so it stays small.
 	 */
 	folders?: MediaFolderItem[]
+	/**
+	 * The tab the cursor was minted under, when it was minted under one. Absent means no filter,
+	 * which is also how every cursor minted before `?type=` existed decodes.
+	 */
+	type?: MediaTypeFilter
 }
 
 const MEDIA_CURSOR_VERSION = 1
+
+/** The tab a decoded cursor belongs to; absent has always meant "the whole listing". */
+function cursorType(state: MediaCursorState): MediaTypeFilter {
+	return state.type ?? 'all'
+}
+
+/** A merged-listing cursor followed somewhere the merge does not run: without the flag, or in a folder. */
+const MERGED_CURSOR_OUTSIDE_MERGE = 'This cursor continues an ?includeProjectImages listing: keep the flag set and drop ?folder when following it'
 
 function encodeMediaCursor(state: MediaCursorState): string {
 	return Buffer.from(JSON.stringify({ v: MEDIA_CURSOR_VERSION, ...state }), 'utf8').toString('base64url')
@@ -224,6 +249,12 @@ function decodeMediaCursor(raw: string | undefined): { ok: true; state: MediaCur
 		const folders = parseCursorFolders(parsed.folders)
 		if (folders === null) return { ok: false }
 		state.folders = folders
+	}
+	if ('type' in parsed) {
+		if (typeof parsed.type !== 'string') return { ok: false }
+		const type = parseMediaTypeFilter(parsed.type)
+		if (type === null) return { ok: false }
+		state.type = type
 	}
 	// We only ever mint a cursor that carries a position; one without is malformed.
 	if (state.adapter === undefined && state.project === undefined) return { ok: false }
@@ -986,9 +1017,15 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 	 * - `folders` is the adapter's, carried through the cursor so that every page —
 	 *   including the scan-only ones, which never call the adapter — reports it.
 	 */
-	async function listMergedMedia(adapter: MediaStorageAdapter, limit: number, rawCursor: string | undefined): Promise<Response> {
+	async function listMergedMedia(
+		adapter: MediaStorageAdapter,
+		limit: number,
+		rawCursor: string | undefined,
+		type: MediaTypeFilter,
+	): Promise<Response> {
 		const decoded = decodeMediaCursor(rawCursor)
 		if (!decoded.ok) return error('validation', 'Invalid media cursor')
+		if (rawCursor !== undefined && cursorType(decoded.state) !== type) return error('validation', MEDIA_CURSOR_TYPE_MISMATCH)
 		const { adapter: adapterCursor, project: projectOffset, folders: carriedFolders } = decoded.state
 
 		const items: MediaItem[] = []
@@ -996,20 +1033,24 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 
 		// A `project` offset in the cursor means the adapter pages are already spent.
 		if (projectOffset === undefined) {
-			const page = await adapter.list({ limit, cursor: adapterCursor })
+			// Filtered above the adapter, which cannot do it itself — see `listFilteredMedia`. The
+			// cursor it hands back is still one the adapter minted, so the phase resumes normally.
+			const page = await listFilteredMedia(options => adapter.list(options), { limit, cursor: adapterCursor, type })
 			items.push(...page.items)
 			folders = page.folders
 			// An adapter that reports more pages but hands back no cursor cannot be advanced. Stop
 			// here anyway — falling through to the scan would silently drop the rest of its items.
 			if (page.hasMore) {
-				const cursor = page.cursor === undefined ? undefined : encodeMediaCursor({ adapter: page.cursor, folders })
-				const more: MediaListResult = { items, folders, hasMore: true, cursor }
+				const cursor = page.cursor === undefined ? undefined : encodeMediaCursor({ adapter: page.cursor, folders, type })
+				const more: MediaListResult = { items, folders, hasMore: true, cursor, appliedType: type }
 				return json(more)
 			}
 		}
 
+		// The scan is one unpaginated list, so its filter is a plain one — and the offset the cursor
+		// carries indexes the *filtered* list, which is stable for as long as the tree is.
 		const offset = projectOffset ?? 0
-		const projectImages = await listProjectImages(fs, { exclude: { dir: adapter.staticFiles?.dir, root } })
+		const projectImages = filterMediaItems(await listProjectImages(fs, { exclude: { dir: adapter.staticFiles?.dir, root } }), type)
 		const slice = projectImages.slice(offset, offset + Math.max(0, limit - items.length))
 		items.push(...slice)
 
@@ -1019,7 +1060,8 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			items,
 			folders,
 			hasMore,
-			cursor: hasMore ? encodeMediaCursor({ project: next, folders }) : undefined,
+			cursor: hasMore ? encodeMediaCursor({ project: next, folders, type }) : undefined,
+			appliedType: type,
 		}
 		return json(result)
 	}
@@ -1029,6 +1071,8 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		try {
 			return await answerMedia(method, tail, req, url)
 		} catch (cause) {
+			// A filtered cursor `listFilteredMedia` refused is the caller's mistake, not storage's.
+			if (cause instanceof MediaCursorError) return error('validation', cause.message)
 			// Whatever an adapter throws may spell out a filesystem path, and left uncaught it
 			// is rendered by the runtime's error page. The detail goes to the log instead.
 			console.error('[cms-sidecar] media request failed:', cause)
@@ -1060,19 +1104,44 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			if (includeProjectImages === null) {
 				return error('validation', 'includeProjectImages accepts no value, "true", "1", "false" or "0"')
 			}
+			const type = parseMediaTypeFilter(url.searchParams.get('type'))
+			if (type === null) {
+				return error('validation', 'type accepts "all", "photo", "graphic", "video" or "document"')
+			}
 
 			// The project scan has no folder structure, so it only makes sense at the
 			// media root — inside a folder the adapter stays the only source.
 			if (!includeProjectImages || folder !== undefined) {
-				// Our merge cursor means nothing to the adapter, which would parse it as an
-				// offset of NaN and answer with an empty, hasMore:false page — the library
-				// would look empty. Say what actually went wrong instead.
-				if (cursor !== undefined && decodeMediaCursor(cursor).ok) {
-					return error('validation', 'This cursor continues an ?includeProjectImages listing — keep the flag set and drop ?folder when following it')
+				if (type === 'all') {
+					// Our own cursor means nothing to the adapter, which would parse it as an
+					// offset of NaN and answer with an empty, hasMore:false page — the library
+					// would look empty. Say what actually went wrong instead.
+					if (cursor !== undefined && decodeMediaCursor(cursor).ok) return error('validation', MERGED_CURSOR_OUTSIDE_MERGE)
+					return json(await adapter.list({ limit, cursor, folder }))
 				}
-				return json(await adapter.list({ limit, cursor, folder }))
+				// A filtered page ends wherever the source happened to be once the page was full, so
+				// the position it hands back belongs to this tab. Wrap the adapter's cursor in ours
+				// to say so, and refuse one minted under another tab rather than answering from the
+				// wrong place in the listing.
+				const decoded = decodeMediaCursor(cursor)
+				if (!decoded.ok) return error('validation', 'Invalid media cursor')
+				if (cursor !== undefined && cursorType(decoded.state) !== type) return error('validation', MEDIA_CURSOR_TYPE_MISMATCH)
+				// The cursors minted here carry only `adapter` and `type`. One with a project offset or
+				// the carried root folders comes from the merged listing, and its `adapter` (if any)
+				// is a position in the root's stream: following it here would restart the listing or
+				// answer from another folder's offset.
+				const { adapter: adapterCursor, project, folders: carried } = decoded.state
+				if (cursor !== undefined && (project !== undefined || carried !== undefined || adapterCursor === undefined)) {
+					return error('validation', MERGED_CURSOR_OUTSIDE_MERGE)
+				}
+
+				const page = await listFilteredMedia(options => adapter.list(options), { limit, cursor: adapterCursor, folder, type })
+				return json({
+					...page,
+					cursor: page.cursor === undefined ? undefined : encodeMediaCursor({ adapter: page.cursor, type }),
+				})
 			}
-			return listMergedMedia(adapter, limit, cursor)
+			return listMergedMedia(adapter, limit, cursor, type)
 		}
 
 		// POST /media  (multipart upload, or JSON create-folder)

@@ -189,6 +189,40 @@ describe('GET media/list', () => {
 		const inside = await callRoute<MediaListResult>('GET', 'media/list', context, '?folder=photos')
 		expect(inside.body.items.map(i => i.id)).toEqual(['photos/up.png'])
 	})
+
+	test('a ?type= listing pages without losing an item, under a cursor bound to its tab', async () => {
+		const root = await projectWith({})
+		const uploads = path.join(root, 'public/uploads')
+		// Newest first, so the order the adapter lists them in is pinned by mtime.
+		const files = ['a.png', 'spec.pdf', 'b.png', 'c.png']
+		for (const [index, name] of files.entries()) {
+			const target = path.join(uploads, name)
+			await fs.mkdir(uploads, { recursive: true })
+			await fs.writeFile(target, PNG)
+			const time = new Date(Date.UTC(2026, 0, 1, 0, 0, files.length - index))
+			await fs.utimes(target, time, time)
+		}
+		const context = contextFor(root, uploads)
+
+		const first = await callRoute<MediaListResult>('GET', 'media/list', context, '?type=photo&limit=2')
+		expect(first.status).toBe(200)
+		expect(first.body.appliedType).toBe('photo')
+		expect(first.body.items.map(i => i.id)).toEqual(['a.png', 'b.png'])
+		const cursor = encodeURIComponent(first.body.cursor!)
+
+		const second = await callRoute<MediaListResult>('GET', 'media/list', context, `?type=photo&limit=2&cursor=${cursor}`)
+		expect(second.body.items.map(i => i.id)).toEqual(['c.png'])
+		expect(second.body.hasMore).toBe(false)
+
+		// A cursor that would ask the adapter for a million items, past the `limit` clamp.
+		const widened = Buffer.from(JSON.stringify({ fv: 1, type: 'photo', skip: 0, size: 1_000_000 })).toString('base64url')
+		const refusals = [`?type=document&limit=2&cursor=${cursor}`, `?limit=2&cursor=${cursor}`, '?type=photo&cursor=2', `?type=photo&cursor=${widened}`]
+		for (const query of refusals) {
+			const refused = await callRoute<{ error?: string }>('GET', 'media/list', context, query)
+			expect({ query, status: refused.status }).toEqual({ query, status: 400 })
+			expect(refused.body.error).toBeString()
+		}
+	})
 })
 
 describe('POST media/folder', () => {

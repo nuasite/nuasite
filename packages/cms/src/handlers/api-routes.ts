@@ -1,5 +1,15 @@
 import type { CmsCore, CmsFileSystem } from '@nuasite/cms-core'
-import { isUnsafeFolder, listProjectImages, MEDIA_INVALID_FOLDER, mediaErrorStatus } from '@nuasite/cms-core'
+import {
+	decodeFilteredMediaCursor,
+	isUnsafeFolder,
+	listFilteredMedia,
+	listProjectImages,
+	MEDIA_INVALID_FOLDER,
+	MediaCursorError,
+	mediaErrorStatus,
+	parseMediaTypeFilter,
+} from '@nuasite/cms-core'
+import { filterMediaItems } from '@nuasite/cms-types'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import type { CollectionOverrides } from '../collection-overrides'
@@ -274,11 +284,37 @@ const routeMap = new Map<string, RouteHandler>([
 		const parsedLimit = parseInt(params.get('limit') ?? '50', 10)
 		const limit = Number.isNaN(parsedLimit) || parsedLimit < 1 ? 50 : Math.min(parsedLimit, 1000)
 		const folder = params.get('folder') ?? undefined
-		sendJson(ctx.res, await ctx.mediaAdapter.list({ limit, cursor: params.get('cursor') ?? undefined, folder }))
+		const type = parseMediaTypeFilter(params.get('type'))
+		if (type === null) {
+			sendError(ctx.res, 'type accepts "all", "photo", "graphic", "video" or "document"')
+			return
+		}
+		const cursor = params.get('cursor') ?? undefined
+		// A `?type=` page is paged by `listFilteredMedia`'s own cursor, bound to the tab it was
+		// minted under; it refuses one from another tab itself. Followed with no `?type=`, the
+		// adapter would read it as its own cursor and answer with an empty page, so say so instead.
+		if (type === 'all' && cursor !== undefined && decodeFilteredMediaCursor(cursor) !== null) {
+			sendError(ctx.res, 'This cursor continues a ?type= listing: keep the filter set when following it')
+			return
+		}
+		const adapter = ctx.mediaAdapter
+		try {
+			sendJson(ctx.res, await listFilteredMedia(options => adapter.list(options), { limit, cursor, folder, type }))
+		} catch (error) {
+			if (!(error instanceof MediaCursorError)) throw error
+			sendError(ctx.res, error.message)
+		}
 	}),
 	custom('GET', 'media/project-images', async (ctx) => {
+		const params = getQuery(ctx)
+		const type = parseMediaTypeFilter(params.get('type'))
+		if (type === null) {
+			sendError(ctx.res, 'type accepts "all", "photo", "graphic", "video" or "document"')
+			return
+		}
 		const items = await listProjectImages(ctx.fs, { exclude: { dir: ctx.mediaAdapter?.staticFiles?.dir, root: ctx.projectRoot } })
-		sendJson(ctx.res, { items })
+		// Unpaged, so the filter is the whole story here — the caller never has to drain.
+		sendJson(ctx.res, { items: filterMediaItems(items, type), appliedType: type })
 	}),
 	custom('POST', 'media/upload', async (ctx) => {
 		const contentType = ctx.req.headers['content-type'] ?? ''
