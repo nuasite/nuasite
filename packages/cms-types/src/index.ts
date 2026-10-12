@@ -233,9 +233,10 @@ export interface CollectionLayout {
 	label?: string
 	/**
 	 * Leave the collection out of collection browsers. It stays fully resolvable — reference
-	 * pickers, entry routes and the scan still see it.
+	 * pickers, entry routes and the scan still see it. Only the literal `true` hides it; `false`
+	 * is accepted so a config can spell out the default, and the scan carries it as absent.
 	 */
-	hidden?: true
+	hidden?: boolean
 	/** Position in collection browsers — lower comes first. Collections without one follow all ordered ones. */
 	order?: number
 	/** Section heading the collection is listed under in collection browsers. */

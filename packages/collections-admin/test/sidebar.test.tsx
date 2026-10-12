@@ -137,6 +137,32 @@ describe('collections-admin sidebar', () => {
 		expect(menu()).toEqual(IN_CZECH)
 	})
 
+	test('a new apiBase waits for its own locale, not the one the previous client already read', async () => {
+		await mount({ config: () => json({ locale: 'cs' } satisfies CmsConfig) })
+		expect(menu()).toEqual(IN_CZECH)
+
+		// Another sidecar: its collections answer at once, its config not yet.
+		const otherBase = 'http://other-sidecar.test/cms/v1'
+		let release: (response: Response) => void = () => {}
+		const serve = async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+			const url = input instanceof Request ? input.url : String(input)
+			if (url === `${otherBase}/collections`) return json(COLLECTIONS)
+			if (url === `${otherBase}/config`) return new Promise<Response>((resolve) => (release = resolve))
+			return json({ error: `Unexpected request: ${url}`, code: 'not_found' }, 404)
+		}
+		globalThis.fetch = Object.assign(serve, { preconnect: Bun.fetch.preconnect })
+		await act(async () => {
+			root?.render(createElement(CollectionsAdminApp, { apiBase: otherBase }))
+		})
+		await settle()
+		// The first client's settled read does not count for this one: no flash of the fallback order.
+		expect(menu()).toEqual(['Loading…'])
+
+		release(json({ locale: 'cs' } satisfies CmsConfig))
+		await settle()
+		expect(menu()).toEqual(IN_CZECH)
+	})
+
 	// One bad moment takes both reads down; only the collections failure is visible. It is
 	// offered for retry in two places, and either has to bring the locale back with it.
 	for (

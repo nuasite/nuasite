@@ -67,10 +67,16 @@ interface LoadState<T> {
 	data: T | null
 	error: CmsClientError | Error | null
 	loading: boolean
+	/**
+	 * A read for the current `deps` has finished, with data or an error. Unlike `loading` it stays
+	 * set through a `reload()`, and it is cleared when the deps change, so a caller can wait for
+	 * the first answer about a given source without hiding what is on screen behind a re-read.
+	 */
+	settled: boolean
 }
 
 function useAsync<T>(load: () => Promise<T>, deps: readonly unknown[]): LoadState<T> & { reload: () => void } {
-	const [state, setState] = useState<LoadState<T>>({ data: null, error: null, loading: true })
+	const [state, setState] = useState<LoadState<T>>({ data: null, error: null, loading: true, settled: false })
 	const [nonce, setNonce] = useState(0)
 	const loadRef = useRef(load)
 	loadRef.current = load
@@ -78,15 +84,21 @@ function useAsync<T>(load: () => Promise<T>, deps: readonly unknown[]): LoadStat
 	// `load` is read through a ref; re-runs are driven by the explicit `deps` and
 	// the reload `nonce` so the effect deps stay stable and lint-clean.
 	const effectDeps = [...deps, nonce]
+	// The deps the last load ran for, to tell a `reload()` (same deps, `settled` kept) from a new
+	// source (`settled` cleared). Read and written in the effect only, never during render.
+	const loadedDepsRef = useRef<readonly unknown[] | null>(null)
 	useEffect(() => {
 		let active = true
-		setState({ data: null, error: null, loading: true })
+		const previous = loadedDepsRef.current
+		const sameDeps = previous !== null && previous.length === deps.length && previous.every((dep, i) => Object.is(dep, deps[i]))
+		loadedDepsRef.current = deps
+		setState((prev) => ({ data: null, error: null, loading: true, settled: sameDeps && prev.settled }))
 		loadRef.current().then(
 			(data) => {
-				if (active) setState({ data, error: null, loading: false })
+				if (active) setState({ data, error: null, loading: false, settled: true })
 			},
 			(error: unknown) => {
-				if (active) setState({ data: null, error: error instanceof Error ? error : new Error(String(error)), loading: false })
+				if (active) setState({ data: null, error: error instanceof Error ? error : new Error(String(error)), loading: false, settled: true })
 			},
 		)
 		return () => {
@@ -346,11 +358,9 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 	// The project's language orders the menu. The menu waits for it so it does not render once
 	// in the fallback order and then reshuffle; a failed read just leaves that fallback.
 	const configState = useAsync(() => client.getConfig(), [client])
-	// It waits for the *first* read only. A re-read (see `retryConfig`) happens behind a menu
+	// It waits for the *first* read of each client only (`settled`). A re-read (see `retryConfig`) happens behind a menu
 	// that is already on screen, and may never answer — the client has no timeout — so it must
 	// not take that menu away while it is pending.
-	const configSettled = useRef(false)
-	if (!configState.loading) configSettled.current = true
 	// The config read fails silently, so it has no retry control of its own: every "try again"
 	// in the app re-runs it for as long as the project's language is not known. Not only once
 	// it has failed — a retry can be clicked while the first read is still in flight and about
@@ -380,7 +390,7 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 			<Sidebar
 				collections={collections}
 				locale={configState.data?.locale}
-				loading={collectionsState.loading || !configSettled.current}
+				loading={collectionsState.loading || !configState.settled}
 				error={collectionsState.error}
 				activeCollection={activeCollectionName}
 				onSelect={goEntries}

@@ -64,11 +64,13 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		 * collections are listed in the same order for every editor and in every collection browser.
 		 * Defaults to Astro's `i18n.defaultLocale`; without either, labels are compared as English.
 		 *
-		 * Must be a string literal (or a top-level `const` holding one) in the Astro config, where
-		 * the CMS options are passed — the `nua.cms` block, `nuaCms({ … })` or `nua({ cms: { … } })`
-		 * in `integrations`. A standalone sidecar reads it from that file's source, for the one CMS
-		 * instance a page ends up with, and a value it does not get that way is ignored by the
-		 * in-page editor too (with a warning), so the two never disagree.
+		 * Only takes effect when written as a string literal (or a top-level `const` holding one)
+		 * in the Astro config file itself, where the CMS options are passed: the `nua.cms` block,
+		 * `nuaCms({ … })` or `nua({ cms: { … } })` in `integrations`. The value is read from that
+		 * file's source, not from the options at runtime. A locale that comes from an env
+		 * variable, a helper, an import, a spread, a conditional or `mergeConfig` does nothing,
+		 * in the in-page editor as well as in a standalone sidecar; the dev server logs a warning
+		 * when that happens. This way the two can never disagree.
 		 */
 		locale?: string
 		/** Open the entry editor's metadata (frontmatter) panel by default instead of collapsed. */

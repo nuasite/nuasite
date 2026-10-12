@@ -61,8 +61,15 @@ export const collections = { cases }
 		expect(parseConfigSource(config(`{ label: '' }`)).get('cases')?.label).toBeUndefined()
 	})
 
+	test('a template literal without substitutions is read as a string', () => {
+		const parsed = parseConfigSource(config('{ label: `Případy`, group: `English` }')).get('cases')
+		expect(parsed?.label).toBe('Případy')
+		expect(parsed?.group).toBe('English')
+		expect(parseConfigSource(config('{ label: `` }')).get('cases')?.label).toBeUndefined()
+	})
+
 	test('a non-literal value is ignored', () => {
-		const parsed = parseConfigSource(config('{ label: t(`cases`), hidden: isProd, order: 1 + 1, group: `English` }')).get('cases')
+		const parsed = parseConfigSource(config('{ label: t(`cases`), hidden: isProd, order: 1 + 1, group: `${LANG}` }')).get('cases')
 		expect(parsed?.label).toBeUndefined()
 		expect(parsed?.hidden).toBeUndefined()
 		expect(parsed?.order).toBeUndefined()

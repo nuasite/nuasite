@@ -730,8 +730,9 @@ function parseCmsPreviewOf(node: t.Node, bindings: Bindings): string | undefined
  * Parse the collection-browser keys of a `cms: { label, hidden, order, group }` block: how
  * the collection is named, placed and sectioned where collections are listed. Same
  * shape-tolerant contract as {@link parseCmsTitleField}: a key whose value is not the
- * expected literal (or is an empty string) is skipped, leaving the default in place. As with
- * `fragment`, only the literal `true` hides a collection.
+ * expected literal (or is an empty string) is skipped, leaving the default in place. `label`
+ * and `group` also take a template literal without substitutions. As with `fragment`, only
+ * the literal `true` hides a collection.
  */
 function parseCmsNav(node: t.Node, bindings: Bindings): Pick<ParsedCollection, 'label' | 'hidden' | 'order' | 'group'> | undefined {
 	const resolved = resolveExpression(node, bindings)
@@ -743,7 +744,9 @@ function parseCmsNav(node: t.Node, bindings: Bindings): Pick<ParsedCollection, '
 		const key = propertyKeyName(prop.key)
 		const value = resolveExpression(prop.value, bindings)
 		if (key === 'label' || key === 'group') {
-			if (value.type === 'StringLiteral' && value.value !== '') nav[key] = value.value
+			// A plain string or a template literal without substitutions: both are static text.
+			const text = extractStaticString(value, bindings)
+			if (text) nav[key] = text
 		} else if (key === 'hidden') {
 			if (value.type === 'BooleanLiteral' && value.value) nav.hidden = true
 		} else if (key === 'order') {
