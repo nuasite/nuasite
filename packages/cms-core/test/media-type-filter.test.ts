@@ -7,7 +7,13 @@
  */
 import { matchesMediaType, type MediaItem, type MediaListOptions, type MediaListResult } from '@nuasite/cms-types'
 import { describe, expect, test } from 'bun:test'
-import { decodeFilteredMediaCursor, listFilteredMedia, MediaCursorError, parseMediaTypeFilter } from '../src/media/type-filter'
+import {
+	decodeFilteredMediaCursor,
+	listFilteredMedia,
+	MAX_FILTERED_MEDIA_LIMIT,
+	MediaCursorError,
+	parseMediaTypeFilter,
+} from '../src/media/type-filter'
 
 function item(filename: string, contentType: string): MediaItem {
 	return { id: filename, url: `/uploads/${filename}`, filename, contentType }
@@ -123,7 +129,8 @@ describe('listFilteredMedia', () => {
 		// Nothing matches, so without the cap this would read all 100 pages in one request.
 		const { list, calls } = source(Array.from({ length: 100 }, (_, n) => [photo(n)]))
 
-		const page = await listFilteredMedia(list, { limit: 10, type: 'document' }, 5)
+		// Five source pages' worth: each is asked for 200 items.
+		const page = await listFilteredMedia(list, { limit: 10, type: 'document' }, 5 * 200)
 
 		expect(calls).toHaveLength(5)
 		// Still more to come: the caller can ask again rather than being told the library is empty.
@@ -137,6 +144,54 @@ describe('listFilteredMedia', () => {
 		const page = await listFilteredMedia(list, { limit: 10, type: 'photo' })
 
 		expect(page.folders).toEqual([{ name: 'logos', path: 'logos' }])
+	})
+})
+
+describe('listFilteredMedia: work per request', () => {
+	/** A cursor spelled the way `listFilteredMedia` spells one, with whatever position a client chose. */
+	function forged(position: { source?: string; skip: number; size: number }): string {
+		return Buffer.from(JSON.stringify({ fv: 1, type: 'photo', ...position }), 'utf8').toString('base64url')
+	}
+
+	/** A source of photos that never runs out, honouring whatever `limit` it is asked for. */
+	function endless() {
+		const calls: MediaListOptions[] = []
+		const list = async (options: MediaListOptions): Promise<MediaListResult> => {
+			calls.push(options)
+			const start = options.cursor === undefined ? 0 : Number.parseInt(options.cursor, 10)
+			const size = Math.min(options.limit ?? 50, 5000)
+			const items = Array.from({ length: size }, (_, n) => photo(start + n))
+			return { items, folders: [], hasMore: true, cursor: String(start + size) }
+		}
+		return { list, calls }
+	}
+
+	test('holds a huge limit to the same maximum the HTTP layers use', async () => {
+		const { list, calls } = endless()
+
+		const page = await listFilteredMedia(list, { limit: 1_000_000, type: 'photo' })
+
+		expect(page.items).toHaveLength(MAX_FILTERED_MEDIA_LIMIT)
+		expect(calls.every(c => (c.limit ?? 0) <= MAX_FILTERED_MEDIA_LIMIT)).toBe(true)
+	})
+
+	test('bounds the items scanned, not just the pages, whatever the limit', async () => {
+		// Nothing matches, so every request runs to the bound.
+		for (const limit of [1, 60, 1000, 1_000_000, -5, 0, 2.5, Number.NaN, Number.POSITIVE_INFINITY, undefined]) {
+			const { list, calls } = endless()
+			await listFilteredMedia(list, { limit, type: 'document' })
+			const asked = calls.reduce((sum, c) => sum + (c.limit ?? 0), 0)
+			expect({ limit, asked: asked <= 4000 }).toEqual({ limit, asked: true })
+		}
+	})
+
+	test('refuses a cursor whose page size or skip it would never have minted', async () => {
+		const { list, calls } = endless()
+
+		for (const position of [{ skip: 0, size: 1_000_000 }, { skip: 0, size: 1 }, { skip: 5000, size: 200 }]) {
+			await expect(listFilteredMedia(list, { limit: 10, cursor: forged(position), type: 'photo' })).rejects.toBeInstanceOf(MediaCursorError)
+		}
+		expect(calls).toHaveLength(0)
 	})
 })
 

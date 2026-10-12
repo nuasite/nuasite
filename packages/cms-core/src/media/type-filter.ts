@@ -75,7 +75,10 @@ export function decodeFilteredMediaCursor(raw: string): (FilteredPosition & { ty
 	const skip = 'skip' in parsed ? parsed.skip : undefined
 	const size = 'size' in parsed ? parsed.size : undefined
 	if (typeof skip !== 'number' || !Number.isSafeInteger(skip) || skip < 0) return null
-	if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 1) return null
+	// The cursor travels through the client, so its size is held to what this module would mint:
+	// otherwise a forged one asks the source for any number of items, past every `limit` clamp.
+	if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < MIN_SOURCE_PAGE || size > MAX_FILTERED_MEDIA_LIMIT) return null
+	if (skip > size) return null
 	return { type, source, skip, size }
 }
 
@@ -85,6 +88,25 @@ export function decodeFilteredMediaCursor(raw: string): (FilteredPosition & { ty
  * round trip re-reads the whole folder.
  */
 const MIN_SOURCE_PAGE = 200
+
+/**
+ * The largest filtered page, and so the largest source page. The same bound both HTTP layers put on
+ * an unfiltered `limit`, applied here again so a caller that forgets to clamp cannot widen the scan.
+ */
+export const MAX_FILTERED_MEDIA_LIMIT = 1000
+
+/**
+ * Source items one filtered page may ask for, all pages together: twenty pages at the smallest
+ * source page. A "Documents" tab over a library of photos matches nothing, and without a bound
+ * that is a walk of the whole library in a single request.
+ */
+const MAX_SCANNED = 20 * MIN_SOURCE_PAGE
+
+/** `limit` held to `[1, MAX_FILTERED_MEDIA_LIMIT]`; one that is not a finite number sets no target. */
+function clampLimit(limit: number | undefined): number | undefined {
+	if (limit === undefined || !Number.isFinite(limit)) return undefined
+	return Math.min(Math.max(Math.floor(limit), 1), MAX_FILTERED_MEDIA_LIMIT)
+}
 
 /**
  * One page of a cursor-paged listing, filtered to `type`.
@@ -104,23 +126,22 @@ const MIN_SOURCE_PAGE = 200
  * own cursor included.
  *
  * A cursor this did not mint, or minted under another tab, throws `MediaCursorError`.
- * `hasMore` can be true on a page short of `limit`: that is what the page cap below leaves behind.
+ * `hasMore` can be true on a page short of `limit`: that is what the scan bound below leaves behind.
  */
 export async function listFilteredMedia(
 	list: (options: MediaListOptions) => Promise<MediaListResult>,
 	options: MediaListOptions & { type?: MediaTypeFilter },
 	/**
-	 * How many source pages one filtered page may pull. The bound matters: a "Documents" tab over a
-	 * library of photos matches nothing, and without a cap that is a walk of the whole library in a
-	 * single request. Reaching it just ends the page early. `hasMore` still says there is more, so
-	 * the caller can ask again.
+	 * How many source items one filtered page may ask for, counted as the larger of what each source
+	 * page was asked for and what it returned. Reaching it just ends the page early. `hasMore` still
+	 * says there is more, so the caller can ask again. The first source page is always read.
 	 */
-	maxPages = 20,
+	maxScanned = MAX_SCANNED,
 ): Promise<MediaListResult> {
 	const type = options.type ?? 'all'
 	if (type === 'all') return await list(options)
 
-	const { limit } = options
+	const limit = clampLimit(options.limit)
 	let position: FilteredPosition = { source: undefined, skip: 0, size: Math.max(limit ?? 0, MIN_SOURCE_PAGE) }
 	if (options.cursor !== undefined) {
 		const decoded = decodeFilteredMediaCursor(options.cursor)
@@ -139,10 +160,11 @@ export async function listFilteredMedia(
 		appliedType: type,
 	})
 
-	for (let pages = 1;; pages++) {
+	for (let scanned = 0;;) {
 		const page = await list({ ...options, cursor: position.source, limit: position.size })
 		folders ??= page.folders
 		const pageItems = page.items
+		scanned += Math.max(position.size, pageItems.length)
 		for (let index = position.skip; index < pageItems.length; index++) {
 			const item = pageItems[index]
 			if (item === undefined || !matchesMediaType(item.contentType, type)) continue
@@ -158,7 +180,7 @@ export async function listFilteredMedia(
 		const full = limit !== undefined && items.length >= limit
 		// An adapter that reports more but hands back no cursor cannot be advanced: say there is more
 		// anyway, with no cursor, rather than claim the listing ended.
-		if (full || next === undefined || pages >= maxPages) return done(page.hasMore, next)
+		if (full || next === undefined || scanned >= maxScanned) return done(page.hasMore, next)
 		position = next
 	}
 }

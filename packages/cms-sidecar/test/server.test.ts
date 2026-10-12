@@ -843,6 +843,18 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect((await jsonOf<ApiError>(res)).code).toBe('validation')
 	})
 
+	test('a filtered listing refuses a forged cursor that would widen the scan past the limit clamp', async () => {
+		const { server } = await freshServer()
+		await uploadPng(server, 'one.png')
+		const inner = Buffer.from(JSON.stringify({ fv: 1, type: 'photo', skip: 0, size: 1_000_000 })).toString('base64url')
+		const forged = Buffer.from(JSON.stringify({ v: 1, adapter: inner, type: 'photo' })).toString('base64url')
+
+		const res = await call(server, 'GET', `/media?type=photo&cursor=${forged}`)
+
+		expect(res.status).toBe(400)
+		expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+	})
+
 	test('an unfiltered listing still hands the adapter cursor straight through', async () => {
 		const { server } = await freshServer()
 		await uploadPng(server, 'one.png')

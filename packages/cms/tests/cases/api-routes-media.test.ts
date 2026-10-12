@@ -214,7 +214,10 @@ describe('GET media/list', () => {
 		expect(second.body.items.map(i => i.id)).toEqual(['c.png'])
 		expect(second.body.hasMore).toBe(false)
 
-		for (const query of [`?type=document&limit=2&cursor=${cursor}`, `?limit=2&cursor=${cursor}`, '?type=photo&cursor=2']) {
+		// A cursor that would ask the adapter for a million items, past the `limit` clamp.
+		const widened = Buffer.from(JSON.stringify({ fv: 1, type: 'photo', skip: 0, size: 1_000_000 })).toString('base64url')
+		const refusals = [`?type=document&limit=2&cursor=${cursor}`, `?limit=2&cursor=${cursor}`, '?type=photo&cursor=2', `?type=photo&cursor=${widened}`]
+		for (const query of refusals) {
 			const refused = await callRoute<{ error?: string }>('GET', 'media/list', context, query)
 			expect({ query, status: refused.status }).toEqual({ query, status: 400 })
 			expect(refused.body.error).toBeString()
