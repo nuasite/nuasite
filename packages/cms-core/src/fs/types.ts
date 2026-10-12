@@ -13,6 +13,22 @@ export interface GlobOptions {
 	 * A match under one may still come back: the caller filters its results as before.
 	 */
 	skipDirectory?: (dir: string) => boolean
+	/**
+	 * Symbolic links below the pattern's static prefix are left out unless this is set. With it,
+	 * a linked file is listed under the link's own path, wherever it points, and a linked
+	 * directory is walked as if it were there, as often as a path leads into it; a link back
+	 * into a directory already entered through a link on the same path is not entered again.
+	 * A linked directory whose real path is outside the root is not walked: when the pattern
+	 * could match under it, the call rejects instead of answering without it. An implementation
+	 * that ignores the option keeps leaving them out.
+	 */
+	followSymlinks?: boolean
+	/**
+	 * Bounds what following links adds to the walk: when listing would have to read more
+	 * directories than that behind links, the call rejects instead of answering with a part of
+	 * the files. Directories reached without a link do not count.
+	 */
+	maxLinkedDirectories?: number
 }
 
 export interface CmsFileSystem {
@@ -33,6 +49,7 @@ export interface CmsFileSystem {
 	/**
 	 * Resolve a glob pattern (supports `*`, `**`, `?`, `{a,b}`) to matching file paths, root-relative.
 	 * Rejects with an `UnreadableDirectoryError` for a directory it cannot read that may hold a match.
+	 * See {@link GlobOptions} for skipping directories and following symbolic links.
 	 */
 	glob(pattern: string, options?: GlobOptions): Promise<string[]>
 	/** File metadata. Rejects when the path does not exist. */

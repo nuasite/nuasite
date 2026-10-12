@@ -1,6 +1,7 @@
 import type {
 	AddRedirectRequest,
 	CollectionDefinition,
+	CollectionScanReport,
 	ComponentDefinition,
 	CreatePageRequest,
 	DeletePageRequest,
@@ -14,7 +15,7 @@ import type {
 	RedirectOperationResponse,
 	UpdateRedirectRequest,
 } from '@nuasite/cms-types'
-import { scanCollections } from './collection-scanner'
+import { collectionScanReport, scanCollections } from './collection-scanner'
 import { scanComponentDefinitions } from './component-registry'
 import { type ParseCache } from './content-config-ast'
 import type { CmsFileSystem } from './fs/types'
@@ -68,8 +69,22 @@ export interface CmsCoreOptions {
  */
 export interface CmsCore {
 	// READ / SCAN
-	/** Scan all content collections, returning their inferred definitions keyed by name. */
-	scanCollections(): Promise<Record<string, CollectionDefinition>>
+	/**
+	 * Scan all content collections, returning their inferred definitions keyed by name.
+	 *
+	 * The scan carries a report (see {@link CmsCore.collectionScanReport}) only when asked for
+	 * `{ report: true }`. Building one costs a listing per declared collection, so it is paid
+	 * only where it is read. A wrapper around this method has to pass `options` on: one that
+	 * drops them leaves its caller without a report, which reads as "not reported".
+	 */
+	scanCollections(options?: { report?: boolean }): Promise<Record<string, CollectionDefinition>>
+	/**
+	 * What the scan that returned `collections` could not vouch for: pass the record
+	 * `scanCollections()` resolved to. `undefined` when it has no report: read that as "not
+	 * reported", never as "nothing unresolved". Optional, so a core built before the report
+	 * existed is still a `CmsCore`.
+	 */
+	collectionScanReport?(collections: Record<string, CollectionDefinition>): CollectionScanReport | undefined
 	/** Resolve the Astro component definitions used for MDX import injection. */
 	scanComponents(): Promise<Record<string, ComponentDefinition>>
 	/** Read a single entry's frontmatter + body, or `null` when it does not exist. */
@@ -118,9 +133,10 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 	}
 
 	return {
-		scanCollections() {
-			return scanCollections(fs, contentDir, parseCache)
+		scanCollections(options) {
+			return scanCollections(fs, contentDir, parseCache, { report: options?.report ?? false })
 		},
+		collectionScanReport,
 		scanComponents() {
 			return scanComponentDefinitions(fs, componentDirs)
 		},

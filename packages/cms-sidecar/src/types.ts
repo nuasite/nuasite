@@ -1,4 +1,4 @@
-import type { CollectionDefinition, CollectionEntryInfo } from '@nuasite/cms-types'
+import type { CollectionDefinition, CollectionEntryInfo, CollectionScanReport } from '@nuasite/cms-types'
 
 /**
  * Wire-level types specific to the `/cms/v1` HTTP contract. The structural model
@@ -131,6 +131,11 @@ export interface ProjectModel {
 	/** Static page routes discovered under `src/pages` (pathname-only). */
 	pages: PageEntry[]
 	capabilities: Capabilities
+	/**
+	 * What the scan behind `collections` could not vouch for. Absent when the core does not
+	 * report, which is not the same as a report with nothing in it — see `CollectionScanReport`.
+	 */
+	collectionScan?: CollectionScanReport
 }
 
 /** Sparse list response: the projected entries plus an opaque continuation cursor. */

@@ -562,7 +562,10 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 	const mutex = new KeyedMutex()
 	// A client may ask for the entries of every collection at once, and each scan reads and parses
 	// all of the project's content: without sharing, N concurrent requests hold N full scans in memory.
-	const collectionsScan = new SharedRun(() => core.scanCollections())
+	const collectionsScan = new SharedRun(() => core.scanCollections({ report: false }))
+	// `GET /project` alone answers with the scan report, so it alone pays for building one. Its
+	// collections come from that same scan, so the two always describe one state of the disk.
+	const reportedScan = new SharedRun(() => core.scanCollections({ report: true }))
 	const collectionRoutes = new SharedRun(() => resolveCollectionRoutes(fs))
 
 	async function scanList(): Promise<CollectionDefinition[]> {
@@ -690,6 +693,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			// Any write may change what the shared scans read.
 			if (method !== 'GET') {
 				collectionsScan.invalidate()
+				reportedScan.invalidate()
 				collectionRoutes.invalidate()
 			}
 		}
@@ -705,9 +709,13 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 
 			case 'project':
 				if (method === 'GET') {
-					const [collections, pages] = await Promise.all([scanList(), listPages(fs)])
+					const [scanned, pages] = await Promise.all([reportedScan.get(), listPages(fs)])
 					const capabilities: Capabilities = { coreVersion, features: [...SIDECAR_FEATURES] }
-					const model: ProjectModel = { collections, pages, capabilities }
+					const model: ProjectModel = { collections: Object.values(scanned), pages, capabilities }
+					// The report of the very scan `collections` came from. Left out, not sent empty,
+					// when the core has none: a client must be able to tell the two apart.
+					const collectionScan = core.collectionScanReport?.(scanned)
+					if (collectionScan !== undefined) model.collectionScan = collectionScan
 					return json(model)
 				}
 				break

@@ -1,8 +1,26 @@
-import type { CollectionDefinition, CollectionEntryInfo, FieldDefinition, FieldType } from '@nuasite/cms-types'
+import type {
+	CollectionDefinition,
+	CollectionEntryInfo,
+	CollectionScanReport,
+	FieldDefinition,
+	FieldType,
+	UnresolvedCollection,
+} from '@nuasite/cms-types'
 import path from 'node:path'
 import { isMap, isPair, isScalar, parse as parseYaml, parseDocument } from 'yaml'
-import { type ParseCache, parseContentConfig, type ParsedConfig, type ParsedField } from './content-config-ast'
-import type { CmsFileSystem } from './fs/types'
+import {
+	classifyEmptyContentConfig,
+	configOptionMentions,
+	CONTENT_CONFIG_PATHS,
+	type ContentConfigRead,
+	type DeclaredCollection,
+	type ParseCache,
+	type ParsedConfig,
+	type ParsedField,
+	readContentConfig,
+	UNREAD_CONTENT_CONFIG_PATHS,
+} from './content-config-ast'
+import type { CmsFileSystem, GlobOptions } from './fs/types'
 import { resolvePathnameFromSpec, slugifyHref } from './shared'
 
 /** Regex patterns for type inference */
@@ -593,6 +611,29 @@ async function scanCollection(
 }
 
 /**
+ * The files a glob loader matches, relative to its base. The scan leaves symbolic links out;
+ * the scan report follows them, as Astro does, to see what that left out.
+ */
+async function globLoaderFiles(
+	fs: CmsFileSystem,
+	baseRel: string,
+	pattern: string,
+	options?: GlobOptions,
+): Promise<string[]> {
+	// The port's glob walks the root; scope it to the loader base and re-relativize matches.
+	// The scanner ignores files/dirs whose path segments start with `_` or `.` (private/hidden),
+	// matching the directory-walk behavior of the original scanner — the glob pattern alone
+	// would otherwise match them.
+	const isPrivate = (relToBase: string) => relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.'))
+	// Such a directory is not walked either, so one that cannot be read does not cost the
+	// collection: none of its files would be kept.
+	const matches = await fs.glob(path.join(baseRel, pattern), { ...options, skipDirectory: dir => isPrivate(path.relative(baseRel, dir)) })
+	return matches
+		.map(rel => path.relative(baseRel, rel))
+		.filter(relToBase => !isPrivate(relToBase))
+}
+
+/**
  * Scan a collection declared in content config via a glob loader (base + pattern),
  * which may share a base directory with another collection (nested layout).
  */
@@ -603,17 +644,7 @@ async function scanGlobCollection(
 	pattern: string,
 	contentDir: string,
 ): Promise<CollectionDefinition | null> {
-	// The port's glob walks the root; scope it to the loader base and re-relativize matches.
-	// The scanner ignores files/dirs whose path segments start with `_` or `.` (private/hidden),
-	// matching the directory-walk behavior of the original scanner — the glob pattern alone
-	// would otherwise match them.
-	const isPrivate = (relToBase: string) => relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.'))
-	// Such a directory is not walked either, so one that cannot be read does not cost the
-	// collection: none of its files would be kept.
-	const matches = await fs.glob(path.join(baseRel, pattern), { skipDirectory: dir => isPrivate(path.relative(baseRel, dir)) })
-	const rels = matches
-		.map(rel => path.relative(baseRel, rel))
-		.filter(relToBase => !isPrivate(relToBase))
+	const rels = await globLoaderFiles(fs, baseRel, pattern)
 
 	// Markdown collections win when both are present; otherwise build a data
 	// collection (yaml/json) — the loader pattern dictates which, and a data
@@ -1103,8 +1134,11 @@ export async function scanCollections(
 	fs: CmsFileSystem,
 	contentDir: string = 'src/content',
 	parseCache: ParseCache = new Map(),
+	options: { report?: boolean } = {},
 ): Promise<Record<string, CollectionDefinition>> {
 	const collections: Record<string, CollectionDefinition> = {}
+	/** Collections whose scan threw, by name, as they go into the scan report. */
+	const failedScans = new Map<string, UnresolvedCollection>()
 
 	const entries = await fs.list(contentDir)
 
@@ -1122,13 +1156,15 @@ export async function scanCollections(
 				}
 			} catch (error) {
 				console.warn(`[cms] Skipping collection "${entry.name}" — scan failed:`, error)
+				failedScans.set(entry.name, { name: entry.name, reason: 'scan-failed', base: path.join(contentDir, entry.name) })
 			}
 		})
 
 	await Promise.all(scanPromises)
 
 	// Post-scan: apply schema-driven field config, detect references, derived fields, and ordering
-	const parsed = await parseContentConfig(fs, parseCache)
+	const config = await readContentConfig(fs, parseCache)
+	const { parsed } = config
 
 	// Where the directory scan put each collection, so a config-declared loader base can be
 	// matched back to the definition that already covers that directory.
@@ -1166,6 +1202,12 @@ export async function scanCollections(
 			definition = await scanGlobCollection(fs, collectionName, parsedCollection.loaderBase, parsedCollection.loaderPattern, contentDir)
 		} catch (error) {
 			console.warn(`[cms] Skipping glob collection "${collectionName}" — scan failed:`, error)
+			failedScans.set(collectionName, {
+				name: collectionName,
+				reason: 'scan-failed',
+				base: normalizeBasePath(parsedCollection.loaderBase),
+				pattern: parsedCollection.loaderPattern,
+			})
 			continue
 		}
 		if (!definition) continue
@@ -1186,7 +1228,343 @@ export async function scanCollections(
 	applyCollectionOrderBy(collections, parsed)
 	warnOnPathnameCollisions(collections)
 
+	// The report has to describe the disk as this scan found it, so it is built here and not
+	// when someone asks for it later; a caller that will not ask does not pay for it. And it
+	// is an extra: failing to build it must not fail a scan that succeeded.
+	if (options.report) {
+		try {
+			const contentDirectories = entries
+				.filter(entry => entry.isDirectory && !entry.name.startsWith('_') && !entry.name.startsWith('.'))
+				.map(entry => entry.name)
+			scanReports.set(collections, await buildScanReport(fs, contentDir, collections, config, failedScans, contentDirectories))
+		} catch (error) {
+			console.warn('[cms] Collection scan report unavailable:', error)
+		}
+	}
+
 	return collections
+}
+
+/** The report of each scan, by the record that scan returned — see {@link collectionScanReport}. */
+const scanReports = new WeakMap<Record<string, CollectionDefinition>, CollectionScanReport>()
+
+/**
+ * What the scan that returned `collections` could not vouch for.
+ *
+ * Looked up by the record itself instead of being returned next to it: `scanCollections`
+ * keeps its return type for the callers that only want the definitions, and a report cannot
+ * be paired with another scan's collections. `undefined` for a scan that was not asked for a
+ * report (`options.report`), for one whose report could not be built, and for any other
+ * object (a copy, a hand-built record) — read that as "not reported", never as "nothing
+ * unresolved".
+ */
+export function collectionScanReport(collections: Record<string, CollectionDefinition>): CollectionScanReport | undefined {
+	return scanReports.get(collections)
+}
+
+/**
+ * Patterns the `CmsFileSystem` port does not run the way Astro's glob does. Syntax it reads
+ * literally or wrongly: a character class, an extglob, an escape, a `|` (alternation to
+ * Astro), a `+` behind a brace (a quantifier), a brace without a comma (the name `{a}` to
+ * Astro), and inside a brace another brace, a range (`{x,1..3}`) or a wildcard. And
+ * shapes Astro's glob reads wider than the port: a `..` segment, also one a brace completes
+ * (`..{/drafts,x}`), a trailing slash (also one an empty brace alternative leaves behind), a
+ * negation behind `./`, and a final `/**`, which to Astro also matches a file named by what
+ * stands before it. What such a pattern matches here says nothing about what the loader loads.
+ * A lone leading `!` is not among them: it matches nothing in Astro, and nothing here.
+ */
+const UNSUPPORTED_GLOB_SYNTAX = /[[\]()\\|]|\}\+|\{[^}]*(?:\{|\.\.|[*?]|,,)|\{,|,\}|\{[^,}]*\}|(?:^|[/{},])\.\.(?:[/{},]|$)|\/$|^(?:\.\/)+!|.\/\*\*$/
+
+/**
+ * A `..` segment in a pattern leads out of the base, so the files under the base do not bound
+ * it. A brace next to the dots may be what makes them a segment.
+ */
+const LEAVES_THE_BASE = /(?:^|[/{},])\.\.(?:[/{},]|$)/
+
+/**
+ * How many directories behind symbolic links the report reads for one collection before it
+ * gives up on it. Links can lead into a tree of any size, and into each other.
+ */
+const REPORT_LINKED_DIRECTORY_LIMIT = 20_000
+
+/**
+ * Files that may be entries. Astro's glob loads md, mdx (with the integration), json, yaml,
+ * yml and toml; the other markdown spellings and mdoc are loaded only where an integration
+ * adds them, and are counted anyway: a file too many is a report, a file too few a miss.
+ * A loader's pattern may match more (a cover image next to an entry), and that is not content.
+ */
+const ENTRY_FILE = /\.(?:md|mdx|mdoc|markdown|mdown|mkdn|mkd|mdwn|json|ya?ml|toml)$/i
+
+/** The markdown half of {@link ENTRY_FILE}: what Astro takes from a content directory nothing declares. */
+const MARKDOWN_FILE = /\.(?:md|mdx|mdoc|markdown|mdown|mkdn|mkd|mdwn)$/i
+
+/**
+ * Whether Astro reads `base` as the relative directory the scan takes it for. Astro resolves
+ * it as a URL against the project root: an absolute path or a scheme is somewhere else, an
+ * escape, a query or a fragment is not part of the directory name, a backslash becomes a
+ * slash, whitespace at the edges and tabs or line breaks anywhere are dropped, and a `..`
+ * that leaves the root is resolved against it. And the port would read a glob character in
+ * the base as part of the pattern.
+ */
+function readsAsRelativeDirectory(base: string): boolean {
+	if (/[*?{}]/.test(base)) return false
+	try {
+		const asUrl = decodeURIComponent(new URL(base, 'file:///project-root/').pathname).replace(/\/{2,}/g, '/').replace(/\/+$/, '')
+		const asPath = normalizeBasePath(base).split(path.sep).join('/')
+		return asUrl === (asPath === '.' ? '/project-root' : `/project-root/${asPath}`)
+	} catch {
+		return false
+	}
+}
+
+/** Where a declaration says its files are, in the shape the report carries. */
+function declaredLocation(declaration: DeclaredCollection, contentDir: string): Pick<UnresolvedCollection, 'base' | 'pattern' | 'file'> {
+	const location: Pick<UnresolvedCollection, 'base' | 'pattern' | 'file'> = {}
+	if (declaration.noLoader) location.base = path.join(contentDir, declaration.name)
+	if (declaration.loaderBase !== undefined) location.base = normalizeBasePath(declaration.loaderBase)
+	if (declaration.loaderPattern !== undefined) location.pattern = declaration.loaderPattern
+	if (declaration.loaderFile !== undefined) location.file = normalizeBasePath(declaration.loaderFile)
+	return location
+}
+
+/**
+ * The entry files of a content directory read without a loader, root-relative: all of them at
+ * any depth, `_` and `.` paths aside. This is what Astro loads for a declaration without a
+ * loader and for a content directory nothing declares, under the
+ * `legacy.collectionsBackwardsCompat` flag that nua sets.
+ */
+async function contentDirectoryFiles(fs: CmsFileSystem, directory: string, entryFile: RegExp): Promise<string[]> {
+	const files = await globLoaderFiles(fs, directory, '**/*', { followSymlinks: true, maxLinkedDirectories: REPORT_LINKED_DIRECTORY_LIMIT })
+	return files.filter(file => entryFile.test(file)).map(file => path.join(directory, file))
+}
+
+/**
+ * The entry files a declared collection loads, root-relative, as far as that can be told
+ * without running its loader. `exact` when the scan can evaluate the loader; otherwise the
+ * files are every entry file the loader could match. `null` when not even that is known.
+ */
+async function declaredEntryFiles(
+	fs: CmsFileSystem,
+	contentDir: string,
+	declaration: DeclaredCollection,
+): Promise<{ files: string[]; exact: boolean } | null> {
+	if (declaration.noLoader) {
+		// Astro resolves the name as a URL against the content directory, like a base.
+		if (!readsAsRelativeDirectory(declaration.name)) return null
+		return { exact: true, files: await contentDirectoryFiles(fs, path.join(contentDir, declaration.name), ENTRY_FILE) }
+	}
+
+	// Without a literal base there is nothing to look under, and one Astro reads as something
+	// other than a relative path is no better.
+	const declaredBase = declaration.loaderBase
+	if (declaredBase === undefined || !readsAsRelativeDirectory(declaredBase)) return null
+	const base = normalizeBasePath(declaredBase)
+	const pattern = declaration.loaderPattern
+	// A list of patterns is not run here either, but it can be read for where it leads.
+	const patterns = pattern !== undefined ? [pattern] : declaration.loaderPatterns
+	// A pattern that cannot be read may lead anywhere.
+	if (patterns === undefined) return null
+	// As spelled and as the port joins it to the base, which drops `.` segments and doubled slashes.
+	const exact = pattern !== undefined && !UNSUPPORTED_GLOB_SYNTAX.test(pattern) && !UNSUPPORTED_GLOB_SYNTAX.test(path.posix.normalize(pattern))
+	// Patterns the scan cannot evaluate select among the files under the base: all of them
+	// are candidates. Unless one leads out of the base, and the whole project is not walked
+	// on that off chance either.
+	if (!exact && (base === '.' || patterns.some(one => LEAVES_THE_BASE.test(one)))) return null
+	const matches = await fs.glob(path.join(base, exact ? pattern : '**/*'), {
+		followSymlinks: true,
+		maxLinkedDirectories: REPORT_LINKED_DIRECTORY_LIMIT,
+	})
+	// Astro's glob leaves dot paths out unless the pattern asks for them. It does load `_`
+	// files, which the scan skips, so those stay in.
+	const files = matches.filter(file => ENTRY_FILE.test(file) && patterns.some(one => mayTakeDotPath(one, path.relative(base, file))))
+	return { exact, files }
+}
+
+/**
+ * Whether a loader pattern can match `file` (relative to the base) as far as leading dots go.
+ * Astro's glob keeps `*` and `**` from matching one, so a dotfile or a file in a dot directory
+ * is loaded only when the pattern asks for it. It does by naming a dot at the start of a
+ * segment or of an alternative. And by a wildcard at the start of an alternative, right
+ * behind a brace or behind a `|`: Astro's glob guards `*` and `?` against a leading dot only
+ * at the start of the pattern and behind a slash, so `{guide/,notes/}*.md` takes
+ * `guide/.wip.md`. In both cases nothing is ruled out here. And by a character class or an
+ * extglob (in patterns the scan does not run), which take a leading dot like any other
+ * character: in the last segment a dotfile, in an earlier one a dot directory. Where a brace
+ * or an extglob spans a slash the segments cannot be told apart, and either takes both.
+ */
+function mayTakeDotPath(pattern: string, file: string): boolean {
+	const segments = file.split(/[/\\]/)
+	const dotFile = segments.pop()!.startsWith('.')
+	const dotDirectory = segments.some(segment => segment.startsWith('.'))
+	if (!dotFile && !dotDirectory) return true
+	if (/(?:^|[/{},|!\\])\.[^./]|[{,}|][*?]/.test(pattern)) return true
+	const cut = pattern.lastIndexOf('/')
+	const blurred = /[{(][^})]*\//.test(pattern)
+	const takesDot = (part: string): boolean => /[[(]/.test(blurred ? pattern : part)
+	return (!dotFile || takesDot(pattern.slice(cut + 1))) && (!dotDirectory || takesDot(pattern.slice(0, Math.max(cut, 0))))
+}
+
+/** Where Astro looks for its own config. It takes the first one there is. */
+const ASTRO_CONFIG_PATHS = ['astro.config.mjs', 'astro.config.js', 'astro.config.ts', 'astro.config.mts']
+
+/**
+ * The project's source directory when the Astro config moves it from `src`: the directory,
+ * `undefined` for the default, or `null` when where Astro loads content from cannot be told.
+ *
+ * Read off the code of the one config file Astro uses. Two of its options decide the place:
+ * `srcDir`, where the content config and the content directory are, and `root`, which every
+ * loader's `base` is resolved against. Which mention of either name is Astro's option cannot
+ * be told without evaluating the file (it may name another plugin's option, a variable, a
+ * member), so every one of them has to be a property given a plain string: all `srcDir`s the
+ * same directory inside the project, every `root` the project root itself, which the scan
+ * takes it to be. Either name given an object literal is not Astro's option, which is a string.
+ */
+async function customSrcDir(fs: CmsFileSystem): Promise<string | null | undefined> {
+	for (const configPath of ASTRO_CONFIG_PATHS) {
+		const source = await fs.readFile(configPath).catch(() => null)
+		if (source === null) continue
+		const roots = configOptionMentions(source, 'root')
+		const srcDirs = configOptionMentions(source, 'srcDir')
+		if (roots === null || srcDirs === null) return null
+		if (roots.some(root => root === null || normalizeBasePath(root) !== '.')) return null
+		if (srcDirs.length === 0) return undefined
+		const [srcDir, ...others] = srcDirs.map(literal => (literal === null ? null : normalizeBasePath(literal)))
+		if (srcDir === null || srcDir === undefined || others.some(other => other !== srcDir)) return null
+		if (srcDir === 'src') return undefined
+		return path.isAbsolute(srcDir) || srcDir.startsWith('..') ? null : srcDir
+	}
+	return undefined
+}
+
+/**
+ * How much of the content config was read, for the report. Astro takes the config from more
+ * file names than the reader looks at, and from another directory when `srcDir` says so, so
+ * which files exist is part of the answer.
+ */
+async function contentConfigStatus(fs: CmsFileSystem, config: ContentConfigRead): Promise<CollectionScanReport['contentConfig']> {
+	const configPaths = [...CONTENT_CONFIG_PATHS, ...UNREAD_CONTENT_CONFIG_PATHS]
+	const srcDir = await customSrcDir(fs)
+	// Where Astro loads from cannot be told, so neither can whether a config is there, nor
+	// whether what the scan found under the project root is what Astro loads.
+	if (srcDir === null) return 'unreadable'
+	if (srcDir !== undefined) {
+		// The reader only looks under `src`, so a config found here was not read. Nothing here
+		// settles nothing: the mention may not have been Astro's option, and then `src` is
+		// where the config is, so `src` is judged as usual.
+		for (const configPath of configPaths) {
+			if (await fs.exists(path.join(srcDir, path.relative('src', configPath)))) return 'unreadable'
+		}
+	}
+
+	let configFiles = 0
+	for (const configPath of configPaths) {
+		if (await fs.exists(configPath)) configFiles++
+	}
+	if (configFiles === 0) return 'missing'
+	// With two config files, the one the reader took need not be the one Astro uses.
+	if (config.partial || configFiles > 1) return 'partial'
+	if (config.declared.length > 0) return 'ok'
+	// Nothing declared: a site without collections, or a config that was not read at all
+	// (it does not parse, or it is one of the names the reader does not look at).
+	return await classifyEmptyContentConfig(fs) === 'no-collections' ? 'ok' : 'unreadable'
+}
+
+/**
+ * Account for every collection the scan knows of and cannot vouch for.
+ *
+ * "Knows of" is every name the content config declares plus every content directory the
+ * walk tried. A declared collection is vouched for when every entry file its loader loads is
+ * an entry of the scan — which makes one that loads no files an empty collection, not an
+ * unresolved one, and lets a site the scan reads whole report nothing. Being in `collections`
+ * is not enough: a content directory of the declared name is read whatever the loader says.
+ */
+async function buildScanReport(
+	fs: CmsFileSystem,
+	contentDir: string,
+	collections: Record<string, CollectionDefinition>,
+	config: ContentConfigRead,
+	failedScans: Map<string, UnresolvedCollection>,
+	contentDirectories: string[],
+): Promise<CollectionScanReport> {
+	const contentConfig = await contentConfigStatus(fs, config)
+	const unresolved = new Map<string, UnresolvedCollection>()
+	const declaredByName = new Map(config.declared.map(declaration => [declaration.name, declaration]))
+
+	/** Every file that is an entry of some collection. */
+	const listed = new Set<string>()
+	for (const definition of Object.values(collections)) {
+		for (const entry of definition.entries ?? []) listed.add(path.normalize(entry.sourcePath))
+		// `entryCount` is the source files found, `entries` the ones that could be read and parsed.
+		if ((definition.entries?.length ?? 0) >= definition.entryCount) continue
+		const declaration = declaredByName.get(definition.name)
+		unresolved.set(definition.name, {
+			name: definition.name,
+			reason: 'unlisted-entries',
+			base: normalizeBasePath(definition.path),
+			...(declaration ? declaredLocation(declaration, contentDir) : {}),
+		})
+	}
+
+	for (const declaration of config.declared) {
+		const { name } = declaration
+		if (unresolved.has(name)) continue
+		const location = declaredLocation(declaration, contentDir)
+
+		const failed = collections[name] ? undefined : failedScans.get(name)
+		if (failed) {
+			unresolved.set(name, failed)
+			continue
+		}
+
+		let loads: Awaited<ReturnType<typeof declaredEntryFiles>>
+		try {
+			loads = await declaredEntryFiles(fs, contentDir, declaration)
+		} catch {
+			// Looking where the loader loads from threw: a base outside the root, a directory that cannot be read.
+			unresolved.set(name, { name, reason: 'scan-failed', ...location })
+			continue
+		}
+		if (loads === null) {
+			unresolved.set(name, { name, reason: 'unsupported-loader', ...location })
+		} else if (!loads.files.every(file => listed.has(path.normalize(file)))) {
+			// A file the loader is known to load is missing from the entries — or, where the loader
+			// cannot be evaluated, one it may load is.
+			unresolved.set(name, { name, reason: loads.exact ? 'unlisted-entries' : 'unsupported-loader', ...location })
+		}
+	}
+
+	// A content directory nothing declares. As nua configures Astro
+	// (`legacy.collectionsBackwardsCompat`), each one is a collection of its markdown files at
+	// any depth, unless some declared collection has a loader — then Astro leaves them alone.
+	// Whether the flag is set cannot be read reliably, so it is taken to be: that way a
+	// directory Astro does not load can be reported, and one it does load cannot be missed.
+	// A declaration whose loader is unknown may have none, so only a loader that was seen counts.
+	// A config that does not export `collections` gives Astro nothing to add to.
+	const loadsUndeclared = config.exportsCollections && (contentConfig === 'ok' || contentConfig === 'partial')
+		&& !config.declared.some(declaration => declaration.hasLoader)
+	if (loadsUndeclared) {
+		for (const name of contentDirectories) {
+			if (declaredByName.has(name) || unresolved.has(name) || failedScans.has(name)) continue
+			const directory = path.join(contentDir, name)
+			const files = await contentDirectoryFiles(fs, directory, MARKDOWN_FILE).catch(() => null)
+			if (files === null) unresolved.set(name, { name, reason: 'scan-failed', base: directory })
+			else if (!files.every(file => listed.has(path.normalize(file)))) unresolved.set(name, { name, reason: 'unlisted-entries', base: directory })
+		}
+	}
+
+	// What is left are content directories the config does not declare under that name. One a
+	// declared collection loads from under another key (`heroSlides` over `hero-slides`) has
+	// failed there already, and one whose declared loader did read it has not failed at all.
+	for (const failed of failedScans.values()) {
+		if (collections[failed.name] || unresolved.has(failed.name)) continue
+		if ([...unresolved.values()].some(other => other.reason === 'scan-failed' && other.base === failed.base)) continue
+		unresolved.set(failed.name, failed)
+	}
+
+	return {
+		contentConfig,
+		unresolved: [...unresolved.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
+	}
 }
 
 /**

@@ -81,8 +81,52 @@ export interface ParsedCollection {
 
 export type ParsedConfig = Map<string, ParsedCollection>
 
+/**
+ * A key of the config's `collections` export, whether or not the rest of its declaration
+ * could be read. `ParsedConfig` only holds the collections with a readable schema or glob
+ * pattern; this is every name, so a scan can tell a collection it could not locate from one
+ * that does not exist.
+ *
+ * The loader facts are stricter than `ParsedCollection`'s: an option is only reported when
+ * nothing next to it (a spread) could replace it, because a scan report vouches by them.
+ */
+export interface DeclaredCollection {
+	name: string
+	/** Literal `base` of a `glob()` loader; `.` when the options name none, which is the project root to Astro. */
+	loaderBase?: string
+	/** Literal `pattern` of a `glob()` loader. */
+	loaderPattern?: string
+	/** The patterns of a `glob()` loader that takes a list of them, when every one is a literal. */
+	loaderPatterns?: string[]
+	/** Literal path of a `file()` loader. */
+	loaderFile?: string
+	/** The declaration has a `loader`, whatever it is. */
+	hasLoader?: true
+	/** The declaration has no `loader` at all: its entries are the files of `<contentDir>/<name>`. */
+	noLoader?: true
+}
+
+/** One read of a content config: what {@link parseContentConfig} returns, and what the config declares beyond it. */
+export interface ContentConfigRead {
+	parsed: ParsedConfig
+	/** Every collection name the reader could make out. */
+	declared: DeclaredCollection[]
+	/**
+	 * The reader could not see the whole `collections` export, so `declared` may be missing
+	 * names: the export is not an object literal (a call, a re-export from another module),
+	 * the literal has a spread, a method, a `__proto__` or a computed key in it, or the file
+	 * mentions `collections` in a way that may add to it.
+	 */
+	partial: boolean
+	/**
+	 * The file exports `collections`, or may through `export *`. Astro takes no collections
+	 * from a content config that does not, whatever the file declares without exporting it.
+	 */
+	exportsCollections: boolean
+}
+
 /** Cached parse result keyed by config path; invalidated by mtime. */
-export type ParseCache = Map<string, { mtimeMs: number; parsed: ParsedConfig }>
+export type ParseCache = Map<string, { mtimeMs: number } & ContentConfigRead>
 
 const FIELD_HELPER_TYPES = new Set([
 	'text',
@@ -249,6 +293,19 @@ function parseSource(source: string): t.File | null {
 export const CONTENT_CONFIG_PATHS = ['src/content/config.ts', 'src/content.config.ts'] as const
 
 /**
+ * Where Astro also takes a content config from and this reader does not look. A project with
+ * one of these has a config; it is only out of the reader's sight.
+ */
+export const UNREAD_CONTENT_CONFIG_PATHS = [
+	'src/content.config.mjs',
+	'src/content.config.js',
+	'src/content.config.mts',
+	'src/content/config.mjs',
+	'src/content/config.js',
+	'src/content/config.mts',
+] as const
+
+/**
  * Why `parseContentConfig` came back empty. Three different facts share that one return value, and
  * only two of them are a defect: a site with no content collections is a legitimate site.
  */
@@ -283,6 +340,19 @@ export async function classifyEmptyContentConfig(fs: CmsFileSystem): Promise<Emp
  * re-reading and re-parsing an unchanged config file.
  */
 export async function parseContentConfig(fs: CmsFileSystem, cache: ParseCache): Promise<ParsedConfig> {
+	return (await readContentConfig(fs, cache)).parsed
+}
+
+/**
+ * {@link parseContentConfig}, plus every collection name the config declares — including the
+ * ones the parsed map leaves out because neither a schema nor a glob pattern could be read.
+ * Same file choice and the same cache.
+ */
+export async function readContentConfig(fs: CmsFileSystem, cache: ParseCache): Promise<ContentConfigRead> {
+	// A config whose parsed map came back empty may still declare names, all of them unreadable
+	// declarations, or export a `collections` the reader cannot see into. The first such read
+	// is the answer when no config parses to anything.
+	let unparsed: ContentConfigRead | undefined
 	for (const configPath of CONTENT_CONFIG_PATHS) {
 		let stat: Awaited<ReturnType<CmsFileSystem['stat']>>
 		try {
@@ -291,25 +361,27 @@ export async function parseContentConfig(fs: CmsFileSystem, cache: ParseCache): 
 			continue
 		}
 
-		const cached = cache.get(configPath)
-		if (cached && cached.mtimeMs === stat.mtimeMs) {
-			if (cached.parsed.size > 0) return cached.parsed
-			continue
+		let cached = cache.get(configPath)
+		if (!cached || cached.mtimeMs !== stat.mtimeMs) {
+			const content = await fs.readFile(configPath)
+			cached = { mtimeMs: stat.mtimeMs, ...readConfigSource(content) }
+			cache.set(configPath, cached)
 		}
-
-		const content = await fs.readFile(configPath)
-		const parsed = parseConfigSource(content, configPath)
-		cache.set(configPath, { mtimeMs: stat.mtimeMs, parsed })
-		if (parsed.size > 0) return parsed
+		if (cached.parsed.size > 0) return cached
+		if (!unparsed && (cached.declared.length > 0 || cached.exportsCollections)) unparsed = cached
 	}
-	return new Map()
+	return unparsed ?? { parsed: new Map(), declared: [], partial: false, exportsCollections: false }
 }
 
 /** Exported for unit testing — operates on a source string directly. */
 export function parseConfigSource(source: string, _sourcePath?: string): ParsedConfig {
+	return readConfigSource(source).parsed
+}
+
+function readConfigSource(source: string): ContentConfigRead {
 	const result: ParsedConfig = new Map()
 	const ast = parseSource(source)
-	if (!ast) return result
+	if (!ast) return { parsed: result, declared: [], partial: false, exportsCollections: false }
 
 	// Single pass: collect every top-level `const X = <expr>` binding (so we can
 	// later resolve Identifier references like `cs: TestimonialTranslation`),
@@ -464,7 +536,21 @@ export function parseConfigSource(source: string, _sourcePath?: string): ParsedC
 		})
 	}
 
-	return result
+	return { parsed: result, ...declaredOrUnknown(ast) }
+}
+
+/**
+ * {@link readDeclaredCollections}, which runs on every parse, also for the callers that never
+ * ask for a scan report. A config form it trips over must not cost them the parse, so a throw
+ * reads as a config whose declarations could not be seen: nothing named, and possibly more.
+ */
+function declaredOrUnknown(ast: t.File): Pick<ContentConfigRead, 'declared' | 'partial' | 'exportsCollections'> {
+	try {
+		return readDeclaredCollections(ast)
+	} catch (error) {
+		console.warn('[cms] Could not read the collections the content config declares:', error)
+		return { declared: [], partial: true, exportsCollections: true }
+	}
 }
 
 /**
@@ -697,6 +783,477 @@ function extractStaticString(node: t.Node, bindings: Bindings): string | undefin
 
 function isGlobCallee(callee: t.Node): boolean {
 	return callee.type === 'Identifier' && callee.name === 'glob'
+}
+
+/**
+ * Every mention of the string option `name` in the code of a config file, comments aside: as
+ * an identifier or as a string of exactly that name, anywhere. One that is the key of a
+ * property given a plain string is that string. Any other mention is `null`: another kind of
+ * value (a call, a concatenation, a variable), a shorthand, a variable, a parameter or a
+ * member of that name, and the name as a string that is not such a key, since a string can be
+ * made a key in more ways than can be listed (`Object.defineProperty(config, 'srcDir', …)`,
+ * `const KEY = 'srcDir'`). A key given an object literal is left out: it is not a string option, so it is
+ * another option of that name. `null` instead of a list for a file that does not parse.
+ *
+ * For telling whether an option is set to a known value wherever the file could set it,
+ * without evaluating the file.
+ */
+export function configOptionMentions(source: string, name: string): Array<string | null> | null {
+	const ast = parseSource(source)
+	if (!ast) return null
+	const mentions: Array<string | null> = []
+	walkValues(ast.program, path => {
+		const { node, key } = path.at(-1)!
+		const parent = path.at(-2)?.node
+		const isKey = parent?.type === 'ObjectProperty' && key === 'key'
+		const asString = node.type === 'StringLiteral'
+			? node.value
+			: node.type === 'TemplateLiteral' && node.expressions.length === 0
+			? node.quasis[0]?.value.cooked
+			: undefined
+		const named = node.type === 'Identifier' ? node.name === name : asString === name
+		if (!named) return
+		// `[name]: …` is keyed by a variable of that name, not by the name.
+		if (!isKey || (node.type === 'Identifier' && parent.computed)) mentions.push(null)
+		else if (parent.value.type !== 'ObjectExpression') mentions.push(extractStaticString(parent.value, new Map()) ?? null)
+	})
+	return mentions
+}
+
+/** The loaders' own calls. They read what they are handed and hand it on unchanged. */
+const READER_CALLS = ['glob', 'file', 'defineCollection', 'defineCmsCollection']
+
+/** Wrappers that change nothing about a value, the ones {@link resolveExpression} sees through. */
+const VALUE_WRAPPERS = new Set(['TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression', 'TSTypeAssertion'])
+
+/**
+ * TypeScript nodes that hold code and not only types; every other `TS…` node is skipped by
+ * {@link walkValues}. `TSQualifiedName` is among them for `import alias = blog.loader`, which
+ * compiles to a variable; in a type it is below a node that is skipped.
+ */
+const TS_NODES_WITH_CODE = new Set([
+	...VALUE_WRAPPERS,
+	'TSInstantiationExpression',
+	'TSEnumDeclaration',
+	'TSEnumMember',
+	'TSModuleDeclaration',
+	'TSModuleBlock',
+	'TSExportAssignment',
+	'TSImportEqualsDeclaration',
+	'TSQualifiedName',
+	'TSParameterProperty',
+])
+
+/** Keys of a node that hold no code. */
+const NODE_METADATA = new Set(['loc', 'extra', 'leadingComments', 'trailingComments', 'innerComments'])
+
+/** A node and the key of its parent it sits under; a path is these from the program down. */
+interface PathStep {
+	node: t.Node
+	key: string
+}
+
+/** Visit every node that can run, with the path that leads to it. Types are passed over: they cannot touch a value. */
+function walkValues(node: t.Node, visit: (path: PathStep[]) => void, path: PathStep[] = [{ node, key: '' }]): void {
+	visit(path)
+	const children: [string, unknown][] = Object.entries(node)
+	for (const [key, child] of children) {
+		if (NODE_METADATA.has(key)) continue
+		for (const item of Array.isArray(child) ? child : [child]) {
+			if (!isAstNode(item) || (item.type.startsWith('TS') && !TS_NODES_WITH_CODE.has(item.type))) continue
+			path.push({ node: item, key })
+			walkValues(item, visit, path)
+			path.pop()
+		}
+	}
+}
+
+/** Is the declarator at `path[index]` one of a module-level declaration? */
+function isModuleLevelDeclarator(path: PathStep[], index: number): boolean {
+	const holder = path[index - 2]?.node
+	if (holder?.type === 'ExportNamedDeclaration') return path[index - 3]?.node.type === 'Program'
+	return holder?.type === 'Program'
+}
+
+/** A value that cannot be changed in place, so a `const` holding it is what it was declared as, whatever is done with it. */
+function isImmutableLiteral(node: t.Node): boolean {
+	return node.type === 'StringLiteral' || node.type === 'TemplateLiteral' || node.type === 'NumericLiteral'
+		|| node.type === 'BooleanLiteral' || node.type === 'NullLiteral' || node.type === 'BigIntLiteral'
+}
+
+/**
+ * The module-level `const`s whose value is, by the time Astro reads the config, what the file
+ * declares it as. Only these are followed; a name left out is unknown to the reader.
+ *
+ * A name is kept when every mention of it in the file is one of a short list of uses that can
+ * neither change the value nor hand it to code that can:
+ *
+ * - its one declaration;
+ * - the value of a property in an object literal the reader reads, a first argument of
+ *   `glob`, `file`, `defineCollection` or `defineCmsCollection` where the reader reads that
+ *   call, or the whole initializer of another `const` (an alias). "Where the reader reads" is
+ *   the initializer of a `const` that is itself kept, so a name falls with the one that holds it;
+ * - `X.key` where the declaration gives `key` a string, a number, a boolean or `null`, read
+ *   into a declaration, a property, a call argument, an array, a template, or a binary,
+ *   logical or conditional expression;
+ * - `export { X }`, `export default X`, a type (`typeof X`), and `Object.keys(X)`.
+ *
+ * Any other mention drops the name: a call that takes it, a member written or called, an
+ * array or a spread that holds it, a loop, a conditional, a function that mentions it, a
+ * second declaration of the name anywhere (a parameter, a local). So does `eval` or
+ * `Function` anywhere in the file, for every name. Listing what is harmless instead of what
+ * is harmful means a use nobody thought of leaves a name unknown, not trusted.
+ *
+ * A `const` that holds a string, a number, a boolean or `null` is kept whatever mentions it:
+ * neither the binding nor the value can change.
+ *
+ * `trusted` names which of the loaders' calls, and `Object`, are not declared in the file
+ * itself; a local `glob` is not Astro's.
+ */
+function followedConstants(ast: t.File, bindings: Bindings): { followed: Bindings; trusted: Set<string> } {
+	const dropped = new Set<string>()
+	/** A name → the `const`s whose initializer it is read in: it is kept only while they are. */
+	const heldBy = new Map<string, Set<string>>()
+	/** A name → the calls it is handed to: it is kept only while they are what they are taken for. */
+	const handedTo = new Map<string, Set<string>>()
+	const untrusted = new Set<string>()
+	let anythingMayChange = false
+
+	const note = (map: Map<string, Set<string>>, name: string, values: Iterable<string>): void => {
+		map.set(name, new Set([...map.get(name) ?? [], ...values]))
+	}
+
+	/** The primitive a `const`'s object literal gives `key`, if that is certain. */
+	const holdsPrimitiveAt = (name: string, key: string): boolean => {
+		const init = bindings.get(name)
+		const object = init && resolveExpression(init, new Map())
+		const member = object?.type === 'ObjectExpression' ? literalMember(object, key) : undefined
+		return !!member && isImmutableLiteral(resolveExpression(member, new Map()))
+	}
+
+	/**
+	 * The `const` whose initializer the expression at `path[index]` is read in, and the loaders'
+	 * calls it passes through on the way: it is that initializer, a property value of an object
+	 * literal that is, or a first argument of one of those calls that is. `null` anywhere else.
+	 */
+	const readIn = (path: PathStep[], index: number): { holder: string; calls: string[] } | null => {
+		const calls: string[] = []
+		for (let at = index;;) {
+			const parent = path[at - 1]?.node
+			const { node, key } = path[at]!
+			if (!parent) return null
+			if (VALUE_WRAPPERS.has(parent.type) && key === 'expression') {
+				at--
+			} else if (parent.type === 'ObjectProperty' && key === 'value' && path[at - 2]?.node.type === 'ObjectExpression') {
+				at -= 2
+			} else if (
+				parent.type === 'CallExpression' && parent.arguments[0] === node && parent.callee.type === 'Identifier'
+				&& READER_CALLS.includes(parent.callee.name)
+			) {
+				calls.push(parent.callee.name)
+				at--
+			} else {
+				return parent.type === 'VariableDeclarator' && key === 'init' && parent.id.type === 'Identifier' && isModuleLevelDeclarator(path, at - 1)
+					? { holder: parent.id.name, calls }
+					: null
+			}
+		}
+	}
+
+	/** Is the expression at `path[index]` only read, into a place that keeps nothing but its value? */
+	const isValueRead = (path: PathStep[], index: number): boolean => {
+		let at = index
+		while (VALUE_WRAPPERS.has(path[at - 1]?.node.type ?? '') && path[at]!.key === 'expression') at--
+		const parent = path[at - 1]?.node
+		const { key } = path[at]!
+		switch (parent?.type) {
+			case 'ObjectProperty':
+				return key === 'value' && path[at - 2]?.node.type === 'ObjectExpression'
+			case 'CallExpression':
+			case 'OptionalCallExpression':
+			case 'NewExpression':
+				return key === 'arguments'
+			case 'VariableDeclarator':
+			case 'ArrayExpression':
+			case 'TemplateLiteral':
+			case 'BinaryExpression':
+			case 'LogicalExpression':
+			case 'ConditionalExpression':
+				return true
+			default:
+				return false
+		}
+	}
+
+	walkValues(ast.program, path => {
+		const { node, key } = path.at(-1)!
+		const parent = path.at(-2)?.node
+		if (node.type !== 'Identifier' || !parent) return
+		const { name } = node
+
+		// Not a mention of the binding at all: the name of a property.
+		const isMemberKey =
+			(parent.type === 'ObjectProperty' || parent.type === 'ObjectMethod' || parent.type === 'ClassMethod' || parent.type === 'ClassProperty')
+			&& key === 'key' && !parent.computed
+		const isMemberName = (parent.type === 'MemberExpression' || parent.type === 'OptionalMemberExpression') && key === 'property' && !parent.computed
+		const isModuleName = (parent.type === 'ExportSpecifier' && key === 'exported') || (parent.type === 'ImportSpecifier' && key === 'imported')
+		// Nor is the `meta` of `import.meta`.
+		if (isMemberKey || isMemberName || isModuleName || parent.type === 'MetaProperty') return
+
+		if (name === 'eval' || name === 'Function') anythingMayChange = true
+
+		if (READER_CALLS.includes(name) || name === 'Object') {
+			const imported = (parent.type === 'ImportSpecifier' || parent.type === 'ImportDefaultSpecifier' || parent.type === 'ImportNamespaceSpecifier')
+				&& key === 'local'
+			// `Object` only as the one a method is called on: `Object.keys = …` makes it another.
+			const grandparent = path.at(-3)?.node
+			const called = (parent.type === 'CallExpression' && key === 'callee')
+				|| (name === 'Object' && parent.type === 'MemberExpression' && key === 'object' && !parent.computed
+					&& grandparent?.type === 'CallExpression' && grandparent.callee === parent)
+			if (!imported && !called) untrusted.add(name)
+		}
+		if (!bindings.has(name)) return
+
+		// Its declaration. Any other declaration of the name is a mention like any other.
+		if (parent.type === 'VariableDeclarator' && key === 'id' && isModuleLevelDeclarator(path, path.length - 2)) return
+		if (parent.type === 'ExportDefaultDeclaration') return
+		if (parent.type === 'ExportSpecifier' && key === 'local') return
+		if (
+			parent.type === 'CallExpression' && parent.arguments[0] === node && parent.callee.type === 'MemberExpression' && !parent.callee.computed
+			&& parent.callee.object.type === 'Identifier' && parent.callee.object.name === 'Object'
+			&& parent.callee.property.type === 'Identifier' && parent.callee.property.name === 'keys'
+		) {
+			note(handedTo, name, ['Object'])
+			return
+		}
+		if (
+			(parent.type === 'MemberExpression' || parent.type === 'OptionalMemberExpression') && key === 'object' && !parent.computed
+			&& parent.property.type === 'Identifier' && holdsPrimitiveAt(name, parent.property.name) && isValueRead(path, path.length - 2)
+		) return
+
+		const read = readIn(path, path.length - 1)
+		if (read === null) {
+			dropped.add(name)
+			return
+		}
+		note(heldBy, name, [read.holder])
+		note(handedTo, name, read.calls)
+	})
+
+	const trusted = new Set([...READER_CALLS, 'Object'].filter(name => !untrusted.has(name)))
+	const keeps = (name: string): boolean => {
+		const init = bindings.get(name)
+		return init !== undefined && isImmutableLiteral(resolveExpression(init, new Map()))
+	}
+	const followed: Bindings = new Map()
+	for (const [name, init] of bindings) {
+		const handedOn = [...handedTo.get(name) ?? []].every(call => trusted.has(call))
+		if (keeps(name) || (!anythingMayChange && !dropped.has(name) && handedOn)) followed.set(name, init)
+	}
+	// A name falls with the one whose initializer holds it.
+	for (let fell = true; fell;) {
+		fell = false
+		for (const [name, holders] of heldBy) {
+			if (!followed.has(name) || keeps(name) || [...holders].every(holder => followed.has(holder))) continue
+			followed.delete(name)
+			fell = true
+		}
+	}
+	return { followed, trusted }
+}
+
+/**
+ * Every collection name the file's `collections` export declares, and whether that is all of
+ * them. Reads more forms than the parse above follows (`as`, `satisfies`, a same-file
+ * variable, a numeric key): naming a collection commits to nothing, while parsing one gives
+ * it a schema and a place in every scan.
+ *
+ * Identifiers are followed through the module-level `const`s {@link followedConstants} keeps.
+ */
+function readDeclaredCollections(ast: t.File): Pick<ContentConfigRead, 'declared' | 'partial' | 'exportsCollections'> {
+	const bindings: Bindings = new Map()
+	let collections: t.Node | undefined
+	let exportsCollections = false
+	// `collections` comes from where this reader does not look: another module, another local
+	// name, a `let`, a destructuring…
+	let outOfSight = false
+	// …or would, unless this file declares it: `export * from`, `export { collections }` of an import.
+	let exportedUndeclared = false
+	for (const stmt of ast.program.body) {
+		if (stmt.type === 'ExportAllDeclaration') {
+			exportedUndeclared = true
+			exportsCollections = true
+			continue
+		}
+		if (stmt.type === 'ExportNamedDeclaration') {
+			for (const specifier of stmt.specifiers) {
+				const exported = specifier.exported.type === 'Identifier' ? specifier.exported.name : specifier.exported.value
+				if (exported !== 'collections') continue
+				exportsCollections = true
+				if (stmt.source || specifier.type !== 'ExportSpecifier' || specifier.local.name !== 'collections') outOfSight = true
+				else exportedUndeclared = true
+			}
+		}
+		const varDecl = stmt.type === 'ExportNamedDeclaration' && stmt.declaration?.type === 'VariableDeclaration'
+			? stmt.declaration
+			: stmt.type === 'VariableDeclaration'
+			? stmt
+			: null
+		for (const decl of varDecl?.declarations ?? []) {
+			if (stmt.type === 'ExportNamedDeclaration') {
+				declaredPatternNames(decl.id, name => {
+					if (name === 'collections') exportsCollections = true
+				})
+			}
+			if (varDecl?.kind === 'const' && decl.id.type === 'Identifier' && decl.init) {
+				bindings.set(decl.id.name, decl.init)
+				if (decl.id.name === 'collections') collections = decl.init
+				continue
+			}
+			declaredPatternNames(decl.id, name => {
+				if (name === 'collections') outOfSight = true
+			})
+		}
+	}
+
+	// A config that imports itself can change what it exports without naming it: `self.collections.x = …`.
+	if (importsContentConfig(ast)) outOfSight = true
+	if (!collections) return { declared: [], partial: outOfSight || exportedUndeclared, exportsCollections }
+
+	const { followed, trusted } = followedConstants(ast, bindings)
+	const object = resolveExpression(collections, followed)
+	if (object.type !== 'ObjectExpression') return { declared: [], partial: true, exportsCollections }
+
+	// What `collections` holds by the time Astro reads it may be more than the declaration says.
+	let partial = outOfSight || !followed.has('collections') || !isPlainLiteralObject(object)
+	// A name given twice holds what it was given last.
+	const declared = new Map<string, DeclaredCollection>()
+	for (const prop of object.properties) {
+		// A spread, a method or a computed key that is not a string (`[name]: …` is not the name
+		// it spells) hides a name.
+		const name = staticKeyName(prop)
+		if (prop.type !== 'ObjectProperty' || name === null) {
+			partial = true
+			continue
+		}
+		if (name === '__proto__') continue
+		declared.set(name, { name, ...readDeclaredLoader(prop.value, followed, trusted) })
+	}
+	return { declared: [...declared.values()], partial, exportsCollections }
+}
+
+/**
+ * The key an object member is stored under, or `null` when it cannot be told: a spread, or
+ * a computed key that is not a string (`['loader']` is `loader`; `[key]` could be anything).
+ * A numeric key is a name like any other.
+ */
+function staticKeyName(prop: t.ObjectExpression['properties'][number]): string | null {
+	if (prop.type === 'SpreadElement') return null
+	if (prop.computed) return prop.key.type === 'StringLiteral' ? prop.key.value : null
+	return prop.key.type === 'NumericLiteral' ? String(prop.key.value) : propertyKeyName(prop.key)
+}
+
+/**
+ * An object literal that holds what its own keys say and nothing else: no spread, no key that
+ * cannot be read, and no `__proto__`, which gives it another object's properties to answer with.
+ */
+function isPlainLiteralObject(object: t.ObjectExpression): boolean {
+	return object.properties.every(prop => {
+		const key = staticKeyName(prop)
+		return key !== null && key !== '__proto__'
+	})
+}
+
+/**
+ * What an object literal holds under `key`: the last member of that name, as a later one
+ * replaces an earlier. `undefined` when it has none; `null` when it has one that is not a
+ * plain value (a getter, a setter, a method).
+ */
+function literalMember(object: t.ObjectExpression, key: string): t.Node | null | undefined {
+	const member = object.properties.findLast(prop => staticKeyName(prop) === key)
+	if (member === undefined) return undefined
+	return member.type === 'ObjectProperty' ? member.value : null
+}
+
+/** A `this` anywhere below `node`: an accessor or a method of a literal can change the literal without naming it. */
+function mentionsThis(node: t.Node): boolean {
+	let found = false
+	walkNodes(node, inner => {
+		if (inner.type === 'ThisExpression') found = true
+	})
+	return found
+}
+
+/** A module specifier that may be the content config itself, whatever directory it is given from. */
+const CONTENT_CONFIG_SPECIFIER = /(?:^|\/)content(?:\.|\/)config(?:\.[cm]?[jt]s)?$/
+
+/** Does the file import a content config, which may be itself? What it exports can then be changed through the import. */
+function importsContentConfig(ast: t.File): boolean {
+	let found = false
+	walkNodes(ast, node => {
+		const source = node.type === 'ImportDeclaration' || node.type === 'ExportNamedDeclaration'
+			? node.source
+			: node.type === 'CallExpression' && node.callee.type === 'Import'
+			? node.arguments[0]
+			: undefined
+		if (source?.type === 'StringLiteral' && CONTENT_CONFIG_SPECIFIER.test(source.value)) found = true
+	})
+	return found
+}
+
+/** The loader facts of a {@link DeclaredCollection}, read off the value its `collections` key holds. */
+function readDeclaredLoader(value: t.Node, bindings: Bindings, trusted: Set<string>): Omit<DeclaredCollection, 'name'> {
+	const isCallOf = (node: t.Node, names: string[]): node is t.CallExpression & { callee: t.Identifier } =>
+		node.type === 'CallExpression' && node.callee.type === 'Identifier' && names.includes(node.callee.name) && trusted.has(node.callee.name)
+
+	const declaration = resolveExpression(value, bindings)
+	if (!isCallOf(declaration, ['defineCollection', 'defineCmsCollection']) || !declaration.arguments[0]) return {}
+	const options = resolveExpression(declaration.arguments[0], bindings)
+	if (options.type !== 'ObjectExpression' || mentionsThis(options)) return {}
+
+	// The last `loader` is the one that counts. A spread or a key that cannot be read after it
+	// may replace it, and a `__proto__` may supply one where the literal names none.
+	const lastLoader = options.properties.findLastIndex(prop => staticKeyName(prop) === 'loader')
+	const mayBeReplaced = options.properties.some((prop, index) => {
+		const key = staticKeyName(prop)
+		return key === '__proto__' || (key === null && index > lastLoader)
+	})
+	if (mayBeReplaced) return {}
+	const loader = literalMember(options, 'loader')
+	if (loader === undefined) return { noLoader: true }
+	if (loader === null) return {}
+
+	const facts: Omit<DeclaredCollection, 'name'> = { hasLoader: true }
+	const call = resolveExpression(loader, bindings)
+	if (!isCallOf(call, ['glob', 'file']) || !call.arguments[0]) return facts
+	if (call.callee.name === 'file') {
+		const file = extractStaticString(call.arguments[0], bindings)
+		if (file !== undefined) facts.loaderFile = file
+		return facts
+	}
+
+	const globOptions = resolveExpression(call.arguments[0], bindings)
+	// A spread, a key that cannot be read or a `__proto__` may supply either option, so no literal next to one can be trusted.
+	if (globOptions.type !== 'ObjectExpression' || !isPlainLiteralObject(globOptions) || mentionsThis(globOptions)) return facts
+	const base = literalMember(globOptions, 'base')
+	const pattern = literalMember(globOptions, 'pattern')
+	// Without a `base`, Astro's glob loads from the project root.
+	if (base === undefined) facts.loaderBase = '.'
+	else if (base !== null) {
+		const literal = extractStaticString(base, bindings)
+		if (literal !== undefined) facts.loaderBase = literal
+	}
+	if (!pattern) return facts
+	const literal = extractStaticString(pattern, bindings)
+	if (literal !== undefined) {
+		facts.loaderPattern = literal
+		return facts
+	}
+	// A list of patterns is a union with its `!` members taken out again.
+	const list = resolveExpression(pattern, bindings)
+	const patterns = list.type === 'ArrayExpression' ? list.elements.map(element => element ? extractStaticString(element, bindings) : undefined) : []
+	if (patterns.length > 0 && patterns.every(one => one !== undefined)) facts.loaderPatterns = patterns
+	return facts
 }
 
 /**
