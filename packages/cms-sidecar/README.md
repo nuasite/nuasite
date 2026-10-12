@@ -55,6 +55,11 @@ the same scan:
 
 `GET /cms/v1/collections` keeps its shape: a bare array, with no place for this.
 
+Only `GET /cms/v1/project` builds the report, and it does so on every request: concurrent
+requests share one scan, but a request that comes after one has finished starts a new one.
+Building it adds a listing per declared collection to that scan. The collection and entry
+routes scan without it and do not pay for it.
+
 ### What is checked
 
 The report compares the scan with what Astro 6 loads under nua's defaults. `@nuasite/nua`
@@ -121,7 +126,9 @@ Symbolic links are followed, as Astro follows them: a linked file counts under t
 link's own path, and a linked directory is walked as often as a path leads into it. The
 scan itself leaves a linked directory, and a linked file under a glob base, out, so those
 are reported. A link back into a directory already entered through a link on the same
-path is entered once.
+path is entered once. A linked directory whose real path is outside the project root is
+not walked: the collection it is in is reported as `scan-failed` at once, so a link to `/`
+in a checkout does not have the sidecar list the host's files.
 
 The listing for one collection reads at most 20,000 directories behind symbolic links.
 Past that the collection is reported as `scan-failed` instead of being checked in part. A
@@ -130,7 +137,8 @@ reached without a link do not count: the tree itself is as large as it is.
 
 ### `unresolved`
 
-Each item has a `name` and a `reason` from a closed set. The reason says what the scan
+Each item has a `name` and a `reason` from the set below; later versions may add reasons,
+and a reason a consumer does not know means the collection is not vouched for. The reason says what the scan
 knows, not whether the collection is in `collections`; look the name up to find out.
 
 - `unsupported-loader`: what the collection loads is unknown, or its pattern cannot be
@@ -252,6 +260,8 @@ among the options of `glob`) leave that part unknown.
   site also has no content directory: a site with content and no content config is where a
   moved `srcDir` that the reader could not see would show.
 - **`unreadable` or `partial`** means collections may exist that `unresolved` cannot name.
+- **A `contentConfig` or `reason` value the consumer does not know** means not vouched for.
+  Later versions may add values; only `ok` and `missing` are an all-clear.
 
 ### What an all-clear still does not prove
 

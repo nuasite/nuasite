@@ -304,6 +304,39 @@ describe('createNodeFs', () => {
 		])
 	})
 
+	test('glob does not follow a link out of the root, and says so instead of leaving it out', async () => {
+		const outside = `${root}-outside`
+		try {
+			await fs.mkdir(path.join(outside, 'deep'), { recursive: true })
+			await fs.writeFile(path.join(outside, 'deep/x.md'), '')
+			const cfs = createNodeFs(root)
+			await cfs.writeFile('data/a.md', '')
+			await fs.symlink(outside, path.join(root, 'data/host'))
+
+			expect(await cfs.glob('data/**/*.md')).toEqual(['data/a.md'])
+			await expect(cfs.glob('data/**/*.md', { followSymlinks: true })).rejects.toThrow('Symbolic link "data/host" leads out of the project root')
+			// A pattern that cannot reach under the link does not need it.
+			expect(await cfs.glob('data/*.md', { followSymlinks: true })).toEqual(['data/a.md'])
+		} finally {
+			await fs.rm(outside, { recursive: true, force: true })
+		}
+	})
+
+	test('a root reached through a link is still the root its own links are measured against', async () => {
+		const alias = `${root}-alias`
+		try {
+			await fs.symlink(root, alias)
+			const cfs = createNodeFs(alias)
+			await cfs.writeFile('shared/more/x.md', '')
+			await fs.mkdir(path.join(root, 'data'))
+			await fs.symlink('../shared/more', path.join(root, 'data/more'))
+
+			expect(await cfs.glob('data/**/*.md', { followSymlinks: true })).toEqual(['data/more/x.md'])
+		} finally {
+			await fs.rm(alias, { force: true })
+		}
+	})
+
 	test('stat returns mtimeMs and size', async () => {
 		const cfs = createNodeFs(root)
 		await cfs.writeFile('f.txt', 'abcd')

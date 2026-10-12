@@ -999,6 +999,29 @@ describe('cms-sidecar — collection scan report', () => {
 		expect(model.collectionScan).toEqual({ contentConfig: 'ok', unresolved: [] })
 	})
 
+	test('only GET /project asks the core for a report; the collection and entry routes do not pay for one', async () => {
+		const asked: Array<boolean | undefined> = []
+		const { server } = await projectWith(core => ({
+			...core,
+			scanCollections: async options => {
+				asked.push(options?.report)
+				return core.scanCollections(options)
+			},
+		}))
+
+		expect((await call(server, 'GET', '/collections')).status).toBe(200)
+		expect((await call(server, 'GET', '/collections/blog/entries?draft=all')).status).toBe(200)
+		expect((await call(server, 'GET', '/collections/blog/entries/hello-world')).status).toBe(200)
+		// Scans that were not asked for a report have none, whatever the default.
+		expect(asked.length).toBeGreaterThan(0)
+		expect(asked.every(report => report === false)).toBe(true)
+
+		asked.length = 0
+		const model = await jsonOf<ProjectModel>(await call(server, 'GET', '/project'))
+		expect(asked).toEqual([true])
+		expect(model.collectionScan).toEqual({ contentConfig: 'ok', unresolved: [] })
+	})
+
 	test('a core that does not report leaves the field out', async () => {
 		const { server, root } = await projectWith(core => ({ ...core, collectionScanReport: undefined }))
 		await leaveTwoUnresolved(root)

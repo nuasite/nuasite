@@ -69,10 +69,16 @@ export interface CmsCoreOptions {
  */
 export interface CmsCore {
 	// READ / SCAN
-	/** Scan all content collections, returning their inferred definitions keyed by name. */
-	scanCollections(): Promise<Record<string, CollectionDefinition>>
 	/**
-	 * What the scan that returned `collections` could not vouch for — pass the record
+	 * Scan all content collections, returning their inferred definitions keyed by name.
+	 *
+	 * The scan carries a report (see {@link CmsCore.collectionScanReport}) unless asked for
+	 * `{ report: false }`. Building one costs a listing per declared collection, so a caller
+	 * that only wants the definitions opts out.
+	 */
+	scanCollections(options?: { report?: boolean }): Promise<Record<string, CollectionDefinition>>
+	/**
+	 * What the scan that returned `collections` could not vouch for: pass the record
 	 * `scanCollections()` resolved to. `undefined` when it has no report: read that as "not
 	 * reported", never as "nothing unresolved". Optional, so a core built before the report
 	 * existed is still a `CmsCore`.
@@ -126,9 +132,8 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 	}
 
 	return {
-		scanCollections() {
-			// The one scan every reader of this core shares, so it carries the report.
-			return scanCollections(fs, contentDir, parseCache, { report: true })
+		scanCollections(options) {
+			return scanCollections(fs, contentDir, parseCache, { report: options?.report ?? true })
 		},
 		collectionScanReport,
 		scanComponents() {

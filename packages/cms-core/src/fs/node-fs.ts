@@ -36,10 +36,15 @@ interface Walk {
 	mayHold: (dir: string) => boolean
 	/** Enter linked directories and list linked files, which the walk otherwise leaves out. */
 	followSymlinks: boolean
+	/** The root's own real path, which every linked directory entered has to stay under. */
+	realRoot: string
 	/** How many directories may be read behind links, and how many of those are left; `undefined` for as many as there are. */
 	maxLinkedDirectories: number | undefined
 	linkedDirectoriesLeft: number | undefined
 }
+
+/** Is `abs` the directory `root` or below it? Both are real paths. */
+const isWithin = (root: string, abs: string): boolean => abs === root || abs.startsWith(root.endsWith(path.sep) ? root : root + path.sep)
 
 const relativeTo = (absRoot: string, abs: string): string => path.relative(absRoot, abs).split(path.sep).join('/') || '.'
 
@@ -73,12 +78,13 @@ async function walkFiles(walk: Walk, absDir: string, linked: ReadonlySet<string>
 		let isDirectory = entry.isDirectory()
 		let isFile = entry.isFile()
 		let within = linked
+		let real: string | null = null
 		if (walk.followSymlinks && entry.isSymbolicLink()) {
 			// A link that leads nowhere is not a file anyone loads.
 			const target = await fs.stat(abs).catch(() => null)
 			// Without a real path the link is entered as it is: a directory that cannot be read
 			// then fails the walk, as it would unlinked.
-			const real = target?.isDirectory() ? await fs.realpath(abs).catch(() => abs) : null
+			real = target?.isDirectory() ? await fs.realpath(abs).catch(() => abs) : null
 			isFile = target?.isFile() ?? false
 			isDirectory = real !== null && !linked.has(real)
 			if (real !== null) within = new Set([...linked, real])
@@ -86,7 +92,14 @@ async function walkFiles(walk: Walk, absDir: string, linked: ReadonlySet<string>
 		if (isDirectory) {
 			// Nothing the caller wants can be in a directory its pattern cannot reach, so it is
 			// neither read nor, when it cannot be read, a reason to fail.
-			if (walk.mayHold(relativeTo(walk.absRoot, abs))) out.push(...await walkFiles(walk, abs, within))
+			if (!walk.mayHold(relativeTo(walk.absRoot, abs))) continue
+			// A link out of the project leads into a tree nobody vouched for (the host's own
+			// files, on a hosted checkout), so it is not walked. Nor is it skipped: the listing
+			// would then pass for whole.
+			if (real !== null && !isWithin(walk.realRoot, real)) {
+				throw new Error(`Symbolic link "${relativeTo(walk.absRoot, abs)}" leads out of the project root`)
+			}
+			out.push(...await walkFiles(walk, abs, within))
 		} else if (isFile) {
 			out.push(relativeTo(walk.absRoot, abs))
 		}
@@ -175,10 +188,13 @@ export function createNodeFs(root: string): CmsFileSystem {
 			const baseRel = staticPrefixDir(pattern)
 			const absBase = resolve(baseRel)
 			const matcher = globToRegExp(pattern)
+			const followSymlinks = options?.followSymlinks ?? false
 			const walk: Walk = {
 				absRoot: resolvedRoot,
 				mayHold: dir => globMayMatchUnder(pattern, dir),
-				followSymlinks: options?.followSymlinks ?? false,
+				followSymlinks,
+				// The root may itself sit behind a link (a temporary directory on macOS does).
+				realRoot: followSymlinks ? await fs.realpath(resolvedRoot).catch(() => resolvedRoot) : resolvedRoot,
 				maxLinkedDirectories: options?.maxLinkedDirectories,
 				linkedDirectoriesLeft: options?.maxLinkedDirectories,
 			}

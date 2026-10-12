@@ -330,8 +330,9 @@ export interface CollectionEntry {
 // ============================================================================
 
 /**
- * Why a collection is listed in `CollectionScanReport.unresolved`. A closed set; a consumer
- * that meets a value it does not know should treat the collection as not covered.
+ * Why a collection is listed in `CollectionScanReport.unresolved`. Later versions may add
+ * reasons: a consumer that meets a value it does not know must treat the collection as not
+ * vouched for, the same as any listed one, and never skip the item.
  *
  * The reason says what the scan knows, not whether the collection is among the scanned
  * ones: a content directory of the declared name is scanned whatever the loader says, so a
@@ -346,7 +347,7 @@ export interface CollectionEntry {
  *   the scan.
  * - `scan-failed`: reading the collection, or looking where its loader loads from, threw,
  *   or would have meant listing more directories behind symbolic links than the report
- *   reads for one collection.
+ *   reads for one collection, or following a symbolic link out of the project root.
  * - `unlisted-entries`: files the collection is known to load are not entries of the scan.
  *   They could not be read or parsed, or the scan does not take them for entries: a format
  *   other than md, mdx, json or yaml, a path with a segment starting with `_`, a file nested
@@ -413,8 +414,12 @@ export interface CollectionScanReport {
 	 *   literal has a spread, a `__proto__` or a computed key that is not a string in it, the
 	 *   file mentions `collections` in a way that may add to it or imports a content config
 	 *   (which may be itself), or the project has two content
-	 *   config files and the one that was read need not be the one Astro uses. `unresolved`
-	 *   covers the names that could be read; others may exist.
+	 *   config files and the one that was read need not be the one Astro uses, or the reader
+	 *   could not make out the declarations at all. `unresolved` covers the names that could
+	 *   be read; others may exist.
+	 *
+	 * Later versions may add values. Only `ok` and `missing` are an all-clear: a consumer that
+	 * meets a value it does not know must read it as "not vouched for", like `unreadable`.
 	 */
 	contentConfig: 'ok' | 'missing' | 'unreadable' | 'partial'
 	/**

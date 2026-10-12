@@ -201,6 +201,33 @@ export const collections = { blog: posts, news: posts }
 		expect(collectionScanReport(collections)).toBeUndefined()
 	})
 
+	test('a config form the declaration reader trips over costs the parse nothing and the report its all-clear', async () => {
+		await write({
+			'src/data/news/first.md': ENTRY,
+			'src/content.config.ts': config(globbed('news', 'src/data/news', '*.md')),
+		})
+		const nodeFs = createNodeFs(root)
+		const cache: ParseCache = new Map()
+		// Only the declaration reader asks for the last `loader` key this way; the parse does not.
+		const trip = spyOn(Array.prototype, 'findLastIndex').mockImplementation(() => {
+			throw new Error('unforeseen config form')
+		})
+		let read: Awaited<ReturnType<typeof readContentConfig>>
+		try {
+			read = await readContentConfig(nodeFs, cache)
+		} finally {
+			trip.mockRestore()
+		}
+
+		expect([...read.parsed.keys()]).toEqual(['news'])
+		expect(read).toMatchObject({ declared: [], partial: true, exportsCollections: true })
+		// The cached read is what the scan goes on: the collection is there, and the report does
+		// not vouch for a config it could not see into.
+		const collections = await scanCollections(nodeFs, undefined, cache, { report: true })
+		expect(Object.keys(collections)).toEqual(['news'])
+		expect(collectionScanReport(collections)?.contentConfig).toBe('partial')
+	})
+
 	describe('unsupported loader: the scan cannot tell what the collection loads', () => {
 		test('a loader it cannot follow is listed with whatever location is a literal', async () => {
 			await write({
@@ -1013,6 +1040,38 @@ export const collections = { blog: posts, news: posts }
 				{ name: 'news', reason: 'scan-failed', base: 'data/news', pattern: '**/*.md' },
 				{ name: 'wiki', reason: 'scan-failed', base: 'src/content/wiki' },
 			])
+		})
+
+		test('a link out of the project is a failed look, without walking what it leads to', async () => {
+			const outside = `${root}-outside`
+			try {
+				await fs.mkdir(path.join(outside, 'deep'), { recursive: true })
+				await fs.writeFile(path.join(outside, 'deep/elsewhere.md'), ENTRY)
+				await write({
+					'data/news/one.md': ENTRY,
+					'src/content/wiki/home.md': ENTRY,
+					'src/content.config.ts': config(`
+						${globbed('news', './data/news', '**/*.md')},
+						wiki: defineCollection({ schema: z.object({ title: z.string() }) }),
+					`),
+				})
+				await fs.symlink(outside, path.join(root, 'data/news/host'))
+				await fs.symlink(outside, path.join(root, 'src/content/wiki/host'))
+				const read = spyOn(fs, 'readdir')
+
+				const { collections, report } = await scan()
+				const outsideRead = read.mock.calls.some(([dir]) => String(dir).startsWith(outside))
+				read.mockRestore()
+
+				expect(listed(collections)).toEqual({ news: ['data/news/one.md'], wiki: ['src/content/wiki/home.md'] })
+				expect(outsideRead).toBe(false)
+				expect(report.unresolved).toEqual([
+					{ name: 'news', reason: 'scan-failed', base: 'data/news', pattern: '**/*.md' },
+					{ name: 'wiki', reason: 'scan-failed', base: 'src/content/wiki' },
+				])
+			} finally {
+				await fs.rm(outside, { recursive: true, force: true })
+			}
 		})
 
 		test('a loader the scan cannot look at, answered from a content directory of its name', async () => {

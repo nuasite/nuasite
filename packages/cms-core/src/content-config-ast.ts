@@ -536,7 +536,21 @@ function readConfigSource(source: string): ContentConfigRead {
 		})
 	}
 
-	return { parsed: result, ...readDeclaredCollections(ast) }
+	return { parsed: result, ...declaredOrUnknown(ast) }
+}
+
+/**
+ * {@link readDeclaredCollections}, which runs on every parse, also for the callers that never
+ * ask for a scan report. A config form it trips over must not cost them the parse, so a throw
+ * reads as a config whose declarations could not be seen: nothing named, and possibly more.
+ */
+function declaredOrUnknown(ast: t.File): Pick<ContentConfigRead, 'declared' | 'partial' | 'exportsCollections'> {
+	try {
+		return readDeclaredCollections(ast)
+	} catch (error) {
+		console.warn('[cms] Could not read the collections the content config declares:', error)
+		return { declared: [], partial: true, exportsCollections: true }
+	}
 }
 
 /**

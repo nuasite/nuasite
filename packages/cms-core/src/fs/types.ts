@@ -28,7 +28,9 @@ export interface CmsFileSystem {
 	 * set. With it, a linked file is listed under the link's own path, wherever it points, and
 	 * a linked directory is walked as if it were there, as often as a path leads into it; a
 	 * link back into a directory already entered through a link on the same path is not
-	 * entered again. An implementation that ignores the option keeps leaving them out.
+	 * entered again. A linked directory whose real path is outside the root is not walked:
+	 * when the pattern could match under it, the call rejects instead of answering without it.
+	 * An implementation that ignores the option keeps leaving them out.
 	 *
 	 * `maxLinkedDirectories` bounds what following links adds to the walk: when listing would
 	 * have to read more directories than that behind links, the call rejects instead of
