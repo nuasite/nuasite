@@ -4,6 +4,9 @@
  * surfaces an image button (opens the media library) and an "insert component"
  * button (body editor only). The nested slot editor passes neither, matching the
  * original mini-editor's formatting-only toolbar.
+ *
+ * "Edit alt" appears in both whenever an image is selected. It needs no media
+ * source — it rewrites the alt of an image that is already in the text.
  */
 import { type Editor, editorViewCtx } from '@milkdown/core'
 import {
@@ -23,8 +26,18 @@ import { useEffect, useState } from 'react'
 import { ImagePopover } from './image-popover'
 import { LinkPopover } from './link-popover'
 import { MediaLibrary } from './media-library'
+import { mediaPreviewSrc } from './media-preview'
 import type { MediaContext, MediaSource } from './media-source'
-import { type ActiveFormats, defaultActiveFormats, isInListType, removeLinkMark, setupFormatTracking, toggleHeading } from './milkdown-utils'
+import {
+	type ActiveFormats,
+	defaultActiveFormats,
+	isInListType,
+	removeLinkMark,
+	type SelectedImage,
+	setImageAlt,
+	setupFormatTracking,
+	toggleHeading,
+} from './milkdown-utils'
 import { setListStyleCommand } from './styled-list-plugin'
 import { insertYoutubeCommand } from './youtube-plugin'
 import { YoutubePopover } from './youtube-popover'
@@ -161,6 +174,7 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 	const [mediaOpen, setMediaOpen] = useState(false)
 	const [youtubeOpen, setYoutubeOpen] = useState(false)
 	const [pendingImage, setPendingImage] = useState<{ url: string; alt: string } | null>(null)
+	const [altEdit, setAltEdit] = useState<SelectedImage | null>(null)
 	const disabled = editor === null
 	const hasListStyles = (listStyles?.length ?? 0) > 0
 	const inList = formats.bulletList || formats.orderedList
@@ -172,6 +186,29 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 		const view = editor.ctx.get(editorViewCtx)
 		view.focus()
 		editor.action(callCommand(formats.link ? updateLinkCommand.key : toggleLinkCommand.key, { href: url }))
+	}
+
+	// Moving the selection off the image (or onto another one) abandons the edit, so a typed alt
+	// can never land on an image other than the one it was opened for.
+	const selectedImage = formats.image
+	useEffect(() => {
+		if (altEdit !== null && (selectedImage === null || selectedImage.pos !== altEdit.pos || selectedImage.src !== altEdit.src)) setAltEdit(null)
+	}, [altEdit, selectedImage])
+
+	// Focus goes back to the editor either way: the slot editor reports its content on blur, and
+	// the popover's input took the focus away before the alt changed.
+	const saveAlt = (alt: string) => {
+		const image = altEdit
+		setAltEdit(null)
+		if (!editor || !image) return
+		const view = editor.ctx.get(editorViewCtx)
+		setImageAlt(view, image, alt)
+		view.focus()
+	}
+
+	const cancelAltEdit = () => {
+		setAltEdit(null)
+		editor?.ctx.get(editorViewCtx).focus()
 	}
 
 	const removeLink = () => {
@@ -237,6 +274,9 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 				<span style={sep} />
 				<Btn active={formats.link || linkOpen} title="Link" onClick={() => !disabled && setLinkOpen(v => !v)}>🔗 Link</Btn>
 				{media ? <Btn title="Insert image" onClick={() => !disabled && setMediaOpen(true)}>🖼 Image</Btn> : null}
+				{selectedImage
+					? <Btn active={altEdit !== null} title="Edit the alt text of the selected image" onClick={() => setAltEdit(selectedImage)}>Edit alt</Btn>
+					: null}
 				{onInsertComponent
 					? (
 						<>
@@ -277,11 +317,28 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 				)
 				: null}
 
+			{altEdit
+				? (
+					<div style={{ padding: '0 6px' }}>
+						<ImagePopover
+							key={altEdit.pos}
+							mode="edit"
+							initialAlt={altEdit.alt}
+							previewSrc={mediaPreviewSrc(media, altEdit.src, mediaContext)}
+							onApply={saveAlt}
+							onClose={cancelAltEdit}
+						/>
+					</div>
+				)
+				: null}
+
 			{pendingImage
 				? (
 					<div style={{ padding: '0 6px' }}>
 						<ImagePopover
+							mode="insert"
 							initialAlt={pendingImage.alt}
+							previewSrc={mediaPreviewSrc(media, pendingImage.url, mediaContext)}
 							onApply={(alt, caption) => {
 								const { url } = pendingImage
 								setPendingImage(null)

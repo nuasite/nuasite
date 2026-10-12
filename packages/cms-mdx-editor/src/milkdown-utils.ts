@@ -7,6 +7,13 @@
 import { type Editor, editorViewCtx } from '@milkdown/core'
 import type { EditorView } from '@milkdown/prose/view'
 
+/** The image node the selection covers exactly — a click on an inline image selects the node itself. */
+export interface SelectedImage {
+	pos: number
+	src: string
+	alt: string
+}
+
 export interface ActiveFormats {
 	bold: boolean
 	italic: boolean
@@ -18,6 +25,7 @@ export interface ActiveFormats {
 	listStyle: string | null
 	blockquote: boolean
 	heading: number | null
+	image: SelectedImage | null
 }
 
 export const defaultActiveFormats: ActiveFormats = {
@@ -31,6 +39,7 @@ export const defaultActiveFormats: ActiveFormats = {
 	listStyle: null,
 	blockquote: false,
 	heading: null,
+	image: null,
 }
 
 /** Detect active inline/block formats at the current selection. */
@@ -90,7 +99,35 @@ export function getActiveFormats(view: EditorView): ActiveFormats {
 		heading = typeof level === 'number' ? level : null
 	}
 
-	return { bold, italic, strikethrough, link, linkHref, bulletList, orderedList, listStyle, blockquote, heading }
+	return { bold, italic, strikethrough, link, linkHref, bulletList, orderedList, listStyle, blockquote, heading, image: getSelectedImage(view) }
+}
+
+function getSelectedImage(view: EditorView): SelectedImage | null {
+	const { doc, selection } = view.state
+	const node = doc.nodeAt(selection.from)
+	if (node === null || node.type.name !== 'image' || selection.to - selection.from !== node.nodeSize) return null
+	return { pos: selection.from, src: stringAttr(node.attrs.src), alt: stringAttr(node.attrs.alt) }
+}
+
+function stringAttr(value: unknown): string {
+	return typeof value === 'string' ? value : ''
+}
+
+/**
+ * Set the alt text of the image at `image.pos`, keeping its `src`, `title` and everything around
+ * it. Does nothing when that position no longer holds the same image — the document changed while
+ * the alt was being edited, and writing it to whatever sits there now would hit the wrong image.
+ */
+export function setImageAlt(view: EditorView, image: SelectedImage, alt: string): boolean {
+	const node = view.state.doc.nodeAt(image.pos)
+	if (node === null || node.type.name !== 'image' || stringAttr(node.attrs.src) !== image.src) return false
+	view.dispatch(view.state.tr.setNodeAttribute(image.pos, 'alt', alt))
+	return true
+}
+
+function imagesEqual(a: SelectedImage | null, b: SelectedImage | null): boolean {
+	if (a === null || b === null) return a === b
+	return a.pos === b.pos && a.src === b.src && a.alt === b.alt
 }
 
 /** Whether the current selection is inside a list of the given node-type name. */
@@ -152,6 +189,7 @@ function formatsEqual(a: ActiveFormats, b: ActiveFormats): boolean {
 		&& a.listStyle === b.listStyle
 		&& a.blockquote === b.blockquote
 		&& a.heading === b.heading
+		&& imagesEqual(a.image, b.image)
 }
 
 /**
