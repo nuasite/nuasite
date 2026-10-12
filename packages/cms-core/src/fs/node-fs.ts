@@ -1,7 +1,7 @@
 import type { Dirent } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { globMayMatchUnder, globToRegExp } from './glob'
+import { globMayMatchUnder, globToRegExp, UnreadableDirectoryError } from './glob'
 import type { CmsFileSystem } from './types'
 
 /**
@@ -34,6 +34,8 @@ interface Walk {
 	absRoot: string
 	/** Whether a directory (root-relative) could hold anything the caller is after. */
 	mayHold: (dir: string) => boolean
+	/** Directories (root-relative) the caller does not want walked at all. */
+	skip: (dir: string) => boolean
 	/** Enter linked directories and list linked files, which the walk otherwise leaves out. */
 	followSymlinks: boolean
 	/** The root's own real path, which every linked directory entered has to stay under. */
@@ -70,7 +72,7 @@ async function walkFiles(walk: Walk, absDir: string, linked: ReadonlySet<string>
 		if (!isNodeError(error)) throw error
 		if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return []
 		// Named by its root-relative path: the runtime's own message spells out the absolute one.
-		throw new Error(`Cannot read directory "${relativeTo(walk.absRoot, absDir)}" (${error.code ?? 'unknown error'})`, { cause: error })
+		throw new UnreadableDirectoryError(relativeTo(walk.absRoot, absDir), error.code ?? 'unknown error', { cause: error })
 	}
 	const out: string[] = []
 	for (const entry of dirEntries) {
@@ -90,6 +92,8 @@ async function walkFiles(walk: Walk, absDir: string, linked: ReadonlySet<string>
 			if (real !== null) within = new Set([...linked, real])
 		}
 		if (isDirectory) {
+			// Not walked, so not read either: whatever is in there the caller would discard.
+			if (walk.skip(relativeTo(walk.absRoot, abs))) continue
 			// Nothing the caller wants can be in a directory its pattern cannot reach, so it is
 			// neither read nor, when it cannot be read, a reason to fail.
 			if (!walk.mayHold(relativeTo(walk.absRoot, abs))) continue
@@ -192,6 +196,7 @@ export function createNodeFs(root: string): CmsFileSystem {
 			const walk: Walk = {
 				absRoot: resolvedRoot,
 				mayHold: dir => globMayMatchUnder(pattern, dir),
+				skip: options?.skipDirectory ?? (() => false),
 				followSymlinks,
 				// The root may itself sit behind a link (a temporary directory on macOS does).
 				realRoot: followSymlinks ? await fs.realpath(resolvedRoot).catch(() => resolvedRoot) : resolvedRoot,

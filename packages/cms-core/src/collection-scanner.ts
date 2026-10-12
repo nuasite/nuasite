@@ -20,7 +20,7 @@ import {
 	readContentConfig,
 	UNREAD_CONTENT_CONFIG_PATHS,
 } from './content-config-ast'
-import type { CmsFileSystem } from './fs/types'
+import type { CmsFileSystem, GlobOptions } from './fs/types'
 import { resolvePathnameFromSpec, slugifyHref } from './shared'
 
 /** Regex patterns for type inference */
@@ -614,16 +614,19 @@ async function globLoaderFiles(
 	fs: CmsFileSystem,
 	baseRel: string,
 	pattern: string,
-	options?: Parameters<CmsFileSystem['glob']>[1],
+	options?: GlobOptions,
 ): Promise<string[]> {
 	// The port's glob walks the root; scope it to the loader base and re-relativize matches.
 	// The scanner ignores files/dirs whose path segments start with `_` or `.` (private/hidden),
 	// matching the directory-walk behavior of the original scanner — the glob pattern alone
 	// would otherwise match them.
-	const matches = await fs.glob(path.join(baseRel, pattern), options)
+	const isPrivate = (relToBase: string) => relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.'))
+	// Such a directory is not walked either, so one that cannot be read does not cost the
+	// collection: none of its files would be kept.
+	const matches = await fs.glob(path.join(baseRel, pattern), { ...options, skipDirectory: dir => isPrivate(path.relative(baseRel, dir)) })
 	return matches
 		.map(rel => path.relative(baseRel, rel))
-		.filter(relToBase => !relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.')))
+		.filter(relToBase => !isPrivate(relToBase))
 }
 
 /**
