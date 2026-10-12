@@ -1,7 +1,8 @@
 import type { CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
+import path from 'node:path'
 import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths'
-import { scanCollections } from '../collection-scanner'
+import { normalizeBasePath, scanCollections } from '../collection-scanner'
 import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast'
 import {
 	blankRequiredFields,
@@ -61,17 +62,14 @@ function isDataFile(filePath: string): boolean {
  * `glob({ base: './content/blog' })` points outside `contentDir`, and the
  * collection name (`o-virivkach`) need not match the directory. Falls back to the
  * default `<contentDir>/<collection>` layout for collections without a custom
- * loader base. This mirrors the scanner's `getCollectionSourceBasePath`, so the
- * mutation/read path resolves entries in the very same place the listing scan does.
+ * loader base. The base goes through the scanner's own `normalizeBasePath`, so the
+ * mutation/read path resolves entries in the very same place the listing scan does,
+ * the project root (`base: './'`) included.
  */
 async function resolveCollectionDir(deps: EntryOpsDeps, collection: string): Promise<string> {
 	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
 	const loaderBase = parsed.get(collection)?.loaderBase
-	if (loaderBase) {
-		// Loader base is root-relative; strip a leading `./` and any trailing slash.
-		const normalized = loaderBase.replace(/^\.\/+/, '').replace(/[/\\]+$/, '')
-		if (normalized) return normalized
-	}
+	if (loaderBase) return normalizeBasePath(loaderBase)
 	return `${deps.contentDir}/${collection}`
 }
 
@@ -86,11 +84,11 @@ async function resolveEntryPath(deps: EntryOpsDeps, collection: string, slug: st
 	const base = await resolveCollectionDir(deps, collection)
 	const flatExts = ['md', 'mdx', 'json', 'yaml', 'yml']
 	for (const ext of flatExts) {
-		const candidate = `${base}/${slug}.${ext}`
+		const candidate = path.posix.join(base, `${slug}.${ext}`)
 		if (await deps.fs.exists(candidate)) return candidate
 	}
 	for (const ext of MARKDOWN_EXTENSIONS) {
-		const candidate = `${base}/${slug}/index.${ext}`
+		const candidate = path.posix.join(base, slug, `index.${ext}`)
 		if (await deps.fs.exists(candidate)) return candidate
 	}
 	return null
@@ -302,7 +300,7 @@ async function inferLayoutFromExistingEntries(deps: EntryOpsDeps, collection: st
 	const indexLookups = await Promise.all(subdirs.map(async dir => {
 		if (flatSlugs.has(dir.name)) return false
 		for (const ext of MARKDOWN_EXTENSIONS) {
-			if (await deps.fs.exists(`${collectionPath}/${dir.name}/index.${ext}`)) return true
+			if (await deps.fs.exists(path.posix.join(collectionPath, dir.name, `index.${ext}`))) return true
 		}
 		return false
 	}))
@@ -559,8 +557,8 @@ export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): 
 	const layout = isData ? 'flat' : await detectCollectionMarkdownLayout(deps, collection)
 	const collectionDir = await resolveCollectionDir(deps, collection)
 	const sourcePath = layout === 'index'
-		? `${collectionDir}/${normalizedSlug}/index.${ext}`
-		: `${collectionDir}/${normalizedSlug}.${ext}`
+		? path.posix.join(collectionDir, normalizedSlug, `index.${ext}`)
+		: path.posix.join(collectionDir, `${normalizedSlug}.${ext}`)
 
 	let fileContent: string
 	if (isData) {
