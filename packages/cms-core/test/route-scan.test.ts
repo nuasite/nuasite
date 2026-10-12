@@ -42,6 +42,32 @@ describe('scanRouteCollections', () => {
 		expect(scanRouteCollections(expression)).toEqual({ staticPaths: ['products'], all: ['products'] })
 	})
 
+	test('looks through `satisfies` and `as` wrappers on an exported getStaticPaths', () => {
+		const satisfies = astro(`
+			import { getCollection } from 'astro:content'
+			import type { GetStaticPaths } from 'astro'
+			export const getStaticPaths = (async () => {
+				const [products, references] = await Promise.all([getCollection('products'), getCollection('references')])
+				return [...products, ...references].map((entry) => ({ params: { slug: entry.id }, props: { entry } }))
+			}) satisfies GetStaticPaths
+			const authors = await getCollection('authors')
+		`)
+		const asCast = astro(`
+			import { getCollection } from 'astro:content'
+			import type { GetStaticPaths } from 'astro'
+			export const getStaticPaths = (async () => {
+				const services = await getCollection('services')
+				return services.map((entry) => ({ params: { slug: entry.id } }))
+			}) as GetStaticPaths
+		`)
+
+		expect(scanRouteCollections(satisfies)).toEqual({
+			staticPaths: ['products', 'references'],
+			all: ['products', 'references', 'authors'],
+		})
+		expect(scanRouteCollections(asCast)).toEqual({ staticPaths: ['services'], all: ['services'] })
+	})
+
 	test('recognizes aliased and namespace astro:content imports', () => {
 		const source = astro(`
 			import { getCollection as loadCollection } from 'astro:content'

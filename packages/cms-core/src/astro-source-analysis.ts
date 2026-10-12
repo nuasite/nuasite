@@ -280,6 +280,7 @@ function unwrapExpression(node: t.Node): t.Node {
 	while (
 		current.type === 'AwaitExpression'
 		|| current.type === 'TSAsExpression'
+		|| current.type === 'TSSatisfiesExpression'
 		|| current.type === 'TSTypeAssertion'
 		|| current.type === 'TSNonNullExpression'
 		|| current.type === 'ParenthesizedExpression'
