@@ -1,10 +1,10 @@
 import {
 	type CmsCore,
 	type CmsFileSystem,
+	isUnsafeFolder,
 	listProjectImages,
 	MEDIA_INVALID_FOLDER,
-	MEDIA_INVALID_ID,
-	MEDIA_NOT_FOUND,
+	mediaErrorStatus,
 	parseProjectCmsConfig,
 	resolvePathnameFromSpec,
 } from '@nuasite/cms-core'
@@ -112,15 +112,12 @@ function mutationResponse(result: MutationResult, fallback: ErrorCode = 'validat
  * Map a failed media adapter result to an HTTP response. An id or folder the adapter
  * refuses is the caller's mistake → 400, a file that is not there → 404; everything
  * else is a storage failure → 500. The adapter says which by answering with one of
- * cms-core's exact strings: the text of any other error decides nothing, since it may
- * come from an SDK or an upstream service.
+ * cms-core's exact strings (`mediaErrorStatus`): the text of any other error decides
+ * nothing, since it may come from an SDK or an upstream service.
  */
 function mediaFailure(message: string): Response {
-	const code: ErrorCode = message === MEDIA_INVALID_ID || message === MEDIA_INVALID_FOLDER
-		? 'validation'
-		: message === MEDIA_NOT_FOUND
-		? 'not_found'
-		: 'io_error'
+	const status = mediaErrorStatus(message)
+	const code: ErrorCode = status === 400 ? 'validation' : status === 404 ? 'not_found' : 'io_error'
 	return error(code, message)
 }
 
@@ -1080,9 +1077,9 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 				// The body is whatever JSON the caller sent, `null` included.
 				const body: Partial<CreateFolderBody> | null = parsed.value
 				const folder = body?.folder
-				if (typeof folder !== 'string' || folder.includes('..')) {
-					return error('validation', 'A valid "folder" is required')
-				}
+				if (typeof folder !== 'string') return error('validation', 'A valid "folder" is required')
+				// Held to the same rule as the bundled adapters for whatever adapter is configured.
+				if (isUnsafeFolder(folder)) return error('validation', MEDIA_INVALID_FOLDER)
 				const result = await adapter.createFolder(folder)
 				return result.success ? json(result) : mediaFailure(result.error ?? 'Failed to create folder')
 			}

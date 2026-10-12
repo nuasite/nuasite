@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID, MEDIA_NOT_FOUND } from './errors'
+import { isUnsafeFolder } from './names'
 
 export interface LocalStorageOptions {
 	/**
@@ -93,10 +94,16 @@ export function createLocalStorageAdapter(options: LocalStorageOptions = {}): Me
 	 * A `folder` option as the `a/b` spelling ids are built from, plus the directory it
 	 * names: the uploads directory itself when empty, `null` when it is not inside it.
 	 * Stray slashes are dropped (`/a//b/` is `a/b`), as `createFolder` always did.
+	 *
+	 * A folder to `write` into must also spell the same path once it is part of a URL
+	 * (`isUnsafeFolder`), or the URL handed out for a file in it would address another
+	 * one. A folder that already exists under such a name is still listed, so whatever
+	 * is in it can be found and deleted.
 	 */
-	async function resolveFolder(input: string | undefined): Promise<{ folder: string; targetDir: string } | null> {
+	async function resolveFolder(input: string | undefined, use: 'read' | 'write'): Promise<{ folder: string; targetDir: string } | null> {
 		const folder = (input ?? '').split('/').filter(Boolean).join('/')
 		if (!folder) return { folder, targetDir: dir }
+		if (use === 'write' && isUnsafeFolder(folder)) return null
 		const targetDir = await resolveInside(folder, 'folder')
 		return targetDir ? { folder, targetDir } : null
 	}
@@ -109,7 +116,7 @@ export function createLocalStorageAdapter(options: LocalStorageOptions = {}): Me
 			const offset = opts?.cursor ? parseInt(opts.cursor, 10) : 0
 			const nothing: MediaListResult = { items: [], folders: [], hasMore: false }
 			try {
-				const target = await resolveFolder(opts?.folder)
+				const target = await resolveFolder(opts?.folder, 'read')
 				if (!target) return nothing
 				const { folder, targetDir } = target
 				await fs.mkdir(targetDir, { recursive: true })
@@ -170,7 +177,7 @@ export function createLocalStorageAdapter(options: LocalStorageOptions = {}): Me
 
 		async upload(file, filename, contentType, uploadOpts) {
 			try {
-				const target = await resolveFolder(uploadOpts?.folder)
+				const target = await resolveFolder(uploadOpts?.folder, 'write')
 				if (!target) return { success: false, error: MEDIA_INVALID_FOLDER }
 				const { folder, targetDir } = target
 				await fs.mkdir(targetDir, { recursive: true })
@@ -210,7 +217,7 @@ export function createLocalStorageAdapter(options: LocalStorageOptions = {}): Me
 
 		async createFolder(folder) {
 			try {
-				const target = await resolveFolder(folder)
+				const target = await resolveFolder(folder, 'write')
 				if (!target) return { success: false, error: MEDIA_INVALID_FOLDER }
 				await fs.mkdir(target.targetDir, { recursive: true })
 				return { success: true }

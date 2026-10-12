@@ -116,9 +116,9 @@ describe('createLocalStorageAdapter', () => {
 			expect((await fs.readdir(uploads)).sort()).toEqual(['keep.png', 'photos', folder].sort())
 			expect(await fs.readdir(path.join(uploads, folder))).toEqual([])
 
-			const uploaded = await upload(adapter, folder)
-			expect(uploaded.id).toBe(`${folder}/${uploaded.filename}`)
-			expect(await adapter.delete(uploaded.id!)).toEqual({ success: true })
+			// A new file is not put there: the URL built for it would read the backslash as a `/`.
+			expect(await upload(adapter, folder)).toEqual({ success: false, error: 'Invalid folder name' })
+			expect(await fs.readdir(path.join(uploads, folder))).toEqual([])
 			expectNothingRemoved()
 		})
 
@@ -302,6 +302,35 @@ describe('createLocalStorageAdapter', () => {
 			expectNothingRemoved()
 		})
 
+		test('upload and createFolder refuse a folder a URL would read differently, and write nothing', async () => {
+			const before = await tree()
+			for (const folder of ['%2e%2e', '%2E%2e', 'photos/%2e%2E', '.%2e', '%2e.', '%2e', 'photos/%2e/x', 'a\\b', 'photos/..\\x']) {
+				expect({ folder, result: await upload(adapter, folder) }).toEqual({ folder, result: { success: false, error: 'Invalid folder name' } })
+				expect({ folder, result: await adapter.createFolder!(folder) }).toEqual({ folder, result: { success: false, error: 'Invalid folder name' } })
+			}
+			expect(await tree()).toEqual(before)
+		})
+
+		test('dots and percent signs inside a folder name are an ordinary name', async () => {
+			for (const folder of ['a..b', '...', 'v1.2/..x', '%2e%2e%2e', 'x%2e', '50%', 'with space', 'ünïcode']) {
+				expect({ folder, result: await adapter.createFolder!(folder) }).toEqual({ folder, result: { success: true } })
+				const uploaded = await upload(adapter, folder)
+				expect(uploaded.id).toBe(`${folder}/${uploaded.filename}`)
+				expect(await adapter.delete(uploaded.id!)).toEqual({ success: true })
+			}
+			expectNothingRemoved()
+		})
+
+		test.skipIf(posixOnly)('a folder already stored under such a name is still listed, and what is in it deleted', async () => {
+			for (const folder of ['%2e%2e', 'a\\b']) {
+				await fs.mkdir(path.join(uploads, folder))
+				await fs.writeFile(path.join(uploads, folder, 'old.png'), 'x')
+				expect((await adapter.list({ folder })).items.map(i => i.id)).toEqual([`${folder}/old.png`])
+				expect(await adapter.delete(`${folder}/old.png`)).toEqual({ success: true })
+			}
+			expectNothingRemoved()
+		})
+
 		test('a name that belongs to a file, or is too long, fails without reporting a filesystem path', async () => {
 			const before = await tree()
 			const folders = ['keep.png', 'keep.png/sub', 'photos/keep.png/a/b', 'x'.repeat(300), Array.from({ length: 600 }, () => 'folder').join('/')]
@@ -473,17 +502,16 @@ describe('createLocalStorageAdapter', () => {
 		test('stays one oddly named folder inside the uploads directory for every operation', async () => {
 			const before = await tree()
 			const folder = 'x\\..\\..\\made-up'
-			expect(await adapter.createFolder!(folder)).toEqual({ success: true })
+			// Not created or written into: a URL would read the backslash as a `/`.
+			expect(await adapter.createFolder!(folder)).toEqual({ success: false, error: 'Invalid folder name' })
+			expect(await upload(adapter, folder)).toEqual({ success: false, error: 'Invalid folder name' })
+			expect(await tree()).toEqual(before)
 
-			const uploaded = await upload(adapter, folder)
-			expect(uploaded.id).toBe(`${folder}/${uploaded.filename}`)
-			expect((await adapter.list({ folder })).items.map(i => i.id)).toEqual([uploaded.id!])
-			expect((await tree()).filter(entry => !before.includes(entry))).toEqual([
-				`${UPLOADS}/${folder}`,
-				`${UPLOADS}/${folder}/${uploaded.filename}`,
-			])
-
-			expect(await adapter.delete(uploaded.id!)).toEqual({ success: true })
+			// One that is already there is listed, and what is in it deleted, inside the uploads directory.
+			await fs.mkdir(path.join(uploads, folder))
+			await fs.writeFile(path.join(uploads, folder, 'old.png'), 'x')
+			expect((await adapter.list({ folder })).items.map(i => i.id)).toEqual([`${folder}/old.png`])
+			expect(await adapter.delete(`${folder}/old.png`)).toEqual({ success: true })
 			expect((await tree()).filter(entry => !before.includes(entry))).toEqual([`${UPLOADS}/${folder}`])
 			expectNothingRemoved()
 		})

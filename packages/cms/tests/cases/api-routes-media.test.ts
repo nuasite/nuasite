@@ -36,13 +36,14 @@ async function projectWith(files: Record<string, Buffer>): Promise<string> {
  * Drive one route through a real `node:http` server, exactly as the dev
  * middleware does — the handler writes to a genuine `ServerResponse`. It is handed
  * `route` verbatim, the way the middleware cuts it out of the raw request URL, and
- * reads `query` (`?a=b`) from the request itself.
+ * reads `query` (`?a=b`) from the request itself, and `json`, when given, as the body.
  */
 async function callRoute<T>(
 	method: string,
 	route: string,
 	context: Omit<RouteContext, 'req' | 'res' | 'route'>,
 	query = '',
+	json?: unknown,
 ): Promise<{ status: number; body: T }> {
 	const server = createServer((req, res) => {
 		handleCmsApiRoute({ ...context, req, res, route }).catch((error: unknown) => {
@@ -54,7 +55,10 @@ async function callRoute<T>(
 		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 		const address: string | AddressInfo | null = server.address()
 		if (address === null || typeof address === 'string') throw new Error('expected a TCP address')
-		const response = await fetch(`http://127.0.0.1:${address.port}/_nua/cms/${route}${query}`, { method })
+		const init: RequestInit = json === undefined
+			? { method }
+			: { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(json) }
+		const response = await fetch(`http://127.0.0.1:${address.port}/_nua/cms/${route}${query}`, init)
 		// `Response.json()` is untyped; the route's wire shape is what we assert on.
 		const body: T = await response.json()
 		return { status: response.status, body }
@@ -139,7 +143,7 @@ describe('DELETE media/<id>', () => {
 		}
 		// A backslash separates nothing here: a plain name nobody has.
 		const backslash = await callRoute<DeleteBody>('DELETE', 'media/..%5C..%5Cvictim.txt', context)
-		expect(backslash).toEqual({ status: 400, body: { success: false, error: 'Media file not found' } })
+		expect(backslash).toEqual({ status: 404, body: { success: false, error: 'Media file not found' } })
 
 		for (const file of ['victim.txt', 'public/elsewhere/victim.txt', 'public/uploads/photos/up.png']) {
 			expect(existsSync(path.join(root, file))).toBe(true)
@@ -156,10 +160,19 @@ describe('DELETE media/<id>', () => {
 		expect(await fs.readdir(path.join(root, 'public/uploads'))).toEqual(['50%off.png'])
 	})
 
-	test('a file that is not there is a 400 that does not spell out the filesystem path', async () => {
+	test('a file that is not there is a 404 that does not spell out the filesystem path', async () => {
 		const root = await projectWith({ 'public/uploads/up.png': PNG })
 		const response = await callRoute<DeleteBody>('DELETE', 'media/nope.png', contextFor(root, path.join(root, 'public/uploads')))
-		expect(response).toEqual({ status: 400, body: { success: false, error: 'Media file not found' } })
+		expect(response).toEqual({ status: 404, body: { success: false, error: 'Media file not found' } })
+	})
+
+	test('a storage failure is a 500, as on the sidecar', async () => {
+		// `unlink` refuses a directory: the adapter reports it as a failure of its own, not a refusal.
+		const root = await projectWith({ 'public/uploads/photos/up.png': PNG })
+		const response = await callRoute<DeleteBody>('DELETE', 'media/photos', contextFor(root, path.join(root, 'public/uploads')))
+		expect(response.status).toBe(500)
+		expect(response.body.error).toMatch(/^Failed to delete media file/)
+		expect(existsSync(path.join(root, 'public/uploads/photos/up.png'))).toBe(true)
 	})
 })
 
@@ -175,5 +188,40 @@ describe('GET media/list', () => {
 		}
 		const inside = await callRoute<MediaListResult>('GET', 'media/list', context, '?folder=photos')
 		expect(inside.body.items.map(i => i.id)).toEqual(['photos/up.png'])
+	})
+})
+
+describe('POST media/folder', () => {
+	type FolderBody = { success?: boolean; error?: string }
+
+	test('a folder with a dot segment, spelled out or percent-encoded, or a backslash is a 400 and creates nothing', async () => {
+		const root = await projectWith({ 'public/uploads/keep.png': PNG })
+		const context = contextFor(root, path.join(root, 'public/uploads'))
+
+		for (const folder of ['..', 'photos/..', '../elsewhere', '.', '%2e%2e', '%2E%2e/x', '.%2e', 'photos/%2e', 'a\\b', '..\\x']) {
+			const response = await callRoute<FolderBody>('POST', 'media/folder', context, '', { folder })
+			expect({ folder, response }).toEqual({ folder, response: { status: 400, body: { error: 'Invalid folder name' } } })
+		}
+		expect(await fs.readdir(root)).toEqual(['public'])
+		expect(await fs.readdir(path.join(root, 'public/uploads'))).toEqual(['keep.png'])
+	})
+
+	test('a folder that only has dots inside a name is created', async () => {
+		const root = await projectWith({ 'public/uploads/keep.png': PNG })
+		const context = contextFor(root, path.join(root, 'public/uploads'))
+
+		for (const folder of ['a..b', '...', 'v1.2/..x', '%2e%2e%2e', 'with space', 'ünïcode']) {
+			const response = await callRoute<FolderBody>('POST', 'media/folder', context, '', { folder })
+			expect({ folder, response }).toEqual({ folder, response: { status: 200, body: { success: true } } })
+		}
+		expect((await fs.readdir(path.join(root, 'public/uploads'))).sort()).toEqual([
+			'%2e%2e%2e',
+			'...',
+			'a..b',
+			'keep.png',
+			'v1.2',
+			'with space',
+			'ünïcode',
+		])
 	})
 })

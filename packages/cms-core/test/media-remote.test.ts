@@ -93,6 +93,47 @@ describe('createS3StorageAdapter', () => {
 		}
 	})
 
+	test('delete refuses a key with nothing, or an empty segment, after the prefix', async () => {
+		const adapter = createS3StorageAdapter({ bucket: 'b', region: 'r' })
+		for (const id of ['uploads/', 'uploads//pic.png', 'uploads/photos//pic.png', 'uploads/photos/', 'uploads//']) {
+			expect({ id, result: await adapter.delete(id) }).toEqual({ id, result: { success: false, error: 'Invalid media id' } })
+		}
+		const whole = createS3StorageAdapter({ bucket: 'b', region: 'r', prefix: '' })
+		for (const id of ['/pic.png', 'photos//pic.png', 'photos/']) {
+			expect({ id, result: await whole.delete(id) }).toEqual({ id, result: { success: false, error: 'Invalid media id' } })
+		}
+		expect(sent).toEqual([])
+	})
+
+	test('stray slashes in a folder are dropped, so every key upload hands out can be deleted', async () => {
+		const adapter = createS3StorageAdapter({ bucket: 'b', region: 'r' })
+		for (const folder of ['/photos//2026/', 'photos/2026/', '//photos/2026']) {
+			const uploaded = await adapter.upload(Buffer.from('x'), 'pic.png', 'image/png', { folder })
+			expect(uploaded.id).toBe(`uploads/photos/2026/${uploaded.filename}`)
+			expect(await adapter.delete(uploaded.id!)).toEqual({ success: true })
+			await adapter.list({ folder })
+		}
+		expect(sent.filter(s => s.startsWith('list'))).toEqual(Array(3).fill('list uploads/photos/2026/'))
+	})
+
+	test('no folder a URL would read differently reaches the bucket, while dots inside a name do', async () => {
+		const adapter = createS3StorageAdapter({ bucket: 'b', region: 'r' })
+		for (const folder of ['%2e%2e', '%2E%2e', 'photos/%2e%2E', '.%2e', '%2e.', '%2e', 'a\\b', 'photos/..\\x']) {
+			expect({ folder, result: await adapter.upload(Buffer.from('x'), 'pic.png', 'image/png', { folder }) }).toEqual({
+				folder,
+				result: { success: false, error: 'Invalid folder name' },
+			})
+			expect({ folder, result: await adapter.list({ folder }) }).toEqual({ folder, result: { items: [], folders: [], hasMore: false } })
+		}
+		expect(sent).toEqual([])
+
+		for (const folder of ['a..b', '...', '%2e%2e%2e', 'x%2e']) {
+			const uploaded = await adapter.upload(Buffer.from('x'), 'pic.png', 'image/png', { folder })
+			expect(uploaded.id).toBe(`uploads/${folder}/${uploaded.filename}`)
+			expect(await adapter.delete(uploaded.id!)).toEqual({ success: true })
+		}
+	})
+
 	test("an error from the bucket never reads as one of the adapter's own refusals", async () => {
 		const adapter = createS3StorageAdapter({ bucket: 'b', region: 'r' })
 		for (failure of ['Invalid media id', 'Invalid folder name', 'Media file not found', 'NoSuchBucket']) {

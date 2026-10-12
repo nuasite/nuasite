@@ -561,6 +561,47 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(existsSync(path.join(root, 'public/uploads/photos/2026'))).toBe(true)
 	})
 
+	test('POST /media create-folder refuses a dot segment, spelled out or percent-encoded, or a backslash, whatever the adapter', async () => {
+		// An adapter that would create anything: the route is what keeps these out of it.
+		const created: string[] = []
+		const { server } = await freshServerWithAdapter(() => ({
+			list: async () => ({ items: [], folders: [], hasMore: false }),
+			upload: async () => ({ success: false }),
+			delete: async () => ({ success: false }),
+			createFolder: async (folder: string) => {
+				created.push(folder)
+				return { success: true }
+			},
+		}))
+
+		for (const folder of ['..', 'photos/..', '../elsewhere', '%2e%2e', '%2E%2e/x', '.%2e', 'photos/%2e', 'a\\b']) {
+			const res = await call(server, 'POST', '/media', { folder })
+			expect({ folder, status: res.status }).toEqual({ folder, status: 400 })
+			expect(await jsonOf<ApiError>(res)).toEqual({ error: 'Invalid folder name', code: 'validation' })
+		}
+		expect(created).toEqual([])
+
+		for (const folder of ['a..b', '...', 'v1.2/..x', '%2e%2e%2e']) {
+			expect({ folder, status: (await call(server, 'POST', '/media', { folder })).status }).toEqual({ folder, status: 200 })
+		}
+		expect(created).toEqual(['a..b', '...', 'v1.2/..x', '%2e%2e%2e'])
+	})
+
+	test('POST /media upload into a folder a URL would read differently → 400, nothing written', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/uploads/keep.png': PNG })
+		const before = (await fs.readdir(root, { recursive: true })).sort()
+
+		for (const folder of ['%2e%2e', 'photos/%2E%2e', '.%2e', 'a\\b']) {
+			const form = new FormData()
+			form.append('file', new File([PNG], 'pic.png', { type: 'image/png' }))
+			const upload = await server.fetch(new Request(`${BASE}/media?folder=${encodeURIComponent(folder)}`, { method: 'POST', body: form }))
+			expect({ folder, status: upload.status }).toEqual({ folder, status: 400 })
+			expect(await jsonOf<ApiError>(upload)).toEqual({ error: 'Invalid folder name', code: 'validation' })
+		}
+		expect((await fs.readdir(root, { recursive: true })).sort()).toEqual(before)
+	})
+
 	test('media failures are classified by the adapter saying so, never by what an error happens to read like', async () => {
 		// Texts an SDK or an upstream service may produce. None of them is the caller's mistake.
 		const texts = ['Invalid URL', 'Invalid signature: check your key', 'Delete failed (500): upstream said: route not found', 'invalid media id']
