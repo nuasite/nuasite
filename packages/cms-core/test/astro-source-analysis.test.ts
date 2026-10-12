@@ -1,3 +1,4 @@
+import { parse as parseBabel } from '@babel/parser'
 import { describe, expect, test } from 'bun:test'
 import { analyzeAstroScript, analyzeAstroSource } from '../src/astro-source-analysis'
 
@@ -194,6 +195,23 @@ describe('source entrypoints', () => {
 		`)
 
 		expect(analysis.collectionCalls.map(call => call.collectionName)).toEqual(['posts'])
+	})
+
+	test('accepts already-extracted frontmatter, or a Babel parse of it, with the same facts', () => {
+		const frontmatter = [
+			"import { getCollection, getEntry as entry } from 'astro:content'",
+			"import Card from '../components/Card.astro'",
+			'export async function getStaticPaths() {',
+			"\treturn (await getCollection('posts')).map(post => ({ params: { slug: post.id } }))",
+			'}',
+			"const author = await entry('authors', 'jane')",
+		].join('\n')
+		const fromSource = analyzeAstroSource(`---\n${frontmatter}\n---\n<Card />`)
+		const ast = parseBabel(frontmatter, { sourceType: 'module', plugins: ['typescript', 'jsx'] })
+
+		expect(fromSource.collectionCalls).toHaveLength(2)
+		expect(analyzeAstroScript(frontmatter)).toEqual(fromSource)
+		expect(analyzeAstroScript(ast)).toEqual(fromSource)
 	})
 
 	test('returns empty facts for missing or fatally invalid frontmatter', () => {

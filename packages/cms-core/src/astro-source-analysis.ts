@@ -541,9 +541,15 @@ function analyzeAstroContentAst(ast: t.File): AstroSourceAnalysis {
 	}
 }
 
-/** Analyze JavaScript or TypeScript source containing Astro content accessors. */
-export function analyzeAstroScript(source: string): AstroSourceAnalysis {
-	const ast = parseScript(source)
+/**
+ * Analyze JavaScript or TypeScript containing Astro content accessors: a module, or the
+ * frontmatter of an `.astro` file once it has been extracted.
+ *
+ * A caller that already holds the frontmatter (or a Babel parse of it, as the CMS source
+ * finder does) passes that directly, so the source is neither re-extracted nor re-parsed.
+ */
+export function analyzeAstroScript(source: string | t.File): AstroSourceAnalysis {
+	const ast = typeof source === 'string' ? parseScript(source) : source
 	return ast ? analyzeAstroContentAst(ast) : { imports: [], collectionCalls: [], collectionBindings: [] }
 }
 
