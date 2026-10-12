@@ -820,6 +820,28 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect((await call(server, 'PATCH', '/media/pic.png', null)).status).toBe(400)
 	})
 
+	test('a media id with an unencoded slash is not found, rather than acting on its first segment', async () => {
+		const updates: string[] = []
+		const deletes: string[] = []
+		const { server } = await freshServerWithAdapter(() => ({
+			list: () => Promise.resolve({ items: [], folders: [], hasMore: false }),
+			upload: () => Promise.resolve({ success: false }),
+			delete: id => {
+				deletes.push(id)
+				return Promise.resolve({ success: true })
+			},
+			updateAnnotation: id => {
+				updates.push(id)
+				return Promise.resolve({ success: true })
+			},
+		}))
+
+		expect((await call(server, 'PATCH', '/media/photos/pic.png', { annotation: 'x' })).status).toBe(404)
+		expect((await call(server, 'DELETE', '/media/photos/pic.png')).status).toBe(404)
+		expect(updates).toEqual([])
+		expect(deletes).toEqual([])
+	})
+
 	test('media list merges the project scan on ?includeProjectImages, minus the uploads dir', async () => {
 		const { server, root } = await freshServer()
 		await writeProjectImages(root, { 'public/assets/hero.png': PNG, 'src/assets/logo.png': PNG })

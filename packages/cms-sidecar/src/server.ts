@@ -1056,6 +1056,9 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		const adapter = core.media
 		if (!adapter) return error('unsupported', 'Media storage not configured')
 
+		// An id is one path segment, with any `/` in it encoded. More segments would otherwise
+		// act on the first one alone — `DELETE /media/photos/a.png` deleting `photos`.
+		if (tail.length > 1) return error('not_found', `No route: ${method} /cms/v1/media/${tail.join('/')}`)
 		const [id] = tail
 
 		// GET /media

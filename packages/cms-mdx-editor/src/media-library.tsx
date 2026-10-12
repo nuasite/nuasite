@@ -634,7 +634,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 											: <span style={{ fontSize: 30 }}>{item.contentType === 'application/pdf' ? '📄' : '📎'}</span>}
 										<span style={tileCaption}>{item.filename}</span>
 									</button>
-									{item.annotationEditable && updateAnnotation
+									{item.annotationEditable && updateAnnotation && item.contentType.startsWith('image/')
 										? (
 											<button
 												type="button"

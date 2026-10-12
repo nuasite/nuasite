@@ -677,6 +677,12 @@ describe('MediaLibrary — default alt text', () => {
 		expect(altAction(withoutUpdate, 'r2.png')).toBeNull()
 	})
 
+	test('is not offered for a document, which has no alt text', async () => {
+		const pdf: MediaItem = { ...mediaItem('report.pdf', 'application/pdf'), annotationEditable: true }
+		const host = await mount({ media: annotatingSource([pdf]).source })
+		expect(altAction(host, 'report.pdf')).toBeNull()
+	})
+
 	test('opens on a preview, the filename and the stored text — without inserting the image', async () => {
 		const selected: string[] = []
 		const host = await mount({ media: annotatingSource([editable('team.png', 'The team')]).source, onSelect: url => selected.push(url) })
