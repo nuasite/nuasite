@@ -1,5 +1,14 @@
 import type { CmsCore, CmsFileSystem } from '@nuasite/cms-core'
-import { isUnsafeFolder, listFilteredMedia, listProjectImages, MEDIA_INVALID_FOLDER, mediaErrorStatus, parseMediaTypeFilter } from '@nuasite/cms-core'
+import {
+	decodeFilteredMediaCursor,
+	isUnsafeFolder,
+	listFilteredMedia,
+	listProjectImages,
+	MEDIA_INVALID_FOLDER,
+	MediaCursorError,
+	mediaErrorStatus,
+	parseMediaTypeFilter,
+} from '@nuasite/cms-core'
 import { filterMediaItems } from '@nuasite/cms-types'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
@@ -280,8 +289,21 @@ const routeMap = new Map<string, RouteHandler>([
 			sendError(ctx.res, 'type accepts "all", "photo", "graphic", "video" or "document"')
 			return
 		}
+		const cursor = params.get('cursor') ?? undefined
+		// A `?type=` page is paged by `listFilteredMedia`'s own cursor, bound to the tab it was
+		// minted under; it refuses one from another tab itself. Followed with no `?type=`, the
+		// adapter would read it as its own cursor and answer with an empty page, so say so instead.
+		if (type === 'all' && cursor !== undefined && decodeFilteredMediaCursor(cursor) !== null) {
+			sendError(ctx.res, 'This cursor continues a ?type= listing: keep the filter set when following it')
+			return
+		}
 		const adapter = ctx.mediaAdapter
-		sendJson(ctx.res, await listFilteredMedia(options => adapter.list(options), { limit, cursor: params.get('cursor') ?? undefined, folder, type }))
+		try {
+			sendJson(ctx.res, await listFilteredMedia(options => adapter.list(options), { limit, cursor, folder, type }))
+		} catch (error) {
+			if (!(error instanceof MediaCursorError)) throw error
+			sendError(ctx.res, error.message)
+		}
 	}),
 	custom('GET', 'media/project-images', async (ctx) => {
 		const params = getQuery(ctx)
