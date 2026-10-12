@@ -274,6 +274,107 @@ describe('discoverCollectionRoutes — dynamic route detection', () => {
 		const routes = await discoverCollectionRoutes()
 		expect(routes.get('team')).toBeUndefined()
 	})
+
+	// The cases below are where the frontmatter analyzer differs from the regex
+	// `getCollection\(\s*['"](\w+)['"]\s*\)` this discovery used to run (first match only).
+
+	test('records a collection read with a filter argument', async () => {
+		await ctx.mkdir('src/pages/blog')
+		await ctx.writeFile(
+			'src/pages/blog/[slug].astro',
+			'---\nimport { getCollection } from "astro:content"\nexport async function getStaticPaths() {\n\tconst posts = await getCollection("blog", ({ data }) => !data.draft)\n\treturn posts.map((post) => ({ params: { slug: post.id } }))\n}\n---\n',
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('blog')).toBe('/blog/')
+	})
+
+	test('records a hyphenated collection name', async () => {
+		await ctx.mkdir('src/pages/kariera')
+		await ctx.writeFile(
+			'src/pages/kariera/[slug].astro',
+			'---\nimport { getCollection } from "astro:content"\nconst offers = await getCollection("job-offers")\n---\n',
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('job-offers')).toBe('/kariera/')
+	})
+
+	test('records every collection one getStaticPaths drives, and not a render-body lookup above it', async () => {
+		await ctx.writeFile(
+			'src/pages/[slug].astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'const authors = await getCollection("authors")',
+				'export async function getStaticPaths() {',
+				'\tconst [products, references] = await Promise.all([getCollection("products"), getCollection("references")])',
+				'\treturn [...products, ...references].map((entry) => ({ params: { slug: entry.id } }))',
+				'}',
+				'---',
+			].join('\n'),
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('products')).toBe('/')
+		expect(routes.get('references')).toBe('/')
+		expect(routes.get('authors')).toBeUndefined()
+	})
+
+	test('records the collections a `satisfies GetStaticPaths` arrow drives', async () => {
+		await ctx.mkdir('src/pages/produkty')
+		await ctx.writeFile(
+			'src/pages/produkty/[slug].astro',
+			[
+				'---',
+				'import { getCollection } from "astro:content"',
+				'import type { GetStaticPaths } from "astro"',
+				'export const getStaticPaths = (async () => {',
+				'\tconst [products, variants] = await Promise.all([getCollection("products"), getCollection("variants")])',
+				'\treturn [...products, ...variants].map((entry) => ({ params: { slug: entry.id } }))',
+				'}) satisfies GetStaticPaths',
+				'---',
+			].join('\n'),
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('products')).toBe('/produkty/')
+		expect(routes.get('variants')).toBe('/produkty/')
+	})
+
+	test('ignores a commented-out getCollection', async () => {
+		await ctx.mkdir('src/pages/blog')
+		await ctx.writeFile(
+			'src/pages/blog/[slug].astro',
+			'---\nimport { getCollection } from "astro:content"\n// const legacy = await getCollection("legacy")\nconst posts = await getCollection("blog")\n---\n',
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('legacy')).toBeUndefined()
+		expect(routes.get('blog')).toBe('/blog/')
+	})
+
+	test('ignores a getCollection not imported from astro:content', async () => {
+		await ctx.mkdir('src/pages/blog')
+		await ctx.writeFile(
+			'src/pages/blog/[slug].astro',
+			'---\nimport { getCollection } from "../../lib/content"\nconst posts = await getCollection("blog")\n---\n',
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('blog')).toBeUndefined()
+	})
+
+	test('reads frontmatter preceded by blank lines', async () => {
+		await ctx.mkdir('src/pages/blog')
+		await ctx.writeFile(
+			'src/pages/blog/[slug].astro',
+			'\n\n---\nimport { getCollection } from "astro:content"\nconst posts = await getCollection("blog")\n---\n',
+		)
+
+		const routes = await discoverCollectionRoutes()
+		expect(routes.get('blog')).toBe('/blog/')
+	})
 })
 
 describe('buildCollectionManifestPages — fragment collections own no URL', () => {
