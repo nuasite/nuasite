@@ -2,12 +2,12 @@
  * `listFilteredMedia` — the server half of `?type=`.
  *
  * The point of it is that the *client* stops draining: a filtered page has to come back full
- * whenever the source still has matches, and the cursor on it has to be one the source minted, so
- * following it resumes the unfiltered listing exactly where this page left it.
+ * whenever the source still has matches, never fuller than `limit`, and the cursor on it has to
+ * resume exactly after the last item it listed, even when that sits halfway through a source page.
  */
 import { matchesMediaType, type MediaItem, type MediaListOptions, type MediaListResult } from '@nuasite/cms-types'
 import { describe, expect, test } from 'bun:test'
-import { listFilteredMedia, parseMediaTypeFilter } from '../src/media/type-filter'
+import { decodeFilteredMediaCursor, listFilteredMedia, MediaCursorError, parseMediaTypeFilter } from '../src/media/type-filter'
 
 function item(filename: string, contentType: string): MediaItem {
 	return { id: filename, url: `/uploads/${filename}`, filename, contentType }
@@ -64,16 +64,59 @@ describe('listFilteredMedia', () => {
 		expect(page.cursor).toBeUndefined()
 	})
 
-	test('hands back a cursor the source minted, so the listing resumes where it stopped', async () => {
+	test('hands back a cursor that resumes after the last item it listed', async () => {
 		const { list, calls } = source([[photo(1)], [photo(2)], [photo(3)]])
 
 		const first = await listFilteredMedia(list, { limit: 1, type: 'photo' })
 		expect(first.items.map(i => i.filename)).toEqual(['p1.jpg'])
-		expect(first.cursor).toBe('1')
+		expect(decodeFilteredMediaCursor(first.cursor!)).toEqual({ type: 'photo', source: '1', skip: 0, size: 200 })
 
 		const second = await listFilteredMedia(list, { limit: 1, cursor: first.cursor, type: 'photo' })
 		expect(second.items.map(i => i.filename)).toEqual(['p2.jpg'])
 		expect(calls.at(-1)?.cursor).toBe('1')
+	})
+
+	test('never returns more than limit, and resumes mid source page without losing an item', async () => {
+		const { list } = source([[photo(1), doc(1), photo(2)], [photo(3), photo(4), doc(2), photo(5)]])
+
+		const seen: string[] = []
+		let cursor: string | undefined
+		do {
+			const page = await listFilteredMedia(list, { limit: 2, cursor, type: 'photo' })
+			expect(page.items.length).toBeLessThanOrEqual(2)
+			seen.push(...page.items.map(i => i.filename))
+			cursor = page.cursor
+		} while (cursor !== undefined)
+
+		expect(seen).toEqual(['p1.jpg', 'p2.jpg', 'p3.jpg', 'p4.jpg', 'p5.jpg'])
+	})
+
+	test('ends the listing on a full page when nothing after it matches', async () => {
+		const { list } = source([[photo(1), photo(2), doc(1)]])
+
+		const page = await listFilteredMedia(list, { limit: 2, type: 'photo' })
+
+		expect(page.items.map(i => i.filename)).toEqual(['p1.jpg', 'p2.jpg'])
+		expect(page.hasMore).toBe(false)
+		expect(page.cursor).toBeUndefined()
+	})
+
+	test('reads the source a large page at a time, whatever the caller asked for', async () => {
+		const small = source([[photo(1)]])
+		await listFilteredMedia(small.list, { limit: 10, type: 'photo' })
+		expect(small.calls[0]?.limit).toBe(200)
+
+		const large = source([[photo(1)]])
+		await listFilteredMedia(large.list, { limit: 500, type: 'photo' })
+		expect(large.calls[0]?.limit).toBe(500)
+	})
+
+	test('refuses a cursor minted under another tab, or not minted here at all', async () => {
+		const { list } = source([[photo(1)], [photo(2)]])
+		const first = await listFilteredMedia(list, { limit: 1, type: 'photo' })
+
+		await expect(listFilteredMedia(list, { limit: 1, cursor: first.cursor, type: 'graphic' })).rejects.toBeInstanceOf(MediaCursorError)
+		await expect(listFilteredMedia(list, { limit: 1, cursor: '1', type: 'photo' })).rejects.toBeInstanceOf(MediaCursorError)
 	})
 
 	test('stops at the page cap instead of walking a whole library for one tab', async () => {
@@ -85,7 +128,7 @@ describe('listFilteredMedia', () => {
 		expect(calls).toHaveLength(5)
 		// Still more to come: the caller can ask again rather than being told the library is empty.
 		expect(page.hasMore).toBe(true)
-		expect(page.cursor).toBe('5')
+		expect(decodeFilteredMediaCursor(page.cursor!)?.source).toBe('5')
 	})
 
 	test('carries the first page folders, which the later ones are not asked to repeat', async () => {
