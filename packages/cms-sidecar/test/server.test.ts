@@ -262,6 +262,82 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(authors.entries.every(e => e.pathname === undefined)).toBe(true)
 	})
 
+	describe('route discovery reads page frontmatter structurally', () => {
+		async function authorsPathnames(pages: Record<string, string>): Promise<Array<string | undefined>> {
+			const { server, root } = await freshServer()
+			for (const [file, source] of Object.entries(pages)) {
+				await fs.mkdir(path.dirname(path.join(root, file)), { recursive: true })
+				await fs.writeFile(path.join(root, file), source)
+			}
+			const list = await jsonOf<EntriesListResult>(await call(server, 'GET', '/collections/authors/entries?draft=all'))
+			expect(list.entries.length).toBeGreaterThan(0)
+			return list.entries.map(e => e.pathname)
+		}
+
+		test('every collection a `satisfies GetStaticPaths` arrow drives is page-per-item', async () => {
+			// The regex scanner only found `getStaticPaths(`, so this form fell back to the first
+			// getCollection (`team`) and left `authors` without a route.
+			const pathnames = await authorsPathnames({
+				'src/pages/crew/[slug].astro': [
+					'---',
+					"import { getCollection } from 'astro:content'",
+					"import type { GetStaticPaths } from 'astro'",
+					'export const getStaticPaths = (async () => {',
+					"\tconst [team, authors] = await Promise.all([getCollection('team'), getCollection('authors')])",
+					'\treturn [...team, ...authors].map((entry) => ({ params: { slug: entry.id }, props: { entry } }))',
+					'}) satisfies GetStaticPaths',
+					'---',
+					'<h1>Crew</h1>',
+				].join('\n'),
+			})
+			expect(pathnames.sort()).toEqual(['/crew/jane-doe', '/crew/john-smith'])
+		})
+
+		test('a commented-out getCollection gives the collection no route', async () => {
+			// The regex scanner matched the text in the comment and mapped authors to `/contact`.
+			const pathnames = await authorsPathnames({
+				'src/pages/contact.astro': [
+					'---',
+					"import { getCollection } from 'astro:content'",
+					"// const authors = await getCollection('authors')",
+					"const team = await getCollection('team')",
+					'---',
+					'<h1>Contact</h1>',
+				].join('\n'),
+			})
+			expect(pathnames.every(p => p === undefined)).toBe(true)
+		})
+
+		test('a getCollection not imported from astro:content gives the collection no route', async () => {
+			// Deliberately stricter than the regex scanner, which accepted any `getCollection(`.
+			const pathnames = await authorsPathnames({
+				'src/pages/press.astro': [
+					'---',
+					"import { getCollection } from '../lib/content'",
+					"const authors = await getCollection('authors')",
+					'---',
+					'<h1>Press</h1>',
+				].join('\n'),
+			})
+			expect(pathnames.every(p => p === undefined)).toBe(true)
+		})
+
+		test('blank lines before the opening fence still route the collection', async () => {
+			const pathnames = await authorsPathnames({
+				'src/pages/handbook.astro': [
+					'',
+					'',
+					'---',
+					"import { getCollection } from 'astro:content'",
+					"const authors = await getCollection('authors')",
+					'---',
+					'<h1>Handbook</h1>',
+				].join('\n'),
+			})
+			expect(pathnames.every(p => p === '/handbook')).toBe(true)
+		})
+	})
+
 	test('GET …/entries derives pathname from a `cms.pathname` rule, overriding the route guess', async () => {
 		const { server } = await freshServer()
 		// `people` declares `cms: { pathname: [{ field: 'urlFamily' }, { field: 'slug' }] }`.
