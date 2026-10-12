@@ -1,5 +1,5 @@
 /**
- * "Edit alt" on an image that is already in the text. Rendered for real — a Milkdown editor
+ * "Edit image" on an image that is already in the text. Rendered for real — a Milkdown editor
  * with the body editor's MDX pipeline and the toolbar bound to it — because the behaviour lives
  * in the selection tracking, the popover state and the transaction together.
  */
@@ -34,7 +34,7 @@ afterEach(async () => {
 	document.body.innerHTML = ''
 })
 
-async function mount(markdown: string, media?: MediaSource): Promise<{ editor: Editor; host: HTMLElement }> {
+async function mount(markdown: string, media?: MediaSource, allowImageInsert?: boolean): Promise<{ editor: Editor; host: HTMLElement }> {
 	const editorRoot = document.createElement('div')
 	document.body.append(editorRoot)
 	const editor = await Editor.make()
@@ -55,7 +55,7 @@ async function mount(markdown: string, media?: MediaSource): Promise<{ editor: E
 	const root = createRoot(host)
 	mounted = { editor, root, host }
 	await act(async () => {
-		root.render(<FormatToolbar editor={editor} media={media} />)
+		root.render(<FormatToolbar editor={editor} media={media} allowImageInsert={allowImageInsert} />)
 	})
 	return { editor, host }
 }
@@ -114,6 +114,12 @@ async function click(host: HTMLElement, label: string): Promise<void> {
 	await settle()
 }
 
+function captionInput(host: HTMLElement): HTMLInputElement {
+	const input = host.querySelector('input[placeholder="Caption / source (optional)"]')
+	if (!(input instanceof HTMLInputElement)) throw new Error('no caption input')
+	return input
+}
+
 function altInput(host: HTMLElement): HTMLInputElement {
 	const input = host.querySelector('input[placeholder="Alt text for screen readers"]')
 	if (!(input instanceof HTMLInputElement)) throw new Error('no alt input')
@@ -130,30 +136,31 @@ async function typeInto(el: HTMLInputElement, value: string): Promise<void> {
 }
 
 async function editAlt(host: HTMLElement, alt: string): Promise<void> {
-	await click(host, 'Edit alt')
+	await click(host, 'Edit image')
 	await typeInto(altInput(host), alt)
 	await click(host, 'Save')
 }
 
-describe('FormatToolbar — Edit alt', () => {
+describe('FormatToolbar — Edit image', () => {
 	test('is offered only while an image is selected, and without a media source', async () => {
 		const { editor, host } = await mount('Text ![old](/uploads/a.png) text.')
 		await selectStart(editor)
-		expect(button(host, 'Edit alt')).toBeNull()
+		expect(button(host, 'Edit image')).toBeNull()
 
 		await selectImage(editor, 0)
-		expect(button(host, 'Edit alt')).not.toBeNull()
+		expect(button(host, 'Edit image')).not.toBeNull()
 	})
 
-	test('opens with the current alt and a preview of the image', async () => {
-		const { editor, host } = await mount('Text ![Current alt](https://cdn.example.com/a.png) text.')
+	test('opens with the current alt, caption and a preview of the image', async () => {
+		const { editor, host } = await mount('Text ![Current alt](https://cdn.example.com/a.png "Current caption") text.')
 		await selectImage(editor, 0)
-		await click(host, 'Edit alt')
+		await click(host, 'Edit image')
 
 		expect(altInput(host).value).toBe('Current alt')
 		expect(host.querySelector('[data-mdx-image-preview]')?.getAttribute('src')).toBe('https://cdn.example.com/a.png')
-		// An alt edit leaves the title (the insert flow's caption) alone, so it does not offer one.
-		expect(host.querySelector('input[placeholder="Caption / source (optional)"]')).toBeNull()
+		expect(captionInput(host).value).toBe('Current caption')
+		// No media source, nothing to pick a replacement from.
+		expect(button(host, 'Replace image')).toBeNull()
 	})
 
 	test('previews a repository path through the media source', async () => {
@@ -164,7 +171,7 @@ describe('FormatToolbar — Edit alt', () => {
 		}
 		const { editor, host } = await mount('![a](/uploads/a.png)', media)
 		await selectImage(editor, 0)
-		await click(host, 'Edit alt')
+		await click(host, 'Edit image')
 
 		expect(host.querySelector('[data-mdx-image-preview]')?.getAttribute('src')).toBe('https://bff.example.com/asset?path=%2Fuploads%2Fa.png')
 	})
@@ -212,7 +219,7 @@ describe('FormatToolbar — Edit alt', () => {
 		const input = 'Text ![old](/uploads/a.png "Title") text.'
 		const { editor, host } = await mount(input)
 		await selectImage(editor, 0)
-		await click(host, 'Edit alt')
+		await click(host, 'Edit image')
 		await typeInto(altInput(host), 'discarded')
 		await click(host, 'Cancel')
 
@@ -224,11 +231,69 @@ describe('FormatToolbar — Edit alt', () => {
 		const input = '![first](/uploads/a.png) and ![second](/uploads/b.png)'
 		const { editor, host } = await mount(input)
 		await selectImage(editor, 0)
-		await click(host, 'Edit alt')
+		await click(host, 'Edit image')
 		await typeInto(altInput(host), 'meant for the first')
 
 		await selectImage(editor, 1)
 		expect(host.querySelector('[data-mdx-image-preview]')).toBeNull()
 		expect(markdownOf(editor)).toBe(input)
+	})
+
+	test('edits the caption, and clears it', async () => {
+		const { editor, host } = await mount('Text ![alt](/uploads/a.png "Old caption") text.')
+		await selectImage(editor, 0)
+		await click(host, 'Edit image')
+		await typeInto(captionInput(host), 'Photo: Jane Doe')
+		await click(host, 'Save')
+		expect(markdownOf(editor)).toBe('Text ![alt](/uploads/a.png "Photo: Jane Doe") text.')
+
+		await click(host, 'Edit image')
+		await typeInto(captionInput(host), '')
+		await click(host, 'Save')
+		expect(markdownOf(editor)).toBe('Text ![alt](/uploads/a.png) text.')
+	})
+
+	test('replaces the file from the media library, keeping the alt and caption being edited', async () => {
+		const media: MediaSource = {
+			listMedia: () =>
+				Promise.resolve({
+					items: [{ id: 'new.png', url: '/uploads/new.png', filename: 'new.png', annotation: 'Library alt', contentType: 'image/png' }],
+					folders: [],
+					hasMore: false,
+				}),
+			uploadMedia: () => Promise.reject(new Error('unused')),
+		}
+		const { editor, host } = await mount('Before ![Kept alt](/uploads/old.png "Kept caption") after.', media)
+		await selectImage(editor, 0)
+		await click(host, 'Edit image')
+		await typeInto(altInput(host), 'Typed alt')
+		await click(host, 'Replace image')
+
+		const tile = host.querySelector('[data-cms-media-item="new.png"]')
+		if (!(tile instanceof HTMLElement)) throw new Error('no library tile')
+		await act(async () => {
+			tile.click()
+		})
+		await settle()
+
+		expect(host.querySelector('[data-mdx-image-preview]')?.getAttribute('src')).toBe('/uploads/new.png')
+		expect(altInput(host).value).toBe('Typed alt')
+		expect(markdownOf(editor)).toBe('Before ![Kept alt](/uploads/old.png "Kept caption") after.')
+
+		await click(host, 'Save')
+		expect(markdownOf(editor)).toBe('Before ![Typed alt](/uploads/new.png "Kept caption") after.')
+	})
+
+	test('without image insertion (the slot editor) still edits and replaces an existing image', async () => {
+		const media: MediaSource = {
+			listMedia: () => Promise.resolve({ items: [], folders: [], hasMore: false }),
+			uploadMedia: () => Promise.reject(new Error('unused')),
+		}
+		const { editor, host } = await mount('![a](/uploads/a.png)', media, false)
+		expect(button(host, '🖼 Image')).toBeNull()
+
+		await selectImage(editor, 0)
+		await click(host, 'Edit image')
+		expect(button(host, 'Replace image')).not.toBeNull()
 	})
 })

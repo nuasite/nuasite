@@ -215,7 +215,7 @@ export function MdxBlockCard({
 						<div data-mdx-action="children">
 							<div style={rowLabel}>Content</div>
 							{onSlotContentChange
-								? <SlotEditor value={slotContent} onChange={onSlotContentChange} />
+								? <SlotEditor value={slotContent} onChange={onSlotContentChange} media={media} mediaContext={mediaContext} />
 								: <div style={{ ...roInput, whiteSpace: 'pre-wrap', minHeight: 40 }}>{slotContent}</div>}
 						</div>
 					)

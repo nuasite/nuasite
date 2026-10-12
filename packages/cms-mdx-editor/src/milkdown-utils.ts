@@ -12,7 +12,10 @@ export interface SelectedImage {
 	pos: number
 	src: string
 	alt: string
+	title: string
 }
+
+export type ImageAttrs = Omit<SelectedImage, 'pos'>
 
 export interface ActiveFormats {
 	bold: boolean
@@ -106,7 +109,7 @@ function getSelectedImage(view: EditorView): SelectedImage | null {
 	const { doc, selection } = view.state
 	const node = doc.nodeAt(selection.from)
 	if (node === null || node.type.name !== 'image' || selection.to - selection.from !== node.nodeSize) return null
-	return { pos: selection.from, src: stringAttr(node.attrs.src), alt: stringAttr(node.attrs.alt) }
+	return { pos: selection.from, src: stringAttr(node.attrs.src), alt: stringAttr(node.attrs.alt), title: stringAttr(node.attrs.title) }
 }
 
 function stringAttr(value: unknown): string {
@@ -114,20 +117,26 @@ function stringAttr(value: unknown): string {
 }
 
 /**
- * Set the alt text of the image at `image.pos`, keeping its `src`, `title` and everything around
- * it. Does nothing when that position no longer holds the same image — the document changed while
- * the alt was being edited, and writing it to whatever sits there now would hit the wrong image.
+ * Rewrite the attributes of the image at `image.pos`, leaving everything around it as it is.
+ * Does nothing when that position no longer holds the same image — the document changed while the
+ * image was being edited, and writing to whatever sits there now would hit the wrong one.
+ *
+ * Attribute steps rather than a node replacement, so the node selection survives the edit.
  */
-export function setImageAlt(view: EditorView, image: SelectedImage, alt: string): boolean {
+export function updateImage(view: EditorView, image: SelectedImage, attrs: ImageAttrs): boolean {
 	const node = view.state.doc.nodeAt(image.pos)
 	if (node === null || node.type.name !== 'image' || stringAttr(node.attrs.src) !== image.src) return false
-	view.dispatch(view.state.tr.setNodeAttribute(image.pos, 'alt', alt))
+	const tr = view.state.tr
+		.setNodeAttribute(image.pos, 'src', attrs.src)
+		.setNodeAttribute(image.pos, 'alt', attrs.alt)
+		.setNodeAttribute(image.pos, 'title', attrs.title)
+	view.dispatch(tr)
 	return true
 }
 
 function imagesEqual(a: SelectedImage | null, b: SelectedImage | null): boolean {
 	if (a === null || b === null) return a === b
-	return a.pos === b.pos && a.src === b.src && a.alt === b.alt
+	return a.pos === b.pos && a.src === b.src && a.alt === b.alt && a.title === b.title
 }
 
 /** Whether the current selection is inside a list of the given node-type name. */
