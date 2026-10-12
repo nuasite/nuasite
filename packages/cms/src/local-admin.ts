@@ -180,9 +180,12 @@ function makeLazySidecar(options: LocalAdminOptions, peerLoader: AdminPeerLoader
 			// only the content config to go by. This one runs inside the integration, which also
 			// holds the Astro-config overrides — the highest-priority answer — so they go on top
 			// here, and `/_nua/admin` names a collection the same as the in-page editor does.
+			// Whatever the sidecar asks of the scan goes through unchanged: a dropped argument would
+			// silently change what the scan does for it.
 			core: {
 				...core,
-				scanCollections: async () => applyCollectionOverrides(await core.scanCollections(), options.collectionOverrides),
+				scanCollections: async (...args: Parameters<typeof core.scanCollections>) =>
+					applyCollectionOverrides(await core.scanCollections(...args), options.collectionOverrides),
 			},
 			fs,
 			root,
