@@ -1,5 +1,5 @@
 import type { CmsCore, CmsFileSystem } from '@nuasite/cms-core'
-import { listProjectImages } from '@nuasite/cms-core'
+import { isUnsafeFolder, listProjectImages, MEDIA_INVALID_FOLDER, mediaErrorStatus } from '@nuasite/cms-core'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { getProjectRoot } from '../config'
@@ -348,8 +348,9 @@ const routeMap = new Map<string, RouteHandler>([
 			sendError(ctx.res, 'folder field is required')
 			return
 		}
-		if (body.folder.includes('..')) {
-			sendError(ctx.res, 'Invalid folder name')
+		// Held to the same rule as the bundled adapters for whatever adapter is configured.
+		if (isUnsafeFolder(body.folder)) {
+			sendError(ctx.res, MEDIA_INVALID_FOLDER)
 			return
 		}
 		const result = await ctx.mediaAdapter.createFolder(body.folder)
@@ -429,7 +430,16 @@ export async function handleCmsApiRoute(ctx: RouteContext): Promise<void> {
 			sendError(res, 'Not found', 404)
 			return
 		}
-		sendJson(res, await ctx.mediaAdapter!.delete(decodeURIComponent(id)))
+		let decoded: string
+		try {
+			decoded = decodeURIComponent(id)
+		} catch {
+			sendError(res, 'Invalid media id')
+			return
+		}
+		const result = await ctx.mediaAdapter!.delete(decoded)
+		// The same statuses as the sidecar: 400 for a refused id, 404 for a missing file, 500 otherwise.
+		sendJson(res, result, result.success ? 200 : mediaErrorStatus(result.error))
 		return
 	}
 

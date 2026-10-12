@@ -1,4 +1,4 @@
-import { createCmsCore, createLocalStorageAdapter, createNodeFs } from '@nuasite/cms-core'
+import { createCmsCore, createLocalStorageAdapter, createNodeFs, MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID, MEDIA_NOT_FOUND } from '@nuasite/cms-core'
 import type {
 	CmsConfig,
 	CollectionDefinition,
@@ -12,6 +12,7 @@ import type {
 	MediaUploadResult,
 } from '@nuasite/cms-types'
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
+import { existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -442,6 +443,260 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		const del = await call(server, 'DELETE', `/media/${encodeURIComponent(uploaded.id!)}`)
 		expect(del.status).toBe(200)
 		expect((await jsonOf<{ success: boolean }>(del)).success).toBe(true)
+	})
+
+	test('DELETE /media/:id refuses an id that leaves the uploads directory → 400, nothing removed', async () => {
+		const { server, root } = await freshServer()
+		// Outside `public/uploads`, inside the temp project: no id below climbs past `root`.
+		const victim = path.join(root, 'victim.txt')
+		const elsewhere = path.join(root, 'public/elsewhere/victim.txt')
+		const kept = path.join(root, 'public/uploads/photos/kept.png')
+		await writeProjectImages(root, { 'victim.txt': PNG, 'public/elsewhere/victim.txt': PNG, 'public/uploads/photos/kept.png': PNG })
+		await fs.symlink(path.join(root, 'public/elsewhere'), path.join(root, 'public/uploads/shared'))
+
+		const refused = [
+			'..%2F..%2Fvictim.txt',
+			'%2e%2e%2f%2e%2e%2fvictim.txt',
+			'photos%2F..%2F..%2F..%2Fvictim.txt',
+			'..%2F..%2Fvictim.txt%00',
+			'photos%2F..%2Fphotos%2Fkept.png',
+			'photos%2F%2Fkept.png',
+			'shared%2Fvictim.txt',
+			encodeURIComponent(victim),
+			encodeURIComponent(kept),
+		]
+		for (const encoded of refused) {
+			const res = await call(server, 'DELETE', `/media/${encoded}`)
+			expect({ encoded, status: res.status }).toEqual({ encoded, status: 400 })
+			expect(await jsonOf<ApiError>(res)).toEqual({ error: 'Invalid media id', code: 'validation' })
+		}
+
+		// A backslash separates nothing here and an id is decoded once: these are plain names nobody has.
+		for (const encoded of ['..%5C..%5Cvictim.txt', '..%252F..%252Fvictim.txt']) {
+			const res = await call(server, 'DELETE', `/media/${encoded}`)
+			expect({ encoded, status: res.status }).toEqual({ encoded, status: 404 })
+		}
+		for (const file of [victim, elsewhere, kept]) expect(existsSync(file)).toBe(true)
+
+		// The id as the listing spells it still deletes.
+		const ok = await call(server, 'DELETE', `/media/${encodeURIComponent('photos/kept.png')}`)
+		expect(ok.status).toBe(200)
+		expect(existsSync(kept)).toBe(false)
+	})
+
+	test('DELETE /media/:id decodes the id exactly once', async () => {
+		const { server, root } = await freshServer()
+		// Two files a second decode would confuse: the id of the first decodes to the second.
+		await writeProjectImages(root, { 'public/uploads/50%25off.png': PNG, 'public/uploads/50%off.png': PNG })
+		const listed = await jsonOf<MediaListResult>(await call(server, 'GET', '/media'))
+		expect(listed.items.map(i => i.id).sort()).toEqual(['50%25off.png', '50%off.png'])
+
+		const res = await call(server, 'DELETE', `/media/${encodeURIComponent('50%25off.png')}`)
+		expect(res.status).toBe(200)
+		expect(await fs.readdir(path.join(root, 'public/uploads'))).toEqual(['50%off.png'])
+	})
+
+	test('DELETE /media/:id for a file that is not there → 404, without the filesystem path', async () => {
+		const { server, root } = await freshServer()
+		const res = await call(server, 'DELETE', '/media/nope.png')
+		expect(res.status).toBe(404)
+		const body = await jsonOf<ApiError>(res)
+		expect(body).toEqual({ error: 'Media file not found', code: 'not_found' })
+		expect(JSON.stringify(body)).not.toContain(root)
+	})
+
+	test('a path that is not valid percent-encoding → 400 rather than a crash', async () => {
+		const { server } = await freshServer()
+		const res = await call(server, 'DELETE', '/media/%E0%A4%A')
+		expect(res.status).toBe(400)
+		expect((await jsonOf<ApiError>(res)).code).toBe('validation')
+	})
+
+	test('media folder outside the uploads directory: nothing listed, nothing written', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/secret.png': PNG, 'public/elsewhere/secret.png': PNG, 'public/uploads/keep.png': PNG })
+		await fs.symlink(path.join(root, 'public/elsewhere'), path.join(root, 'public/uploads/shared'))
+		const before = (await fs.readdir(root, { recursive: true })).sort()
+
+		for (const folder of ['..', '../..', '../made-up', 'photos/../../made-up', 'shared', 'shared/sub']) {
+			const query = `folder=${encodeURIComponent(folder)}`
+			const listed = await call(server, 'GET', `/media?${query}`)
+			expect(listed.status).toBe(200)
+			expect(await jsonOf<MediaListResult>(listed)).toEqual({ items: [], folders: [], hasMore: false })
+
+			const form = new FormData()
+			form.append('file', new File([PNG], 'pic.png', { type: 'image/png' }))
+			const upload = await server.fetch(new Request(`${BASE}/media?${query}`, { method: 'POST', body: form }))
+			expect({ folder, status: upload.status }).toEqual({ folder, status: 400 })
+			expect(await jsonOf<ApiError>(upload)).toEqual({ error: 'Invalid folder name', code: 'validation' })
+		}
+		expect((await fs.readdir(root, { recursive: true })).sort()).toEqual(before)
+	})
+
+	test('POST /media create-folder: a refused folder → 400, one that cannot be made → 500, neither with a filesystem path', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/elsewhere/secret.png': PNG, 'public/uploads/keep.png': PNG })
+		await fs.symlink(path.join(root, 'public/elsewhere'), path.join(root, 'public/uploads/shared'))
+		const before = (await fs.readdir(root, { recursive: true })).sort()
+
+		for (const folder of ['.', 'photos/./2026', 'shared/sub', 'photos\0']) {
+			const res = await call(server, 'POST', '/media', { folder })
+			expect({ folder, status: res.status }).toEqual({ folder, status: 400 })
+			expect(await jsonOf<ApiError>(res)).toEqual({ error: 'Invalid folder name', code: 'validation' })
+		}
+
+		for (const [folder, code] of [['keep.png', 'EEXIST'], ['keep.png/sub', 'ENOTDIR'], ['x'.repeat(300), 'ENAMETOOLONG']]) {
+			const res = await call(server, 'POST', '/media', { folder })
+			expect({ folder, status: res.status }).toEqual({ folder, status: 500 })
+			expect(await jsonOf<ApiError>(res)).toEqual({ error: `Failed to create folder (${code})`, code: 'io_error' })
+
+			// Listing such a name answers with nothing rather than failing.
+			const listed = await call(server, 'GET', `/media?folder=${encodeURIComponent(folder!)}`)
+			expect(listed.status).toBe(200)
+			expect(await jsonOf<MediaListResult>(listed)).toEqual({ items: [], folders: [], hasMore: false })
+		}
+		expect((await fs.readdir(root, { recursive: true })).sort()).toEqual(before)
+
+		expect((await call(server, 'POST', '/media', { folder: 'photos/2026' })).status).toBe(200)
+		expect(existsSync(path.join(root, 'public/uploads/photos/2026'))).toBe(true)
+	})
+
+	test('POST /media create-folder refuses a dot segment, spelled out or percent-encoded, or a backslash, whatever the adapter', async () => {
+		// An adapter that would create anything: the route is what keeps these out of it.
+		const created: string[] = []
+		const { server } = await freshServerWithAdapter(() => ({
+			list: async () => ({ items: [], folders: [], hasMore: false }),
+			upload: async () => ({ success: false }),
+			delete: async () => ({ success: false }),
+			createFolder: async (folder: string) => {
+				created.push(folder)
+				return { success: true }
+			},
+		}))
+
+		for (const folder of ['..', 'photos/..', '../elsewhere', '%2e%2e', '%2E%2e/x', '.%2e', 'photos/%2e', 'a\\b']) {
+			const res = await call(server, 'POST', '/media', { folder })
+			expect({ folder, status: res.status }).toEqual({ folder, status: 400 })
+			expect(await jsonOf<ApiError>(res)).toEqual({ error: 'Invalid folder name', code: 'validation' })
+		}
+		expect(created).toEqual([])
+
+		for (const folder of ['a..b', '...', 'v1.2/..x', '%2e%2e%2e']) {
+			expect({ folder, status: (await call(server, 'POST', '/media', { folder })).status }).toEqual({ folder, status: 200 })
+		}
+		expect(created).toEqual(['a..b', '...', 'v1.2/..x', '%2e%2e%2e'])
+	})
+
+	test('POST /media upload into a folder a URL would read differently → 400, nothing written', async () => {
+		const { server, root } = await freshServer()
+		await writeProjectImages(root, { 'public/uploads/keep.png': PNG })
+		const before = (await fs.readdir(root, { recursive: true })).sort()
+
+		for (const folder of ['%2e%2e', 'photos/%2E%2e', '.%2e', 'a\\b']) {
+			const form = new FormData()
+			form.append('file', new File([PNG], 'pic.png', { type: 'image/png' }))
+			const upload = await server.fetch(new Request(`${BASE}/media?folder=${encodeURIComponent(folder)}`, { method: 'POST', body: form }))
+			expect({ folder, status: upload.status }).toEqual({ folder, status: 400 })
+			expect(await jsonOf<ApiError>(upload)).toEqual({ error: 'Invalid folder name', code: 'validation' })
+		}
+		expect((await fs.readdir(root, { recursive: true })).sort()).toEqual(before)
+	})
+
+	test('media failures are classified by the adapter saying so, never by what an error happens to read like', async () => {
+		// Texts an SDK or an upstream service may produce. None of them is the caller's mistake.
+		const texts = ['Invalid URL', 'Invalid signature: check your key', 'Delete failed (500): upstream said: route not found', 'invalid media id']
+		let text = ''
+		const { server } = await freshServerWithAdapter(() => ({
+			list: async () => ({ items: [], folders: [], hasMore: false }),
+			upload: async () => ({ success: false, error: text }),
+			delete: async () => ({ success: false, error: text }),
+			createFolder: async () => ({ success: false, error: text }),
+		}))
+		const form = () => {
+			const body = new FormData()
+			body.append('file', new File([PNG], 'pic.png', { type: 'image/png' }))
+			return body
+		}
+
+		const statuses = async () => [
+			(await call(server, 'DELETE', '/media/some-id')).status,
+			(await call(server, 'POST', '/media', { folder: 'photos' })).status,
+			(await server.fetch(new Request(`${BASE}/media`, { method: 'POST', body: form() }))).status,
+		]
+		for (text of texts) expect({ text, statuses: await statuses() }).toEqual({ text, statuses: [500, 500, 500] })
+
+		for (text of [MEDIA_INVALID_ID, MEDIA_INVALID_FOLDER]) expect({ text, statuses: await statuses() }).toEqual({ text, statuses: [400, 400, 400] })
+		text = MEDIA_NOT_FOUND
+		expect(await statuses()).toEqual([404, 404, 404])
+	})
+
+	test('POST /media with a body that cannot be read, or is not an object → 400, not a storage failure', async () => {
+		const { server } = await freshServer()
+		const logged = spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			for (const body of ['null', '5', '"photos"', '[]', '{}', '{"folder":7}']) {
+				const res = await server.fetch(new Request(`${BASE}/media`, { method: 'POST', body, headers: { 'content-type': 'application/json' } }))
+				expect({ body, status: res.status }).toEqual({ body, status: 400 })
+				expect(await jsonOf<ApiError>(res)).toEqual({ error: 'A valid "folder" is required', code: 'validation' })
+			}
+
+			// Bodies both this runner's `Request` and Bun's own refuse to parse.
+			const unreadable = [
+				{ type: 'multipart/form-data', body: 'no boundary named' },
+				{ type: 'multipart/form-data; boundary=x', body: '--x\r\na header without a colon\r\n\r\nvalue\r\n--x--' },
+			]
+			for (const { type, body } of unreadable) {
+				const res = await server.fetch(new Request(`${BASE}/media`, { method: 'POST', body, headers: { 'content-type': type } }))
+				expect({ body, status: res.status }).toEqual({ body, status: 400 })
+				expect(await jsonOf<ApiError>(res)).toEqual({ error: 'Malformed multipart/form-data body', code: 'validation' })
+			}
+			expect(logged).not.toHaveBeenCalled()
+		} finally {
+			logged.mockRestore()
+		}
+	})
+
+	test('whatever a media adapter throws → 500 io_error, without its message', async () => {
+		const thrown = () => Promise.reject(new Error("EACCES: permission denied, scandir '/srv/site/public/uploads/private'"))
+		const { server } = await freshServerWithAdapter(() => ({ list: thrown, upload: thrown, delete: thrown, createFolder: thrown }))
+		const form = new FormData()
+		form.append('file', new File([PNG], 'pic.png', { type: 'image/png' }))
+		const logged = spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			const responses = [
+				await call(server, 'GET', '/media'),
+				await call(server, 'GET', '/media?folder=private'),
+				await call(server, 'GET', '/media?includeProjectImages=true'),
+				await call(server, 'DELETE', '/media/some-id'),
+				await call(server, 'POST', '/media', { folder: 'photos' }),
+				await server.fetch(new Request(`${BASE}/media`, { method: 'POST', body: form })),
+			]
+			for (const res of responses) {
+				expect(res.status).toBe(500)
+				expect(await jsonOf<ApiError>(res)).toEqual({ error: 'Media storage failed', code: 'io_error' })
+			}
+			// The detail is not lost: it goes to the sidecar's own log.
+			expect(logged).toHaveBeenCalledTimes(responses.length)
+		} finally {
+			logged.mockRestore()
+		}
+	})
+
+	test.skipIf(process.getuid?.() === 0)('GET /media for a folder that cannot be read → 500 io_error, without the filesystem path', async () => {
+		const { server, root } = await freshServer()
+		const locked = path.join(root, 'public/uploads/locked')
+		await fs.mkdir(locked, { recursive: true })
+		await fs.chmod(locked, 0o000)
+		const logged = spyOn(console, 'error').mockImplementation(() => {})
+		try {
+			const res = await call(server, 'GET', '/media?folder=locked')
+			expect(res.status).toBe(500)
+			expect(await jsonOf<ApiError>(res)).toEqual({ error: 'Media storage failed', code: 'io_error' })
+			expect(logged.mock.calls.map(([, cause]) => String(cause))).toEqual(['Error: Failed to list media (EACCES)'])
+		} finally {
+			logged.mockRestore()
+			await fs.chmod(locked, 0o700)
+		}
 	})
 
 	test('media list merges the project scan on ?includeProjectImages, minus the uploads dir', async () => {
