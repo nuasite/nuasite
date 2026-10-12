@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { slugify } from '../../shared'
+import { getCollectionNavList } from '../manifest'
 import { checkSlugExists, createPage, duplicatePage, getLayouts } from '../markdown-api'
 import {
 	config,
@@ -33,8 +34,8 @@ export function CreatePageModal() {
 }
 
 function ModePicker() {
-	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}
-	const hasCollections = Object.keys(collectionDefinitions).length > 0
+	// Offered only when the picker behind it would list something: not when every collection is hidden.
+	const hasCollections = getCollectionNavList(manifest.value.collectionDefinitions ?? {}, config.value.locale).length > 0
 
 	return (
 		<>
@@ -391,7 +392,12 @@ function DuplicatePageForm() {
 
 function CollectionPicker() {
 	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}
-	const collections = useMemo(() => Object.values(collectionDefinitions), [collectionDefinitions])
+	const locale = config.value.locale
+	// Offered as the collection browser lists them: hidden collections left out, same order.
+	const collections = useMemo(
+		() => getCollectionNavList(collectionDefinitions, locale).map(({ collection }) => collection),
+		[collectionDefinitions, locale],
+	)
 
 	// Single collection — skip picker and go straight to editor
 	useEffect(() => {

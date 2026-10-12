@@ -157,6 +157,41 @@ describe('local-admin middleware (cms-headless F7)', () => {
 		expect(names).toContain('blog')
 	})
 
+	test('the in-process sidecar serves collections with the Astro-config overrides applied', async () => {
+		// A standalone sidecar has only the content config to go by. This one runs inside the
+		// integration, so `/_nua/admin` must name a collection the way the in-page editor does.
+		await ctx.writeFile(
+			'src/content.config.ts',
+			`import { defineCmsCollection, n } from '@nuasite/cms'
+const blog = defineCmsCollection({ schema: n.object({ title: n.text() }), cms: { label: 'Články' } })
+export const collections = { blog }
+`,
+		)
+		const { server, middlewares } = createMockViteServer()
+		createLocalAdminMiddleware(server, {
+			...localOptions('/@nuasite/cms-admin-entry.js'),
+			collectionOverrides: { blog: { label: 'Aktuality' } },
+		})
+
+		const served = serveMiddlewares(middlewares)
+		httpServer = served.server
+		const baseUrl = await served.baseUrl
+
+		// `Bun.fetch`, not the global: other files in the run leave that one stubbed or unset.
+		const collections: unknown = await (await Bun.fetch(`${baseUrl}${ADMIN_API_PREFIX}/cms/v1/collections`)).json()
+		const blog = Array.isArray(collections) ? collections.find(item => collectionName(item) === 'blog') : undefined
+		expect(isRecord(blog) ? blog.label : undefined).toBe('Aktuality')
+		// The project model is built from the same scan.
+		const project: unknown = await (await Bun.fetch(`${baseUrl}${ADMIN_API_PREFIX}/cms/v1/project`)).json()
+		const projectBlog = isRecord(project) && Array.isArray(project.collections)
+			? project.collections.find(item => collectionName(item) === 'blog')
+			: undefined
+		expect(isRecord(projectBlog) ? projectBlog.label : undefined).toBe('Aktuality')
+		// The wrapper that applies the overrides passes the sidecar's scan options on, so the
+		// project model still carries the report the sidecar asked for.
+		expect(isRecord(project) ? project.collectionScan : undefined).toBeDefined()
+	})
+
 	test('forwards the unversioned /health probe to the sidecar', async () => {
 		const { server, middlewares } = createMockViteServer()
 		createLocalAdminMiddleware(server, localOptions('/@nuasite/cms-admin-entry.js'))

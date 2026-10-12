@@ -77,6 +77,14 @@ export interface ParsedCollection {
 	fragment?: true
 	/** Preview target of a fragment collection, from a `defineCmsCollection({ cms: { previewOf } })` block. */
 	previewOf?: string
+	/** Display label, from a `defineCmsCollection({ cms: { label } })` block. */
+	label?: string
+	/** The collection is left out of collection browsers, from a `defineCmsCollection({ cms: { hidden } })` block. */
+	hidden?: true
+	/** Position in collection browsers, from a `defineCmsCollection({ cms: { order } })` block. */
+	order?: number
+	/** Section heading in collection browsers, from a `defineCmsCollection({ cms: { group } })` block. */
+	group?: string
 }
 
 export type ParsedConfig = Map<string, ParsedCollection>
@@ -465,6 +473,7 @@ function readConfigSource(source: string): ContentConfigRead {
 		const titleField = cmsProperty?.type === 'ObjectProperty' ? parseCmsTitleField(cmsProperty.value, bindings) : undefined
 		const fragment = cmsProperty?.type === 'ObjectProperty' ? parseCmsFragment(cmsProperty.value, bindings) : undefined
 		const previewOf = cmsProperty?.type === 'ObjectProperty' ? parseCmsPreviewOf(cmsProperty.value, bindings) : undefined
+		const nav = cmsProperty?.type === 'ObjectProperty' ? parseCmsNav(cmsProperty.value, bindings) : undefined
 
 		// `fragment` (no page of its own) and `pathname` (compose the entry's page URL)
 		// contradict each other. Report it rather than silently preferring one — over this
@@ -495,6 +504,7 @@ function readConfigSource(source: string): ContentConfigRead {
 				titleField,
 				fragment,
 				previewOf,
+				...nav,
 			})
 			continue
 		}
@@ -512,6 +522,7 @@ function readConfigSource(source: string): ContentConfigRead {
 				titleField,
 				fragment,
 				previewOf,
+				...nav,
 			})
 			continue
 		}
@@ -533,6 +544,7 @@ function readConfigSource(source: string): ContentConfigRead {
 			titleField,
 			fragment,
 			previewOf,
+			...nav,
 		})
 	}
 
@@ -712,6 +724,40 @@ function parseCmsPreviewOf(node: t.Node, bindings: Bindings): string | undefined
 	const value = resolveExpression(previewOfProp.value, bindings)
 	if (value.type !== 'StringLiteral' || value.value === '') return undefined
 	return value.value
+}
+
+/**
+ * Parse the collection-browser keys of a `cms: { label, hidden, order, group }` block: how
+ * the collection is named, placed and sectioned where collections are listed. Same
+ * shape-tolerant contract as {@link parseCmsTitleField}: a key whose value is not the
+ * expected literal (or is an empty string) is skipped, leaving the default in place. `label`
+ * and `group` also take a template literal without substitutions. As with `fragment`, only
+ * the literal `true` hides a collection.
+ */
+function parseCmsNav(node: t.Node, bindings: Bindings): Pick<ParsedCollection, 'label' | 'hidden' | 'order' | 'group'> | undefined {
+	const resolved = resolveExpression(node, bindings)
+	if (resolved.type !== 'ObjectExpression') return undefined
+
+	const nav: Pick<ParsedCollection, 'label' | 'hidden' | 'order' | 'group'> = {}
+	for (const prop of resolved.properties) {
+		if (prop.type !== 'ObjectProperty') continue
+		const key = propertyKeyName(prop.key)
+		const value = resolveExpression(prop.value, bindings)
+		if (key === 'label' || key === 'group') {
+			// A plain string or a template literal without substitutions: both are static text.
+			const text = extractStaticString(value, bindings)
+			if (text) nav[key] = text
+		} else if (key === 'hidden') {
+			if (value.type === 'BooleanLiteral' && value.value) nav.hidden = true
+		} else if (key === 'order') {
+			if (value.type === 'NumericLiteral') {
+				nav.order = value.value
+			} else if (value.type === 'UnaryExpression' && value.operator === '-' && value.argument.type === 'NumericLiteral') {
+				nav.order = -value.argument.value
+			}
+		}
+	}
+	return nav
 }
 
 /** Parse one `{ field, map? }` or `{ literal }` segment object. */

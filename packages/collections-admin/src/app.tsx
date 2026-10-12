@@ -17,7 +17,7 @@
  */
 
 import { type CmsClient, CmsClientError, createClient } from '@nuasite/cms-client'
-import type { CollectionDefinition, CollectionEntryInfo } from '@nuasite/cms-types'
+import { type CollectionDefinition, type CollectionEntryInfo, resolveCollectionNav } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EntryCreate } from './entry-create'
 import { EntryEditor } from './entry-editor'
@@ -67,10 +67,16 @@ interface LoadState<T> {
 	data: T | null
 	error: CmsClientError | Error | null
 	loading: boolean
+	/**
+	 * A read for the current `deps` has finished, with data or an error. Unlike `loading` it stays
+	 * set through a `reload()`, and it is cleared when the deps change, so a caller can wait for
+	 * the first answer about a given source without hiding what is on screen behind a re-read.
+	 */
+	settled: boolean
 }
 
 function useAsync<T>(load: () => Promise<T>, deps: readonly unknown[]): LoadState<T> & { reload: () => void } {
-	const [state, setState] = useState<LoadState<T>>({ data: null, error: null, loading: true })
+	const [state, setState] = useState<LoadState<T>>({ data: null, error: null, loading: true, settled: false })
 	const [nonce, setNonce] = useState(0)
 	const loadRef = useRef(load)
 	loadRef.current = load
@@ -78,15 +84,21 @@ function useAsync<T>(load: () => Promise<T>, deps: readonly unknown[]): LoadStat
 	// `load` is read through a ref; re-runs are driven by the explicit `deps` and
 	// the reload `nonce` so the effect deps stay stable and lint-clean.
 	const effectDeps = [...deps, nonce]
+	// The deps the last load ran for, to tell a `reload()` (same deps, `settled` kept) from a new
+	// source (`settled` cleared). Read and written in the effect only, never during render.
+	const loadedDepsRef = useRef<readonly unknown[] | null>(null)
 	useEffect(() => {
 		let active = true
-		setState({ data: null, error: null, loading: true })
+		const previous = loadedDepsRef.current
+		const sameDeps = previous !== null && previous.length === deps.length && previous.every((dep, i) => Object.is(dep, deps[i]))
+		loadedDepsRef.current = deps
+		setState((prev) => ({ data: null, error: null, loading: true, settled: sameDeps && prev.settled }))
 		loadRef.current().then(
 			(data) => {
-				if (active) setState({ data, error: null, loading: false })
+				if (active) setState({ data, error: null, loading: false, settled: true })
 			},
 			(error: unknown) => {
-				if (active) setState({ data: null, error: error instanceof Error ? error : new Error(String(error)), loading: false })
+				if (active) setState({ data: null, error: error instanceof Error ? error : new Error(String(error)), loading: false, settled: true })
 			},
 		)
 		return () => {
@@ -134,8 +146,10 @@ function EmptyState({ label }: { label: string }) {
 // Sidebar — content-type menu
 // ============================================================================
 
-function Sidebar({ collections, loading, error, activeCollection, onSelect, onReload, onClose }: {
+function Sidebar({ collections, locale, loading, error, activeCollection, onSelect, onReload, onClose }: {
 	collections: CollectionDefinition[]
+	/** The project's language (`CmsConfig.locale`) — labels are compared in it, not in the viewer's. */
+	locale: string | undefined
 	loading: boolean
 	error: CmsClientError | Error | null
 	activeCollection: string | undefined
@@ -143,16 +157,10 @@ function Sidebar({ collections, loading, error, activeCollection, onSelect, onRe
 	onReload: () => void
 	onClose?: () => void
 }) {
-	// Group glob-nested collections (e.g. `jsem-otazky` under `jsem`) below their
-	// parent, indented, so the menu mirrors the content structure.
-	const childrenByParent = new Map<string, CollectionDefinition[]>()
-	for (const c of collections) {
-		if (!c.parentCollection) continue
-		const arr = childrenByParent.get(c.parentCollection) ?? []
-		arr.push(c)
-		childrenByParent.set(c.parentCollection, arr)
-	}
-	const topLevel = collections.filter((c) => !c.parentCollection)
+	// The arrangement every collection browser shares: hidden collections left out, declared
+	// order and sections, and glob-nested collections (e.g. `jsem-otazky` under `jsem`)
+	// indented below their parent so the menu mirrors the content structure.
+	const sections = resolveCollectionNav(collections, { locale })
 
 	const item = (c: CollectionDefinition, depth: number) => (
 		<button
@@ -179,9 +187,12 @@ function Sidebar({ collections, loading, error, activeCollection, onSelect, onRe
 				{error
 					? <button type="button" className="nua-cadmin-nav-state nua-cadmin-nav-error" onClick={onReload}>Failed to load — retry</button>
 					: null}
-				{!loading && !error && collections.length === 0 ? <div className="nua-cadmin-nav-state">No content types</div> : null}
+				{!loading && !error && sections.length === 0 ? <div className="nua-cadmin-nav-state">No content types</div> : null}
 				{!loading && !error
-					? topLevel.flatMap((c) => [item(c, 0), ...(childrenByParent.get(c.name) ?? []).map((child) => item(child, 1))])
+					? sections.flatMap((section) => [
+						section.group ? <div key={`group:${section.group}`} className="nua-cadmin-nav-group">{section.group}</div> : null,
+						...section.items.flatMap(({ collection, children }) => [item(collection, 0), ...children.map((child) => item(child, 1))]),
+					])
 					: null}
 			</nav>
 		</aside>
@@ -195,11 +206,13 @@ function Sidebar({ collections, loading, error, activeCollection, onSelect, onRe
 const ENTRIES_PAGE_SIZE = 50
 const ENTRIES_FIELDS = 'slug,title,draft,pathname'
 
-function EntriesTable({ client, collection, onOpen, onCreate }: {
+function EntriesTable({ client, collection, onOpen, onCreate, onRetry }: {
 	client: CmsClient
 	collection: string
 	onOpen: (slug: string) => void
 	onCreate: () => void
+	/** Runs alongside this table's own reload when "Try again" is clicked. */
+	onRetry: () => void
 }) {
 	const [rows, setRows] = useState<CollectionEntryInfo[]>([])
 	const [cursor, setCursor] = useState<string | undefined>(undefined)
@@ -241,7 +254,17 @@ function EntriesTable({ client, collection, onOpen, onCreate }: {
 	}, [loadPage])
 
 	if (loading) return <Spinner label="Loading entries…" />
-	if (error) return <ErrorState error={error} onRetry={() => void loadPage(undefined, false)} />
+	if (error) {
+		return (
+			<ErrorState
+				error={error}
+				onRetry={() => {
+					onRetry()
+					void loadPage(undefined, false)
+				}}
+			/>
+		)
+	}
 
 	const toolbar = (
 		<div className="nua-cadmin-entries-toolbar">
@@ -332,6 +355,27 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 	// rendering; load them once at the root and pass the active one down.
 	const collectionsState = useAsync(() => client.getCollections(), [client])
 	const collections = collectionsState.data ?? []
+	// The project's language orders the menu. The menu waits for it so it does not render once
+	// in the fallback order and then reshuffle; a failed read just leaves that fallback.
+	const configState = useAsync(() => client.getConfig(), [client])
+	// It waits for the *first* read of each client only (`settled`). A re-read (see `retryConfig`) happens behind a menu
+	// that is already on screen, and may never answer — the client has no timeout — so it must
+	// not take that menu away while it is pending.
+	// The config read fails silently, so it has no retry control of its own: every "try again"
+	// in the app re-runs it for as long as the project's language is not known. Not only once
+	// it has failed — a retry can be clicked while the first read is still in flight and about
+	// to fail, and then nothing would be left on screen to click. Re-running a pending read
+	// costs one request; `useAsync` drops the superseded reply.
+	const retryConfig = useCallback(() => {
+		if (!configState.data) configState.reload()
+	}, [configState.data, configState.reload])
+	// Whatever broke the collections usually broke the config read too, or one bad moment
+	// leaves the whole session on the fallback order. The menu and the main pane both offer
+	// this retry.
+	const reloadMenu = useCallback(() => {
+		collectionsState.reload()
+		retryConfig()
+	}, [collectionsState.reload, retryConfig])
 
 	const activeCollectionName = state.view !== 'list' ? state.collection : undefined
 	const activeCollection = activeCollectionName ? collections.find((c) => c.name === activeCollectionName) : undefined
@@ -345,11 +389,12 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 		<div className="nua-cadmin">
 			<Sidebar
 				collections={collections}
-				loading={collectionsState.loading}
+				locale={configState.data?.locale}
+				loading={collectionsState.loading || !configState.settled}
 				error={collectionsState.error}
 				activeCollection={activeCollectionName}
 				onSelect={goEntries}
-				onReload={collectionsState.reload}
+				onReload={reloadMenu}
 				onClose={onClose}
 			/>
 
@@ -369,7 +414,7 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 				<div className="nua-cadmin-body">
 					{state.view === 'list'
 						? (collectionsState.error
-							? <ErrorState error={collectionsState.error} onRetry={collectionsState.reload} />
+							? <ErrorState error={collectionsState.error} onRetry={reloadMenu} />
 							: <EmptyState label="Pick a content type from the left to browse its entries." />)
 						: null}
 					{state.view === 'entries'
@@ -379,6 +424,7 @@ export function CollectionsAdminApp({ apiBase, onClose }: CollectionsAdminAppPro
 								collection={state.collection}
 								onOpen={(slug) => goDetail(state.collection, slug)}
 								onCreate={() => goCreate(state.collection)}
+								onRetry={retryConfig}
 							/>
 						)
 						: null}

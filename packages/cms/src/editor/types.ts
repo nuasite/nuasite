@@ -58,6 +58,12 @@ export interface CmsConfig {
 	/** Maximum upload size in bytes for media uploads (injected by the integration). */
 	maxUploadSize?: number
 	/**
+	 * The project's language: `cmsConfig.locale` where the Astro config passes the CMS its options,
+	 * otherwise Astro's `i18n.defaultLocale` (injected by the integration, read from the config source). Collection labels are compared
+	 * in it, so the list is ordered the same on every page and for every editor.
+	 */
+	locale?: string
+	/**
 	 * Describes the host site's color theme. The CMS draws editor chrome and outlines
 	 * in a contrasting color so they read clearly against the page being edited.
 	 *  - 'light' — host is light → CMS uses dark outlines

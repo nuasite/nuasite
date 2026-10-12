@@ -4,9 +4,10 @@ import fs from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createLocalStorageAdapter } from '@nuasite/cms-core'
+import { createLocalStorageAdapter, createNodeFs, parseProjectCmsConfig } from '@nuasite/cms-core'
 import remarkDirective from 'remark-directive'
 import { processBuildOutput } from './build-processor'
+import type { CollectionOverrides } from './collection-overrides'
 import { ComponentRegistry } from './component-registry'
 import { getProjectRoot, resetProjectRoot } from './config'
 import { createDevMiddleware } from './dev-middleware'
@@ -58,6 +59,20 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 		themePreset?: string
 		features?: CmsFeatures
 		listStyles?: Array<{ label: string; class: string }>
+		/**
+		 * The project's language as a BCP 47 tag (`'cs'`). Collection labels are compared in it, so
+		 * collections are listed in the same order for every editor and in every collection browser.
+		 * Defaults to Astro's `i18n.defaultLocale`; without either, labels are compared as English.
+		 *
+		 * Only takes effect when written as a string literal (or a top-level `const` holding one)
+		 * in the Astro config file itself, where the CMS options are passed: the `nua.cms` block,
+		 * `nuaCms({ … })` or `nua({ cms: { … } })` in `integrations`. The value is read from that
+		 * file's source, not from the options at runtime. A locale that comes from an env
+		 * variable, a helper, an import, a spread, a conditional or `mergeConfig` does nothing,
+		 * in the in-page editor as well as in a standalone sidecar; the dev server logs a warning
+		 * when that happens. This way the two can never disagree.
+		 */
+		locale?: string
 		/** Open the entry editor's metadata (frontmatter) panel by default instead of collapsed. */
 		openMetadataByDefault?: boolean
 		/**
@@ -103,11 +118,7 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	 * Per-collection overrides for the CMS browser.
 	 * Highest priority — overrides scanner defaults and frontmatter comment directives.
 	 */
-	collections?: Record<string, {
-		/** Display label shown in the CMS (overrides the name-derived default, e.g. "Jsem Otazky" → "Otázky"). */
-		label?: string
-		fields?: Record<string, { position?: 'sidebar' | 'header'; group?: string }>
-	}>
+	collections?: CollectionOverrides
 	/**
 	 * Enable polling for file watching.
 	 * Set to `true` on filesystems that don't support native events (e.g. network mounts).
@@ -244,29 +255,8 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					}
 				}
 
-				const collectionDefinitions = await scanCollections(contentDir)
-
-				// Apply per-collection field overrides from astro config (highest priority)
-				if (options.collections) {
-					for (const [collectionName, overrides] of Object.entries(options.collections)) {
-						const def = collectionDefinitions[collectionName]
-						if (!def) continue
-						if (overrides.label) def.label = overrides.label
-						if (!overrides.fields) continue
-						for (const field of def.fields) {
-							const fieldOverride = overrides.fields[field.name]
-							if (!fieldOverride) continue
-							// `positionDeclared` alongside it, for the same reason the config and directive paths
-							// set it: on the wire this `'sidebar'` is the one the scanner also guesses, and a
-							// layout that cannot tell them apart overrides the highest-priority answer there is.
-							if (fieldOverride.position) {
-								field.position = fieldOverride.position
-								field.positionDeclared = true
-							}
-							if (fieldOverride.group) field.group = fieldOverride.group
-						}
-					}
-				}
+				// With the per-collection overrides from astro config applied (highest priority)
+				const collectionDefinitions = await scanCollections(contentDir, options.collections)
 
 				manifestWriter.setCollectionDefinitions(collectionDefinitions)
 
@@ -320,7 +310,30 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				if (command === 'dev') {
 					const editorSrc = resolvedEditorSrc
 
-					const configScript = `window.NuaCmsConfig = ${JSON.stringify(resolvedCmsConfig)};`
+					// The project's language, for ordering collection labels. Read from the config
+					// source by the same function the sidecar's `/config` uses — rather than from the
+					// resolved config at hand — so the in-page editor and every sidecar client are
+					// given the same value, including when neither can read it: a `cmsConfig.locale`
+					// the source does not give for this page is dropped here (`undefined` does not
+					// serialize), not passed through — with a warning, since the option was set and
+					// did nothing.
+					const { locale } = await parseProjectCmsConfig(createNodeFs(getProjectRoot()))
+					if (cmsConfig?.locale !== undefined && cmsConfig.locale !== locale) {
+						// Three different reasons end up here, and the log line cannot tell which: the value
+						// is not a literal in the source; it is, on a CMS instance that is not the one a
+						// page ends up with; or it is, and the options reach the integration by a route the
+						// source reader cannot follow. Naming only the first sends the others looking for a
+						// fix they have already made.
+						logger.warn(
+							`cmsConfig.locale "${cmsConfig.locale}" differs from what the Astro config source gives`
+								+ ` (${locale ? `"${locale}"` : 'nothing'}), so ${locale ? `"${locale}"` : 'no locale'} is used.`
+								+ ` Either it is not a string literal there; or another CMS instance in the config is the one in effect`
+								+ ` (nua runs its own CMS, which takes over from a nuaCms() listed next to it);`
+								+ ` or the CMS options are not written where the integration is called in the config`
+								+ ` (they come from a helper, an import, a spread, a conditional or nested \`integrations\` entry, or mergeConfig).`,
+						)
+					}
+					const configScript = `window.NuaCmsConfig = ${JSON.stringify({ ...resolvedCmsConfig, locale })};`
 
 					injectScript(
 						'page',
@@ -416,7 +429,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					manifestWriter,
 					componentDefinitions,
 					idCounter,
-					{ enableCmsApi, mediaAdapter, isPublicStaticFile, maxUploadSize },
+					{ enableCmsApi, mediaAdapter, isPublicStaticFile, maxUploadSize, collectionOverrides: options.collections },
 				)
 				logger.info('CMS dev middleware initialized')
 				if (enableCmsApi) {
@@ -432,6 +445,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					createLocalAdminMiddleware(server, {
 						contentDir,
 						componentDirs,
+						collectionOverrides: options.collections,
 						mediaAdapter: media ?? createLocalStorageAdapter(),
 						maxUploadSize,
 						entryModuleId: VIRTUAL_ADMIN_ENTRY,

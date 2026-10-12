@@ -700,6 +700,13 @@ function applyParsedConfig(
 			def.fragment = parsedColl.fragment
 			if (parsedColl.previewOf) def.previewOf = parsedColl.previewOf
 		}
+		// Collection-browser metadata from `defineCmsCollection({ cms: { label, hidden, order, group } })`.
+		// `hidden` is only a flag here: the definition stays in the map, because reference
+		// pickers and entry routes resolve through it. Browsers are the ones that skip it.
+		if (parsedColl.label) def.label = parsedColl.label
+		if (parsedColl.hidden) def.hidden = parsedColl.hidden
+		if (parsedColl.order !== undefined) def.order = parsedColl.order
+		if (parsedColl.group) def.group = parsedColl.group
 		// Declarative entry-title source from `defineCmsCollection({ cms: { titleField } })`.
 		// The scan derived titles by fallback; re-derive them from the declared field.
 		if (parsedColl.titleField) {

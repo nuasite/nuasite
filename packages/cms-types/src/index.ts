@@ -229,6 +229,18 @@ export interface CollectionLayout {
 	 * to whatever really renders it. Ignored without `fragment`.
 	 */
 	previewOf?: string
+	/** Display label of the collection. Overrides the name-derived default (`pripady-pripady` → "Pripady Pripady"). */
+	label?: string
+	/**
+	 * Leave the collection out of collection browsers. It stays fully resolvable — reference
+	 * pickers, entry routes and the scan still see it. Only the literal `true` hides it; `false`
+	 * is accepted so a config can spell out the default, and the scan carries it as absent.
+	 */
+	hidden?: boolean
+	/** Position in collection browsers — lower comes first. Collections without one follow all ordered ones. */
+	order?: number
+	/** Section heading the collection is listed under in collection browsers. */
+	group?: string
 }
 
 /** Per-entry metadata for collection browsing */
@@ -253,7 +265,13 @@ export interface CollectionEntryInfo {
 export interface CollectionDefinition {
 	/** Collection identifier (directory name) */
 	name: string
-	/** Human-readable label for the collection */
+	/**
+	 * Human-readable label for the collection. From a scan it is
+	 * `defineCmsCollection({ cms: { label } })` when declared, otherwise derived from the name.
+	 * The `@nuasite/cms` integration lays `nua.cms.collections[name].label` from the Astro
+	 * config over that, so in what it serves (the in-page editor, the local `/_nua/admin`) the
+	 * Astro-config label wins; a standalone sidecar never sees it.
+	 */
 	label: string
 	/** Path to the collection directory */
 	path: string
@@ -305,6 +323,19 @@ export interface CollectionDefinition {
 	 * `previewPathname`; never claims the page as the entry's own.
 	 */
 	previewOf?: string
+	/**
+	 * The collection is left out of collection browsers, from
+	 * `defineCmsCollection({ cms: { hidden } })`. A presentation flag only: the definition is
+	 * still served, so reference pickers and entry routes keep resolving it.
+	 */
+	hidden?: true
+	/**
+	 * Position in collection browsers, from `defineCmsCollection({ cms: { order } })` — lower
+	 * comes first, and collections without one follow all ordered ones.
+	 */
+	order?: number
+	/** Section heading the collection is listed under, from `defineCmsCollection({ cms: { group } })`. */
+	group?: string
 }
 
 /** Represents a content collection entry (markdown file) */
@@ -481,6 +512,15 @@ export interface CmsListStyle {
 /** Project-level CMS config safe to expose through the headless API. */
 export interface CmsConfig {
 	listStyles?: CmsListStyle[]
+	/**
+	 * The project's language: `cmsConfig.locale` where the Astro config passes the CMS its
+	 * options (the `nua.cms` block, or `nuaCms({ … })` / `nua({ cms: { … } })` in
+	 * `integrations`), otherwise Astro's `i18n.defaultLocale` — absent when the project
+	 * declares neither as a string literal. It is what a collection browser passes to `resolveCollectionNav` so
+	 * labels are compared in the project's language rather than the viewer's. Served as
+	 * declared, so it is not guaranteed to be a BCP 47 tag (Astro accepts a path like `'spanish'`).
+	 */
+	locale?: string
 }
 
 // ============================================================================
@@ -872,6 +912,12 @@ export {
 	withRenamedEntrySlug,
 	type WriteModelField,
 } from './field-values'
+
+// ============================================================================
+// Collection browser arrangement — see `collection-nav.ts` for the rule every browser applies
+// ============================================================================
+
+export { type CollectionNavItem, type CollectionNavOptions, type CollectionNavSection, resolveCollectionNav } from './collection-nav'
 
 // ============================================================================
 // Slug derivation — see `slug.ts` for why the server and the clients share it

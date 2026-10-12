@@ -1,5 +1,6 @@
+import { type CollectionNavSection, resolveCollectionNav } from '@nuasite/cms-types'
 import type { MediaUploadContext } from '../types'
-import type { CmsManifest, ComponentDefinition, ComponentInstance, FieldDefinition, ManifestEntry } from './types'
+import type { CmsManifest, CollectionDefinition, ComponentDefinition, ComponentInstance, FieldDefinition, ManifestEntry } from './types'
 
 type GetManifestEntry = (manifest: CmsManifest, id: string) => ManifestEntry | undefined
 export const getManifestEntry: GetManifestEntry = (manifest, id) => manifest.entries[id]
@@ -32,6 +33,35 @@ export function getCollectionField(
 ): FieldDefinition | undefined {
 	if (!collectionName || !fieldName) return undefined
 	return manifest.collectionDefinitions?.[collectionName]?.fields.find(f => f.name === fieldName)
+}
+
+/**
+ * The manifest's collections as a collection browser lists them — hidden ones left out,
+ * ordered, nested and sectioned by the rule every browser shares (`resolveCollectionNav`).
+ *
+ * `locale` is the project's language (`CmsConfig.locale`), never the page's: on a bilingual
+ * site `<html lang>` changes as the editor moves between pages, and the list may not reorder
+ * with it.
+ */
+export function getCollectionNav(collectionDefinitions: Record<string, CollectionDefinition>, locale: string | undefined): CollectionNavSection[] {
+	return resolveCollectionNav(Object.values(collectionDefinitions), { locale })
+}
+
+/**
+ * The same arrangement as one flat list, for the places that list collections without
+ * section headings (the toolbar menu, the "New Page" picker). `nested` marks a collection
+ * listed under its parent; a `group` still decides where its collections sit.
+ */
+export function getCollectionNavList(
+	collectionDefinitions: Record<string, CollectionDefinition>,
+	locale: string | undefined,
+): Array<{ collection: CollectionDefinition; nested: boolean }> {
+	return getCollectionNav(collectionDefinitions, locale).flatMap(section =>
+		section.items.flatMap(({ collection, children }) => [
+			{ collection, nested: false },
+			...children.map(child => ({ collection: child, nested: true })),
+		])
+	)
 }
 
 /**

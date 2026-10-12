@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
 import {
 	getAvailableComponentNames,
+	getCollectionNav,
+	getCollectionNavList,
 	getComponentDefinition,
 	getComponentDefinitions,
 	getComponentInstance,
@@ -9,7 +11,7 @@ import {
 	getManifestEntryCount,
 	hasManifestEntry,
 } from '../../../src/editor/manifest'
-import type { CmsManifest } from '../../../src/editor/types'
+import type { CmsManifest, CollectionDefinition } from '../../../src/editor/types'
 
 const newManifest: CmsManifest = {
 	entries: {
@@ -93,4 +95,64 @@ test('getAvailableComponentNames returns component names', () => {
 	const names = getAvailableComponentNames(newManifest)
 	expect(names).toContain('Hero')
 	expect(names).toHaveLength(1)
+})
+
+const collection = (name: string, extra: Partial<CollectionDefinition> = {}): CollectionDefinition => ({
+	name,
+	label: name,
+	path: `src/content/${name}`,
+	entryCount: 0,
+	fields: [],
+	fileExtension: 'md',
+	...extra,
+})
+
+test('getCollectionNav orders by the project locale, whatever page the editor is on', () => {
+	const definitions = {
+		clanky: collection('clanky', { label: 'Články' }),
+		cukr: collection('cukr', { label: 'Cukr' }),
+		redirects: collection('redirects', { hidden: true }),
+	}
+	const names = (locale: string | undefined) =>
+		getCollectionNav(definitions, locale).flatMap(section => section.items.map(item => item.collection.name))
+
+	const previousLang = document.documentElement.lang
+	try {
+		// A bilingual site: the editor moves from a Czech page to an English one, and back.
+		for (const pageLang of ['cs', 'en', '']) {
+			document.documentElement.lang = pageLang
+			// Czech sorts "Č" as its own letter after "C"…
+			expect(names('cs')).toEqual(['cukr', 'clanky'])
+			// …and a project that declares no language gets the fixed fallback, not the page's.
+			expect(names(undefined)).toEqual(['clanky', 'cukr'])
+		}
+	} finally {
+		document.documentElement.lang = previousLang
+	}
+})
+
+// What the toolbar's Content menu and the "New Page" picker render, row for row.
+test('getCollectionNavList flattens the arrangement for the lists that have no headings', () => {
+	const definitions = {
+		'news-en': collection('news-en', { label: 'News', group: 'English' }),
+		redirects: collection('redirects', { hidden: true }),
+		'faq-items': collection('faq-items', { label: 'Otázky', parentCollection: 'faq' }),
+		cukr: collection('cukr', { label: 'Cukr' }),
+		faq: collection('faq', { label: 'FAQ', order: 1 }),
+		cisla: collection('cisla', { label: 'Čísla' }),
+	}
+
+	expect(getCollectionNavList(definitions, 'cs').map(({ collection, nested }) => `${nested ? '> ' : ''}${collection.name}`)).toEqual([
+		'faq',
+		'> faq-items',
+		'cukr',
+		'cisla',
+		// A group's collections follow the ungrouped ones; the hidden collection is not offered.
+		'news-en',
+	])
+})
+
+test('getCollectionNavList is empty when every collection is hidden — nothing to offer', () => {
+	expect(getCollectionNavList({ redirects: collection('redirects', { hidden: true }) }, undefined)).toEqual([])
+	expect(getCollectionNavList({}, undefined)).toEqual([])
 })

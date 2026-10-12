@@ -39,6 +39,7 @@ nuaCms({
 		debug: false,
 		theme: undefined,
 		themePreset: undefined,
+		locale: undefined, // Project language for ordering collection labels; only takes effect as a string literal written in this file (see "Collection Browser")
 	},
 
 	// --- Backend ---
@@ -302,6 +303,83 @@ n.date().orderBy('desc') // descending (newest first)
 ```
 
 The direction defaults to `'asc'` if omitted. Entries with a missing order field sort to the end.
+
+### Collection Browser
+
+`defineCmsCollection` is a drop-in for Astro's `defineCollection` that also accepts a `cms` block. Four of its keys describe how the collection appears wherever collections are listed:
+
+```typescript
+import { defineCmsCollection, n } from '@nuasite/cms'
+import { glob } from 'astro/loaders'
+
+const cases = defineCmsCollection({
+	loader: glob({ pattern: '**/*.md', base: 'src/content/pripady-pripady' }),
+	schema: n.object({ title: n.text() }),
+	cms: { label: 'Případy', order: 1 },
+})
+
+const casesEn = defineCmsCollection({
+	loader: glob({ pattern: '**/*.md', base: 'src/content/pripady-en' }),
+	schema: n.object({ title: n.text() }),
+	cms: { label: 'Cases', group: 'English' },
+})
+
+const redirects = defineCmsCollection({
+	loader: glob({ pattern: '**/*.yaml', base: 'src/content/redirects' }),
+	schema: n.object({ from: n.text(), to: n.text() }),
+	cms: { hidden: true },
+})
+```
+
+| Key      | Type      | Effect                                                                                                                     |
+| -------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `label`  | `string`  | Display label. Overrides the name-derived default (`pripady-pripady` → "Pripady Pripady").                                 |
+| `order`  | `number`  | Position in the list, lower first. Collections without an `order` follow all ordered ones, sorted by label.                |
+| `group`  | `string`  | Section heading the collection is listed under. Ungrouped collections come first, then each group as its own section.      |
+| `hidden` | `boolean` | `true` leaves the collection out of collection browsers. It stays resolvable: reference pickers and entry URLs still work. |
+
+The block is read from the config **source**, so the values must be literals (or a top-level `const` holding one); anything else is ignored. Because they travel with the collection scan, they reach every consumer, including the standalone [`@nuasite/cms-sidecar`](../cms-sidecar) a hosted admin talks to. The `collections[name].label` option of the integration wins over `cms.label` wherever the integration itself serves collections: the in-page editor and the local `/_nua/admin`. A standalone sidecar does not load the Astro config, so there `cms.label` is the label.
+
+One limitation, shared with the other keys of the block: a collection the scanner cannot place at all (no inline `schema` object and no `loader: glob(...)`) is skipped together with its `cms` block, so `hidden` or `label` declared on it does nothing.
+
+Browsers arrange the list with `resolveCollectionNav` from `@nuasite/cms-types` (re-exported by `@nuasite/cms-client`), so a custom collections UI lists collections the same way:
+
+```typescript
+import { resolveCollectionNav } from '@nuasite/cms-client'
+
+const [collections, config] = await Promise.all([
+	client.getCollections(),
+	client.getConfig(),
+])
+const sections = resolveCollectionNav(collections, { locale: config.locale })
+// [{ items: [{ collection, children }] }, { group: 'English', items: [...] }]
+```
+
+Nested collections (`parentCollection`) come back as `children` of their parent, and a nested collection follows its parent's section: its own `group` and `order` only apply when it is listed at the top level, which happens when its parent is hidden, missing or itself nested.
+
+The order is the same for every viewer and in every browser of a project. Labels are compared in the project's language, declared in the Astro config:
+
+```typescript
+import { defineConfig } from '@nuasite/nua/config'
+
+export default defineConfig({
+	nua: {
+		cms: {
+			cmsConfig: { locale: 'cs' },
+		},
+	},
+})
+```
+
+Without `cmsConfig.locale`, Astro's `i18n.defaultLocale` is used, so a site that already declares its languages needs nothing more. A single-language site should set `cmsConfig.locale` rather than add an `i18n` block, which would change how Astro routes.
+
+Both are read from the source of the Astro config, because that is all a standalone sidecar has. `cmsConfig` is found where the CMS options are passed: the `nua.cms` block above (not read when the config is a plain exported object, or is passed to a `defineConfig` imported by name from `astro/config`, where nothing uses a `nua` key), or the integration called in `integrations` (`nuaCms({ cmsConfig })` imported from `@nuasite/cms`, `nua({ cms: { cmsConfig } })` imported from `@nuasite/nua` or `@nuasite/nua/integration`). Either value only takes effect when written as a string literal (or a top-level `const` holding one) in the config file itself. A `cmsConfig.locale` built any other way (an env variable, a helper, an import, a spread, a conditional, `mergeConfig`) is ignored everywhere, the in-page editor included, and the dev server logs a warning saying so.
+
+Pass the options in one place. Each of these runs its own CMS, and a page gets the configuration of only one of them. nua's CMS takes over from a `nuaCms()` listed next to it, and `defineConfig` from `@nuasite/nua/config` always runs nua (unless `nua: false`, or `nua: { cms: false }`), so under that wrapper `cmsConfig` belongs in the `nua.cms` block: one on a `nuaCms()` call is not what a page ends up with. Of several `nuaCms()` calls the last one counts. Two nua integrations in one config (the wrapper together with `nua()`, or `nua()` twice) are not supported. `defineConfig` and the integrations are recognised only when they are called by the identifier they are imported under, not through a namespace (`nc.defineConfig(…)`, `cmsNs.default(…)`).
+
+The sidecar serves the result as `locale` in `GET /cms/v1/config`, and the in-page editor and the collections admin use the same value. Always pass that one, never the visitor's browser language.
+
+A project that declares neither (or a value that is not a usable locale) is compared as English, where a diacritic only breaks a tie, so "Č" sorts with "C". Digits compare as numbers ("Sekce 2" before "Sekce 10").
 
 ## Component Operations
 

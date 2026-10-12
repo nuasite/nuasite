@@ -1,5 +1,6 @@
 import { createNodeFs, type ParseCache, scanCollections as coreScanCollections } from '@nuasite/cms-core'
 import type { CollectionDefinition } from '@nuasite/cms-types'
+import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides'
 import { getProjectRoot } from './config'
 
 /**
@@ -16,7 +17,10 @@ const parseCache: ParseCache = new Map()
  * Scan all content collections against the current project root, reusing the
  * shared {@link parseCache}. Drop-in replacement for cms-core's `scanCollections`
  * for the dev-server call sites that would otherwise each allocate a fresh cache.
+ *
+ * `overrides` are the Astro-config `collections` overrides. A scan whose result is shown to
+ * an editor passes them, so the labels it serves do not depend on which scan produced them.
  */
-export function scanCollections(contentDir?: string): Promise<Record<string, CollectionDefinition>> {
-	return coreScanCollections(createNodeFs(getProjectRoot()), contentDir, parseCache)
+export async function scanCollections(contentDir?: string, overrides?: CollectionOverrides): Promise<Record<string, CollectionDefinition>> {
+	return applyCollectionOverrides(await coreScanCollections(createNodeFs(getProjectRoot()), contentDir, parseCache), overrides)
 }

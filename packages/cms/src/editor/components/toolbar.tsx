@@ -2,6 +2,7 @@ import type { ComponentChildren, FunctionComponent } from 'preact'
 import { useRef, useState } from 'preact/hooks'
 import { CMS_VERSION, Z_INDEX } from '../constants'
 import { cn } from '../lib/cn'
+import { getCollectionNavList } from '../manifest'
 import * as signals from '../signals'
 import { showConfirmDialog } from '../signals'
 import { STRINGS } from '../strings'
@@ -103,25 +104,15 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 	if (collectionDefinitions) {
 		const entries = Object.entries(collectionDefinitions)
 		if (entries.length > 0) {
-			// Group nested (child) collections under their parent, child entries indented.
-			const ordered: Array<[string, CollectionDefinition, boolean]> = []
-			for (const [name, def] of entries.filter(([, d]) => !d.parentCollection)) {
-				ordered.push([name, def, false])
-				for (const [childName, childDef] of entries.filter(([, d]) => d.parentCollection === name)) {
-					ordered.push([childName, childDef, true])
-				}
-			}
-			// Orphaned children whose parent isn't present stay top-level so nothing is hidden.
-			for (const [name, def] of entries.filter(([, d]) => d.parentCollection && !collectionDefinitions[d.parentCollection])) {
-				ordered.push([name, def, false])
-			}
-
+			// Listed as the collection browser arranges them, nested (child) collections indented
+			// under their parent. The menu has no headings, so a `group` only decides where its
+			// collections are listed.
 			const contentItems: MenuItem[] = collectionManagementEnabled
-				? ordered.map(([name, def, indented]) => ({
-					label: def.label,
+				? getCollectionNavList(collectionDefinitions, signals.config.value.locale).map(({ collection, nested }) => ({
+					label: collection.label,
 					icon: <GridIcon />,
-					indented,
-					onClick: () => callbacks.onOpenCollection?.(name),
+					indented: nested,
+					onClick: () => callbacks.onOpenCollection?.(collection.name),
 				}))
 				: []
 

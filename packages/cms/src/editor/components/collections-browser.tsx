@@ -2,6 +2,7 @@ import { signal } from '@preact/signals'
 import { useMemo, useState } from 'preact/hooks'
 import { useSearchFilter } from '../hooks/useSearchFilter'
 import { cn } from '../lib/cn'
+import { getCollectionNav } from '../manifest'
 import { deleteMarkdownPage } from '../markdown-api'
 import {
 	closeCollectionsBrowser,
@@ -13,6 +14,7 @@ import {
 	selectBrowserCollection,
 	selectedBrowserCollection,
 } from '../signals'
+import type { CollectionDefinition } from '../types'
 import { ChevronRightIcon, CollectionIcon } from './create-page-modal'
 import { CloseButton, ModalBackdrop, ModalHeader, PrimaryButton } from './modal-shell'
 
@@ -30,9 +32,8 @@ export function CollectionsBrowser() {
 
 	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}
 
-	const collections = useMemo(() => {
-		return Object.values(collectionDefinitions).sort((a, b) => a.label.localeCompare(b.label))
-	}, [collectionDefinitions])
+	const locale = config.value.locale
+	const sections = useMemo(() => getCollectionNav(collectionDefinitions, locale), [collectionDefinitions, locale])
 
 	const [search, setSearch] = useState('')
 	const selectedDef = selected ? collectionDefinitions[selected] : undefined
@@ -230,61 +231,66 @@ export function CollectionsBrowser() {
 		)
 	}
 
-	// Empty state
-	if (collections.length === 0) {
+	// Empty state. Nothing listed is not the same as nothing there: with collections that are
+	// all `hidden`, telling the editor to add files would be wrong.
+	if (sections.length === 0) {
 		return (
 			<ModalBackdrop onClose={handleClose}>
 				<ModalHeader title="Collections" onClose={handleClose} />
 				<div class="p-8 text-center">
-					<div class="text-white/60 mb-4">No content collections found.</div>
-					<p class="text-white/40 text-sm">
-						Add markdown files to <code class="bg-white/10 px-1.5 py-0.5 rounded">src/content/</code> subdirectories to enable collections.
-					</p>
+					{Object.keys(collectionDefinitions).length === 0
+						? (
+							<>
+								<div class="text-white/60 mb-4">No content collections found.</div>
+								<p class="text-white/40 text-sm">
+									Add markdown files to <code class="bg-white/10 px-1.5 py-0.5 rounded">src/content/</code> subdirectories to enable collections.
+								</p>
+							</>
+						)
+						: <div class="text-white/60">No collections to show here.</div>}
 				</div>
 			</ModalBackdrop>
 		)
 	}
 
-	// Collection list — group nested (child) collections under their parent
-	const ordered: Array<{ col: typeof collections[number]; nested: boolean }> = []
-	for (const col of collections.filter(c => !c.parentCollection)) {
-		ordered.push({ col, nested: false })
-		for (const child of collections.filter(c => c.parentCollection === col.name)) {
-			ordered.push({ col: child, nested: true })
-		}
-	}
-	// Append any orphaned children whose parent isn't present, so nothing is hidden.
-	for (const col of collections.filter(c => c.parentCollection && !collections.some(p => p.name === c.parentCollection))) {
-		ordered.push({ col, nested: false })
-	}
+	// Collection list — one block per section, nested (child) collections under their parent
+	const collectionButton = (col: CollectionDefinition, nested: boolean) => (
+		<button
+			key={col.name}
+			type="button"
+			onClick={() => selectBrowserCollection(col.name)}
+			class={cn(
+				'group w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left cursor-pointer',
+				nested && 'ml-8 w-[calc(100%-2rem)] border-l-2 border-l-cms-primary/40',
+			)}
+			data-cms-ui
+		>
+			<div class={cn('shrink-0 bg-cms-primary/20 rounded-cms-sm flex items-center justify-center', nested ? 'w-8 h-8' : 'w-10 h-10')}>
+				<CollectionIcon />
+			</div>
+			<div class="flex-1 min-w-0">
+				<div class="text-white font-medium">{col.label}</div>
+				<div class="text-white/50 text-sm">
+					{col.entryCount} {col.entryCount === 1 ? 'entry' : 'entries'}
+				</div>
+			</div>
+			<ChevronRightIcon />
+		</button>
+	)
 
 	return (
 		<ModalBackdrop onClose={handleClose} extraClass="flex flex-col max-h-[80vh]">
 			<ModalHeader title="Collections" onClose={handleClose} />
 			<div class="p-5 space-y-2 overflow-y-auto flex-1 min-h-0">
-				{ordered.map(({ col, nested }) => (
-					<button
-						key={col.name}
-						type="button"
-						onClick={() => selectBrowserCollection(col.name)}
-						class={cn(
-							'group w-full flex items-center gap-4 p-4 bg-white/5 hover:bg-white/10 rounded-cms-lg border border-white/10 hover:border-white/20 transition-colors text-left cursor-pointer',
-							nested && 'ml-8 w-[calc(100%-2rem)] border-l-2 border-l-cms-primary/40',
-						)}
-						data-cms-ui
-					>
-						<div class={cn('shrink-0 bg-cms-primary/20 rounded-cms-sm flex items-center justify-center', nested ? 'w-8 h-8' : 'w-10 h-10')}>
-							<CollectionIcon />
-						</div>
-						<div class="flex-1 min-w-0">
-							<div class="text-white font-medium">{col.label}</div>
-							<div class="text-white/50 text-sm">
-								{col.entryCount} {col.entryCount === 1 ? 'entry' : 'entries'}
-							</div>
-						</div>
-						<ChevronRightIcon />
-					</button>
-				))}
+				{sections.flatMap(section => [
+					section.group
+						? <div key={`group:${section.group}`} class="px-1 pt-3 text-xs font-medium uppercase tracking-wide text-white/40">{section.group}</div>
+						: null,
+					...section.items.flatMap(({ collection, children }) => [
+						collectionButton(collection, false),
+						...children.map(child => collectionButton(child, true)),
+					]),
+				])}
 			</div>
 		</ModalBackdrop>
 	)

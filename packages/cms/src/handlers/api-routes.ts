@@ -2,6 +2,7 @@ import type { CmsCore, CmsFileSystem } from '@nuasite/cms-core'
 import { isUnsafeFolder, listProjectImages, MEDIA_INVALID_FOLDER, mediaErrorStatus } from '@nuasite/cms-core'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
+import type { CollectionOverrides } from '../collection-overrides'
 import { getProjectRoot } from '../config'
 import { expectedDeletions } from '../dev-middleware'
 import type { ManifestWriter } from '../manifest-writer'
@@ -28,6 +29,8 @@ export interface RouteContext {
 	contentDir: string
 	mediaAdapter?: MediaStorageAdapter
 	maxUploadSize: number
+	/** Astro-config `collections` overrides, for the routes that rescan and republish the definitions. */
+	collectionOverrides?: CollectionOverrides
 }
 
 type RouteHandler = (ctx: RouteContext) => Promise<void>
@@ -214,7 +217,7 @@ const routeMap = new Map<string, RouteHandler>([
 		const newSlug = result.sourcePath ? lastSlug(result.sourcePath) : undefined
 		sendJson(res, { success: true, newFilePath: result.sourcePath, newSlug })
 	}),
-	custom('POST', 'markdown/create', async ({ req, res, core, manifestWriter, contentDir }) => {
+	custom('POST', 'markdown/create', async ({ req, res, core, manifestWriter, contentDir, collectionOverrides }) => {
 		const body = await parseJsonBody<CreateMarkdownBody>(req)
 		const ext = body.fileExtension ?? 'md'
 		const isData = DATA_EXTENSIONS.has(ext)
@@ -232,7 +235,7 @@ const routeMap = new Map<string, RouteHandler>([
 		})
 
 		if (result.success) {
-			manifestWriter.setCollectionDefinitions(await scanCollections(contentDir))
+			manifestWriter.setCollectionDefinitions(await scanCollections(contentDir, collectionOverrides))
 		}
 		const slug = result.sourcePath ? lastSlug(result.sourcePath) : undefined
 		sendJson(
@@ -246,7 +249,7 @@ const routeMap = new Map<string, RouteHandler>([
 			result.success ? 200 : 400,
 		)
 	}),
-	custom('POST', 'markdown/delete', async ({ req, res, core, manifestWriter, contentDir }) => {
+	custom('POST', 'markdown/delete', async ({ req, res, core, manifestWriter, contentDir, collectionOverrides }) => {
 		const body = await parseJsonBody<DeleteMarkdownBody>(req)
 		const entry = filePathToEntry(contentDir, body.filePath)
 		if (!entry) {
@@ -257,7 +260,7 @@ const routeMap = new Map<string, RouteHandler>([
 		expectedDeletions.add(fullPath)
 		const result = await core.deleteEntry(entry.collection, entry.slug)
 		if (result.success) {
-			manifestWriter.setCollectionDefinitions(await scanCollections(contentDir))
+			manifestWriter.setCollectionDefinitions(await scanCollections(contentDir, collectionOverrides))
 		} else {
 			expectedDeletions.delete(fullPath)
 		}
