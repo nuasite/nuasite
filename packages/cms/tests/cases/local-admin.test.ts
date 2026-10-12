@@ -187,6 +187,9 @@ export const collections = { blog }
 			? project.collections.find(item => collectionName(item) === 'blog')
 			: undefined
 		expect(isRecord(projectBlog) ? projectBlog.label : undefined).toBe('Aktuality')
+		// The wrapper that applies the overrides passes the sidecar's scan options on, so the
+		// project model still carries the report the sidecar asked for.
+		expect(isRecord(project) ? project.collectionScan : undefined).toBeDefined()
 	})
 
 	test('forwards the unversioned /health probe to the sidecar', async () => {
