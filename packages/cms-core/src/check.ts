@@ -262,6 +262,18 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 			})
 			continue
 		}
+		if (loaded.unreadable !== undefined) {
+			// An error, not a shorter count: nothing was checked, and the build reads the same directory.
+			findings.push({
+				severity: 'error',
+				code: 'config/unreadable-dir',
+				file: loaded.base,
+				field: name,
+				message: `Collection "${name}" could not be read: ${loaded.unreadable}. `
+					+ `Make the directory readable, or narrow the loader's base or pattern so it does not reach there.`,
+			})
+			continue
+		}
 		if (loaded.entries.length === 0) {
 			findings.push({
 				severity: 'warning',
@@ -327,7 +339,8 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 				const reference = field.reference
 				if (!reference) continue
 				const targets = stems.get(reference.target)
-				// An unresolvable target collection is already reported once by config/missing-dir.
+				// An unresolvable target collection is already reported once by config/missing-dir
+				// or config/unreadable-dir.
 				if (!targets || targets.size === 0) continue
 				const values = reference.isArray ? (Array.isArray(value) ? value : [value]) : [value]
 				for (const item of values) {

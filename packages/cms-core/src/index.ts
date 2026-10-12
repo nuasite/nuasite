@@ -46,9 +46,9 @@ export {
 	withoutBlankArrayItems,
 	type WriteModelField,
 } from './editor-write-model'
-export { globToRegExp } from './fs/glob'
+export { globMayMatchUnder, globToRegExp, UnreadableDirectoryError } from './fs/glob'
 export { createNodeFs } from './fs/node-fs'
-export type { CmsFileSystem } from './fs/types'
+export type { CmsFileSystem, GlobOptions } from './fs/types'
 export {
 	type AddArrayItemInput,
 	type CreateEntryInput,

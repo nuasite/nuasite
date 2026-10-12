@@ -1,4 +1,4 @@
-import { createNodeFs } from '@nuasite/cms-core'
+import { createNodeFs, globMayMatchUnder } from '@nuasite/cms-core'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
@@ -74,6 +74,129 @@ describe('createNodeFs', () => {
 		await cfs.writeFile('src/content/c.txt', '')
 		const md = (await cfs.glob('src/content/**/*.md')).sort()
 		expect(md).toEqual(['src/content/a.md', 'src/content/nested/b.md'])
+	})
+
+	test('glob takes a directory that is not there for an empty one', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('src/data/file.md', '')
+		expect(await cfs.glob('src/nope/**/*.md')).toEqual([])
+		// A file where the pattern expects a directory.
+		expect(await cfs.glob('src/data/file.md/*.md')).toEqual([])
+	})
+
+	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('glob rejects for a directory it cannot read instead of passing it for empty', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('src/data/a.md', '')
+		await cfs.writeFile('src/data/2024/b.md', '')
+		const locked = path.join(root, 'src/data/2024')
+		await fs.chmod(locked, 0o000)
+		try {
+			// The directory is named relative to the root; the absolute path stays out of the message.
+			const failure = await cfs.glob('src/data/**/*.md').then(() => null, (error: Error) => error.message)
+			expect(failure).toBe('Cannot read directory "src/data/2024" (EACCES)')
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
+	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('glob passes over an unreadable directory its pattern cannot reach into', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('site/blog/a.md', '')
+		await cfs.writeFile('node_modules/.cache/x/y.md', '')
+		const locked = path.join(root, 'node_modules/.cache')
+		await fs.chmod(locked, 0o000)
+		try {
+			// Two levels deep is as far as this pattern goes, and `.cache` is not `blog`.
+			expect(await cfs.glob('*/blog/*.md')).toEqual(['site/blog/a.md'])
+			// This one could match anywhere below, so what it cannot read it cannot answer for.
+			await expect(cfs.glob('**/blog/*.md')).rejects.toThrow('Cannot read directory "node_modules/.cache" (EACCES)')
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
+	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('glob passes over an unreadable directory deeper than its pattern goes', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('docs/a.md', '')
+		await cfs.writeFile('docs/x/y/z.md', '')
+		const locked = path.join(root, 'docs/x/y')
+		await fs.chmod(locked, 0o000)
+		try {
+			// `docs/*` names files in `docs`; nothing two levels below it can match.
+			expect(await cfs.glob('docs/*')).toEqual(['docs/a.md'])
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
+	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('glob does not read a directory the caller skips, nor what is under it', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('src/data/a.md', '')
+		await cfs.writeFile('src/data/_drafts/b.md', '')
+		await cfs.writeFile('src/data/keep/c.md', '')
+		const locked = path.join(root, 'src/data/_drafts')
+		await fs.chmod(locked, 0o000)
+		try {
+			const skipped: string[] = []
+			const files = await cfs.glob('src/data/**/*.md', {
+				skipDirectory: dir => {
+					skipped.push(dir)
+					return dir.split('/').pop()!.startsWith('_')
+				},
+			})
+			expect(files.sort()).toEqual(['src/data/a.md', 'src/data/keep/c.md'])
+			// Asked about directories below where the walk starts, root-relative, never the start itself.
+			expect(skipped.sort()).toEqual(['src/data/_drafts', 'src/data/keep'])
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
+	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('an unreadable root is named `.` and the runtime error is kept as the cause', async () => {
+		const locked = path.join(root, 'site')
+		await fs.mkdir(locked)
+		await fs.chmod(locked, 0o000)
+		try {
+			const failure = await createNodeFs(locked).glob('**/*.md').then(() => null, (error: Error) => error)
+			expect(failure?.message).toBe('Cannot read directory "." (EACCES)')
+			expect(failure?.cause).toMatchObject({ code: 'EACCES' })
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
+	test('globMayMatchUnder rules a directory out only when no match can run through it', () => {
+		const cases: Array<[glob: string, dir: string, expected: boolean]> = [
+			['src/data/*.md', 'src/data', true],
+			['src/data/*.md', 'src', true],
+			['src/data/*.md', 'src/data/2024', false],
+			['src/data/*.md', 'src/other', false],
+			// The last segment names a file: a directory it happens to match has nothing below for it.
+			['src/*', 'src/x', false],
+			// A directory deeper than the pattern has segments for.
+			['docs/*', 'docs/x/y', false],
+			['*.md', 'notes.md', false],
+			['./src/data/*.md', 'src/data', true],
+			['*/blog/*.md', 'site', true],
+			['*/blog/*.md', 'site/blog', true],
+			['*/blog/*.md', 'site/news', false],
+			['*/blog/*.md', 'site/blog/2024', false],
+			['{en,cs}/*/index.md', 'cs/post', true],
+			['{en,cs}/*/index.md', 'de/post', false],
+			// `**` runs through anything, wherever it stands in its segment.
+			['**/blog/*.md', 'node_modules/.cache', true],
+			['src/**', 'src/a/b/c', true],
+			['src/a**/x.md', 'src/b/c', true],
+			// A brace across a slash is not split into segments, so nothing is ruled out.
+			['{en/*,cs/**/*}.md', 'de/x', true],
+			['*.md', '.', true],
+		]
+		for (const [glob, dir, expected] of cases) expect([glob, dir, globMayMatchUnder(glob, dir)]).toEqual([glob, dir, expected])
 	})
 
 	test('stat returns mtimeMs and size', async () => {

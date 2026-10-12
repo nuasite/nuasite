@@ -603,10 +603,13 @@ async function scanGlobCollection(
 	// The scanner ignores files/dirs whose path segments start with `_` or `.` (private/hidden),
 	// matching the directory-walk behavior of the original scanner — the glob pattern alone
 	// would otherwise match them.
-	const matches = await fs.glob(path.join(baseRel, pattern))
+	const isPrivate = (relToBase: string) => relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.'))
+	// Such a directory is not walked either, so one that cannot be read does not cost the
+	// collection: none of its files would be kept.
+	const matches = await fs.glob(path.join(baseRel, pattern), { skipDirectory: dir => isPrivate(path.relative(baseRel, dir)) })
 	const rels = matches
 		.map(rel => path.relative(baseRel, rel))
-		.filter(relToBase => !relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.')))
+		.filter(relToBase => !isPrivate(relToBase))
 
 	// Markdown collections win when both are present; otherwise build a data
 	// collection (yaml/json) — the loader pattern dictates which, and a data
