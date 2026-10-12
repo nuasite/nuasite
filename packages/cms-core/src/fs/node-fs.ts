@@ -1,7 +1,7 @@
 import type { Dirent } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { globMayMatchUnder, globToRegExp } from './glob'
+import { globMayMatchUnder, globToRegExp, UnreadableDirectoryError } from './glob'
 import type { CmsFileSystem } from './types'
 
 /**
@@ -29,11 +29,22 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 	return error instanceof Error && 'code' in error
 }
 
+/** `absPath` relative to `absRoot`, with forward slashes. */
+function toRootRelative(absRoot: string, absPath: string): string {
+	return path.relative(absRoot, absPath).split(path.sep).join('/')
+}
+
 /**
  * Recursively list files under `absDir`, returning forward-slash paths relative to `absRoot`.
- * `mayHold` says whether a directory (root-relative) could hold anything the caller is after.
+ * `mayHold` says whether a directory (root-relative) could hold anything the caller is after;
+ * `skip` names directories below `absDir` the caller does not want walked at all.
  */
-async function walkFiles(absRoot: string, absDir: string, mayHold: (dir: string) => boolean): Promise<string[]> {
+async function walkFiles(
+	absRoot: string,
+	absDir: string,
+	mayHold: (dir: string) => boolean,
+	skip: (dir: string) => boolean,
+): Promise<string[]> {
 	let dirEntries: Dirent[]
 	try {
 		dirEntries = await fs.readdir(absDir, { withFileTypes: true })
@@ -42,19 +53,21 @@ async function walkFiles(absRoot: string, absDir: string, mayHold: (dir: string)
 		// (EACCES) must not pass for it: the caller would take its files for absent.
 		if (!isNodeError(error)) throw error
 		if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return []
-		const directory = path.relative(absRoot, absDir).split(path.sep).join('/') || '.'
+		const directory = toRootRelative(absRoot, absDir) || '.'
 		// Nothing the caller wants can be in there, so not reading it loses nothing.
 		if (!mayHold(directory)) return []
 		// Named by its root-relative path: the runtime's own message spells out the absolute one.
-		throw new Error(`Cannot read directory "${directory}" (${error.code ?? 'unknown error'})`, { cause: error })
+		throw new UnreadableDirectoryError(directory, error.code ?? 'unknown error', { cause: error })
 	}
 	const out: string[] = []
 	for (const entry of dirEntries) {
 		const abs = path.join(absDir, entry.name)
 		if (entry.isDirectory()) {
-			out.push(...await walkFiles(absRoot, abs, mayHold))
+			// Not walked, so not read either: whatever is in there the caller would discard.
+			if (skip(toRootRelative(absRoot, abs))) continue
+			out.push(...await walkFiles(absRoot, abs, mayHold, skip))
 		} else if (entry.isFile()) {
-			out.push(path.relative(absRoot, abs).split(path.sep).join('/'))
+			out.push(toRootRelative(absRoot, abs))
 		}
 	}
 	return out
@@ -137,11 +150,12 @@ export function createNodeFs(root: string): CmsFileSystem {
 			}
 		},
 
-		async glob(pattern) {
+		async glob(pattern, options) {
 			const baseRel = staticPrefixDir(pattern)
 			const absBase = resolve(baseRel)
 			const matcher = globToRegExp(pattern)
-			const files = await walkFiles(resolvedRoot, absBase, dir => globMayMatchUnder(pattern, dir))
+			const skip = options?.skipDirectory ?? (() => false)
+			const files = await walkFiles(resolvedRoot, absBase, dir => globMayMatchUnder(pattern, dir), skip)
 			return files.filter(rel => matcher.test(rel))
 		},
 

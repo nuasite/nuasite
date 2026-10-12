@@ -11,6 +11,7 @@ import path from 'node:path'
 import yaml from 'yaml'
 import type { ParsedCollection, ParsedConfig } from './content-config-ast'
 import type { CollectionKind } from './editor-write-model'
+import { UnreadableDirectoryError } from './fs/glob'
 import type { CmsFileSystem } from './fs/types'
 
 export interface LoadedEntry {
@@ -109,9 +110,11 @@ export async function loadCollections(fs: CmsFileSystem, config: ParsedConfig): 
 		try {
 			files = await collectEntryFiles(fs, collection, base)
 		} catch (error) {
+			// Anything else (a path traversal, a bug) is not a fact about the content: let it surface.
+			if (!(error instanceof UnreadableDirectoryError)) throw error
 			// A directory under the base that cannot be read. Which entries it holds is unknown,
 			// so the collection is handed on as unreadable instead of as whatever was listed so far.
-			loaded.set(name, { name, base, exists: true, unreadable: error instanceof Error ? error.message : String(error), entries: [] })
+			loaded.set(name, { name, base, exists: true, unreadable: error.message, entries: [] })
 			continue
 		}
 

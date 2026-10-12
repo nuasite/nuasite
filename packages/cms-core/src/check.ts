@@ -269,7 +269,8 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 				code: 'config/unreadable-dir',
 				file: loaded.base,
 				field: name,
-				message: `Collection "${name}" could not be read: ${loaded.unreadable}.`,
+				message: `Collection "${name}" could not be read: ${loaded.unreadable}. `
+					+ `Make the directory readable, or narrow the loader's base or pattern so it does not reach there.`,
 			})
 			continue
 		}

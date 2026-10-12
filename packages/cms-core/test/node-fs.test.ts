@@ -133,6 +133,30 @@ describe('createNodeFs', () => {
 	})
 
 	// Root reads any directory, so there is nothing to observe under it.
+	test.skipIf(process.getuid?.() === 0)('glob does not read a directory the caller skips, nor what is under it', async () => {
+		const cfs = createNodeFs(root)
+		await cfs.writeFile('src/data/a.md', '')
+		await cfs.writeFile('src/data/_drafts/b.md', '')
+		await cfs.writeFile('src/data/keep/c.md', '')
+		const locked = path.join(root, 'src/data/_drafts')
+		await fs.chmod(locked, 0o000)
+		try {
+			const skipped: string[] = []
+			const files = await cfs.glob('src/data/**/*.md', {
+				skipDirectory: dir => {
+					skipped.push(dir)
+					return dir.split('/').pop()!.startsWith('_')
+				},
+			})
+			expect(files.sort()).toEqual(['src/data/a.md', 'src/data/keep/c.md'])
+			// Asked about directories below where the walk starts, root-relative, never the start itself.
+			expect(skipped.sort()).toEqual(['src/data/_drafts', 'src/data/keep'])
+		} finally {
+			await fs.chmod(locked, 0o755)
+		}
+	})
+
+	// Root reads any directory, so there is nothing to observe under it.
 	test.skipIf(process.getuid?.() === 0)('an unreadable root is named `.` and the runtime error is kept as the cause', async () => {
 		const locked = path.join(root, 'site')
 		await fs.mkdir(locked)

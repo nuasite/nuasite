@@ -142,13 +142,24 @@ export const collections = { people${extra ? ', articles' : ''} }
 				code: 'config/unreadable-dir',
 				file: 'src/content/people',
 				field: 'people',
-				message: 'Collection "people" could not be read: Cannot read directory "src/content/people/2024" (EACCES).',
+				message: 'Collection "people" could not be read: Cannot read directory "src/content/people/2024" (EACCES). '
+					+ `Make the directory readable, or narrow the loader's base or pattern so it does not reach there.`,
 			}])
 			// Not the one entry that happened to be listed before the walk failed.
 			expect(report.entries).toBe(0)
 		} finally {
 			await fs.chmod(locked, 0o755)
 		}
+	})
+
+	test('a failure that is not an unreadable directory is not passed off as one', async () => {
+		await write({
+			'src/content.config.ts': config('n.object({ name: n.text() })').replace(`'*.md'`, `'../../../../*.md'`),
+			'src/content/people/ada.md': '---\nname: Ada\n---\n',
+		})
+
+		// A pattern that climbs out of the project is a broken config, not a fact about the content.
+		await expect(check()).rejects.toThrow('Path traversal detected')
 	})
 
 	test('a declared collection whose directory is missing is an error', async () => {

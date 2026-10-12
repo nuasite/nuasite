@@ -1,3 +1,21 @@
+/**
+ * A directory a glob had to read and could not. Kept apart from every other failure so a
+ * caller can report it as a finding and still let a bug (or a path traversal) surface.
+ */
+export class UnreadableDirectoryError extends Error {
+	/** Root-relative, forward slashes; the root itself is `.`. */
+	readonly directory: string
+	/** The runtime's error code, e.g. `EACCES`. */
+	readonly code: string
+
+	constructor(directory: string, code: string, options?: ErrorOptions) {
+		super(`Cannot read directory "${directory}" (${code})`, options)
+		this.name = 'UnreadableDirectoryError'
+		this.directory = directory
+		this.code = code
+	}
+}
+
 /** Convert a glob pattern (supports `*`, `**`, `?`, `{a,b}`) to an anchored RegExp. */
 export function globToRegExp(glob: string): RegExp {
 	let re = ''
