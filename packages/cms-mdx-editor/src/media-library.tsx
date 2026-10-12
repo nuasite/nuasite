@@ -246,6 +246,12 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 	/** The server said it applied the tab (`appliedType`), so these pages need no filtering here. */
 	const [serverFiltered, setServerFiltered] = useState(false)
 	/**
+	 * The last page was server filtered yet came back short of what was asked for. A server bounds
+	 * the work one filtered page may do, so a sparse tab can end a page early (even empty) with
+	 * more still to come; the gallery keeps pulling rather than show a short page as the answer.
+	 */
+	const [shortPage, setShortPage] = useState(false)
+	/**
 	 * How many pages have landed, ever. The drain effect's trigger: it has to re-run once per page,
 	 * and neither `items` nor the loading flags can carry that. A page whose items are the same
 	 * array React already holds re-renders nothing (`Object.is` bails the update out), and a flag
@@ -294,6 +300,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 			listing.pages += 1
 			setPagesLanded(landed => landed + 1)
 			setServerFiltered(result.appliedType === listing.type)
+			setShortPage(result.appliedType === listing.type && result.items.length < pageSize)
 			setFolders(prev => mergeFolders(prev, result.folders))
 			setItems(prev => (first ? result.items : [...prev, ...result.items]))
 			const next = advance(result, listing)
@@ -328,6 +335,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 		setFolders([])
 		setHasMore(false)
 		setServerFiltered(false)
+		setShortPage(false)
 		void loadPage(listing)
 	}, [currentFolder, typeFilter, loadPage])
 
@@ -342,16 +350,19 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 	 * on — one page per landed page (see `pagesLanded`), so the drain is interruptible by a folder
 	 * switch, stops on error and never runs unbounded.
 	 *
-	 * A tab the server filtered needs none of this: its first page is already the answer, and the
+	 * A tab the server filtered needs none of this: a full page is already the answer, and the
 	 * pager pulls the rest the ordinary way. Only a search, or a tab against an endpoint that does
-	 * not know `?type=`, still drains.
+	 * not know `?type=`, still drains. A server-filtered page that came back short with more to
+	 * come (see `shortPage`) is topped up the same way, one ordinary page at a time, until a full
+	 * one lands or the listing ends; `MAX_PAGES` bounds it like any other listing.
 	 */
+	const drain = filterActive && clientFilter
 	useEffect(() => {
-		if (!filterActive || !clientFilter) return
+		if (!drain && !shortPage) return
 		const listing = listingRef.current
 		if (listing.busy || listing.failed || listing.cursor === undefined) return
-		void loadPage(listing, DRAIN_PAGE_SIZE)
-	}, [filterActive, clientFilter, pagesLanded, loadPage])
+		void loadPage(listing, drain ? DRAIN_PAGE_SIZE : PAGE_SIZE)
+	}, [drain, shortPage, pagesLanded, loadPage])
 
 	const navigateToFolder = (folder: string) => {
 		setSearchQuery('')
@@ -540,6 +551,8 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 						<div style={emptyPanel}>
 							{loadingMore
 								? (filterActive ? 'Searching…' : 'Loading…')
+								: filterActive && hasMore
+								? 'No matches loaded yet.'
 								: filterActive
 								? 'No matching files.'
 								: 'No files yet. Upload one to get started.'}
@@ -592,7 +605,7 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 					? (
 						<div style={pagerBar}>
 							{loadingMore
-								? <span>{filterActive ? `Searching the whole folder… ${items.length} files scanned` : 'Loading…'}</span>
+								? <span>{drain ? `Searching the whole folder… ${items.length} files scanned` : filterActive ? 'Searching…' : 'Loading…'}</span>
 								: (
 									<button type="button" style={btn} onClick={() => void loadPage(listingRef.current)}>
 										Load more
