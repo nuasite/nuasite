@@ -2,7 +2,7 @@ import type { MediaFolderItem, MediaListResult, MediaStorageAdapter, MediaUpload
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID } from './errors'
-import { getFileExtension, mimeFromExt } from './local'
+import { getFileExtension, mimeFromExt } from './mime'
 import { hasDotSegment, isUnsafeFolder } from './names'
 
 /*

@@ -38,6 +38,8 @@ export interface CmsFileSystem {
 	readBytes(path: string): Promise<Uint8Array>
 	/** Write a UTF-8 text file atomically (write temp + rename). Creates parent dirs. */
 	writeFile(path: string, content: string): Promise<void>
+	/** Write raw bytes (images and other binary assets) atomically, like `writeFile`. Creates parent dirs. */
+	writeBytes(path: string, content: Uint8Array): Promise<void>
 	/** Rename/move a file. Creates the destination's parent dir. */
 	rename(from: string, to: string): Promise<void>
 	/** Remove a file. No-op when it does not exist. */

@@ -16,7 +16,7 @@ import {
 	withRenamedEntrySlug,
 } from '../editor-write-model'
 import type { CmsFileSystem } from '../fs/types'
-import { mimeFromExt } from '../media/local'
+import { mimeFromExt } from '../media/mime'
 import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared'
 
 /** Frontmatter file extensions that hold markdown content (vs. pure data files). */

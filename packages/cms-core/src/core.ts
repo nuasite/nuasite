@@ -18,6 +18,7 @@ import type {
 import { collectionScanReport, scanCollections } from './collection-scanner'
 import { scanComponentDefinitions } from './component-registry'
 import { type ParseCache } from './content-config-ast'
+import { type CmsCommit, createStagedFileSystem } from './fs/staged'
 import type { CmsFileSystem } from './fs/types'
 import {
 	addArrayItem as addArrayItemOp,
@@ -57,6 +58,13 @@ export interface CmsCoreOptions {
 	media?: MediaStorageAdapter
 	/** Directories to scan for Astro components (used for MDX import resolution). Defaults to `['src/components']`. */
 	componentDirs?: string[]
+	/**
+	 * Runs each mutation over a staged view of the filesystem and hands its changes to this
+	 * function instead of writing them directly. See {@link CmsCommit}: it rejects with
+	 * `CmsCommitConflictError` when a file the mutation read has changed meanwhile, and the
+	 * mutation then rejects with it. Without it, mutations write as they go.
+	 */
+	commit?: CmsCommit
 }
 
 /**
@@ -121,15 +129,29 @@ export interface CmsCore {
 export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): CmsCore {
 	const contentDir = opts.contentDir ?? 'src/content'
 	const componentDirs = opts.componentDirs ?? ['src/components']
+	const commit = opts.commit
 	// One mtime-keyed content-config parse cache per core instance (per project root).
 	const parseCache: ParseCache = new Map()
 
-	const entryDeps: EntryOpsDeps = {
-		fs,
-		contentDir,
-		parseCache,
-		componentDirs,
-		resolveComponentDefinitions: () => scanComponentDefinitions(fs, componentDirs),
+	function entryDeps(over: CmsFileSystem): EntryOpsDeps {
+		return {
+			fs: over,
+			contentDir,
+			parseCache,
+			componentDirs,
+			resolveComponentDefinitions: () => scanComponentDefinitions(over, componentDirs),
+		}
+	}
+
+	const readDeps = entryDeps(fs)
+
+	/** A mutation's result is returned once its changes are committed, whether it reports success or not. */
+	async function mutate<T>(operation: (over: CmsFileSystem) => Promise<T>): Promise<T> {
+		if (commit === undefined) return operation(fs)
+		const staged = createStagedFileSystem(fs)
+		const result = await operation(staged)
+		await commit(staged.changeset())
+		return result
 	}
 
 	return {
@@ -141,40 +163,40 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 			return scanComponentDefinitions(fs, componentDirs)
 		},
 		getEntry(collection, slug) {
-			return getEntryOp(entryDeps, collection, slug)
+			return getEntryOp(readDeps, collection, slug)
 		},
 		getEntryAsset(collection, slug, assetPath) {
-			return getEntryAssetOp(entryDeps, collection, slug, assetPath)
+			return getEntryAssetOp(readDeps, collection, slug, assetPath)
 		},
 		getProjectAsset(assetPath) {
-			return getProjectAssetOp(entryDeps, assetPath)
+			return getProjectAssetOp(readDeps, assetPath)
 		},
 		createEntry(input) {
-			return createEntryOp(entryDeps, input)
+			return mutate(over => createEntryOp(entryDeps(over), input))
 		},
 		updateEntry(input) {
-			return updateEntryOp(entryDeps, input)
+			return mutate(over => updateEntryOp(entryDeps(over), input))
 		},
 		deleteEntry(collection, slug) {
-			return deleteEntryOp(entryDeps, collection, slug)
+			return mutate(over => deleteEntryOp(entryDeps(over), collection, slug))
 		},
 		renameEntry(collection, from, to) {
-			return renameEntryOp(entryDeps, collection, from, to)
+			return mutate(over => renameEntryOp(entryDeps(over), collection, from, to))
 		},
 		addArrayItem(input) {
-			return addArrayItemOp(entryDeps, input)
+			return mutate(over => addArrayItemOp(entryDeps(over), input))
 		},
 		removeArrayItem(input) {
-			return removeArrayItemOp(entryDeps, input)
+			return mutate(over => removeArrayItemOp(entryDeps(over), input))
 		},
 		createPage(input) {
-			return createPageOp({ fs }, input)
+			return mutate(over => createPageOp({ fs: over }, input))
 		},
 		duplicatePage(input) {
-			return duplicatePageOp({ fs }, input)
+			return mutate(over => duplicatePageOp({ fs: over }, input))
 		},
 		deletePage(input) {
-			return deletePageOp({ fs }, input)
+			return mutate(over => deletePageOp({ fs: over }, input))
 		},
 		getLayouts() {
 			return getLayoutsOp({ fs })
@@ -183,13 +205,13 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 			return listRedirectsOp({ fs })
 		},
 		addRedirect(input) {
-			return addRedirectOp({ fs }, input)
+			return mutate(over => addRedirectOp({ fs: over }, input))
 		},
 		updateRedirect(input) {
-			return updateRedirectOp({ fs }, input)
+			return mutate(over => updateRedirectOp({ fs: over }, input))
 		},
 		deleteRedirect(input) {
-			return deleteRedirectOp({ fs }, input)
+			return mutate(over => deleteRedirectOp({ fs: over }, input))
 		},
 		media: opts.media,
 	}

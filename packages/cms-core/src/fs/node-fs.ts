@@ -127,6 +127,19 @@ function staticPrefixDir(pattern: string): string {
 	return staticSegments.join('/')
 }
 
+/** Write to a unique temp file in the same directory, then rename: a killed write leaves only the temp file, never a half-written target. */
+async function writeAtomically(fullPath: string, content: string | Uint8Array): Promise<void> {
+	await fs.mkdir(path.dirname(fullPath), { recursive: true })
+	const tempPath = `${fullPath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
+	try {
+		await fs.writeFile(tempPath, content)
+		await fs.rename(tempPath, fullPath)
+	} catch (error) {
+		await fs.rm(tempPath, { force: true })
+		throw error
+	}
+}
+
 /**
  * Create a `CmsFileSystem` backed by `node:fs`, rooted at `root`.
  * Every path is resolved relative to `root` and validated to stay within it.
@@ -145,18 +158,11 @@ export function createNodeFs(root: string): CmsFileSystem {
 		},
 
 		async writeFile(filePath, content) {
-			const fullPath = resolve(filePath)
-			await fs.mkdir(path.dirname(fullPath), { recursive: true })
-			// Atomic write: write to a unique temp file in the same directory, then rename.
-			// A killed write leaves only the temp file, never a half-written target.
-			const tempPath = `${fullPath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
-			try {
-				await fs.writeFile(tempPath, content, 'utf-8')
-				await fs.rename(tempPath, fullPath)
-			} catch (error) {
-				await fs.rm(tempPath, { force: true })
-				throw error
-			}
+			await writeAtomically(resolve(filePath), content)
+		},
+
+		async writeBytes(filePath, content) {
+			await writeAtomically(resolve(filePath), content)
 		},
 
 		async rename(from, to) {

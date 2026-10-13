@@ -14,16 +14,22 @@ const packageDir = path.join(import.meta.dir, '../..')
 const PORTABLE_MODULE_KEY = Symbol.for('pletivo.portableModule')
 
 describe('Node-free entries', () => {
-	test('fields, remark, rehype and the root under workerd import no Node built-in', async () => {
-		const entries = [
-			'src/fields.ts',
-			'src/markdown/remark.ts',
-			'src/markdown/rehype.ts',
-			// Imports the package root. Its default entry imports `node:fs` at the top level, so an
-			// empty list also proves that `workerd` resolves the root to the Node-free entry.
-			'tests/fixtures/portable/content-config.ts',
-		]
-		expect(await builtinImportsOf(entries.map(file => path.join(packageDir, file)), ['workerd'])).toEqual([])
+	const entries = {
+		fields: path.join(packageDir, 'src/fields.ts'),
+		remark: path.join(packageDir, 'src/markdown/remark.ts'),
+		rehype: path.join(packageDir, 'src/markdown/rehype.ts'),
+		// Imports the package root, whose default entry imports `node:fs` at the top level.
+		contentConfig: path.join(packageDir, 'tests/fixtures/portable/content-config.ts'),
+		cmsCore: path.join(packageDir, '../cms-core/src/portable.ts'),
+		cmsSidecar: path.join(packageDir, '../cms-sidecar/src/portable.ts'),
+	}
+	test.each(['fields', 'remark', 'rehype', 'contentConfig'] as const)('%s imports no Node built-in', async name => {
+		expect(await builtinImportsOf(entries[name], ['workerd'])).toEqual([])
+	})
+
+	test.each(['cmsCore', 'cmsSidecar'] as const)('%s imports no Node filesystem', async name => {
+		// Both are available in a Worker with `nodejs_compat`; `node:fs` is not.
+		expect(await builtinImportsOf(entries[name], ['workerd'])).toEqual(['node:crypto', 'node:path'])
 	})
 
 	test('the fields entry provides the schema helpers the package root provides', async () => {

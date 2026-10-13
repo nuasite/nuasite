@@ -1,4 +1,13 @@
-import { createCmsCore, createLocalStorageAdapter, createNodeFs, MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID, MEDIA_NOT_FOUND } from '@nuasite/cms-core'
+import {
+	type CmsCommit,
+	commitChangeset,
+	createCmsCore,
+	createLocalStorageAdapter,
+	createNodeFs,
+	MEDIA_INVALID_FOLDER,
+	MEDIA_INVALID_ID,
+	MEDIA_NOT_FOUND,
+} from '@nuasite/cms-core'
 import type {
 	CmsConfig,
 	CollectionDefinition,
@@ -1415,6 +1424,52 @@ describe('cms-sidecar optimistic concurrency (baseHash / sourceHash)', () => {
 		expect(body.success).toBe(true)
 		expect(body.sourceHash).toMatch(/^sha256:/)
 		expect(body.sourceHash).not.toBe(fresh)
+	})
+})
+
+describe('cms-sidecar over a core that commits through a fence', () => {
+	/** A server whose core's commit lets `interfere` write first, as an agent editing the checkout would. */
+	async function fencedServer(interfere: (root: string) => Promise<void>): Promise<{ server: CmsSidecarServer; root: string }> {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cms-sidecar-fenced-'))
+		await fs.cp(FIXTURE_ROOT, root, { recursive: true })
+		cleanups.push(root)
+		const nodeFs = createNodeFs(root)
+		const commit: CmsCommit = async changeset => {
+			await interfere(root)
+			await commitChangeset(nodeFs)(changeset)
+		}
+		const core = createCmsCore(nodeFs, { componentDirs: ['src/components'], commit })
+		return { server: createServer({ core, fs: nodeFs, root, coreVersion: '0.42.1' }), root }
+	}
+
+	const AGENT_SOURCE = '---\ntitle: Agent Title\n---\nWritten by the agent.\n'
+
+	test('PATCH racing an outside write → 409 with the outside version, which stays', async () => {
+		const { server, root } = await fencedServer(root => fs.writeFile(path.join(root, 'src/content/blog/hello-world.md'), AGENT_SOURCE))
+		const res = await call(server, 'PATCH', '/collections/blog/entries/hello-world', { frontmatter: { title: 'Editor Title' } })
+
+		expect(res.status).toBe(409)
+		const conflict = await jsonOf<ConflictResponse>(res)
+		expect(conflict.serverHash).toBe(hashContent(AGENT_SOURCE))
+		expect(conflict.serverFrontmatter.title).toBe('Agent Title')
+		expect(await fs.readFile(path.join(root, 'src/content/blog/hello-world.md'), 'utf-8')).toBe(AGENT_SOURCE)
+	})
+
+	test('another mutation racing an outside write → 409 conflict error', async () => {
+		const { server, root } = await fencedServer(root => fs.writeFile(path.join(root, 'src/content/blog/hello-world.md'), AGENT_SOURCE))
+		const res = await call(server, 'DELETE', '/collections/blog/entries/hello-world')
+
+		expect(res.status).toBe(409)
+		expect((await jsonOf<ApiError>(res)).code).toBe('conflict')
+		expect(await fs.readFile(path.join(root, 'src/content/blog/hello-world.md'), 'utf-8')).toBe(AGENT_SOURCE)
+	})
+
+	test('without an outside write the mutation lands', async () => {
+		const { server, root } = await fencedServer(async () => {})
+		const res = await call(server, 'PATCH', '/collections/blog/entries/hello-world', { frontmatter: { title: 'Editor Title' } })
+
+		expect(res.status).toBe(200)
+		expect(await fs.readFile(path.join(root, 'src/content/blog/hello-world.md'), 'utf-8')).toContain('title: Editor Title')
 	})
 })
 

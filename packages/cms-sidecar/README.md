@@ -14,6 +14,44 @@ liveness probe with `{ ok, coreVersion, root }`.
 The typed client for this contract is [`@nuasite/cms-client`](../cms-client);
 the wire shapes come from [`@nuasite/cms-types`](../cms-types).
 
+## Hosts outside Node
+
+`createServer` is a `Request` → `Response` handler, so a host can mount it without the
+CLI, for example in a Cloudflare Worker with `nodejs_compat`. There, `@nuasite/cms-sidecar`
+and `@nuasite/cms-core` resolve under the `workerd` condition to entries without `node:fs`
+(they still use `node:crypto` and `node:path`). They leave out `createNodeFs`,
+`createLocalStorageAdapter` and `mediaFromEnv`; the host passes its own `CmsFileSystem`.
+
+```ts
+import {
+	commitChangeset,
+	createCmsCore,
+	createFileSystemStorageAdapter,
+} from '@nuasite/cms-core'
+import { createServer } from '@nuasite/cms-sidecar'
+
+const core = createCmsCore(fs, {
+	// Uploads stored in the project through the same filesystem.
+	media: createFileSystemStorageAdapter(fs, {
+		dir: 'public/uploads',
+		urlPrefix: '/uploads',
+	}),
+	// Each mutation runs over a staged view; its changes reach the files only through this.
+	commit: changeset => commitInsideTheHostsLock(changeset),
+})
+const server = createServer({ core, fs, root: '/', coreVersion })
+```
+
+`commit` is the fence against writers the server does not know about, such as an agent
+editing the same checkout. A mutation's changeset lists the version of every file it read,
+tested or changed (`absent`, `present`, or a `sha256:` content digest) and the files it
+writes or removes. The commit applies the changes only when all those versions still hold,
+and otherwise rejects with `CmsCommitConflictError` and applies nothing. The server answers
+that with a `409`: for `PATCH` an entry, the usual `ConflictResponse` with the current
+version. `commitChangeset(fs)` is a reference implementation; it is atomic only when nothing
+else writes between its awaits, so a host with concurrent writers runs the same check
+(`versionOf`, `versionMatches`) and the writes inside its own critical section.
+
 ## Collections the scan cannot vouch for
 
 `GET /cms/v1/collections` lists the collections the scan could read. The scan is a walk

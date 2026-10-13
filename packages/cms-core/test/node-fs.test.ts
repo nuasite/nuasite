@@ -24,6 +24,14 @@ describe('createNodeFs', () => {
 		expect(existsSync(path.join(root, 'a/b/c.txt'))).toBe(true)
 	})
 
+	test('round-trips raw bytes with writeBytes', async () => {
+		const cfs = createNodeFs(root)
+		const bytes = new Uint8Array([0, 1, 254, 255])
+		await cfs.writeBytes('img/a.bin', bytes)
+		expect(await cfs.readBytes('img/a.bin')).toEqual(bytes)
+		await expect(cfs.writeBytes('../escape.bin', bytes)).rejects.toThrow('Path traversal')
+	})
+
 	test('rejects path traversal outside the root', async () => {
 		const cfs = createNodeFs(root)
 		await expect(cfs.readFile('../escape.txt')).rejects.toThrow('Path traversal')
