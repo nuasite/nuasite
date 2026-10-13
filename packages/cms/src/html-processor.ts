@@ -468,7 +468,7 @@ export async function processHtml(
 	const markdownWrapperNodes = new Set<HTMLNode>()
 
 	// Three strategies in priority order:
-	// 0. Rehype marker: the rehype-cms-marker plugin marks the first rendered element
+	// 0. Rehype marker: the rehypeCmsMarker plugin marks the first rendered element
 	//    with data-cms-markdown-content — its parent is the wrapper
 	// 1. Dev mode heuristic: elements with data-astro-source-file whose children lack it
 	// 2. Build mode: find element whose content matches the markdown body text

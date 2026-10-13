@@ -530,3 +530,18 @@ import type {
 import { getProjectRoot, scanCollections, setProjectRoot } from '@nuasite/cms'
 import { findCollectionSource, parseMarkdownContent } from '@nuasite/cms'
 ```
+
+## Hosts Outside Node
+
+Some hosts evaluate a project's content config and render its Markdown outside Node, for example in a Cloudflare Worker. For them the package has entries that import no Node built-in:
+
+| Entry                                       | What it exports                                                                                                                     |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `@nuasite/cms/fields`                       | The schema helpers: `n`, `defineCmsCollection`, `FIELD_TYPES`, `isFieldType` and their types                                        |
+| `@nuasite/cms` with the `workerd` condition | The same as `@nuasite/cms/fields`. A content config that imports `n` from the package root therefore works in such a host unchanged |
+| `@nuasite/cms/remark`                       | `cmsRemarkPlugins`, `remarkDirective`, `remarkListDirective`                                                                        |
+| `@nuasite/cms/rehype`                       | `rehypeCmsMarker`                                                                                                                   |
+
+Each Markdown plugin function carries a portable module reference: a non-enumerable property keyed `Symbol.for('pletivo.portableModule')` with the value `{ module, export }`, for example `{ module: '@nuasite/cms/remark', export: 'remarkListDirective' }`. A host that cannot take the function across a process boundary imports `export` from `module` where it renders instead. The plugins take no options.
+
+`package.json` declares `"nuasite": { "portableApi": 1 }` when the package has all of the above, so a host can refuse an older version before it tries to load one.

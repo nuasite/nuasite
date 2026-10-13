@@ -4,7 +4,6 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createLocalStorageAdapter, createNodeFs, parseProjectCmsConfig } from '@nuasite/cms-core'
-import remarkDirective from 'remark-directive'
 import { processBuildOutput } from './build-processor'
 import type { CollectionOverrides } from './collection-overrides'
 import { ComponentRegistry } from './component-registry'
@@ -13,24 +12,16 @@ import { createDevMiddleware } from './dev-middleware'
 import { getErrorCollector, resetErrorCollector } from './error-collector'
 import { ADMIN_ROUTE, createLocalAdminMiddleware } from './local-admin'
 import { ManifestWriter } from './manifest-writer'
+import { rehypeCmsMarker } from './markdown/rehype'
 import type { MediaStorageAdapter } from './media/types'
 import { type CmsMode, resolveCmsMode } from './mode'
 import { mergeCmsRedirectsInto } from './redirects'
-import { rehypeCmsMarker } from './rehype-cms-marker'
-import { remarkListDirective } from './remark-list-directive'
 import { scanCollections } from './scan-cache'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
 import { createPublicStaticFileChecker } from './utils'
 import { createVitePlugin } from './vite-plugin'
 
-/**
- * Remark plugins that make the CMS list-style directive (`:::list{.class}`,
- * emitted by the editor) render as `<ul class="class">`. `remark-directive`
- * also stops MDX from treating the `{.class}` attribute block as a JS
- * expression (which crashes acorn). Wired into the markdown/MDX pipeline by
- * `@nuasite/nua`.
- */
-export const cmsRemarkPlugins = [remarkDirective, remarkListDirective]
+export { cmsRemarkPlugins } from './markdown/remark'
 
 export interface NuaCmsOptions extends CmsMarkerOptions {
 	/**
@@ -462,23 +453,43 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 	}
 }
 
-// Shared structural contract from @nuasite/cms-types — surfaced through the cms public API
-// so consumers of @nuasite/cms get the field-type list + guard from one place.
 export {
 	createContemberStorageAdapter as contemberMedia,
 	createLocalStorageAdapter as localMedia,
 	createS3StorageAdapter as s3Media,
 } from '@nuasite/cms-core'
-export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
-export type { CollectionLayout, CollectionLayoutSection, PathnameSegment, PathnameSpec } from '@nuasite/cms-types'
-export { defineCmsCollection, n } from './field-types'
-export type { DateHints, FileHints, ImageHints, LayoutHints, NumberHints, TextareaHints, TextHints } from './field-types'
+export {
+	type CollectionLayout,
+	type CollectionLayoutSection,
+	type Color,
+	type Date,
+	type DateHints,
+	type DateTime,
+	defineCmsCollection,
+	type Email,
+	FIELD_TYPES,
+	type FileHints,
+	type Image,
+	type ImageHints,
+	isFieldType,
+	type LayoutHints,
+	n,
+	type NumberHints,
+	type PathnameSegment,
+	type PathnameSpec,
+	type Reference,
+	type Textarea,
+	type TextareaHints,
+	type TextHints,
+	type Time,
+	type Url,
+} from './fields'
 export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, MediaStorageAdapter, MediaTypeFilter } from './media/types'
 export { type CmsMode, detectHostedFromEnv, resolveCmsMode } from './mode'
-export type { Color, Date, DateTime, Email, Image, Reference, Textarea, Time, Url } from './prop-types'
 
 export { scanCollections } from '@nuasite/cms-core'
 export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
+export { rehypeCmsMarker } from './markdown/rehype'
 export { type FieldMigration, migrateAstroImages, type MigrationOptions, type MigrationResult } from './migrate-astro-image'
 export {
 	astroRedirectLines,
@@ -488,7 +499,6 @@ export {
 	type MergeRedirectsIntoOptions,
 	type RedirectsLogger,
 } from './redirects'
-export { rehypeCmsMarker } from './rehype-cms-marker'
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
 export type {
