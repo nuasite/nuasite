@@ -27,6 +27,11 @@ describe('Node-free entries', () => {
 		expect(await builtinImportsOf(entries[name], ['workerd'])).toEqual([])
 	})
 
+	test('the editor host under workerd imports only what a Worker with nodejs_compat provides', async () => {
+		const entry = path.join(packageDir, 'src/editor-host.ts')
+		expect(await builtinImportsOf(entry, ['workerd'])).toEqual(['node:async_hooks', 'node:crypto', 'node:path'])
+	})
+
 	test.each(['cmsCore', 'cmsSidecar'] as const)('%s imports no Node filesystem', async name => {
 		// Both are available in a Worker with `nodejs_compat`; `node:fs` is not.
 		expect(await builtinImportsOf(entries[name], ['workerd'])).toEqual(['node:crypto', 'node:path'])

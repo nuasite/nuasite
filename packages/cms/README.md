@@ -545,3 +545,30 @@ Some hosts evaluate a project's content config and render its Markdown outside N
 Each Markdown plugin function carries a portable module reference: a non-enumerable property keyed `Symbol.for('pletivo.portableModule')` with the value `{ module, export }`, for example `{ module: '@nuasite/cms/remark', export: 'remarkListDirective' }`. A host that cannot take the function across a process boundary imports `export` from `module` where it renders instead. The plugins take no options.
 
 `package.json` declares `"nuasite": { "portableApi": 1 }` when the package has all of the above, so a host can refuse an older version before it tries to load one.
+
+### Visual Editor Without the Astro Dev Server
+
+`@nuasite/cms/editor-host` runs the inline editor's server side for a host that renders pages itself:
+
+```ts
+import { createEditorHost } from '@nuasite/cms/editor-host'
+
+const host = await createEditorHost({
+	root: '/project', // how the HTML's source annotations spell the project root
+	fs, // a CmsFileSystem rooted there; every read and write goes through it
+	parseAstro, // `parse` of an initialized @astrojs/compiler
+	commit, // optional CmsCommit: fences editor writes against other writers
+	media, // optional MediaStorageAdapter
+	editor: { src: editorBundleUrl, reloadUrl: '/_live' },
+})
+
+const html = await host.processPage(pagePath, renderedHtml, { revision })
+const response = await host.fetch(request) // undefined → not an editor request
+host.invalidate(['src/components/Card.astro']) // after a change made elsewhere
+```
+
+- The rendered HTML must carry the Astro compiler's source annotations (`annotateSourceFile`). `processPage` marks the editable elements, records the page manifest and, with `editor`, injects `window.NuaCmsConfig`, the editor bundle and the reload client.
+- `fetch` answers `/_nua/cms/*`, `/cms-manifest.json` and `/<page>.json` of a processed page.
+- Each host keeps its own caches and manifests, so one process can serve several projects.
+- With `commit`, a write based on a file that changed meanwhile is refused: `409` for a single operation, a per-change error for that file in a batch save.
+- The reload client (`reloadClientScript`) opens a WebSocket to `reloadUrl`. On a message `{ "revision": "…" }` that differs from the page's revision, it dispatches a cancelable `nua:external-change` event on `window` and reloads the page unless the event was cancelled.

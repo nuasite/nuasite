@@ -40,6 +40,11 @@
 			"import": "./src/markdown/rehype.ts",
 			"default": "./src/markdown/rehype.ts"
 		},
+		"./editor-host": {
+			"types": "./src/editor-host.ts",
+			"import": "./src/editor-host.ts",
+			"default": "./src/editor-host.ts"
+		},
 		"./package.json": "./package.json"
 	},
 	"imports": {
