@@ -471,7 +471,7 @@ export async function handleCmsApiRoute(ctx: RouteContext): Promise<void> {
 		// Node's fetch refuses a streamed body without it.
 		init.duplex = 'half'
 	}
-	const response = await handleCmsApiRequest(route, new Request(url, init), deps)
+	const response = await handleCmsApiRequest(route, new Request(url.href, init), deps)
 	res.writeHead(response.status, Object.fromEntries(response.headers))
 	res.end(Buffer.from(await response.arrayBuffer()))
 }

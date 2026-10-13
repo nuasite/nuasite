@@ -11,12 +11,12 @@ import {
 import { CSS, Z_INDEX } from '../constants'
 import { cn } from '../lib/cn'
 import * as signals from '../signals'
-import type { Attribute, AvailableColors } from '../types'
+import type { Attribute, AvailableColors, ElementRect } from '../types'
 import { CloseButton } from './modal-shell'
 
 export interface ColorToolbarProps {
 	visible: boolean
-	rect: DOMRect | null
+	rect: ElementRect | null
 	element: HTMLElement | null
 	availableColors: AvailableColors | undefined
 	currentClasses: Record<string, Attribute> | undefined
