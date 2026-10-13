@@ -15,6 +15,7 @@ import type { ComponentChildren } from 'preact'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useLinkPopover } from '../hooks/useLinkPopover'
 import { getComponentDefinition } from '../manifest'
+import { markWhitespacePlugin } from '../mark-whitespace'
 import { MDX_EXPR_PREFIX } from '../milkdown-mdx-plugin'
 import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
 import { manifest, openMediaLibraryWithCallback } from '../signals'
@@ -99,6 +100,7 @@ function MiniMilkdownEditor({ value, onChange }: { value: string; onChange: (v: 
 				})
 				.use(commonmark)
 				.use(gfm)
+				.use(markWhitespacePlugin)
 				.use(listener)
 				.create()
 

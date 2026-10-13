@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { lift } from 'prosemirror-commands'
 import { useLinkPopover } from '../hooks/useLinkPopover'
 import { cn } from '../lib/cn'
+import { markWhitespacePlugin } from '../mark-whitespace'
 import { uploadMedia } from '../markdown-api'
 import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-plugin'
 import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
@@ -107,6 +108,7 @@ export function MarkdownInlineEditor({
 
 				builder
 					.use(gfm)
+					.use(markWhitespacePlugin)
 					.use(listener)
 
 				// Add MDX component support for .mdx files
