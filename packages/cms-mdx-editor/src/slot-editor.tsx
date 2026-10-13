@@ -18,6 +18,7 @@ import { gfm } from '@milkdown/preset-gfm'
 import { replaceAll } from '@milkdown/utils'
 import { useEffect, useRef, useState } from 'react'
 import { FormatToolbar } from './format-toolbar'
+import { markWhitespacePlugin } from './mark-whitespace'
 import type { MediaContext, MediaSource } from './media-source'
 
 const wrapper: React.CSSProperties = { border: '1px solid #e4e4e7', borderRadius: 6, background: '#fff' }
@@ -55,6 +56,7 @@ export function SlotEditor({ value, onChange, media, mediaContext }: SlotEditorP
 				})
 				.use(commonmark)
 				.use(gfm)
+				.use(markWhitespacePlugin)
 				.use(listener)
 				.create()
 

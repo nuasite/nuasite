@@ -17,6 +17,7 @@ import type { CmsListStyle, ComponentDefinition } from '@nuasite/cms-types'
 import { useEffect, useRef, useState } from 'react'
 import { ComponentPicker } from './component-picker'
 import { FormatToolbar } from './format-toolbar'
+import { markWhitespacePlugin } from './mark-whitespace'
 import { insertMdxComponentCommand, mdxComponentNode, mdxEsmNode, remarkMdxPlugin } from './mdx-plugin'
 import { type ComponentResolver, createMdxComponentView } from './mdx-view'
 import type { MediaContext, MediaSource } from './media-source'
@@ -171,6 +172,7 @@ export function MdxBodyEditor({ value, onChange, components, listStyles, media, 
 				.use(commonmark)
 				.use(styledListPlugin)
 				.use(gfm)
+				.use(markWhitespacePlugin)
 				.use(listener)
 				.use(remarkMdxPlugin)
 				.use(mdxEsmNode)
