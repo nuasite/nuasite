@@ -1,9 +1,9 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 
 import { isHugoStyleEntry } from '../astro-image-paths'
 import { getProjectRoot } from '../config'
+import { projectFiles } from '../project/context'
 import type { Attribute, CollectionDefinition, ManifestEntry } from '../types'
 import { escapeRegex, generateSourceHash, resolveSourcePath } from '../utils'
 import { buildDefinitionPath } from './ast-extractors'
@@ -527,7 +527,7 @@ export async function extractSourceSnippet(
 	try {
 		const filePath = resolveSourcePath(sourceFile)
 
-		const content = await fs.readFile(filePath, 'utf-8')
+		const content = await projectFiles().readFile(filePath)
 		const lines = content.split('\n')
 
 		// Extract the complete tag snippet (including wrapper element)
@@ -754,7 +754,7 @@ export async function enhanceManifestWithSourceSnippets(
 	const readFileWithCache = async (filePath: string): Promise<{ content: string; lines: string[] }> => {
 		const cached = fileContentCache.get(filePath)
 		if (cached) return cached
-		const content = await fs.readFile(filePath, 'utf-8')
+		const content = await projectFiles().readFile(filePath)
 		const lines = content.split('\n')
 		const result = { content, lines }
 		fileContentCache.set(filePath, result)

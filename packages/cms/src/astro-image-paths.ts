@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import fs from 'node:fs/promises'
 import path from 'node:path'
+import { projectFiles } from './project/context'
 
 const HUGO_INDEX_RE = /^index\.(md|mdx)$/i
 
@@ -83,9 +83,7 @@ async function pickHashedSibling(dir: string, baseName: string, buf: Buffer): Pr
 /** True if the slot is empty, or holds a file with identical bytes to `compareBuffer`. */
 export async function isFreeOrMatching(absPath: string, compareBuffer: Buffer): Promise<boolean> {
 	try {
-		const stat = await fs.stat(absPath)
-		if (stat.size !== compareBuffer.length) return false
-		const existing = await fs.readFile(absPath)
+		const existing = await projectFiles().readBytes(absPath)
 		return compareBuffer.equals(existing)
 	} catch {
 		return true

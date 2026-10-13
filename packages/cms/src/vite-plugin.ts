@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite'
-import { expectedDeletions, invalidateCollectionRoutesCache } from './dev-middleware'
+import { invalidateCollectionRoutesCache } from './editor-service'
+import { expectedDeletions } from './expected-deletions'
 import type { ManifestWriter } from './manifest-writer'
 import { markFileDirty } from './source-finder'
 import type { CmsMarkerOptions, ComponentDefinition } from './types'

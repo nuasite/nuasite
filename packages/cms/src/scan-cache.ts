@@ -1,26 +1,18 @@
-import { createNodeFs, type ParseCache, scanCollections as coreScanCollections } from '@nuasite/cms-core'
+import { scanCollections as coreScanCollections } from '@nuasite/cms-core'
 import type { CollectionDefinition } from '@nuasite/cms-types'
 import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides'
-import { getProjectRoot } from './config'
+import { currentProjectContext } from './project/context'
 
 /**
- * Process-persistent content-config parse cache shared across every standalone
- * collection scan (server setup + each entry create/delete). cms-core's
- * `parseContentConfig` is mtime-keyed, so threading one cache here lets repeated
- * scans skip re-reading and re-Babel-parsing `content.config.ts` when it hasn't
- * changed — the CmsCore instance keeps its own cache the same way, but these
- * top-level call sites bypass it.
- */
-const parseCache: ParseCache = new Map()
-
-/**
- * Scan all content collections against the current project root, reusing the
- * shared {@link parseCache}. Drop-in replacement for cms-core's `scanCollections`
- * for the dev-server call sites that would otherwise each allocate a fresh cache.
+ * Scan all content collections of the current project context. The context keeps one
+ * content-config parse cache for these standalone scans (server setup, each entry create or
+ * delete): cms-core's `parseContentConfig` is mtime-keyed, so repeated scans skip re-reading and
+ * re-parsing `content.config.ts` when it has not changed.
  *
  * `overrides` are the Astro-config `collections` overrides. A scan whose result is shown to
  * an editor passes them, so the labels it serves do not depend on which scan produced them.
  */
 export async function scanCollections(contentDir?: string, overrides?: CollectionOverrides): Promise<Record<string, CollectionDefinition>> {
-	return applyCollectionOverrides(await coreScanCollections(createNodeFs(getProjectRoot()), contentDir, parseCache), overrides)
+	const context = currentProjectContext()
+	return applyCollectionOverrides(await coreScanCollections(context.fs, contentDir, context.state.contentConfigParses), overrides)
 }

@@ -42,6 +42,13 @@
 		},
 		"./package.json": "./package.json"
 	},
+	"imports": {
+		"#project-context-default": {
+			"types": "./src/project/default-node.ts",
+			"workerd": "./src/project/default-none.ts",
+			"default": "./src/project/default-node.ts"
+		}
+	},
 	"dependencies": {
 		"@nuasite/cms-core": "workspace:*",
 		"@nuasite/cms-types": "workspace:*",

@@ -1,7 +1,7 @@
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
+import { projectFiles } from './project/context'
 import { findSourceLocation } from './source-finder/source-lookup'
 import type { CanonicalUrl, JsonLdEntry, OpenGraphData, PageSeoData, SeoFavicon, SeoKeywords, SeoMetaTag, SeoTitle, TwitterCardData } from './types'
 
@@ -459,7 +459,7 @@ async function searchDirForJsonLd(
 	jsonLdType: string,
 ): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)
@@ -487,7 +487,7 @@ async function searchFileForJsonLd(
 	jsonLdType: string,
 ): Promise<{ sourcePath: string; sourceLine: number; sourceSnippet: string } | undefined> {
 	try {
-		const content = await fs.readFile(filePath, 'utf-8')
+		const content = await projectFiles().readFile(filePath)
 		const lines = content.split('\n')
 
 		for (let i = 0; i < lines.length; i++) {

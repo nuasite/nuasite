@@ -1,7 +1,7 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
+import { projectFiles } from '../project/context'
 import { getCachedParsedFile } from './ast-parser'
 import { isSearchIndexInitialized } from './cache'
 import { searchForExpressionProp, searchForImportedValue, searchForPropInParents } from './cross-file-tracker'
@@ -86,7 +86,7 @@ export async function searchDirectory(
 	tag: string,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)

@@ -1,7 +1,7 @@
 import { parse as parseBabel } from '@babel/parser'
-import fs from 'node:fs/promises'
 import { getProjectRoot } from '../config'
 import type { ManifestWriter } from '../manifest-writer'
+import { projectFiles } from '../project/context'
 import type { CmsManifest, ComponentInstance } from '../types'
 import { acquireFileLock, escapeRegex, normalizePagePath, resolveAndValidatePath } from '../utils'
 import {
@@ -293,7 +293,7 @@ async function resolveArrayContext(
 		const { arrayVarName, mapOccurrence } = parsed
 		const filePath = normalizeFilePath(component.invocationSourcePath ?? component.sourcePath)
 		const fullPath = resolveAndValidatePath(filePath)
-		const content = await fs.readFile(fullPath, 'utf-8')
+		const content = await projectFiles().readFile(fullPath)
 		const lines = content.split('\n')
 
 		// Find the Nth .map() line by searching the template section
@@ -358,7 +358,7 @@ async function resolveArrayContext(
 		?? normalizeFilePath(component.invocationSourcePath ?? component.sourcePath)
 
 	const fullPath = resolveAndValidatePath(filePath)
-	const content = await fs.readFile(fullPath, 'utf-8')
+	const content = await projectFiles().readFile(fullPath)
 	const lines = content.split('\n')
 
 	let refLineIndex: number
@@ -465,7 +465,7 @@ export async function handleRemoveArrayItem(
 		const release = await acquireFileLock(fullPath)
 		try {
 			// Re-read the file and recompute bounds to avoid stale data
-			const freshContent = await fs.readFile(fullPath, 'utf-8')
+			const freshContent = await projectFiles().readFile(fullPath)
 			const freshLines = freshContent.split('\n')
 
 			const freshFmEnd = findFrontmatterEnd(freshLines)
@@ -509,7 +509,7 @@ export async function handleRemoveArrayItem(
 				}
 			}
 
-			await fs.writeFile(fullPath, freshLines.join('\n'), 'utf-8')
+			await projectFiles().writeFile(fullPath, freshLines.join('\n'))
 
 			return {
 				success: true,
@@ -563,7 +563,7 @@ export async function handleAddArrayItem(
 		const release = await acquireFileLock(fullPath)
 		try {
 			// Re-read the file and recompute bounds to avoid stale data
-			const freshContent = await fs.readFile(fullPath, 'utf-8')
+			const freshContent = await projectFiles().readFile(fullPath)
 			const freshLines = freshContent.split('\n')
 
 			const freshFmEnd = findFrontmatterEnd(freshLines)
@@ -625,7 +625,7 @@ export async function handleAddArrayItem(
 				}
 			}
 
-			await fs.writeFile(fullPath, freshLines.join('\n'), 'utf-8')
+			await projectFiles().writeFile(fullPath, freshLines.join('\n'))
 
 			return {
 				success: true,

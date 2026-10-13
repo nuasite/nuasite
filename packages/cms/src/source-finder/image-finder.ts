@@ -1,8 +1,8 @@
 import type { ComponentNode, ElementNode, Node as AstroNode } from '@astrojs/compiler/types'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
+import { projectFiles } from '../project/context'
 import { getCachedParsedFile } from './ast-parser'
 import { isSearchIndexInitialized } from './cache'
 import { findInImageIndex } from './search-index'
@@ -209,7 +209,7 @@ export async function searchDirectoryForImage(
 	imageSrc: string,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)

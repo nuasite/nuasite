@@ -1,11 +1,11 @@
 import { NodeType, parse as parseHtml } from 'node-html-parser'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseYaml, parseDocument, stringify as stringifyYaml, visit as visitYaml } from 'yaml'
 import { pickSiblingTarget } from '../astro-image-paths'
 import { getProjectRoot } from '../config'
 import type { AttributeChangePayload, ChangePayload, SaveBatchRequest } from '../editor/types'
 import type { ManifestWriter } from '../manifest-writer'
+import { currentProjectContext, projectFiles } from '../project/context'
 import { extractAstroImageOriginalUrl } from '../source-finder/snippet-utils'
 import type { CmsManifest, ManifestEntry } from '../types'
 import { acquireFileLock, escapeRegex, escapeReplacement, normalizePagePath, relativeImportPath, resolveAndValidatePath } from '../utils'
@@ -48,35 +48,31 @@ export async function handleUpdate(
 		changesByFile[filePath]!.push(change)
 	}
 
-	const projectRoot = getProjectRoot()
-
 	for (const [filePath, fileChanges] of Object.entries(changesByFile)) {
 		try {
 			const fullPath = resolveAndValidatePath(filePath)
 			const release = await acquireFileLock(fullPath)
 			try {
-				const currentContent = await fs.readFile(fullPath, 'utf-8')
-
-				const { newContent, appliedCount, failedChanges, fileOps } = await applyChanges(
-					currentContent,
-					fileChanges,
-					manifest,
-					fullPath,
-					meta.url,
-				)
-				if (failedChanges.length > 0) {
-					errors.push(...failedChanges)
-				}
-
-				if (appliedCount > 0 && newContent !== currentContent) {
+				// One mutation per file: a file that changed meanwhile fails its own changes only.
+				const result = await currentProjectContext().mutate(async () => {
+					const currentContent = await projectFiles().readFile(fullPath)
+					const { newContent, appliedCount, failedChanges, fileOps } = await applyChanges(
+						currentContent,
+						fileChanges,
+						manifest,
+						fullPath,
+						meta.url,
+					)
+					if (appliedCount === 0 || newContent === currentContent) return { written: 0, failedChanges }
 					// Write assets first so the source file never points at missing files.
 					for (const op of fileOps) {
-						await fs.mkdir(path.dirname(op.target), { recursive: true })
-						await fs.writeFile(op.target, op.bytes)
+						await projectFiles().writeFile(op.target, op.bytes)
 					}
-					await fs.writeFile(fullPath, newContent, 'utf-8')
-					updated += appliedCount
-				}
+					await projectFiles().writeFile(fullPath, newContent)
+					return { written: appliedCount, failedChanges }
+				})
+				errors.push(...result.failedChanges)
+				updated += result.written
 			} finally {
 				release()
 			}
@@ -503,7 +499,7 @@ async function resolveNewSrcBytes(
 		: null
 	if (diskPath) {
 		try {
-			return { bytes: await fs.readFile(diskPath), filename: filenameFromPath(newSrc) }
+			return { bytes: Buffer.from(await projectFiles().readBytes(diskPath)), filename: filenameFromPath(newSrc) }
 		} catch {
 			// Fall through to HTTP fetch
 		}

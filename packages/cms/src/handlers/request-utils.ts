@@ -158,3 +158,56 @@ export function handleCors(req: IncomingMessage, res: ServerResponse): boolean {
 	}
 	return false
 }
+
+// ============================================================================
+// Fetch API (Request → Response), shared by the dev server and other hosts
+// ============================================================================
+
+const CORS_HEADERS = {
+	'Access-Control-Allow-Origin': '*',
+	'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+	'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+}
+
+export function jsonResponse(data: unknown, status = 200): Response {
+	return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } })
+}
+
+export function errorResponse(message: string, status = 400): Response {
+	return jsonResponse({ error: message }, status)
+}
+
+/** The answer to a CORS preflight. */
+export function preflightResponse(request: Request): Response {
+	return new Response(null, {
+		status: 204,
+		headers: { ...CORS_HEADERS, 'Access-Control-Allow-Origin': request.headers.get('origin') ?? '*', 'Access-Control-Max-Age': '86400' },
+	})
+}
+
+/** The request body, refused with `BodyTooLargeError` once it grows past `maxSize`. */
+export async function readRequestBody(request: Request, maxSize: number = MAX_BODY_SIZE): Promise<Buffer> {
+	if (!request.body) return Buffer.alloc(0)
+	const chunks: Uint8Array[] = []
+	let totalSize = 0
+	const reader = request.body.getReader()
+	for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+		totalSize += chunk.value.byteLength
+		if (totalSize > maxSize) {
+			await reader.cancel()
+			throw new BodyTooLargeError(maxSize)
+		}
+		chunks.push(chunk.value)
+	}
+	return Buffer.concat(chunks)
+}
+
+export async function parseJsonRequest<T>(request: Request): Promise<T> {
+	const buf = await readRequestBody(request)
+	try {
+		const value: T = JSON.parse(buf.toString('utf-8'))
+		return value
+	} catch {
+		throw new Error('Invalid JSON in request body')
+	}
+}

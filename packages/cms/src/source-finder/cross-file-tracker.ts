@@ -1,7 +1,7 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
+import { projectFiles } from '../project/context'
 import { escapeRegex, resolveSourcePath } from '../utils'
 import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
@@ -87,7 +87,7 @@ async function searchDirForExpressionProp(
 	depth: number,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)
@@ -280,7 +280,7 @@ export async function searchForImportedValue(
 		if (defPath === targetPath) {
 			const normalizedDef = normalizeText(def.value)
 			if (normalizedDef === normalizedSearch) {
-				const importedFileContent = await fs.readFile(importedFilePath, 'utf-8')
+				const importedFileContent = await projectFiles().readFile(importedFilePath)
 				const importedLines = importedFileContent.split('\n')
 
 				return {
@@ -307,7 +307,7 @@ export async function searchForImportedValue(
  * Uses caching for better performance.
  */
 export async function searchForPropInParents(dir: string, textContent: string): Promise<SourceLocation | undefined> {
-	const entries = await fs.readdir(dir, { withFileTypes: true })
+	const entries = await projectFiles().readdir(dir)
 
 	for (const entry of entries) {
 		const fullPath = path.join(dir, entry.name)
@@ -510,7 +510,7 @@ async function searchDirForAttributeByValue(
 	depth: number,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)
@@ -562,7 +562,7 @@ async function searchForImportedAttributeByValue(
 	// Search for definitions matching propName and value
 	for (const def of exportedDefs) {
 		if (def.name === propName && def.value === resolvedValue) {
-			const importedFileContent = await fs.readFile(importedFilePath, 'utf-8')
+			const importedFileContent = await projectFiles().readFile(importedFilePath)
 			const importedLines = importedFileContent.split('\n')
 
 			return {
@@ -579,7 +579,7 @@ async function searchForImportedAttributeByValue(
 	// Also try matching by value only as fallback
 	for (const def of exportedDefs) {
 		if (def.value === resolvedValue) {
-			const importedFileContent = await fs.readFile(importedFilePath, 'utf-8')
+			const importedFileContent = await projectFiles().readFile(importedFilePath)
 			const importedLines = importedFileContent.split('\n')
 
 			return {
@@ -643,7 +643,7 @@ async function searchDirForAttributeProp(
 	depth: number,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)
@@ -773,7 +773,7 @@ async function searchForImportedAttribute(
 	for (const def of exportedDefs) {
 		const defPath = buildDefinitionPath(def)
 		if (defPath === targetPath) {
-			const importedFileContent = await fs.readFile(importedFilePath, 'utf-8')
+			const importedFileContent = await projectFiles().readFile(importedFilePath)
 			const importedLines = importedFileContent.split('\n')
 
 			return {

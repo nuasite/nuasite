@@ -1,7 +1,7 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from '../config'
 import type { ManifestWriter } from '../manifest-writer'
+import { projectFiles } from '../project/context'
 import type { CmsManifest, ComponentDefinition, ComponentInstance } from '../types'
 import { acquireFileLock, escapeHtml, escapeRegex, normalizePagePath, relativeImportPath, resolveAndValidatePath } from '../utils'
 
@@ -87,7 +87,7 @@ export async function handleInsertComponent(
 		try {
 			let currentContent: string
 			try {
-				currentContent = await fs.readFile(fullPath, 'utf-8')
+				currentContent = await projectFiles().readFile(fullPath)
 			} catch {
 				return { success: false, error: `Source file not found: ${filePath}` }
 			}
@@ -127,7 +127,7 @@ export async function handleInsertComponent(
 			// Ensure the component is imported in the frontmatter
 			ensureComponentImport(lines, componentName, componentDef.file, filePath)
 
-			await fs.writeFile(fullPath, lines.join('\n'), 'utf-8')
+			await projectFiles().writeFile(fullPath, lines.join('\n'))
 
 			return {
 				success: true,
@@ -188,7 +188,7 @@ export async function handleRemoveComponent(
 		try {
 			let currentContent: string
 			try {
-				currentContent = await fs.readFile(fullPath, 'utf-8')
+				currentContent = await projectFiles().readFile(fullPath)
 			} catch {
 				return { success: false, error: `Source file not found: ${filePath}` }
 			}
@@ -219,7 +219,7 @@ export async function handleRemoveComponent(
 			}
 
 			lines.splice(startLine, removeCount)
-			await fs.writeFile(fullPath, lines.join('\n'), 'utf-8')
+			await projectFiles().writeFile(fullPath, lines.join('\n'))
 
 			return {
 				success: true,
@@ -359,7 +359,7 @@ export async function findComponentInvocationFile(
 		const filePath = normalizeFilePath(referenceComponent.invocationSourcePath)
 		const fullPath = path.resolve(projectRoot, filePath)
 		try {
-			const content = await fs.readFile(fullPath, 'utf-8')
+			const content = await projectFiles().readFile(fullPath)
 			const lines = content.split('\n')
 			const lineIndex = findComponentInvocationLine(
 				lines,
@@ -381,7 +381,7 @@ export async function findComponentInvocationFile(
 	for (const candidate of candidates) {
 		const fullPath = path.resolve(projectRoot, candidate)
 		try {
-			const content = await fs.readFile(fullPath, 'utf-8')
+			const content = await projectFiles().readFile(fullPath)
 			const lines = content.split('\n')
 			const lineIndex = findComponentInvocationLine(
 				lines,

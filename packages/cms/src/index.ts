@@ -13,12 +13,13 @@ import { getErrorCollector, resetErrorCollector } from './error-collector'
 import { ADMIN_ROUTE, createLocalAdminMiddleware } from './local-admin'
 import { ManifestWriter } from './manifest-writer'
 import { rehypeCmsMarker } from './markdown/rehype'
+import { resolveMarkerConfig } from './marker-config'
 import type { MediaStorageAdapter } from './media/types'
 import { type CmsMode, resolveCmsMode } from './mode'
 import { mergeCmsRedirectsInto } from './redirects'
+import { createPublicStaticFileChecker } from './public-static-file'
 import { scanCollections } from './scan-cache'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
-import { createPublicStaticFileChecker } from './utils'
 import { createVitePlugin } from './vite-plugin'
 
 export { cmsRemarkPlugins } from './markdown/remark'
@@ -150,21 +151,12 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 		cmsConfig,
 		proxy,
 		media,
-		// CMS marker options
-		attributeName = 'data-cms-id',
-		includeTags = null,
-		excludeTags = ['html', 'head', 'body', 'script', 'style'],
-		includeEmptyText = false,
-		generateManifest = true,
-		manifestFile = 'cms-manifest.json',
-		markComponents = true,
-		componentDirs = ['src/components'],
-		contentDir = 'src/content',
 		mdxComponentDirs,
 		usePolling = false,
-		seo = { trackSeo: true, markTitle: true, parseJsonLd: true },
 		maxUploadSize = DEFAULT_MAX_UPLOAD_SIZE,
 	} = options
+	const markerConfig = resolveMarkerConfig(options)
+	const { manifestFile, markComponents, componentDirs, contentDir } = markerConfig
 
 	// Run mode (cms-headless F7): `local` serves a full-page collections admin at
 	// /_nua/admin over an in-process sidecar; `hosted` (inside the agent sandbox)
@@ -190,19 +182,6 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 	const idCounter = { value: 0 }
 	const manifestWriter = new ManifestWriter(manifestFile, componentDefinitions)
-
-	const markerConfig = {
-		attributeName,
-		includeTags,
-		excludeTags,
-		includeEmptyText,
-		generateManifest,
-		manifestFile,
-		markComponents,
-		componentDirs,
-		contentDir,
-		seo,
-	}
 
 	return {
 		name: '@nuasite/cms',
@@ -499,6 +478,7 @@ export {
 	type MergeRedirectsIntoOptions,
 	type RedirectsLogger,
 } from './redirects'
+export { createPublicStaticFileChecker } from './public-static-file'
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
 export type {
@@ -544,4 +524,3 @@ export type {
 	TextStyleValue,
 	TwitterCardData,
 } from './types'
-export { createPublicStaticFileChecker } from './utils'
