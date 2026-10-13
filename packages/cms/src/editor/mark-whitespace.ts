@@ -27,41 +27,52 @@ type Edge = 'start' | 'end'
 const MARKS = new Set(['strong', 'emphasis', 'delete'])
 const LEADING = /^[^\S\r\n]+/
 const TRAILING = /[^\S\r\n]+$/
+const INDENT = /^[ \t]+/
 
-/** The mark without the whitespace at one edge of its text (undefined when nothing else is left), and that whitespace. */
+/**
+ * The mark without the whitespace at one edge of its text, and that whitespace. The mark
+ * is undefined when nothing else is left in it: its markers would be written with nothing
+ * between them (`****`).
+ */
 function trimEdge(mark: TreeNode, edge: Edge): [TreeNode | undefined, string] {
 	let children = mark.children ?? []
 	let whitespace = ''
-	// A text emptied here uncovers the next child, which may be text with edge whitespace too.
+	// A text emptied here uncovers the next child, which may be text with edge whitespace
+	// too. Milkdown leaves an empty text behind where it moved a plain space out itself.
 	for (;;) {
 		const index = edge === 'start' ? 0 : children.length - 1
 		const child = children[index]
 		if (child?.type !== 'text' || typeof child.value !== 'string') break
-		const moved = child.value.match(edge === 'start' ? LEADING : TRAILING)?.[0]
-		if (!moved) break
+		const moved = child.value.match(edge === 'start' ? LEADING : TRAILING)?.[0] ?? ''
+		const value = edge === 'start' ? child.value.slice(moved.length) : child.value.slice(0, child.value.length - moved.length)
+		if (value && !moved) break
 		whitespace = edge === 'start' ? whitespace + moved : moved + whitespace
-		const value = edge === 'start' ? child.value.slice(moved.length) : child.value.slice(0, -moved.length)
 		children = [...children.slice(0, index), ...(value ? [{ ...child, value }] : []), ...children.slice(index + 1)]
 		if (value) break
 	}
-	if (!whitespace) return [mark, '']
-	return [children.length > 0 ? { ...mark, children } : undefined, whitespace]
+	if (children.length === 0) return [undefined, whitespace]
+	return [children === mark.children ? mark : { ...mark, children }, whitespace]
 }
 
 const text = (value: string): TreeNode[] => (value ? [{ type: 'text', value }] : [])
 
 /**
  * Children first: the whitespace a nested mark gives up lands at the edge of the mark
- * around it, which then passes it on. A mark left with nothing but whitespace is dropped.
+ * around it, which then passes it on.
+ *
+ * A space or a tab moved to the very start of a paragraph would indent its line, and four
+ * columns of indent turn the paragraph into a code block. Markdown drops such indent
+ * anyway, so it is not written.
  */
 function moveWhitespaceOut(node: TreeNode): TreeNode {
 	if (!node.children) return node
-	const children = node.children.flatMap((child) => {
+	const children = node.children.flatMap((child, index) => {
 		const inner = moveWhitespaceOut(child)
 		if (!MARKS.has(inner.type)) return [inner]
 		const [withoutLeading, leading] = trimEdge(inner, 'start')
 		const [mark, trailing] = withoutLeading ? trimEdge(withoutLeading, 'end') : [undefined, '']
-		return [...text(leading), ...(mark ? [mark] : []), ...text(trailing)]
+		const startsParagraph = node.type === 'paragraph' && index === 0
+		return [...text(startsParagraph ? leading.replace(INDENT, '') : leading), ...(mark ? [mark] : []), ...text(trailing)]
 	})
 	return { ...node, children }
 }

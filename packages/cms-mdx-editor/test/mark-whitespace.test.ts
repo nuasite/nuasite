@@ -7,7 +7,7 @@ import { markWhitespacePlugin } from '../src/mark-whitespace'
 import { mdxComponentNode, mdxEsmNode, remarkMdxPlugin } from '../src/mdx-plugin'
 import { styledListPlugin } from '../src/styled-list-plugin'
 
-const NBSP = ' '
+const NBSP = '\u00a0'
 
 const editors: Editor[] = []
 
@@ -96,6 +96,29 @@ test('bold that holds nothing but a non-breaking space is saved as the space alo
 	const markdown = await save(['Before', { text: NBSP, marks: ['strong'] }, 'after.'])
 
 	expect(markdown).toBe(`Before${NBSP}after.`)
+})
+
+// Milkdown moves a plain space out itself and leaves the emptied mark behind (`****`).
+test('a mark that held only whitespace leaves no markers, whichever whitespace it was', async () => {
+	expect(await save(['Before', { text: ' ', marks: ['strong'] }, 'after.'])).toBe('Before after.')
+	expect(await save(['Before', { text: ` ${NBSP}`, marks: ['strong'] }, 'after.'])).toBe(`Before ${NBSP}after.`)
+	expect(await save(['Before', { text: `${NBSP} `, marks: ['emphasis'] }, 'after.'])).toBe(`Before${NBSP} after.`)
+})
+
+// Written before the markers, a tab at the start of a paragraph would make it a code block.
+test('a tab moved out at the start of a paragraph is not written', async () => {
+	const markdown = await save([{ text: '\tIndented', marks: ['strong'] }, ' rest.'])
+
+	expect(markdown).toBe('**Indented** rest.')
+	expect(await reopen(markdown)).toEqual([
+		{ text: 'Indented', marks: ['strong'] },
+		{ text: ' rest.', marks: [] },
+	])
+	expect(await save([{ text: `\t${NBSP}Indented`, marks: ['strong'] }, ' rest.'])).toBe(`${NBSP}**Indented** rest.`)
+})
+
+test('a non-breaking space moved out at the start of a paragraph stays', async () => {
+	expect(await save([{ text: `${NBSP}Bold`, marks: ['strong'] }, ' rest.'])).toBe(`${NBSP}**Bold** rest.`)
 })
 
 test('bold and italic together move the edge whitespace out of both', async () => {
