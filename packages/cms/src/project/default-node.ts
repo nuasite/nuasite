@@ -11,6 +11,11 @@ import { ProjectState } from './state'
 
 let rootOverride: string | null = null
 
+/** Listings in name order, whatever order the filesystem returns them in. */
+function byName(a: { name: string }, b: { name: string }): number {
+	return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+}
+
 export function setDefaultProjectRoot(root: string | null): void {
 	rootOverride = root
 }
@@ -22,7 +27,7 @@ const nodeFiles: ProjectFiles = {
 		await fs.mkdir(path.dirname(filePath), { recursive: true })
 		await fs.writeFile(filePath, content)
 	},
-	readdir: dirPath => fs.readdir(dirPath, { withFileTypes: true }),
+	readdir: async dirPath => (await fs.readdir(dirPath, { withFileTypes: true })).sort(byName),
 	access: filePath => fs.access(filePath),
 	stat: filePath => fs.stat(filePath),
 }

@@ -1,4 +1,13 @@
 import type { Node as AstroNode } from '@astrojs/compiler/types'
+import type { ComponentInstance } from '@nuasite/cms-types'
+
+/** What a page renders, to choose between source candidates that contain the same text. */
+export interface PageSources {
+	/** Root-relative files the page is rendered from: its own file, its layouts and components, and the files invoking them. */
+	renderedFiles: readonly string[]
+	/** The component instances on the page. */
+	components: Record<string, ComponentInstance>
+}
 
 // ============================================================================
 // Import and Variable Information

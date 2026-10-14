@@ -25,6 +25,8 @@ import {
 	parseMarkdownContent,
 	reindexDirtyFiles,
 } from './source-finder'
+import { projectRelativeSource } from './source-finder/source-files'
+import type { PageSources } from './source-finder/types'
 import type {
 	CmsMarkerOptions,
 	CollectionDefinition,
@@ -385,7 +387,8 @@ export async function enhanceManifestInBackground(
 		}
 
 		const pageFiles = getPageFileCandidates(pagePath)
-		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions, pageFiles)
+		const page = pageSources(pageFiles, components)
+		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions, pageFiles, page)
 
 		// Fallback for entries without sourcePath — search index can still find them
 		for (const entry of Object.values(enhanced)) {
@@ -410,7 +413,7 @@ export async function enhanceManifestInBackground(
 					entry.sourceSnippet = loc.snippet
 				}
 			} else if (entry.text && entry.tag) {
-				const loc = await findSourceLocation(entry.text, entry.tag, pageFiles)
+				const loc = await findSourceLocation(entry.text, entry.tag, pageFiles, page.renderedFiles)
 				if (loc) {
 					entry.sourcePath = loc.file
 					entry.sourceLine = loc.line
@@ -425,6 +428,16 @@ export async function enhanceManifestInBackground(
 	} catch (error) {
 		console.error('[cms] Background enhancement failed:', error)
 	}
+}
+
+/** The files `components` say the page is rendered from: each component's own file and the file invoking it. */
+function pageSources(pageFiles: readonly string[], components: Record<string, ComponentInstance>): PageSources {
+	const rendered = new Set(pageFiles)
+	for (const component of Object.values(components)) {
+		rendered.add(projectRelativeSource(component.sourcePath))
+		if (component.invocationSourcePath) rendered.add(projectRelativeSource(component.invocationSourcePath))
+	}
+	return { renderedFiles: [...rendered], components }
 }
 
 /** Page file extensions recognized by Astro */

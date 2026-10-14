@@ -23,6 +23,7 @@ export interface ProjectFiles {
 	readBytes(filePath: string): Promise<Uint8Array>
 	/** Creates the parent directories. */
 	writeFile(filePath: string, content: string | Uint8Array): Promise<void>
+	/** Entries in name order. */
 	readdir(dirPath: string): Promise<ProjectDirEntry[]>
 	/** Resolves when the path exists. */
 	access(filePath: string): Promise<void>
@@ -63,7 +64,10 @@ export function createProjectFiles(fs: CmsFileSystem, root: string): ProjectFile
 			const rel = relative(dirPath)
 			const entry = await entryOf(rel)
 			if (!entry?.isDirectory) throw notFound(dirPath)
-			return (await fs.list(rel)).map(({ name, isDirectory }) => ({ name, isDirectory: () => isDirectory, isFile: () => !isDirectory }))
+			// Name order, so a walk visits files the same way over every filesystem.
+			return (await fs.list(rel))
+				.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+				.map(({ name, isDirectory }) => ({ name, isDirectory: () => isDirectory, isFile: () => !isDirectory }))
 		},
 		async access(filePath) {
 			if (!(await fs.exists(relative(filePath)))) throw notFound(filePath)

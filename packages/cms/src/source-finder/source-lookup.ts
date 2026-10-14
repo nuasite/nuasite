@@ -8,6 +8,7 @@ import { searchForExpressionProp, searchForImportedValue, searchForPropInParents
 import { findElementWithText } from './element-finder'
 import { findInTextIndex } from './search-index'
 import { definitionSnippet, extractCompleteTagSnippet, extractOpeningTagSnippet } from './snippet-utils'
+import { astroFilesUnder, preferringFiles } from './source-files'
 import type { SourceLocation } from './types'
 
 // ============================================================================
@@ -25,85 +26,28 @@ export async function findSourceLocation(
 	textContent: string,
 	tag: string,
 	pageFiles?: readonly string[],
+	renderedFiles?: readonly string[],
 ): Promise<SourceLocation | undefined> {
 	// Use index if available (much faster)
 	if (isSearchIndexInitialized()) {
-		const indexHit = findInTextIndex(textContent, tag, pageFiles)
+		const indexHit = findInTextIndex(textContent, tag, pageFiles, renderedFiles)
 		if (indexHit) return indexHit
 		// Fall through to slow search on miss — covers cases the per-file
 		// indexer can't pre-emit, like a child component's `.map()` over a
 		// prop array whose source values live in the parent file.
 	}
 
+	// Files the page is rendered from are searched first, then components, pages and layouts.
 	const srcDir = path.join(getProjectRoot(), 'src')
-
-	try {
-		const searchDirs = [
-			path.join(srcDir, 'components'),
-			path.join(srcDir, 'pages'),
-			path.join(srcDir, 'layouts'),
-		]
-
-		for (const dir of searchDirs) {
-			try {
-				const result = await searchDirectory(dir, textContent, tag)
-				if (result) {
-					return result
-				}
-			} catch {
-				// Directory doesn't exist, continue
-			}
-		}
-
-		// If not found directly, try searching for prop values in parent components
-		for (const dir of searchDirs) {
-			try {
-				const result = await searchForPropInParents(dir, textContent)
-				if (result) {
-					return result
-				}
-			} catch {
-				// Directory doesn't exist, continue
-			}
-		}
-	} catch {
-		// Search failed
+	const searchDirs = [path.join(srcDir, 'components'), path.join(srcDir, 'pages'), path.join(srcDir, 'layouts')]
+	const preferred = [...(pageFiles ?? []), ...(renderedFiles ?? [])]
+	for (const filePath of preferringFiles(await astroFilesUnder(searchDirs), preferred)) {
+		const result = await searchAstroFile(filePath, textContent, tag)
+		if (result) return result
 	}
 
-	return undefined
-}
-
-// ============================================================================
-// Directory Search
-// ============================================================================
-
-/**
- * Recursively search directory for matching content
- */
-export async function searchDirectory(
-	dir: string,
-	textContent: string,
-	tag: string,
-): Promise<SourceLocation | undefined> {
-	try {
-		const entries = await projectFiles().readdir(dir)
-
-		for (const entry of entries) {
-			const fullPath = path.join(dir, entry.name)
-
-			if (entry.isDirectory()) {
-				const result = await searchDirectory(fullPath, textContent, tag)
-				if (result) return result
-			} else if (entry.isFile() && entry.name.endsWith('.astro')) {
-				const result = await searchAstroFile(fullPath, textContent, tag)
-				if (result) return result
-			}
-		}
-	} catch {
-		// Error reading directory
-	}
-
-	return undefined
+	// If not found directly, try searching for prop values in parent components
+	return searchForPropInParents(textContent, preferred)
 }
 
 // ============================================================================

@@ -117,6 +117,35 @@ describe('createEditorHost', () => {
 		expect(await fs.readFile('src/components/Card.astro')).toContain('<h2>Renamed</h2>')
 	})
 
+	test('text passed as a prop is attributed to the invocation on this page, not to another component with the same text', async () => {
+		const button = '---\nconst { label } = Astro.props\n---\n<a class="btn">{label}</a>\n'
+		const invocation = (wrapper: string) => `---\nimport Button from './Button.astro'\n---\n<${wrapper}>\n<Button label="Details" />\n</${wrapper}>\n`
+		const fs = createMemoryFileSystem({
+			// Listed first, and first by name: a lookup that takes the first match lands here.
+			'src/components/BlocksBoardDark.astro': invocation('section'),
+			'src/components/Button.astro': button,
+			'src/components/IndustryCard.astro': invocation('div'),
+			'src/pages/index.astro': "---\nimport IndustryCard from '../components/IndustryCard.astro'\n---\n<html><body>\n<IndustryCard />\n</body></html>\n",
+		})
+		const host = await hostOver(fs)
+		await host.processPage(
+			'/',
+			`<html><body>
+<div data-astro-source-file="/project/src/components/IndustryCard.astro" data-astro-source-loc="4:1">
+<a class="btn" data-astro-source-file="/project/src/components/Button.astro" data-astro-source-loc="4:1">Details</a>
+</div>
+</body></html>`,
+		)
+		const { body: manifest } = await fetchJson<PageManifest>(host, '/index.json')
+		const details = entryWithText(manifest, 'Details')
+		expect([details.sourcePath, details.sourceLine]).toEqual(['src/components/IndustryCard.astro', 5])
+
+		const { body } = await save(host, [textChange(details, 'More')])
+		expect(body).toEqual({ updated: 1 })
+		expect(await fs.readFile('src/components/IndustryCard.astro')).toContain('<Button label="More" />')
+		expect(await fs.readFile('src/components/BlocksBoardDark.astro')).toContain('<Button label="Details" />')
+	})
+
 	test('serves the global manifest with the components and pages of its own project', async () => {
 		const host = await hostOver(project())
 		const { body } = await fetchJson<{ componentDefinitions: Record<string, unknown>; pages: Array<{ pathname: string }> }>(
