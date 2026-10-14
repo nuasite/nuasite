@@ -91,7 +91,7 @@ async function discoverPages(host: string, options: ResolvedOptions): Promise<{ 
 	try {
 		const content = await getCollectionContent('/', options.contentDir)
 		if (content) {
-			pages.push({ pathname: '/', title: content.frontmatter.title as string | undefined, type: 'collection' })
+			pages.push({ pathname: '/', title: content.frontmatter.title?.value, type: 'collection' })
 		} else if (options.includeStaticPages) {
 			const response = await fetch(`http://${host}/`, { headers: { Accept: 'text/html' } })
 			if (response.ok) {

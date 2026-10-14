@@ -39,7 +39,7 @@ Astro integration that exposes pages as markdown endpoints (`.md` URLs) for LLM 
 - `src/markdown-generator.ts` — Adds YAML frontmatter (url, type, generatedAt, source) to markdown output
 - `src/llm-endpoint.ts` — Generates `/.well-known/llm.md` with page list
 - `src/llms-txt-endpoint.ts` — Generates `/llms.txt` following the llms.txt convention
-- `src/cms-marker.ts` — Optional CMS integration, reads content collection metadata from CMS manifest
+- `src/cms-marker.ts`: resolves a page to its collection entry through `@nuasite/cms` (statically imported: Astro closes the Vite module runner that loads the integration before `astro:build:done`, so a dynamic import there fails in any Astro build, Node or Bun). The build scans the collections once and passes them to every lookup.
 - `src/paths.ts` — URL/path normalization and `.md` URL ↔ page path conversion
 
 ### Configuration Options

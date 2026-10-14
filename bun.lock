@@ -309,9 +309,6 @@
         "typescript": "catalog:build",
         "vite": "catalog:build",
       },
-      "optionalPeers": [
-        "@nuasite/cms",
-      ],
     },
     "packages/notes": {
       "name": "@nuasite/notes",

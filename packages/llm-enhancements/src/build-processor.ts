@@ -1,7 +1,7 @@
 import type { AstroConfig, AstroIntegrationLogger } from 'astro'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { getCollectionContent } from './cms-marker'
+import { getCollectionContent, scanCollectionsForPages } from './cms-marker'
 import { htmlToMarkdown } from './html-to-markdown'
 import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
 import { generateLlmsTxt } from './llms-txt-endpoint'
@@ -38,6 +38,8 @@ export async function processBuildOutput(
 	let staticCount = 0
 	const pageEntries: PageEntry[] = []
 	let siteMetadata: SiteMetadata = {}
+	// Scanned once for the whole build: resolving a page against a fresh scan made the build quadratic.
+	const collections = await scanCollectionsForPages(options.contentDir, message => logger.warn(message))
 
 	for (const page of pages) {
 		const pagePath = normalizePath(page.pathname === '' ? '/' : `/${page.pathname}`)
@@ -47,7 +49,7 @@ export async function processBuildOutput(
 			const htmlPath = getHtmlPath(distDir, pagePath)
 
 			// Try collection page first
-			const content = await getCollectionContent(pagePath, options.contentDir)
+			const content = await getCollectionContent(pagePath, options.contentDir, collections)
 			if (content) {
 				const output = createCollectionOutput(content.frontmatter, content.body, content.file)
 				const markdown = generateMarkdown(output, {
@@ -61,7 +63,7 @@ export async function processBuildOutput(
 				await injectLinkIntoHtml(htmlPath, pagePath)
 				pageEntries.push({
 					pathname: pagePath,
-					title: extractTitle(content.frontmatter.title),
+					title: content.frontmatter.title?.value,
 					type: 'collection',
 				})
 				collectionCount++
@@ -165,11 +167,4 @@ async function fileExists(filePath: string): Promise<boolean> {
 async function writeMarkdownFile(filePath: string, content: string): Promise<void> {
 	await fs.mkdir(path.dirname(filePath), { recursive: true })
 	await fs.writeFile(filePath, content, 'utf-8')
-}
-
-function extractTitle(title: unknown): string | undefined {
-	if (typeof title === 'string') {
-		return title
-	}
-	return undefined
 }

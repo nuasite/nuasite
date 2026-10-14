@@ -479,6 +479,12 @@ export {
 	type MergeRedirectsIntoOptions,
 	type RedirectsLogger,
 } from './redirects'
+/**
+ * Scan the project's content collections from its root, sharing the content-config parse cache the
+ * integration uses. Hand the result to {@link findCollectionSource} when resolving many pages in a row:
+ * without it, every call scans every collection again.
+ */
+export { scanCollections as scanProjectCollections } from './scan-cache'
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
 export type {

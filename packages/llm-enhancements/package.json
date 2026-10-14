@@ -37,11 +37,6 @@
 		"vite": "catalog:build",
 		"@nuasite/cms": "workspace:*"
 	},
-	"peerDependenciesMeta": {
-		"@nuasite/cms": {
-			"optional": true
-		}
-	},
 	"scripts": {
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},

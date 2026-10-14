@@ -325,22 +325,11 @@ When converting static pages, the integration:
 | `<blockquote>`         | `> quote`       |
 | `<table>`              | Markdown tables |
 
-## Integration with @nuasite/cms-marker
+## Collection pages
 
-When used alongside `@nuasite/cms-marker`, the integration can access content collection data through the CMS manifest. This is optional and works without it.
+A page that renders a content collection entry is written from the entry's own markdown, with its source path in the frontmatter. Pages that are not backed by an entry are converted from their rendered HTML instead. The entry lookup comes from `@nuasite/cms`, a required peer dependency (`@nuasite/nua` installs it), and the collections are scanned once per build.
 
-```js
-import cmsMarker from '@nuasite/cms-marker'
-import pageMarkdown from '@nuasite/llm-enhancements'
-import { defineConfig } from 'astro/config'
-
-export default defineConfig({
-	integrations: [
-		cmsMarker(),
-		pageMarkdown(),
-	],
-})
-```
+An `.mdx` entry is written without its `import`/`export` blocks. One whose body still uses a component (`<Tip>`, `<Card />`) is converted from its rendered HTML instead, since the component renders text the source only names.
 
 ## Output Structure
 
