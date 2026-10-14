@@ -470,6 +470,7 @@ export { scanCollections } from '@nuasite/cms-core'
 export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
 export { rehypeCmsMarker } from './markdown/rehype'
 export { type FieldMigration, migrateAstroImages, type MigrationOptions, type MigrationResult } from './migrate-astro-image'
+export { runAtProjectRoot } from './project/at-root'
 export { createPublicStaticFileChecker } from './public-static-file'
 export {
 	astroRedirectLines,
@@ -480,8 +481,10 @@ export {
 	type RedirectsLogger,
 } from './redirects'
 /**
- * Scan the project's content collections from its root, sharing the content-config parse cache the
- * integration uses. Hand the result to {@link findCollectionSource} when resolving many pages in a row:
+ * Scan the content collections of the current project (its root, or the one entered with
+ * {@link runAtProjectRoot}). Unlike cms-core's `scanCollections`, it takes no filesystem and shares the
+ * project's content-config parse cache; it applies no Astro-config `collections` overrides, which only
+ * change labels. Hand the result to {@link findCollectionSource} when resolving many pages in a row:
  * without it, every call scans every collection again.
  */
 export { scanCollections as scanProjectCollections } from './scan-cache'

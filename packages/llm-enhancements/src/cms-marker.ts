@@ -6,11 +6,18 @@ import { mdxBodyAsMarkdown } from './mdx'
 
 type Collections = Awaited<ReturnType<typeof scanProjectCollections>>
 
+/**
+ * A page's collection entry. `body` is `undefined` when the entry cannot be told as markdown (an `.mdx`
+ * body that renders components or expressions): the page is still the entry's, but its text comes
+ * from the rendered HTML.
+ */
+export type CollectionPage = Omit<MarkdownContent, 'body'> & { body: string | undefined }
+
 export async function getCollectionContent(
 	pagePath: string,
 	contentDir: string,
 	collections?: Collections,
-): Promise<MarkdownContent | undefined> {
+): Promise<CollectionPage | undefined> {
 	const collectionInfo = await findCollectionSource(pagePath, contentDir, collections)
 	if (!collectionInfo) {
 		return undefined
@@ -19,9 +26,7 @@ export async function getCollectionContent(
 	const content = await parseMarkdownContent(collectionInfo)
 	if (!content?.file.endsWith('.mdx')) return content
 
-	// An entry whose body needs its components rendered is better told by the page itself.
-	const body = mdxBodyAsMarkdown(content.body)
-	return body === undefined ? undefined : { ...content, body }
+	return { ...content, body: mdxBodyAsMarkdown(content.body) }
 }
 
 /**

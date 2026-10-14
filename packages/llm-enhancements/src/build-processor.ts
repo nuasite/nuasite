@@ -1,6 +1,8 @@
+import { runAtProjectRoot } from '@nuasite/cms'
 import type { AstroConfig, AstroIntegrationLogger } from 'astro'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { getCollectionContent, scanCollectionsForPages } from './cms-marker'
 import { htmlToMarkdown } from './html-to-markdown'
 import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
@@ -23,9 +25,20 @@ function getBaseUrl(config: AstroConfig): string {
 }
 
 /**
- * Process build output and generate .md files for all pages
+ * Process build output and generate .md files for all pages. Entries are read from Astro's project
+ * root, which need not be the working directory (`astro build --root site`).
  */
-export async function processBuildOutput(
+export function processBuildOutput(
+	dir: URL,
+	pages: PageInfo[],
+	options: ResolvedOptions,
+	logger: AstroIntegrationLogger,
+	config: AstroConfig,
+): Promise<void> {
+	return runAtProjectRoot(fileURLToPath(config.root), () => processPages(dir, pages, options, logger, config))
+}
+
+async function processPages(
 	dir: URL,
 	pages: PageInfo[],
 	options: ResolvedOptions,
@@ -51,7 +64,17 @@ export async function processBuildOutput(
 			// Try collection page first
 			const content = await getCollectionContent(pagePath, options.contentDir, collections)
 			if (content) {
-				const output = createCollectionOutput(content.frontmatter, content.body, content.file)
+				let body = content.body
+				let htmlTitle: string | undefined
+				if (body === undefined) {
+					// The entry renders more than its source says: its text comes from the page, which is
+					// still the entry's, so it is written whether or not static pages are.
+					if (!(await fileExists(htmlPath))) continue
+					const fromHtml = htmlToMarkdown(await fs.readFile(htmlPath, 'utf-8'))
+					body = fromHtml.body
+					htmlTitle = fromHtml.metadata.title
+				}
+				const output = createCollectionOutput(content.frontmatter, body, content.file)
 				const markdown = generateMarkdown(output, {
 					url: pagePath,
 					type: 'collection',
@@ -63,7 +86,7 @@ export async function processBuildOutput(
 				await injectLinkIntoHtml(htmlPath, pagePath)
 				pageEntries.push({
 					pathname: pagePath,
-					title: content.frontmatter.title?.value,
+					title: content.frontmatter.title?.value ?? htmlTitle,
 					type: 'collection',
 				})
 				collectionCount++

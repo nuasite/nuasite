@@ -24,7 +24,14 @@ async function generateMarkdownForPath(
 	// Try collection page first
 	const content = await getCollectionContent(pagePath, options.contentDir)
 	if (content) {
-		const output = createCollectionOutput(content.frontmatter, content.body, content.file)
+		// An entry that renders more than its source says is told by its page.
+		let body = content.body
+		if (body === undefined) {
+			const html = await fetchPageHtml(host, pagePath)
+			if (html === null) return null
+			body = htmlToMarkdown(html).body
+		}
+		const output = createCollectionOutput(content.frontmatter, body, content.file)
 		return generateMarkdown(output, {
 			url: pagePath,
 			type: 'collection',
@@ -38,6 +45,19 @@ async function generateMarkdownForPath(
 		return null
 	}
 
+	const html = await fetchPageHtml(host, pagePath)
+	if (html === null) return null
+	const { metadata, body } = htmlToMarkdown(html)
+	const output = createStaticOutput(metadata, body)
+
+	return generateMarkdown(output, {
+		url: pagePath,
+		type: 'static',
+		baseUrl,
+	}, options.includeFrontmatter)
+}
+
+async function fetchPageHtml(host: string, pagePath: string): Promise<string | null> {
 	const response = await fetch(`http://${host}${pagePath}`, {
 		headers: { Accept: 'text/html' },
 	})
@@ -47,15 +67,7 @@ async function generateMarkdownForPath(
 	const contentType = response.headers.get('content-type')
 	if (!contentType?.includes('text/html')) return null
 
-	const html = await response.text()
-	const { metadata, body } = htmlToMarkdown(html)
-	const output = createStaticOutput(metadata, body)
-
-	return generateMarkdown(output, {
-		url: pagePath,
-		type: 'static',
-		baseUrl,
-	}, options.includeFrontmatter)
+	return response.text()
 }
 
 /**

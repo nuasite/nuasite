@@ -329,7 +329,7 @@ When converting static pages, the integration:
 
 A page that renders a content collection entry is written from the entry's own markdown, with its source path in the frontmatter. Pages that are not backed by an entry are converted from their rendered HTML instead. The entry lookup comes from `@nuasite/cms`, a required peer dependency (`@nuasite/nua` installs it), and the collections are scanned once per build.
 
-An `.mdx` entry is written without its `import`/`export` blocks. One whose body still uses a component (`<Tip>`, `<Card />`) is converted from its rendered HTML instead, since the component renders text the source only names.
+An `.mdx` entry is written without its `import`/`export` blocks. One whose body still uses a component (`<Tip>`, `<Card />`) or an expression (`{year}`) is converted from its rendered HTML instead, since those render text the source only names. It is still a collection page, so it is written even with `includeStaticPages: false`.
 
 ## Output Structure
 

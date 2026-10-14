@@ -1,5 +1,4 @@
 import * as cms from '@nuasite/cms'
-import { resetProjectRoot, setProjectRoot } from '@nuasite/cms'
 import type { AstroConfig, AstroIntegrationLogger } from 'astro'
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import fs from 'node:fs/promises'
@@ -19,11 +18,12 @@ describe('processBuildOutput resolves collection pages from their source', () =>
 		info: (message: string) => logged.push(message),
 		warn: (message: string) => logged.push(message),
 	} as unknown as AstroIntegrationLogger
-	const config = { site: 'https://example.com' } as AstroConfig
+	// The project root is never the working directory here, as with `astro build --root site`.
+	let config: AstroConfig
 
 	beforeEach(async () => {
 		root = await fs.mkdtemp(path.join(os.tmpdir(), 'llm-build-'))
-		setProjectRoot(root)
+		config = { site: 'https://example.com', root: pathToFileURL(root + '/') } as AstroConfig
 		logged.length = 0
 		for (const n of [1, 2, 3]) {
 			await write(`src/content/posts/p${n}.md`, `---\ntitle: Post ${n}\n---\n\nBody of post ${n}.\n`)
@@ -33,7 +33,6 @@ describe('processBuildOutput resolves collection pages from their source', () =>
 	})
 
 	afterEach(async () => {
-		resetProjectRoot()
 		await fs.rm(root, { recursive: true, force: true })
 	})
 
@@ -44,7 +43,8 @@ describe('processBuildOutput resolves collection pages from their source', () =>
 	}
 
 	const pages = [{ pathname: '' }, { pathname: 'posts/p1' }, { pathname: 'posts/p2' }, { pathname: 'posts/p3' }]
-	const build = () => processBuildOutput(pathToFileURL(path.join(root, 'dist') + '/'), pages, resolveOptions(), logger, config)
+	const build = (buildPages = pages, options = resolveOptions()) =>
+		processBuildOutput(pathToFileURL(path.join(root, 'dist') + '/'), buildPages, options, logger, config)
 
 	test('a collection page is written from its entry, not scraped from its HTML', async () => {
 		await build()
@@ -63,27 +63,33 @@ describe('processBuildOutput resolves collection pages from their source', () =>
 		expect(await fs.readFile(path.join(root, 'dist/.well-known/llm.md'), 'utf-8')).toContain('Post 1')
 	})
 
-	test('an mdx entry is written without its imports, or left to its HTML when it uses a component', async () => {
+	test('an mdx entry is written without its imports, or from its HTML when it uses a component', async () => {
 		await write('src/content/notes/plain.mdx', "---\ntitle: Plain\n---\n\nimport Tip from '../../components/Tip.astro'\n\nJust prose.\n")
 		await write('src/content/notes/rich.mdx', "---\ntitle: Rich\n---\n\nimport Tip from '../../components/Tip.astro'\n\n<Tip>Rendered tip</Tip>\n")
 		await write('dist/notes/plain/index.html', '<html><head><title>Plain</title></head><body><h1>Plain</h1><p>Just prose.</p></body></html>')
 		await write('dist/notes/rich/index.html', '<html><head><title>Rich</title></head><body><h1>Rich</h1><p>Rendered tip</p></body></html>')
 
-		await processBuildOutput(
-			pathToFileURL(path.join(root, 'dist') + '/'),
-			[{ pathname: 'notes/plain' }, { pathname: 'notes/rich' }],
-			resolveOptions(),
-			logger,
-			config,
-		)
+		await build([{ pathname: 'notes/plain' }, { pathname: 'notes/rich' }])
 
 		const plain = await fs.readFile(path.join(root, 'dist/notes/plain.md'), 'utf-8')
 		expect(plain).toContain('type: collection')
 		expect(plain).toContain('Just prose.')
 		expect(plain).not.toContain('import Tip')
 		const rich = await fs.readFile(path.join(root, 'dist/notes/rich.md'), 'utf-8')
-		expect(rich).toContain('type: static')
+		expect(rich).toContain('type: collection')
+		expect(rich).toContain('source: src/content/notes/rich.mdx')
 		expect(rich).toContain('Rendered tip')
+	})
+
+	test('an mdx entry told by its HTML is written even when static pages are not', async () => {
+		await write('src/content/notes/rich.mdx', '---\ntitle: Rich\n---\n\n<Tip>Rendered tip</Tip>\n')
+		await write('dist/notes/rich/index.html', '<html><head><title>Rich</title></head><body><p>Rendered tip</p></body></html>')
+
+		await build([{ pathname: '' }, { pathname: 'notes/rich' }], resolveOptions({ includeStaticPages: false }))
+
+		expect(await fs.readFile(path.join(root, 'dist/notes/rich.md'), 'utf-8')).toContain('Rendered tip')
+		expect(await fs.readFile(path.join(root, 'dist/llms.txt'), 'utf-8')).toContain('[Rich](https://example.com/notes/rich.md)')
+		expect(await Bun.file(path.join(root, 'dist/index.md')).exists()).toBe(false)
 	})
 
 	test('the collections are scanned once for the build and handed to every lookup', async () => {
