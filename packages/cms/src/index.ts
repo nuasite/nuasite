@@ -1,6 +1,5 @@
 import type { AstroIntegration } from 'astro'
 import { existsSync } from 'node:fs'
-import fs from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -16,6 +15,7 @@ import { ADMIN_ROUTE, createLocalAdminMiddleware } from './local-admin'
 import { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
 import { type CmsMode, resolveCmsMode } from './mode'
+import { mergeCmsRedirectsInto } from './redirects'
 import { rehypeCmsMarker } from './rehype-cms-marker'
 import { remarkListDirective } from './remark-list-directive'
 import { scanCollections } from './scan-cache'
@@ -455,43 +455,11 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 			},
 
 			'astro:build:done': async ({ dir, logger }) => {
-				// Merge CMS-managed redirects (src/_redirects) into dist/_redirects
-				await mergeRedirects(dir, logger)
+				// The root the dev editor writes `src/_redirects` under, so the build reads what it wrote.
+				await mergeCmsRedirectsInto(dir, getProjectRoot(), logger)
 			},
 		},
 	}
-}
-
-/**
- * Merge CMS-managed redirects from src/_redirects into the build output's dist/_redirects.
- * This ensures both Astro config redirects (written by adapters) and CMS-managed redirects coexist.
- */
-async function mergeRedirects(dir: URL, logger: { info: (msg: string) => void }): Promise<void> {
-	const srcRedirectsPath = join(process.cwd(), 'src', '_redirects')
-
-	let cmsRedirects: string
-	try {
-		cmsRedirects = (await fs.readFile(srcRedirectsPath, 'utf-8')).trim()
-	} catch {
-		return
-	}
-	if (!cmsRedirects) return
-
-	const distDir = fileURLToPath(dir)
-	const distRedirectsPath = join(distDir, '_redirects')
-
-	let existing = ''
-	try {
-		existing = await fs.readFile(distRedirectsPath, 'utf-8')
-	} catch {
-		// File doesn't exist yet — will be created
-	}
-
-	const separator = existing ? '\n\n# CMS-managed redirects\n' : '# CMS-managed redirects\n'
-	await fs.writeFile(distRedirectsPath, existing + separator + cmsRedirects + '\n', 'utf-8')
-
-	const lineCount = cmsRedirects.split('\n').filter((l) => l.trim() && !l.trim().startsWith('#')).length
-	logger.info(`Merged ${lineCount} CMS redirect(s) into _redirects`)
 }
 
 // Shared structural contract from @nuasite/cms-types — surfaced through the cms public API
@@ -512,6 +480,14 @@ export type { Color, Date, DateTime, Email, Image, Reference, Textarea, Time, Ur
 export { scanCollections } from '@nuasite/cms-core'
 export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
 export { type FieldMigration, migrateAstroImages, type MigrationOptions, type MigrationResult } from './migrate-astro-image'
+export {
+	astroRedirectLines,
+	mergeCmsRedirectsInto,
+	mergeConfigRedirectsInto,
+	mergeRedirectsInto,
+	type MergeRedirectsIntoOptions,
+	type RedirectsLogger,
+} from './redirects'
 export { rehypeCmsMarker } from './rehype-cms-marker'
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
