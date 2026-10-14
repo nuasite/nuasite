@@ -7,9 +7,10 @@ import type {
 	UpdateRedirectRequest,
 } from '@nuasite/cms-types'
 import type { CmsFileSystem } from '../fs/types'
+import { CMS_REDIRECTS_FILE, parseRedirectRule } from '../redirects'
 
 const DEFAULT_STATUS_CODE = 307
-const REDIRECTS_FILE = 'src/_redirects'
+const REDIRECTS_FILE = CMS_REDIRECTS_FILE
 
 export interface RedirectOpsDeps {
 	fs: CmsFileSystem
@@ -23,15 +24,8 @@ export async function listRedirects(deps: RedirectOpsDeps): Promise<GetRedirects
 export async function addRedirect(deps: RedirectOpsDeps, request: AddRedirectRequest): Promise<RedirectOperationResponse> {
 	const { source, destination, statusCode = DEFAULT_STATUS_CODE } = request
 
-	if (!source || !destination) {
-		return { success: false, error: 'Source and destination are required' }
-	}
-	if (!source.startsWith('/')) {
-		return { success: false, error: 'Source must start with /' }
-	}
-	if (!destination.startsWith('/') && !destination.startsWith('http')) {
-		return { success: false, error: 'Destination must start with / or http' }
-	}
+	const invalid = ruleError(source, destination, statusCode)
+	if (invalid) return { success: false, error: invalid }
 
 	const lines = await readRedirectsFile(deps)
 	const existing = parseRedirectLines(lines)
@@ -48,15 +42,23 @@ export async function addRedirect(deps: RedirectOpsDeps, request: AddRedirectReq
 export async function updateRedirect(deps: RedirectOpsDeps, request: UpdateRedirectRequest): Promise<RedirectOperationResponse> {
 	const { lineIndex, source, destination, statusCode = DEFAULT_STATUS_CODE } = request
 
-	if (!source || !destination) {
-		return { success: false, error: 'Source and destination are required' }
-	}
+	// The same rules as adding: a line the editor list cannot show is one the editor cannot fix.
+	const invalid = ruleError(source, destination, statusCode)
+	if (invalid) return { success: false, error: invalid }
 
 	const lines = await readRedirectsFile(deps)
 
 	const currentLine = lines[lineIndex]?.trim()
 	if (!currentLine || currentLine.startsWith('#')) {
 		return { success: false, error: 'Line at index is no longer a redirect rule — please refresh and try again' }
+	}
+	// The build keeps the first rule for a source, so moving a rule onto a source another rule already
+	// has would save and never apply. Editing a rule in place is always allowed, so a repeat already in
+	// the file can still be fixed.
+	const rules = parseRedirectLines(lines)
+	const current = rules.find(r => r.lineIndex === lineIndex)
+	if (current?.source !== source && rules.some(r => r.source === source && r.lineIndex !== lineIndex)) {
+		return { success: false, error: `Redirect already exists for ${source}` }
 	}
 
 	lines[lineIndex] = formatRedirectLine(source, destination, statusCode)
@@ -84,6 +86,17 @@ export async function deleteRedirect(deps: RedirectOpsDeps, request: DeleteRedir
 }
 
 // --- Internal helpers ---
+
+function ruleError(source: string, destination: string, statusCode: number): string | undefined {
+	if (!source || !destination) return 'Source and destination are required'
+	if (/\s/.test(source) || /\s/.test(destination)) return 'Source and destination must not contain spaces'
+	if (!source.startsWith('/')) return 'Source must start with /'
+	// Editors redirect; proxying (200) and 4xx stay with code, which the build enforces too.
+	if (![301, 302, 303, 307, 308].includes(statusCode)) return 'Status must be a redirect: 301, 302, 303, 307 or 308'
+	// Read back the way the build reads it, so the editor never saves a rule the build would not apply.
+	if (!parseRedirectRule(formatRedirectLine(source, destination, statusCode))) return 'Destination must start with / or http:// or https://'
+	return undefined
+}
 
 function formatRedirectLine(source: string, destination: string, statusCode: number): string {
 	return statusCode === DEFAULT_STATUS_CODE
@@ -118,21 +131,12 @@ function parseRedirectLines(lines: string[]): RedirectRule[] {
 		const line = lines[i]!.trim()
 		if (!line || line.startsWith('#')) continue
 
-		const parts = line.split(/\s+/)
-		if (parts.length < 2) continue
+		// The same reading as the build's merge. The editor only manages rules whose source is a path.
+		const rule = parseRedirectRule(line)
+		if (!rule || !rule.source.startsWith('/')) continue
 
-		const source = parts[0]!
-		if (!source.startsWith('/')) continue
-
-		const destination = parts[1]!
-		const statusCode = parts[2] ? parseInt(parts[2], 10) : DEFAULT_STATUS_CODE
-
-		rules.push({
-			source,
-			destination,
-			statusCode: Number.isNaN(statusCode) ? DEFAULT_STATUS_CODE : statusCode,
-			lineIndex: i,
-		})
+		const statusCode = rule.status ? parseInt(rule.status, 10) : DEFAULT_STATUS_CODE
+		rules.push({ source: rule.source, destination: rule.destination, statusCode, lineIndex: i })
 	}
 
 	return rules
