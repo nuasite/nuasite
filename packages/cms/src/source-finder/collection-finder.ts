@@ -248,10 +248,21 @@ const DECLARED_URL_FIELDS = ['urlpath', 'permalink', 'pathname', 'route', 'url']
  * @param contentDir - The content directory (default: 'src/content')
  * @returns Collection info if found, undefined otherwise
  */
+export interface FindCollectionSourceOptions {
+	/**
+	 * Only return an entry the URL identifies: by its collection's `cms.pathname` rule, by a URL its
+	 * frontmatter declares, or as `/<collection>/<slug>`. The loose filename match that maps
+	 * `/aktuality/x` to `news/x.md` is skipped, since it also maps a static `/team/jana` to an
+	 * unrelated `blog/jana.md`. For a caller that publishes the entry as the page's content.
+	 */
+	exact?: boolean
+}
+
 export async function findCollectionSource(
 	pagePath: string,
 	contentDir: string = 'src/content',
 	collections?: Record<string, CollectionDefinition>,
+	options: FindCollectionSourceOptions = {},
 ): Promise<CollectionInfo | undefined> {
 	// Remove leading/trailing slashes
 	const cleanPath = pagePath.replace(/^\/+|\/+$/g, '')
@@ -322,6 +333,13 @@ export async function findCollectionSource(
 			// derived from the actual resolved file, not the URL-tail slug
 			// candidate, or downstream collectionSlug lookups break.
 			return { name: byUrl.name, slug: slugFromFilePath(byUrl.file), file: path.relative(getProjectRoot(), byUrl.file) }
+		}
+
+		if (options.exact) {
+			// `/<collection>/<slug>` and nothing looser.
+			const named = i === 1 ? matches.find(m => m.name === pathParts[0]) : undefined
+			if (named) return { name: named.name, slug, file: path.relative(getProjectRoot(), named.file) }
+			continue
 		}
 
 		if (matches.length === 1 && matches[0]) {

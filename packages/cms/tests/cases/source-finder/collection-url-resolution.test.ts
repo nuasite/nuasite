@@ -129,6 +129,37 @@ withTempDir('findCollectionSource - URL-based disambiguation', (getCtx) => {
 	})
 })
 
+// A caller that publishes the entry as the page's content cannot afford the loose filename match: it
+// maps a static page to any entry that shares its last segment.
+withTempDir('findCollectionSource - exact', (getCtx) => {
+	test('skips an entry that only shares the last segment of a page under another prefix', async () => {
+		const ctx = getCtx()
+		await ctx.mkdir('content/blog')
+		await ctx.writeFile('content/blog/jana.md', `---\ntitle: "Jana"\n---\n\nA post.\n`)
+
+		expect((await findCollectionSource('/team/jana', 'content'))?.file).toBe('content/blog/jana.md')
+		expect(await findCollectionSource('/team/jana', 'content', undefined, { exact: true })).toBeUndefined()
+	})
+
+	test('resolves /<collection>/<slug>, nested slugs included', async () => {
+		const ctx = getCtx()
+		await ctx.mkdir('content/blog/2024')
+		await ctx.writeFile('content/blog/jana.md', `---\ntitle: "Jana"\n---\n\nA post.\n`)
+		await ctx.writeFile('content/blog/2024/recap.md', `---\ntitle: "Recap"\n---\n\nA year.\n`)
+
+		expect((await findCollectionSource('/blog/jana', 'content', undefined, { exact: true }))?.file).toBe('content/blog/jana.md')
+		expect((await findCollectionSource('/blog/2024/recap', 'content', undefined, { exact: true }))?.file).toBe('content/blog/2024/recap.md')
+	})
+
+	test('still resolves an entry by the URL it declares', async () => {
+		const ctx = getCtx()
+		await ctx.mkdir('content/articles')
+		await ctx.writeFile('content/articles/foo.md', article('/alpha/foo', 'Alpha Foo'))
+
+		expect((await findCollectionSource('/alpha/foo', 'content', undefined, { exact: true }))?.file).toBe('content/articles/foo.md')
+	})
+})
+
 // A collection's declarative `cms.pathname` rule is the highest-priority source
 // for reverse resolution: findCollectionSource derives each entry's canonical URL
 // from the rule + the entry's frontmatter data and matches it, so URL → source

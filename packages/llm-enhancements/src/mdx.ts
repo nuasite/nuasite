@@ -45,7 +45,7 @@ export function mdxBodyAsMarkdown(body: string): string | undefined {
 		out += body.slice(from, start)
 		// The blank lines that separated the block go with it.
 		from = end
-		while (body[from] === '\n') from++
+		while (body[from] === '\n' || body[from] === '\r') from++
 	}
 	out += body.slice(from)
 	return out

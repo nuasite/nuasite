@@ -3,11 +3,12 @@ import type { AstroConfig, AstroIntegrationLogger } from 'astro'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getCollectionContent, scanCollectionsForPages } from './cms-marker'
-import { htmlToMarkdown } from './html-to-markdown'
+import { scanCollectionsForPages } from './cms-marker'
+import { htmlToMarkdown, type HtmlToMarkdownResult } from './html-to-markdown'
 import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
 import { generateLlmsTxt } from './llms-txt-endpoint'
-import { createCollectionOutput, createStaticOutput, generateMarkdown } from './markdown-generator'
+import { generateMarkdown } from './markdown-generator'
+import { resolvePageMarkdown } from './page-markdown'
 import { getHtmlPath, getLlmOutputPath, getLlmsTxtOutputPath, getMdOutputPath, injectMarkdownLink, normalizePath } from './paths'
 import type { ResolvedOptions } from './types'
 
@@ -46,7 +47,7 @@ async function processPages(
 	config: AstroConfig,
 ) {
 	const baseUrl = getBaseUrl(config)
-	const distDir = dir.pathname
+	const distDir = fileURLToPath(dir)
 	let collectionCount = 0
 	let staticCount = 0
 	const pageEntries: PageEntry[] = []
@@ -61,67 +62,30 @@ async function processPages(
 			const mdPath = getMdOutputPath(distDir, pagePath)
 			const htmlPath = getHtmlPath(distDir, pagePath)
 
-			// Try collection page first
-			const content = await getCollectionContent(pagePath, options.contentDir, collections)
-			if (content) {
-				let body = content.body
-				let htmlTitle: string | undefined
-				if (body === undefined) {
-					// The entry renders more than its source says: its text comes from the page, which is
-					// still the entry's, so it is written whether or not static pages are.
-					if (!(await fileExists(htmlPath))) continue
-					const fromHtml = htmlToMarkdown(await fs.readFile(htmlPath, 'utf-8'))
-					body = fromHtml.body
-					htmlTitle = fromHtml.metadata.title
-				}
-				const output = createCollectionOutput(content.frontmatter, body, content.file)
-				const markdown = generateMarkdown(output, {
-					url: pagePath,
-					type: 'collection',
-					sourcePath: content.file,
-					baseUrl,
-				}, options.includeFrontmatter)
+			const resolved = await resolvePageMarkdown(pagePath, options, collections, () => readBuiltPage(htmlPath))
+			if (!resolved) continue
 
-				await writeMarkdownFile(mdPath, markdown)
-				await injectLinkIntoHtml(htmlPath, pagePath)
-				pageEntries.push({
-					pathname: pagePath,
-					title: content.frontmatter.title?.value ?? htmlTitle,
-					type: 'collection',
-				})
-				collectionCount++
-				continue
-			}
-
-			// Fall back to static page handling
-			if (!options.includeStaticPages) continue
-
-			const htmlExists = await fileExists(htmlPath)
-			if (!htmlExists) continue
-
-			const html = await fs.readFile(htmlPath, 'utf-8')
-			const { metadata, body } = htmlToMarkdown(html)
-			const output = createStaticOutput(metadata, body)
-
-			const markdown = generateMarkdown(output, {
+			const markdown = generateMarkdown(resolved.output, {
 				url: pagePath,
-				type: 'static',
+				type: resolved.type,
+				sourcePath: resolved.sourcePath,
 				baseUrl,
 			}, options.includeFrontmatter)
 
 			await writeMarkdownFile(mdPath, markdown)
 			await injectLinkIntoHtml(htmlPath, pagePath)
-			pageEntries.push({
-				pathname: pagePath,
-				title: metadata.title,
-				type: 'static',
-			})
+			pageEntries.push({ pathname: pagePath, title: resolved.title, type: resolved.type })
+
+			if (resolved.type === 'collection') {
+				collectionCount++
+				continue
+			}
 
 			// Extract site metadata from homepage
-			if (pagePath === '/') {
+			if (pagePath === '/' && resolved.metadata) {
 				siteMetadata = {
-					title: metadata.title,
-					description: metadata.description,
+					title: resolved.metadata.title,
+					description: resolved.metadata.description,
 				}
 			}
 
@@ -178,13 +142,15 @@ async function injectLinkIntoHtml(htmlPath: string, pagePath: string): Promise<v
 	}
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
+/** A built page converted to markdown, or `undefined` when the build wrote no HTML for it. */
+async function readBuiltPage(htmlPath: string): Promise<HtmlToMarkdownResult | undefined> {
+	let html: string
 	try {
-		await fs.access(filePath)
-		return true
+		html = await fs.readFile(htmlPath, 'utf-8')
 	} catch {
-		return false
+		return undefined
 	}
+	return htmlToMarkdown(html)
 }
 
 async function writeMarkdownFile(filePath: string, content: string): Promise<void> {

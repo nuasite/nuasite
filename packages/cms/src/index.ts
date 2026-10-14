@@ -489,7 +489,7 @@ export {
  */
 export { scanCollections as scanProjectCollections } from './scan-cache'
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
-export { findCollectionSource, parseMarkdownContent } from './source-finder'
+export { findCollectionSource, type FindCollectionSourceOptions, parseMarkdownContent } from './source-finder'
 export type {
 	Attribute,
 	AvailableColors,

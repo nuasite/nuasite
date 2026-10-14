@@ -22,7 +22,8 @@ describe('processBuildOutput resolves collection pages from their source', () =>
 	let config: AstroConfig
 
 	beforeEach(async () => {
-		root = await fs.mkdtemp(path.join(os.tmpdir(), 'llm-build-'))
+		// A space in the path, which a file URL encodes as %20.
+		root = await fs.mkdtemp(path.join(os.tmpdir(), 'llm build-'))
 		config = { site: 'https://example.com', root: pathToFileURL(root + '/') } as AstroConfig
 		logged.length = 0
 		for (const n of [1, 2, 3]) {
@@ -90,6 +91,82 @@ describe('processBuildOutput resolves collection pages from their source', () =>
 		expect(await fs.readFile(path.join(root, 'dist/notes/rich.md'), 'utf-8')).toContain('Rendered tip')
 		expect(await fs.readFile(path.join(root, 'dist/llms.txt'), 'utf-8')).toContain('[Rich](https://example.com/notes/rich.md)')
 		expect(await Bun.file(path.join(root, 'dist/index.md')).exists()).toBe(false)
+	})
+
+	test('a data entry a pathname rule maps to the page is not written as its markdown', async () => {
+		await write('src/content/products/x.json', '{ "slug": "x", "name": "Widget" }')
+		await write('dist/products/x/index.html', '<html><head><title>Widget</title></head><body><h1>Widget</h1></body></html>')
+		const scan = spyOn(cms, 'scanProjectCollections').mockResolvedValue({
+			products: {
+				name: 'products',
+				label: 'products',
+				path: 'src/content/products',
+				entryCount: 1,
+				fields: [],
+				fileExtension: 'json',
+				type: 'data',
+				pathname: [{ literal: 'products' }, { field: 'slug' }],
+				entries: [{ slug: 'x', sourcePath: 'src/content/products/x.json', data: { slug: 'x', name: 'Widget' } }],
+			},
+		} as never)
+		try {
+			await build([{ pathname: 'products/x' }])
+		} finally {
+			scan.mockRestore()
+		}
+
+		const markdown = await fs.readFile(path.join(root, 'dist/products/x.md'), 'utf-8')
+		expect(markdown).toContain('type: static')
+		expect(markdown).not.toContain('"slug"')
+	})
+
+	test('a static page is not given an entry that only shares its last segment', async () => {
+		await write('src/content/blog/jana.md', '---\ntitle: A blog post\n---\n\nNot about the team.\n')
+		await write('dist/team/jana/index.html', '<html><head><title>Jana</title></head><body><h1>Jana, our designer</h1></body></html>')
+
+		await build([{ pathname: 'team/jana' }])
+
+		const markdown = await fs.readFile(path.join(root, 'dist/team/jana.md'), 'utf-8')
+		expect(markdown).toContain('type: static')
+		expect(markdown).toContain('Jana, our designer')
+		expect(markdown).not.toContain('Not about the team')
+	})
+
+	test('an entry without a title is listed by its page title', async () => {
+		await write('src/content/people/dana.md', '---\nname: Dana\n---\n\nBio.\n')
+		await write('dist/people/dana/index.html', '<html><head><title>Dana | Team</title></head><body><p>Bio.</p></body></html>')
+
+		await build([{ pathname: 'people/dana' }])
+
+		expect(await fs.readFile(path.join(root, 'dist/llms.txt'), 'utf-8')).toContain('[Dana | Team](https://example.com/people/dana.md)')
+	})
+
+	test('a failed scan is logged once and pages still resolve by filename', async () => {
+		const scan = spyOn(cms, 'scanProjectCollections').mockRejectedValue(new Error('broken config'))
+		try {
+			await build()
+			expect(scan).toHaveBeenCalledTimes(1)
+		} finally {
+			scan.mockRestore()
+		}
+
+		expect(logged.filter(m => m.includes('broken config'))).toHaveLength(1)
+		expect(await fs.readFile(path.join(root, 'dist/posts/p1.md'), 'utf-8')).toContain('type: collection')
+	})
+
+	test('content outside the project root is still read', async () => {
+		const shared = await fs.mkdtemp(path.join(os.tmpdir(), 'llm-shared-'))
+		try {
+			await fs.mkdir(path.join(shared, 'posts'), { recursive: true })
+			await fs.writeFile(path.join(shared, 'posts/far.md'), '---\ntitle: Far\n---\n\nFrom elsewhere.\n')
+			await write('dist/posts/far/index.html', '<html><head><title>Far</title></head><body></body></html>')
+
+			await build([{ pathname: 'posts/far' }], resolveOptions({ contentDir: path.relative(root, shared) }))
+
+			expect(await fs.readFile(path.join(root, 'dist/posts/far.md'), 'utf-8')).toContain('From elsewhere.')
+		} finally {
+			await fs.rm(shared, { recursive: true, force: true })
+		}
 	})
 
 	test('the collections are scanned once for the build and handed to every lookup', async () => {

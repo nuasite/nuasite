@@ -49,6 +49,15 @@ const context: ProjectContext = {
 	mutate: mutation => mutation(),
 }
 
+/**
+ * The project at `root` on `node:fs`, as the default context sees it but at a fixed root. Its files
+ * reach outside the root as the default's do (a `contentDir` of `../shared/content`), and it caches
+ * nothing between contexts, so a fresh one never serves a stale read.
+ */
+export function createNodeProjectContext(root: string): ProjectContext {
+	return { root, fs: createNodeFs(root), files: nodeFiles, state: new ProjectState(), parseAstro: parse, mutate: mutation => mutation() }
+}
+
 export function defaultProjectContext(): ProjectContext {
 	return context
 }

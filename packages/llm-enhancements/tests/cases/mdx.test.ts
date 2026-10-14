@@ -23,6 +23,10 @@ describe('mdxBodyAsMarkdown', () => {
 		expect(mdxBodyAsMarkdown('export const items = [\n  "a",\n\n  "b",\n]\n\nProse.\n')).toBe('Prose.\n')
 	})
 
+	test('a CRLF body loses the blank lines after a dropped import', () => {
+		expect(mdxBodyAsMarkdown("import X from './x'\r\n\r\nProse.\r\n")).toBe('Prose.\r\n')
+	})
+
 	test('a wrapped prose line that starts with "export" is prose', () => {
 		const body = 'We do consulting and\nexport goods abroad every\nweek for clients.\n\nNext para.\n'
 		expect(mdxBodyAsMarkdown(body)).toBe(body)
