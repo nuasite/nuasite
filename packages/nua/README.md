@@ -90,3 +90,23 @@ export default defineConfig({
 	integrations: [nua()],
 })
 ```
+
+## Redirects
+
+A site can declare redirects in three places, and the build merges them into one `dist/_redirects`:
+
+| Source                          | Written by               | Precedence |
+| ------------------------------- | ------------------------ | ---------- |
+| `src/_redirects`                | editors, through the CMS | highest    |
+| `public/_redirects`             | hand                     | middle     |
+| `redirects` in the Astro config | code                     | lowest     |
+
+- **One rule per path.** When two sources redirect the same path, the one with higher precedence is kept and the build logs the rule it overrode. Cloudflare Pages rejects a file that lists a path twice, together with the whole deploy.
+- **Higher precedence comes first.** Each source's rules are written as a block, in their own order, ahead of the sources they override. A host applies the first rule that matches, so a CMS rule wins over code whether it is an exact path or a pattern, and the order within a hand-written file is kept. An exact rule that a pattern from higher up reaches first is logged as never reached.
+- **Lines it does not read are kept as written.** A line that is not `source destination [status] [conditions]`, such as a Netlify role gate (`/admin/* 200! Role=admin`) or one with a trailing comment, stays where it was and is not merged.
+- **Netlify conditions are kept apart.** Rules for one path that differ by condition (`Language=cs`) or query (`id=:id`) are different rules.
+- **An untouched file stays as written.** When nothing is merged into `public/_redirects`, its copy keeps its comments and layout.
+
+**Editors redirect; code guards.** A rule from the CMS may only redirect (301, 302, 303, 307 or 308, no conditions, so no proxying), and it may not touch a path a guard in code covers: a rule with conditions such as a role gate (`Role=admin`), a 4xx, or a line not read as a rule. Listed first, an editor's rule could otherwise take access control off a path. The build leaves such a rule out with a warning, and the CMS editor refuses to save a rule the build would not read or allow.
+
+Paths in the config's `redirects` are root-relative, as Astro reads a key: `'old'` and `'/old'` both redirect `/old`, and a destination written without a slash gets one. Route params become the host's placeholders: `[slug]` is `:slug`, `[...rest]` is `*` (`:splat` in the destination).
