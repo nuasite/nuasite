@@ -100,6 +100,16 @@ export {
 	uploadsDirRelativeToRoot,
 } from './media/index'
 export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
+export {
+	CLOUDFLARE_REDIRECT_LIMITS,
+	CMS_REDIRECTS_FILE,
+	type MergedRedirects,
+	mergeRedirects,
+	parseRedirectRule,
+	type RedirectLayer,
+	type RedirectLine,
+	type RedirectRuleLine,
+} from './redirects'
 export { type RouteCollectionScan, scanRouteCollections } from './route-scan'
 export { describeIssue, type LiveIssue, type LiveParseResult, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port'
 export { acceptsMissing, firstAcceptedEntry, governsPath, pointAt, type ProbePoint, rejectsValueAt } from './schema-probe'
