@@ -1,9 +1,19 @@
+import type { AstroConfig } from 'astro'
 import remarkDirective from 'remark-directive'
 import remarkMdx from 'remark-mdx'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
 
-const parser = unified().use(remarkParse).use(remarkMdx).use(remarkDirective)
+const mdx = unified().use(remarkParse).use(remarkMdx)
+const mdxWithDirectives = unified().use(remarkParse).use(remarkMdx).use(remarkDirective)
+
+export interface MarkdownSyntax {
+	/**
+	 * The site's markdown pipeline parses directives (`:::list{.dots}`). MDX then reads a `{…}` after a
+	 * directive as its attributes; without them it is an expression.
+	 */
+	directives: boolean
+}
 
 /**
  * Make an `.mdx` entry body readable as plain markdown, or say it cannot be.
@@ -13,11 +23,26 @@ const parser = unified().use(remarkParse).use(remarkMdx).use(remarkDirective)
  * something the source only names returns `undefined`, so the page's rendered HTML is used instead:
  * a component (`<Card title="…" />`), an expression (`{new Date().getFullYear()}`, `{/* note *\/}`) or a
  * plain HTML tag whose attributes are expressions. A body MDX cannot parse returns `undefined` too.
+ * `syntax` says which extensions the site parses MDX with, so the body reads as the site renders it.
  */
-export function mdxBodyAsMarkdown(body: string): string | undefined {
+/**
+ * The syntax of the site's markdown pipeline, which `@astrojs/mdx` extends by default: directives when a
+ * remark-directive plugin is in it (`@nuasite/nua` adds the CMS's). Plugins given to `mdx()` alone are not
+ * visible here.
+ */
+export function markdownSyntaxOf(config: AstroConfig): MarkdownSyntax {
+	const plugins = config.markdown?.remarkPlugins ?? []
+	const directives = plugins.some(entry => {
+		const plugin = Array.isArray(entry) ? entry[0] : entry
+		return plugin === 'remark-directive' || (typeof plugin === 'function' && plugin.name === 'remarkDirective')
+	})
+	return { directives }
+}
+
+export function mdxBodyAsMarkdown(body: string, syntax: MarkdownSyntax): string | undefined {
 	let tree: Node
 	try {
-		tree = parser.parse(body)
+		tree = (syntax.directives ? mdxWithDirectives : mdx).parse(body)
 	} catch {
 		return undefined
 	}

@@ -27,7 +27,6 @@ export {
 	buildCollectionTextIndex,
 	declaredSitePathFromData,
 	findCollectionSource,
-	type FindCollectionSourceOptions,
 	findFieldInCollectionEntry,
 	findMarkdownSourceLocation,
 	findTextInAnyCollectionFrontmatter,

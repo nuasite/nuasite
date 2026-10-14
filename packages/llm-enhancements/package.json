@@ -26,6 +26,7 @@
 		}
 	},
 	"dependencies": {
+		"@nuasite/cms-core": "workspace:*",
 		"node-html-parser": "catalog:parsers",
 		"remark-directive": "^3.0.1",
 		"remark-mdx": "catalog:editor",
@@ -40,6 +41,11 @@
 		"typescript": "catalog:build",
 		"vite": "catalog:build",
 		"@nuasite/cms": "workspace:*"
+	},
+	"peerDependenciesMeta": {
+		"@nuasite/cms": {
+			"optional": true
+		}
 	},
 	"scripts": {
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"

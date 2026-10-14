@@ -1,10 +1,13 @@
-// A static import on purpose. Astro evaluates an integration through a Vite module runner that it
-// closes once the config is loaded, so a dynamic import made later fails in any Astro build, Node or
-// Bun ("Vite module runner has been closed"), and every collection page fell back to its HTML.
-import { findCollectionSource, type MarkdownContent, parseMarkdownContent, scanProjectCollections } from '@nuasite/cms'
-import { mdxBodyAsMarkdown } from './mdx'
+import type { CollectionInfo, MarkdownContent } from '@nuasite/cms'
+import path from 'node:path'
+import { cms } from './cms'
+import { type MarkdownSyntax, mdxBodyAsMarkdown } from './mdx'
+import { normalizePath } from './paths'
 
-export type Collections = Awaited<ReturnType<typeof scanProjectCollections>>
+type Collections = Awaited<ReturnType<NonNullable<typeof cms>['scanProjectCollections']>>
+
+/** The pages that render a collection entry, by normalized pathname. */
+export type CollectionPages = Map<string, CollectionInfo>
 
 /**
  * A page's collection entry. `body` is `undefined` when the entry cannot be told as markdown (an `.mdx`
@@ -18,34 +21,59 @@ const MARKDOWN_ENTRY = /\.(md|mdx|markdown)$/i
 
 export async function getCollectionContent(
 	pagePath: string,
-	contentDir: string,
-	collections?: Collections,
+	pages: CollectionPages,
+	syntax: MarkdownSyntax,
 ): Promise<CollectionPage | undefined> {
-	// Exact: the entry is published as the page's content, so a page only borrowing its filename's slug
-	// (a static `/team/jana` beside `blog/jana.md`) must not get it.
-	const collectionInfo = await findCollectionSource(pagePath, contentDir, collections, { exact: true })
-	if (!collectionInfo || !MARKDOWN_ENTRY.test(collectionInfo.file)) {
+	const collectionInfo = pages.get(normalizePath(pagePath))
+	if (!cms || !collectionInfo || !MARKDOWN_ENTRY.test(collectionInfo.file)) {
 		return undefined
 	}
 
-	const content = await parseMarkdownContent(collectionInfo)
+	const content = await cms.parseMarkdownContent(collectionInfo)
 	if (!content) return undefined
 
 	const body = content.body.replace(/\r\n?/g, '\n')
-	return { ...content, body: content.file.toLowerCase().endsWith('.mdx') ? mdxBodyAsMarkdown(body) : body }
+	return { ...content, body: content.file.toLowerCase().endsWith('.mdx') ? mdxBodyAsMarkdown(body, syntax) : body }
 }
 
 /**
- * Scan the content collections once, for a caller about to resolve many pages: passing the result to
- * {@link getCollectionContent} keeps each page from scanning every collection again. When the scan
- * fails, `warn` says why and the result is empty: pages then resolve by filename alone instead of
- * each repeating the failing scan.
+ * Find the pages that render a collection entry, once, for a caller about to resolve many pages: the URL
+ * the CMS editor shows for each entry (see `collectionPagesByPathname` in `@nuasite/cms`). Runs in the
+ * current project context. Empty without `@nuasite/cms`, or when the scan fails, which `warn` reports:
+ * every page is then told by its rendered HTML.
  */
-export async function scanCollectionsForPages(contentDir: string, warn: (message: string) => void): Promise<Collections> {
+export async function findCollectionPages(contentDir: string, warn: (message: string) => void): Promise<CollectionPages> {
+	if (!cms) return new Map()
+	let found: CollectionPages
 	try {
-		return await scanProjectCollections(contentDir)
+		found = await cms.collectionPagesByPathname(await scanContent(contentDir))
 	} catch (error) {
-		warn(`Could not scan the content collections in ${contentDir}, resolving pages by filename only: ${error}`)
-		return {}
+		warn(`Could not scan the content collections in ${contentDir}, every page is converted from its HTML: ${error}`)
+		return new Map()
 	}
+	const pages: CollectionPages = new Map()
+	for (const [pathname, info] of found) pages.set(normalizePath(pathname), info)
+	return pages
+}
+
+/**
+ * Scan the collections in `contentDir`. One outside the project root (`../shared/content`) is scanned
+ * from its parent, since the CMS filesystem refuses paths outside its root, and its source paths are
+ * then spelled from the project root again, which is how the rest of the CMS reads them.
+ */
+async function scanContent(contentDir: string): Promise<Collections> {
+	const api = cms!
+	const root = api.getProjectRoot()
+	const absolute = path.resolve(root, contentDir)
+	const relative = path.relative(root, absolute)
+	if (!relative.startsWith('..') && !path.isAbsolute(relative)) return api.scanProjectCollections(contentDir)
+
+	const base = path.dirname(absolute)
+	const scanned = await api.runAtProjectRoot(base, () => api.scanProjectCollections(path.basename(absolute)))
+	const fromRoot = (sourcePath: string) => path.relative(root, path.resolve(base, sourcePath)).split(path.sep).join('/')
+	const rebased: Collections = {}
+	for (const [name, def] of Object.entries(scanned)) {
+		rebased[name] = { ...def, path: fromRoot(def.path), entries: def.entries?.map(entry => ({ ...entry, sourcePath: fromRoot(entry.sourcePath) })) }
+	}
+	return rebased
 }

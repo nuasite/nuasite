@@ -1,14 +1,16 @@
-import { createPublicStaticFileChecker, runAtProjectRoot } from '@nuasite/cms'
+import { createPublicStaticFileChecker } from '@nuasite/cms-core'
 import type { AstroConfig } from 'astro'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ViteDevServer } from 'vite'
-import { type Collections, scanCollectionsForPages } from './cms-marker'
+import { cms } from './cms'
+import { findCollectionPages } from './cms-marker'
 import { htmlToMarkdown, type HtmlToMarkdownResult } from './html-to-markdown'
 import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
 import { generateLlmsTxt } from './llms-txt-endpoint'
 import { generateMarkdown } from './markdown-generator'
-import { resolvePageMarkdown } from './page-markdown'
+import { markdownSyntaxOf } from './mdx'
+import { resolvePageMarkdown, type SiteContent } from './page-markdown'
 import { injectMarkdownLink, LLM_ENDPOINT_PATH, LLMS_TXT_PATH, mdUrlToPagePath, normalizePath } from './paths'
 import type { ResolvedOptions } from './types'
 
@@ -22,9 +24,9 @@ async function generateMarkdownForPath(
 	host: string,
 	options: ResolvedOptions,
 	baseUrl: string,
-	collections: Collections,
+	site: SiteContent,
 ): Promise<string | null> {
-	const resolved = await resolvePageMarkdown(pagePath, options, collections, () => fetchPage(host, pagePath))
+	const resolved = await resolvePageMarkdown(pagePath, options, site, () => fetchPage(host, pagePath))
 	if (!resolved) return null
 
 	return generateMarkdown(resolved.output, {
@@ -55,7 +57,7 @@ async function fetchPage(host: string, pagePath: string): Promise<HtmlToMarkdown
 async function discoverPages(
 	host: string,
 	options: ResolvedOptions,
-	collections: Collections,
+	site: SiteContent,
 ): Promise<{ pages: PageEntry[]; siteMetadata: SiteMetadata }> {
 	const pages: PageEntry[] = []
 	let siteMetadata: SiteMetadata = {}
@@ -66,7 +68,7 @@ async function discoverPages(
 		const metadata = (await home)?.metadata
 		if (metadata) siteMetadata = { title: metadata.title, description: metadata.description }
 
-		const resolved = await resolvePageMarkdown('/', options, collections, () => home)
+		const resolved = await resolvePageMarkdown('/', options, site, () => home)
 		if (resolved) pages.push({ pathname: '/', title: resolved.title, type: resolved.type })
 	} catch {
 		// Ignore
@@ -89,20 +91,29 @@ function getBaseUrl(config: AstroConfig): string {
  */
 export function createDevMiddleware(server: ViteDevServer, options: ResolvedOptions, config: AstroConfig) {
 	const baseUrl = getBaseUrl(config)
-	// Entries are read from Astro's root, as in the build, whatever the working directory is.
+	// Entries are read from Astro's root, as in the build, whatever the working directory is. The project
+	// and the pages that render an entry are kept between requests, and replaced after a change to the
+	// content, the routes or the content config.
 	const root = fileURLToPath(config.root)
-	const contentPath = path.resolve(root, options.contentDir)
-
-	// Scanned once and again only after a change under the content directory or to the content
-	// config, instead of on every request.
-	let scan: Promise<Collections> | undefined
-	const collections =
-		() => (scan ??= runAtProjectRoot(root, () => scanCollectionsForPages(options.contentDir, message => console.warn(`[llm-enhancements] ${message}`))))
+	const watched = [path.resolve(root, options.contentDir) + path.sep, path.join(root, 'src', 'pages') + path.sep]
+	const syntax = markdownSyntaxOf(config)
+	let project = cms?.projectAtRoot(root)
+	let site: Promise<SiteContent> | undefined
 	server.watcher?.on('all', (_event: string, file: string) => {
-		const resolved = path.resolve(file)
-		if (resolved.startsWith(contentPath + path.sep) || /content\.config\.[cm]?[jt]s$/.test(resolved)) scan = undefined
+		const changed = path.resolve(file)
+		if (watched.some(dir => changed.startsWith(dir)) || /content\.config\.[cm]?[jt]s$/.test(changed)) {
+			project = cms?.projectAtRoot(root)
+			site = undefined
+		}
 	})
-	const atRoot = <T>(run: () => Promise<T>): Promise<T> => runAtProjectRoot(root, run)
+	/** Run `resolve` in the project, against the pages that render an entry. */
+	const withSite = <T>(resolve: (site: SiteContent) => Promise<T>): Promise<T> => {
+		const run = async () => {
+			site ??= findCollectionPages(options.contentDir, message => console.warn(`[llm-enhancements] ${message}`)).then(pages => ({ pages, syntax }))
+			return resolve(await site)
+		}
+		return project ? project.run(run) : run()
+	}
 
 	const isPublicStaticFile = createPublicStaticFileChecker(
 		config.publicDir ? fileURLToPath(config.publicDir) : undefined,
@@ -120,7 +131,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 
 			try {
 				const host = req.headers.host || 'localhost:4321'
-				const { pages, siteMetadata } = await atRoot(async () => discoverPages(host, options, await collections()))
+				const { pages, siteMetadata } = await withSite(site => discoverPages(host, options, site))
 				const content = generateLlmsTxt(pages, { ...siteMetadata, baseUrl }, llmsTxtOptions)
 
 				res.setHeader('Content-Type', 'text/plain; charset=utf-8')
@@ -147,7 +158,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 
 			try {
 				const host = req.headers.host || 'localhost:4321'
-				const { pages, siteMetadata } = await atRoot(async () => discoverPages(host, options, await collections()))
+				const { pages, siteMetadata } = await withSite(site => discoverPages(host, options, site))
 				const markdown = generateLlmMarkdown(pages, { ...siteMetadata, baseUrl }, llmEndpointOptions)
 
 				res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
@@ -174,7 +185,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 
 		try {
 			const host = req.headers.host || 'localhost:4321'
-			const markdown = await atRoot(async () => generateMarkdownForPath(pagePath, host, options, baseUrl, await collections()))
+			const markdown = await withSite(site => generateMarkdownForPath(pagePath, host, options, baseUrl, site))
 
 			if (markdown) {
 				res.setHeader('Content-Type', 'text/markdown; charset=utf-8')

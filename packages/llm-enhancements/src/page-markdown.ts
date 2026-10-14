@@ -1,7 +1,14 @@
-import { type Collections, getCollectionContent } from './cms-marker'
+import { type CollectionPages, getCollectionContent } from './cms-marker'
 import type { HtmlToMarkdownResult } from './html-to-markdown'
 import { createCollectionOutput, createStaticOutput } from './markdown-generator'
+import type { MarkdownSyntax } from './mdx'
 import type { MarkdownOutput, ResolvedOptions } from './types'
+
+/** What a page is resolved against: the pages that render an entry, and how the site parses markdown. */
+export interface SiteContent {
+	pages: CollectionPages
+	syntax: MarkdownSyntax
+}
 
 export interface PageMarkdown {
 	output: MarkdownOutput
@@ -22,13 +29,13 @@ export interface PageMarkdown {
 export async function resolvePageMarkdown(
 	pagePath: string,
 	options: ResolvedOptions,
-	collections: Collections | undefined,
+	site: SiteContent,
 	readPage: () => Promise<HtmlToMarkdownResult | undefined>,
 ): Promise<PageMarkdown | undefined> {
 	let page: Promise<HtmlToMarkdownResult | undefined> | undefined
 	const renderedPage = () => (page ??= readPage())
 
-	const entry = await getCollectionContent(pagePath, options.contentDir, collections)
+	const entry = await getCollectionContent(pagePath, site.pages, site.syntax)
 	if (entry) {
 		const entryTitle = entry.frontmatter.title?.value
 		// An entry that renders more than its source says is told by its page, which is still the entry's,

@@ -1,13 +1,14 @@
-import { runAtProjectRoot } from '@nuasite/cms'
 import type { AstroConfig, AstroIntegrationLogger } from 'astro'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { scanCollectionsForPages } from './cms-marker'
-import { htmlToMarkdown, type HtmlToMarkdownResult } from './html-to-markdown'
+import { cms } from './cms'
+import { findCollectionPages } from './cms-marker'
+import { htmlToMarkdown } from './html-to-markdown'
 import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
 import { generateLlmsTxt } from './llms-txt-endpoint'
 import { generateMarkdown } from './markdown-generator'
+import { markdownSyntaxOf } from './mdx'
 import { resolvePageMarkdown } from './page-markdown'
 import { getHtmlPath, getLlmOutputPath, getLlmsTxtOutputPath, getMdOutputPath, injectMarkdownLink, normalizePath } from './paths'
 import type { ResolvedOptions } from './types'
@@ -36,7 +37,8 @@ export function processBuildOutput(
 	logger: AstroIntegrationLogger,
 	config: AstroConfig,
 ): Promise<void> {
-	return runAtProjectRoot(fileURLToPath(config.root), () => processPages(dir, pages, options, logger, config))
+	const run = () => processPages(dir, pages, options, logger, config)
+	return cms ? cms.runAtProjectRoot(fileURLToPath(config.root), run) : run()
 }
 
 async function processPages(
@@ -52,8 +54,11 @@ async function processPages(
 	let staticCount = 0
 	const pageEntries: PageEntry[] = []
 	let siteMetadata: SiteMetadata = {}
-	// Scanned once for the whole build: resolving a page against a fresh scan made the build quadratic.
-	const collections = await scanCollectionsForPages(options.contentDir, message => logger.warn(message))
+	// Found once for the whole build: resolving a page against a fresh scan made the build quadratic.
+	const site = {
+		pages: await findCollectionPages(options.contentDir, message => logger.warn(message)),
+		syntax: markdownSyntaxOf(config),
+	}
 
 	for (const page of pages) {
 		const pagePath = normalizePath(page.pathname === '' ? '/' : `/${page.pathname}`)
@@ -62,7 +67,14 @@ async function processPages(
 			const mdPath = getMdOutputPath(distDir, pagePath)
 			const htmlPath = getHtmlPath(distDir, pagePath)
 
-			const resolved = await resolvePageMarkdown(pagePath, options, collections, () => readBuiltPage(htmlPath))
+			// Read once, for the markdown and for the link injected into it.
+			let html: Promise<string | undefined> | undefined
+			const readHtml = () => (html ??= fs.readFile(htmlPath, 'utf-8').catch(() => undefined))
+
+			const resolved = await resolvePageMarkdown(pagePath, options, site, async () => {
+				const page = await readHtml()
+				return page === undefined ? undefined : htmlToMarkdown(page)
+			})
 			if (!resolved) continue
 
 			const markdown = generateMarkdown(resolved.output, {
@@ -73,7 +85,7 @@ async function processPages(
 			}, options.includeFrontmatter)
 
 			await writeMarkdownFile(mdPath, markdown)
-			await injectLinkIntoHtml(htmlPath, pagePath)
+			await injectLinkIntoHtml(htmlPath, pagePath, await readHtml())
 			pageEntries.push({ pathname: pagePath, title: resolved.title, type: resolved.type })
 
 			if (resolved.type === 'collection') {
@@ -133,24 +145,10 @@ async function processPages(
 	}
 }
 
-async function injectLinkIntoHtml(htmlPath: string, pagePath: string): Promise<void> {
-	try {
-		const html = await fs.readFile(htmlPath, 'utf-8')
-		await fs.writeFile(htmlPath, injectMarkdownLink(html, pagePath), 'utf-8')
-	} catch {
-		// File might not exist for some pages
-	}
-}
-
-/** A built page converted to markdown, or `undefined` when the build wrote no HTML for it. */
-async function readBuiltPage(htmlPath: string): Promise<HtmlToMarkdownResult | undefined> {
-	let html: string
-	try {
-		html = await fs.readFile(htmlPath, 'utf-8')
-	} catch {
-		return undefined
-	}
-	return htmlToMarkdown(html)
+async function injectLinkIntoHtml(htmlPath: string, pagePath: string, html: string | undefined): Promise<void> {
+	// Some pages have no HTML file
+	if (html === undefined) return
+	await fs.writeFile(htmlPath, injectMarkdownLink(html, pagePath), 'utf-8')
 }
 
 async function writeMarkdownFile(filePath: string, content: string): Promise<void> {

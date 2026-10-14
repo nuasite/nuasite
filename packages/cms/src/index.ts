@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createLocalStorageAdapter, createNodeFs, parseProjectCmsConfig } from '@nuasite/cms-core'
+import { createLocalStorageAdapter, createNodeFs, createPublicStaticFileChecker, parseProjectCmsConfig } from '@nuasite/cms-core'
 import { processBuildOutput } from './build-processor'
 import type { CollectionOverrides } from './collection-overrides'
 import { ComponentRegistry } from './component-registry'
@@ -16,7 +16,6 @@ import { rehypeCmsMarker } from './markdown/rehype'
 import { resolveMarkerConfig } from './marker-config'
 import type { MediaStorageAdapter } from './media/types'
 import { type CmsMode, resolveCmsMode } from './mode'
-import { createPublicStaticFileChecker } from './public-static-file'
 import { mergeCmsRedirectsInto } from './redirects'
 import { scanCollections } from './scan-cache'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
@@ -467,11 +466,12 @@ export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, Med
 export { type CmsMode, detectHostedFromEnv, resolveCmsMode } from './mode'
 
 export { scanCollections } from '@nuasite/cms-core'
+export { createPublicStaticFileChecker } from '@nuasite/cms-core'
+export { collectionPagesByPathname } from './collection-pages'
 export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
 export { rehypeCmsMarker } from './markdown/rehype'
 export { type FieldMigration, migrateAstroImages, type MigrationOptions, type MigrationResult } from './migrate-astro-image'
-export { runAtProjectRoot } from './project/at-root'
-export { createPublicStaticFileChecker } from './public-static-file'
+export { type ProjectAtRoot, projectAtRoot, runAtProjectRoot } from './project/at-root'
 export {
 	astroRedirectLines,
 	mergeCmsRedirectsInto,
@@ -484,12 +484,12 @@ export {
  * Scan the content collections of the current project (its root, or the one entered with
  * {@link runAtProjectRoot}). Unlike cms-core's `scanCollections`, it takes no filesystem and shares the
  * project's content-config parse cache; it applies no Astro-config `collections` overrides, which only
- * change labels. Hand the result to {@link findCollectionSource} when resolving many pages in a row:
- * without it, every call scans every collection again.
+ * change labels. Hand the result to {@link findCollectionSource} or {@link collectionPagesByPathname}
+ * when resolving many pages in a row: without it, every call scans every collection again.
  */
 export { scanCollections as scanProjectCollections } from './scan-cache'
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
-export { findCollectionSource, type FindCollectionSourceOptions, parseMarkdownContent } from './source-finder'
+export { findCollectionSource, parseMarkdownContent } from './source-finder'
 export type {
 	Attribute,
 	AvailableColors,
