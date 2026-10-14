@@ -138,10 +138,25 @@ export interface PendingBackgroundImageChange {
 	isDirty: boolean
 }
 
+/**
+ * An element's box, as `getBoundingClientRect()` gives it. Spelled out rather than `DOMRect`, since
+ * these types are also compiled by servers without the DOM library.
+ */
+export interface ElementRect {
+	readonly x: number
+	readonly y: number
+	readonly width: number
+	readonly height: number
+	readonly top: number
+	readonly right: number
+	readonly bottom: number
+	readonly left: number
+}
+
 export interface ColorEditorState {
 	isOpen: boolean
 	targetElementId: string | null
-	targetRect: DOMRect | null
+	targetRect: ElementRect | null
 }
 
 export interface SavedEdit {
@@ -557,7 +572,7 @@ export interface AttributeChangePayload {
 export interface AttributeEditorState {
 	isOpen: boolean
 	targetElementId: string | null
-	targetRect: DOMRect | null
+	targetRect: ElementRect | null
 }
 
 /** Saved attribute edit for storage persistence */

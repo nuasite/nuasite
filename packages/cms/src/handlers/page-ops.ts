@@ -1,4 +1,4 @@
-import fs from 'node:fs/promises'
+import { projectFiles } from '../project/context'
 import { resolveAndValidatePath, slugify } from '../utils'
 
 const PAGE_EXTENSIONS = ['.astro', '.md', '.mdx']
@@ -20,7 +20,7 @@ export async function handleCheckSlugExists(slug: string): Promise<{ exists: boo
 
 async function fileExists(fullPath: string): Promise<boolean> {
 	try {
-		await fs.access(fullPath)
+		await projectFiles().access(fullPath)
 		return true
 	} catch {
 		return false

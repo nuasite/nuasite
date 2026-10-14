@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { unified } from 'unified'
-import { remarkListDirective } from '../../src/remark-list-directive'
+import { remarkListDirective } from '../../src/markdown/remark'
 
 interface Node {
 	type: string

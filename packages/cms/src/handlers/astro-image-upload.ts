@@ -1,7 +1,7 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pickAstroImageTarget } from '../astro-image-paths'
 import type { ManifestWriter } from '../manifest-writer'
+import { projectFiles } from '../project/context'
 import type { MediaUploadContext } from '../types'
 import { resolveSourcePath } from '../utils'
 
@@ -49,8 +49,7 @@ export async function tryAstroImageUpload(args: {
 		compareBuffer: args.fileBuffer,
 	})
 
-	await fs.mkdir(path.dirname(target.absPath), { recursive: true })
-	await fs.writeFile(target.absPath, args.fileBuffer)
+	await projectFiles().writeFile(target.absPath, args.fileBuffer)
 
 	return {
 		success: true,

@@ -1,42 +1,17 @@
-import { createCmsCore, createNodeFs, resolvePathnameFromSpec, scanRouteCollections } from '@nuasite/cms-core'
+import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import type { CollectionOverrides } from './collection-overrides'
 import { getProjectRoot } from './config'
+import { EditorService } from './editor-service'
 import { handleCmsApiRoute } from './handlers/api-routes'
-import { buildMapPattern, detectArrayPattern, extractArrayElementProps, parseInlineArrayName } from './handlers/array-ops'
-import {
-	extractPropsFromSource,
-	findComponentInvocationLine,
-	findFrontmatterEnd,
-	getPageFileCandidates,
-	normalizeFilePath,
-} from './handlers/component-ops'
 import { handleCors, sendError } from './handlers/request-utils'
-import { processHtml } from './html-processor'
 import type { ManifestWriter } from './manifest-writer'
 import type { MediaStorageAdapter } from './media/types'
-import {
-	declaredSitePathFromData,
-	enhanceManifestWithSourceSnippets,
-	findCollectionSource,
-	findImageSourceLocation,
-	findSourceLocation,
-	parseMarkdownContent,
-	reindexDirtyFiles,
-} from './source-finder'
-import type {
-	CmsMarkerOptions,
-	CollectionDefinition,
-	CollectionEntry,
-	CollectionEntryInfo,
-	ComponentDefinition,
-	ComponentInstance,
-	ManifestEntry,
-	PageSeoData,
-} from './types'
-import { firstNonEmptyLine, normalizePagePath } from './utils'
+import { currentProjectContext } from './project/context'
+import type { CmsMarkerOptions, ComponentDefinition } from './types'
+import { normalizePagePath } from './utils'
 
 /** Minimal ViteDevServer interface to avoid version conflicts between Astro's bundled Vite and root Vite */
 interface ViteDevServerLike {
@@ -50,13 +25,6 @@ interface ViteDevServerLike {
 		emit: (event: string, ...args: any[]) => boolean
 	}
 }
-
-/**
- * Set of absolute file paths that the CMS expects to be deleted.
- * When Vite/Astro detects an unlink for one of these files, the CMS
- * intercepts the event and prevents a full page reload.
- */
-export const expectedDeletions = new Set<string>()
 
 export interface DevMiddlewareOptions {
 	enableCmsApi?: boolean
@@ -82,13 +50,7 @@ export function createDevMiddleware(
 	options: DevMiddlewareOptions,
 ) {
 	const isPublicStaticFile = options.isPublicStaticFile ?? (() => false)
-
-	// Tracks in-flight Phase 2 enhancement promises per page so that requests for the
-	// page manifest can await source-path resolution before responding. Without this,
-	// hosts that serve HTML faster than the source-finder pipeline completes (e.g.
-	// pletivo, sandbox runtimes) leak a partial manifest where entries have tag/text
-	// but no sourcePath, which the editor then treats as locked elements.
-	const pendingPhase2: Map<string, Promise<void>> = new Map()
+	const editor = new EditorService({ context: currentProjectContext(), config, manifestWriter, componentDefinitions })
 
 	// Serve uploaded media files directly from disk.
 	// Vite's public dir middleware caches file listings, so newly uploaded files
@@ -173,48 +135,7 @@ export function createDevMiddleware(
 			res.setHeader('Content-Type', 'application/json')
 			res.setHeader('Access-Control-Allow-Origin', '*')
 			res.setHeader('Cache-Control', 'no-store')
-
-			// Build pages from visited pages (have titles from SEO) + filesystem scan
-			const pageMap = new Map<string, { pathname: string; title?: string }>()
-
-			// 1. Add pages discovered from filesystem (src/pages)
-			const discoveredPages = await discoverPagesFromFilesystem()
-			for (const pagePath of discoveredPages) {
-				pageMap.set(pagePath, { pathname: pagePath })
-			}
-
-			// 2. Add collection entry pages from collection definitions.
-			const collectionDefs = manifestWriter.getCollectionDefinitions()
-			const collectionRoutes = await discoverCollectionRoutes()
-			const { collectionDefinitions: responseCollectionDefs, entryPages } = buildCollectionManifestPages(collectionDefs, collectionRoutes)
-			for (const page of entryPages) {
-				pageMap.set(page.pathname, page)
-			}
-
-			// 3. Overlay visited pages (they have SEO titles)
-			for (const [pagePath, data] of manifestWriter.getPageDataForPreviews()) {
-				const existing = pageMap.get(pagePath)
-				const title = data.seo?.title?.content || existing?.title
-				pageMap.set(pagePath, { pathname: pagePath, ...(title ? { title } : {}) })
-			}
-
-			const pages = Array.from(pageMap.values())
-				.sort((a, b) => a.pathname.localeCompare(b.pathname))
-
-			const manifest: Record<string, unknown> = {
-				componentDefinitions,
-				availableColors: manifestWriter.getAvailableColors(),
-				availableTextStyles: manifestWriter.getAvailableTextStyles(),
-				pages,
-			}
-			if (Object.keys(responseCollectionDefs).length > 0) {
-				manifest.collectionDefinitions = responseCollectionDefs
-			}
-			const mdxComponents = manifestWriter.getMdxComponents()
-			if (mdxComponents) {
-				manifest.mdxComponents = mdxComponents
-			}
-			res.end(JSON.stringify(manifest, null, 2))
+			res.end(JSON.stringify(await editor.globalManifest(), null, 2))
 			return
 		}
 		next()
@@ -227,47 +148,14 @@ export function createDevMiddleware(
 		// Match /*.json pattern (but not files that actually exist)
 		const match = url.match(/^\/(.*)\.json$/)
 		if (match) {
-			// Convert manifest path to page path
-			// e.g., /about.json -> /about
-			//       /index.json -> /
-			//       /blog/post.json -> /blog/post
-			let pagePath = '/' + match[1]
-			if (pagePath === '/index') {
-				pagePath = '/'
-			}
-
-			// If Phase 2 source resolution is still in flight for this page, wait for it
-			// so the response includes full sourcePath data — avoids the race where the
-			// editor fetches a partial manifest and locks elements it can't yet edit.
-			const inFlight = pendingPhase2.get(pagePath)
-			if (inFlight) {
-				try {
-					await inFlight
-				} catch {
-					// fall through — serve whatever partial manifest we have
-				}
-			}
-
-			const pageData = manifestWriter.getPageManifest(pagePath)
-
-			// Only serve if we have manifest data for this page
-			if (pageData) {
+			// /about.json -> /about, /index.json -> /, /blog/post.json -> /blog/post
+			const pagePath = match[1] === 'index' ? '/' : '/' + match[1]
+			const manifest = await editor.pageManifest(pagePath)
+			if (manifest) {
 				res.setHeader('Content-Type', 'application/json')
 				res.setHeader('Access-Control-Allow-Origin', '*')
 				res.setHeader('Cache-Control', 'no-store')
-				const responseData: Record<string, unknown> = {
-					page: pagePath,
-					entries: pageData.entries,
-					components: pageData.components,
-					componentDefinitions,
-				}
-				if (pageData.collection) {
-					responseData.collection = pageData.collection
-				}
-				if (pageData.seo) {
-					responseData.seo = pageData.seo
-				}
-				res.end(JSON.stringify(responseData, null, 2))
+				res.end(JSON.stringify(manifest, null, 2))
 				return
 			}
 		}
@@ -338,39 +226,15 @@ export function createDevMiddleware(
 			const html = Buffer.concat(chunks!).toString('utf8')
 			const pagePath = normalizePagePath(requestUrl)
 
-			// Phase 1 (fast): mark HTML with CMS IDs and build basic entries
-			markHtmlForDev(html, pagePath, config, idCounter, manifestWriter)
-				.then(({ html: transformed, entries, components, collection, seo, collectionDefinitions: colDefs }) => {
-					// Store basic manifest immediately so editor toolbar has data
-					manifestWriter.addPage(pagePath, entries, components, collection, seo)
-
-					// Send the marked HTML to the browser without waiting for source resolution
+			// Mark the HTML and send it; source resolution continues after the response.
+			editor.processPage(pagePath, html)
+				.then((transformed) => {
 					res.write = originalWrite
 					res.end = originalEnd
 					if (!res.headersSent) {
 						res.removeHeader('content-length')
 					}
 					res.end(transformed, ...args)
-
-					// Phase 2 runs after the HTML is sent so the page renders without waiting on
-					// source resolution. The manifest endpoint awaits this promise (via
-					// pendingPhase2) so it never returns entries with missing sourcePath.
-					const phase2 = enhanceManifestInBackground(
-						pagePath,
-						entries,
-						components,
-						collection,
-						seo,
-						colDefs,
-						config,
-						manifestWriter,
-					)
-					pendingPhase2.set(pagePath, phase2)
-					phase2.finally(() => {
-						if (pendingPhase2.get(pagePath) === phase2) {
-							pendingPhase2.delete(pagePath)
-						}
-					})
 				})
 				.catch((error) => {
 					console.error('[cms] Error transforming HTML:', error)
@@ -388,447 +252,6 @@ export function createDevMiddleware(
 
 		next()
 	})
-}
-
-/**
- * Phase 1 (fast): Mark HTML with CMS IDs and build basic manifest entries.
- * Returns quickly so the page can be sent to the browser without delay.
- * Source resolution and snippet enhancement are deferred to Phase 2.
- */
-async function markHtmlForDev(
-	html: string,
-	pagePath: string,
-	config: Required<CmsMarkerOptions>,
-	idCounter: { value: number },
-	manifestWriter: ManifestWriter,
-) {
-	// Re-index only files that changed since last page load (tracked by Vite watcher).
-	await reindexDirtyFiles()
-
-	// In dev mode, reset counter per page for consistent IDs during HMR
-	let pageCounter = 0
-	const idGenerator = () => `cms-${pageCounter++}`
-
-	// Check if this is a collection page
-	const collectionInfo = await findCollectionSource(pagePath, config.contentDir, manifestWriter.getCollectionDefinitions())
-	const isCollectionPage = !!collectionInfo
-
-	let mdContent: Awaited<ReturnType<typeof parseMarkdownContent>> | undefined
-	if (collectionInfo) {
-		mdContent = await parseMarkdownContent(collectionInfo)
-	}
-
-	const bodyFirstLine = firstNonEmptyLine(mdContent?.body)
-
-	const result = await processHtml(
-		html,
-		pagePath,
-		{
-			attributeName: config.attributeName,
-			includeTags: config.includeTags,
-			excludeTags: config.excludeTags,
-			includeEmptyText: config.includeEmptyText,
-			generateManifest: config.generateManifest,
-			markComponents: config.markComponents,
-			componentDirs: config.componentDirs,
-			skipMarkdownContent: isCollectionPage,
-			collectionInfo: collectionInfo
-				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine, bodyText: mdContent?.body, contentPath: collectionInfo.file }
-				: undefined,
-			seo: config.seo,
-			collectionDefinitions: manifestWriter.getCollectionDefinitions(),
-		},
-		idGenerator,
-	)
-
-	// Build collection entry if this is a collection page
-	let collectionEntry: CollectionEntry | undefined
-	if (collectionInfo && mdContent) {
-		collectionEntry = {
-			collectionName: mdContent.collectionName,
-			collectionSlug: mdContent.collectionSlug,
-			sourcePath: mdContent.file,
-			frontmatter: mdContent.frontmatter,
-			body: mdContent.body,
-			bodyStartLine: mdContent.bodyStartLine,
-			wrapperId: result.collectionWrapperId,
-		}
-	}
-
-	return {
-		html: result.html,
-		entries: result.entries,
-		components: result.components,
-		collection: collectionEntry,
-		seo: result.seo,
-		collectionDefinitions: result.collectionDefinitions,
-	}
-}
-
-/**
- * Phase 2 (background): Resolve source locations, enhance snippets, populate
- * component props, and update the manifest. Runs after the HTML response is sent.
- */
-export async function enhanceManifestInBackground(
-	pagePath: string,
-	entries: Record<string, ManifestEntry>,
-	components: Record<string, ComponentInstance>,
-	collection: CollectionEntry | undefined,
-	seo: PageSeoData | undefined,
-	collectionDefinitions: Record<string, CollectionDefinition> | undefined,
-	config: Required<CmsMarkerOptions>,
-	manifestWriter: ManifestWriter,
-): Promise<void> {
-	try {
-		// Populate component props from source invocations
-		const projectRoot = getProjectRoot()
-		const fileCache = new Map<string, string[] | null>()
-		const readLines = async (filePath: string): Promise<string[] | null> => {
-			if (fileCache.has(filePath)) return fileCache.get(filePath)!
-			try {
-				const content = await fs.readFile(filePath, 'utf-8')
-				const lines = content.split('\n')
-				fileCache.set(filePath, lines)
-				return lines
-			} catch {
-				fileCache.set(filePath, null)
-				return null
-			}
-		}
-
-		for (const comp of Object.values(components)) {
-			if (comp.componentName.startsWith('__array:')) continue
-
-			let found = false
-
-			if (comp.invocationSourcePath) {
-				const filePath = normalizeFilePath(comp.invocationSourcePath)
-				const lines = await readLines(path.resolve(projectRoot, filePath))
-				if (lines) {
-					const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
-					if (invLine >= 0) {
-						comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
-						found = true
-					}
-				}
-			}
-
-			if (!found) {
-				for (const candidate of getPageFileCandidates(pagePath)) {
-					const lines = await readLines(path.resolve(projectRoot, candidate))
-					if (lines) {
-						const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
-						if (invLine >= 0) {
-							comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
-							break
-						}
-					}
-				}
-			}
-		}
-
-		// Resolve spread props for array-rendered components
-		const componentGroups = new Map<string, typeof components[string][]>()
-		for (const comp of Object.values(components)) {
-			const key = `${comp.componentName}::${comp.invocationSourcePath ?? ''}`
-			if (!componentGroups.has(key)) componentGroups.set(key, [])
-			componentGroups.get(key)!.push(comp)
-		}
-
-		for (const group of componentGroups.values()) {
-			if (group.length < 1) continue
-			if (!group.some(c => Object.keys(c.props).length === 0)) continue
-
-			const firstComp = group[0]!
-			const filePath = normalizeFilePath(firstComp.invocationSourcePath ?? firstComp.sourcePath)
-			const lines = await readLines(path.resolve(projectRoot, filePath))
-			if (!lines) continue
-
-			const fmEnd = findFrontmatterEnd(lines)
-
-			let pattern: ReturnType<typeof detectArrayPattern>
-			const parsed = parseInlineArrayName(firstComp.componentName)
-			if (parsed) {
-				const { arrayVarName, mapOccurrence } = parsed
-				const mapRegex = new RegExp(buildMapPattern(arrayVarName))
-				let mapLine = -1
-				let seen = 0
-				for (let i = fmEnd; i < lines.length; i++) {
-					if (mapRegex.test(lines[i]!)) {
-						if (seen === mapOccurrence) {
-							mapLine = i
-							break
-						}
-						seen++
-					}
-				}
-				if (mapLine < 0) continue
-				pattern = { arrayVarName, mapLineIndex: mapLine }
-			} else {
-				const invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
-				if (invLine < 0) continue
-				pattern = detectArrayPattern(lines, invLine)
-			}
-			if (!pattern) continue
-			if (fmEnd === 0) continue
-
-			const frontmatterContent = lines.slice(1, fmEnd - 1).join('\n')
-
-			const sorted = [...group].sort((a, b) => (a.invocationIndex ?? 0) - (b.invocationIndex ?? 0))
-			for (let i = 0; i < sorted.length; i++) {
-				const comp = sorted[i]!
-				if (Object.keys(comp.props).length > 0) continue
-
-				const arrayProps = extractArrayElementProps(frontmatterContent, pattern.arrayVarName, i)
-				if (arrayProps) {
-					comp.props = arrayProps
-				}
-			}
-		}
-
-		const pageFiles = getPageFileCandidates(pagePath)
-		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions, pageFiles)
-
-		// Fallback for entries without sourcePath — search index can still find them
-		for (const entry of Object.values(enhanced)) {
-			if (entry.sourceSnippet || entry.sourcePath) continue
-			if (entry.imageMetadata?.src) {
-				const preferredLocation = entry.sourcePath || entry.imageMetadata.srcOccurrence !== undefined
-					? {
-						file: entry.sourcePath,
-						line: entry.sourceLine,
-						srcOccurrence: entry.imageMetadata.srcOccurrence,
-					}
-					: undefined
-				const loc = await findImageSourceLocation(
-					entry.imageMetadata.src,
-					entry.imageMetadata.srcSet,
-					pageFiles,
-					preferredLocation,
-				)
-				if (loc) {
-					entry.sourcePath = loc.file
-					entry.sourceLine = loc.line
-					entry.sourceSnippet = loc.snippet
-				}
-			} else if (entry.text && entry.tag) {
-				const loc = await findSourceLocation(entry.text, entry.tag, pageFiles)
-				if (loc) {
-					entry.sourcePath = loc.file
-					entry.sourceLine = loc.line
-					entry.sourceSnippet = loc.snippet
-					if (loc.variableName) entry.variableName = loc.variableName
-				}
-			}
-		}
-
-		// Update the manifest with fully-resolved entries and component props
-		manifestWriter.addPage(pagePath, enhanced, components, collection, seo)
-	} catch (error) {
-		console.error('[cms] Background enhancement failed:', error)
-	}
-}
-
-/** Page file extensions recognized by Astro */
-const PAGE_EXTENSIONS = new Set(['.astro', '.md', '.mdx'])
-
-/**
- * Scan src/pages directory to discover all static page routes.
- * Skips dynamic routes (files with [ in the name) and API routes (.ts/.js).
- */
-async function discoverPagesFromFilesystem(): Promise<string[]> {
-	const projectRoot = getProjectRoot()
-	const pagesDir = path.join(projectRoot, 'src', 'pages')
-
-	try {
-		await fs.access(pagesDir)
-	} catch {
-		return []
-	}
-
-	const pages: string[] = []
-
-	async function walk(dir: string, urlPrefix: string) {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
-		for (const entry of entries) {
-			if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue
-
-			const fullPath = path.join(dir, entry.name)
-			if (entry.isDirectory()) {
-				// Skip directories with dynamic segments
-				if (entry.name.includes('[')) continue
-				await walk(fullPath, `${urlPrefix}${entry.name}/`)
-			} else {
-				const ext = path.extname(entry.name)
-				if (!PAGE_EXTENSIONS.has(ext)) continue
-				// Skip dynamic routes
-				if (entry.name.includes('[')) continue
-
-				const baseName = path.basename(entry.name, ext)
-				const pagePath = baseName === 'index'
-					? urlPrefix.replace(/\/$/, '') || '/'
-					: `${urlPrefix}${baseName}`
-				pages.push(pagePath)
-			}
-		}
-	}
-
-	await walk(pagesDir, '/')
-	return pages
-}
-
-/**
- * A collection's route info: a usable static URL prefix (e.g. '/blog/'), or
- * `true` when the collection is confirmed routed by some page but no static
- * prefix can be fabricated because an ancestor path segment is itself dynamic
- * (e.g. `[topic]/[slug].astro`) — callers must resolve those entries' pathnames
- * from their own declared URL instead of `${prefix}${slug}`.
- */
-type CollectionRouteInfo = string | true
-
-/** Cached result of collection route discovery; invalidated by file watcher */
-let collectionRoutesCache: Map<string, CollectionRouteInfo> | null = null
-
-/** Invalidate the cached collection routes (called from vite-plugin when route files change) */
-export function invalidateCollectionRoutesCache() {
-	collectionRoutesCache = null
-}
-
-/**
- * Discover which collections are rendered as pages by scanning src/pages for
- * dynamic route files (e.g. [slug].astro) that call getCollection(). Returns a
- * map from collection name to its route info (see {@link CollectionRouteInfo}).
- * Recurses into dynamic directories too (e.g. `[topic]/[slug].astro`) so those
- * collections are still recognized as routed, just without a static prefix.
- * Result is cached after first call.
- */
-export async function discoverCollectionRoutes(): Promise<Map<string, CollectionRouteInfo>> {
-	if (collectionRoutesCache) return collectionRoutesCache
-
-	const projectRoot = getProjectRoot()
-	const pagesDir = path.join(projectRoot, 'src', 'pages')
-	const routes = new Map<string, CollectionRouteInfo>()
-
-	try {
-		await fs.access(pagesDir)
-	} catch {
-		collectionRoutesCache = routes
-		return routes
-	}
-
-	async function walk(dir: string, urlPrefix: string, dynamicAncestor: boolean) {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
-		for (const entry of entries) {
-			if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue
-
-			const fullPath = path.join(dir, entry.name)
-			if (entry.isDirectory()) {
-				await walk(fullPath, `${urlPrefix}${entry.name}/`, dynamicAncestor || entry.name.includes('['))
-			} else {
-				const ext = path.extname(entry.name)
-				if (!PAGE_EXTENSIONS.has(ext)) continue
-				// Only interested in dynamic route files
-				if (!entry.name.includes('[')) continue
-
-				try {
-					const content = await fs.readFile(fullPath, 'utf-8')
-					const { staticPaths, all } = scanRouteCollections(content)
-					const names = staticPaths.length > 0 ? staticPaths : all.slice(0, 1)
-					for (const name of names) {
-						// A static prefix is only usable when no ancestor directory is
-						// itself dynamic — otherwise record "routed, no prefix" so the
-						// caller still trusts declared URLs without fabricating one.
-						routes.set(name, dynamicAncestor ? true : urlPrefix)
-					}
-				} catch { /* skip unreadable files */ }
-			}
-		}
-	}
-
-	await walk(pagesDir, '/', false)
-	collectionRoutesCache = routes
-	return routes
-}
-
-/** One page of the dev manifest's `pages` list, as contributed by a collection entry. */
-interface EntryPage {
-	pathname: string
-	title?: string
-}
-
-/**
- * Project the scanned collection definitions for the dev manifest response: resolve each
- * entry's page URL, and report which pages those entries contribute to the manifest's
- * `pages` list. Pathnames are pre-populated so the collections browser can redirect to a
- * detail page without visiting it first. The entry's own declared URL
- * (urlPath/permalink/…) is preferred over the discovered static route prefix, because it
- * is correct even when the collection is served under a *dynamic* prefix (e.g.
- * `[topic]/[slug]`) that `discoverCollectionRoutes` can't map to a static one.
- *
- * Definitions are copied rather than mutated so heuristic pathnames don't persist if the
- * route file is later removed.
- */
-export function buildCollectionManifestPages(
-	collectionDefs: Record<string, CollectionDefinition>,
-	collectionRoutes: Map<string, CollectionRouteInfo>,
-): { collectionDefinitions: Record<string, CollectionDefinition>; entryPages: EntryPage[] } {
-	const collectionDefinitions: Record<string, CollectionDefinition> = {}
-	const entryPages: EntryPage[] = []
-
-	for (const [name, def] of Object.entries(collectionDefs)) {
-		const routeInfo = collectionRoutes.get(def.name)
-		const routePrefix = typeof routeInfo === 'string' ? routeInfo : undefined
-		// Whether any page route renders this collection. The heuristic fallbacks below (a
-		// frontmatter-declared site path, or the discovered route prefix) only apply to
-		// routed collections — otherwise a declared `cms.pathname` spec whose fields are
-		// missing for an entry would fabricate a URL from an unrelated frontmatter field
-		// (e.g. a data collection's own `url`).
-		const routed = routeInfo !== undefined
-
-		// A `fragment` collection is rendered inside other pages and has no page of its own,
-		// so every source below would fabricate a URL that 404s — including `entry.pathname`,
-		// which `addPage()` set to whichever page happened to render the fragment. It gets
-		// `previewOf` instead, which is a preview target and not a URL of its own.
-		// Otherwise: a declarative `cms.pathname` rule is the highest-priority source — it wins
-		// over the rendered-route pathname. resolvePathnameFromSpec is the same resolver
-		// manifest-writer uses at build, so dev-preview and the built manifest agree.
-		const resolvePathname = (entry: CollectionEntryInfo): string | undefined =>
-			def.fragment
-				? undefined
-				: resolvePathnameFromSpec(def, entry.data)
-					?? entry.pathname
-					?? (routed ? declaredSitePathFromData(entry.data) : undefined)
-					?? (routePrefix ? `${routePrefix}${entry.slug}` : undefined)
-
-		// Only patch entries whose resolved pathname/preview target differs from what they
-		// already have, so unchanged definitions keep their identity.
-		const previewPathname = def.fragment ? def.previewOf : undefined
-		const patchedEntries = def.entries?.map(e => {
-			const pathname = resolvePathname(e)
-			if (pathname === e.pathname && previewPathname === e.previewPathname) return e
-			const { pathname: _oldPathname, previewPathname: _oldPreview, ...rest } = e
-			const patched: CollectionEntryInfo = { ...rest }
-			if (pathname) patched.pathname = pathname
-			if (previewPathname) patched.previewPathname = previewPathname
-			return patched
-		})
-		const changed = patchedEntries?.some((e, i) => e !== def.entries![i]) ?? false
-		const projected = changed ? { ...def, entries: patchedEntries! } : def
-		collectionDefinitions[name] = projected
-
-		// A fragment collection contributes no pages: its `previewOf` page belongs to
-		// whatever really renders it, and an entry must never shadow that page in the
-		// manifest. Entries of a fragment collection have no pathname anyway — the `continue`
-		// keeps that a property of the collection rather than of the resolver.
-		if (projected.fragment) continue
-		for (const entry of projected.entries ?? []) {
-			if (entry.pathname) {
-				entryPages.push({ pathname: entry.pathname, title: entry.title })
-			}
-		}
-	}
-
-	return { collectionDefinitions, entryPages }
 }
 
 function mediaMimeFromExt(ext: string): string {

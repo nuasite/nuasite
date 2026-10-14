@@ -4,7 +4,7 @@ import {
 	discoverCollectionRoutes,
 	enhanceManifestInBackground,
 	invalidateCollectionRoutesCache,
-} from '../../src/dev-middleware'
+} from '../../src/editor-service'
 import { ManifestWriter } from '../../src/manifest-writer'
 import { clearSourceFinderCache } from '../../src/source-finder'
 import type { CmsMarkerOptions, CollectionDefinition, ManifestEntry } from '../../src/types'

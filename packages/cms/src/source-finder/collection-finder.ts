@@ -1,9 +1,9 @@
 import { resolvePathnameFromSpec } from '@nuasite/cms-core'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument } from 'yaml'
 
 import { getProjectRoot } from '../config'
+import { currentProjectContext, projectFiles } from '../project/context'
 import { scanCollections } from '../scan-cache'
 import type { CollectionDefinition } from '../types'
 import { getCollectionTextIndex, getDeclaredUrlIndexCache, getMarkdownFileCache, setCollectionTextIndex } from './cache'
@@ -14,8 +14,6 @@ import type { CollectionInfo, MarkdownContent, SourceLocation } from './types'
 // Collection Text Index — pre-built reverse index for fast text→source lookups
 // ============================================================================
 
-let collectionTextIndexPromise: Promise<void> | null = null
-
 /**
  * Build a reverse index of all text values in collection data/frontmatter files.
  * After this call, `lookupCollectionText()` returns results in O(1).
@@ -24,12 +22,14 @@ export async function buildCollectionTextIndex(
 	collections: Record<string, CollectionDefinition>,
 ): Promise<void> {
 	if (getCollectionTextIndex()) return
-	if (collectionTextIndexPromise) return collectionTextIndexPromise
-	collectionTextIndexPromise = doBuildCollectionTextIndex(collections)
+	const state = currentProjectContext().state
+	if (state.collectionTextIndexBuild) return state.collectionTextIndexBuild
+	const build = doBuildCollectionTextIndex(collections)
+	state.collectionTextIndexBuild = build
 	try {
-		await collectionTextIndexPromise
+		await build
 	} finally {
-		collectionTextIndexPromise = null
+		state.collectionTextIndexBuild = null
 	}
 }
 
@@ -204,7 +204,7 @@ async function getCachedMarkdownFile(filePath: string): Promise<{ content: strin
 	if (cached) return cached
 
 	try {
-		const content = await fs.readFile(filePath, 'utf-8')
+		const content = await projectFiles().readFile(filePath)
 		const lines = content.split('\n')
 		const entry = { content, lines }
 		cache.set(filePath, entry)
@@ -277,7 +277,7 @@ export async function findCollectionSource(
 	const contentPath = path.join(getProjectRoot(), contentDir)
 
 	try {
-		await fs.access(contentPath)
+		await projectFiles().access(contentPath)
 	} catch {
 		return undefined
 	}
@@ -285,7 +285,7 @@ export async function findCollectionSource(
 	// List all collection directories (skip _ and . prefixed)
 	let collectionDirs: string[]
 	try {
-		const entries = await fs.readdir(contentPath, { withFileTypes: true })
+		const entries = await projectFiles().readdir(contentPath)
 		// Sorted so match/resolution order is deterministic across runs and
 		// platforms, not dependent on readdir's unspecified enumeration order.
 		collectionDirs = entries
@@ -594,7 +594,7 @@ async function buildDeclaredUrlIndex(collectionPathAbs: string): Promise<Map<str
 	const index = new Map<string, string>()
 	let dirEntries
 	try {
-		dirEntries = await fs.readdir(collectionPathAbs, { withFileTypes: true })
+		dirEntries = await projectFiles().readdir(collectionPathAbs)
 	} catch {
 		return index
 	}
@@ -639,7 +639,7 @@ async function findMarkdownFile(collectionPath: string, slug: string): Promise<s
 
 	for (const p of directPaths) {
 		try {
-			await fs.access(p)
+			await projectFiles().access(p)
 			return p
 		} catch {
 			// File doesn't exist, continue
@@ -657,7 +657,7 @@ async function findMarkdownFile(collectionPath: string, slug: string): Promise<s
 		]
 		for (const p of nestedPaths) {
 			try {
-				await fs.access(p)
+				await projectFiles().access(p)
 				return p
 			} catch {
 				// File doesn't exist, continue
@@ -673,7 +673,7 @@ async function findMarkdownFile(collectionPath: string, slug: string): Promise<s
 
 	for (const p of indexPaths) {
 		try {
-			await fs.access(p)
+			await projectFiles().access(p)
 			return p
 		} catch {
 			// File doesn't exist, continue

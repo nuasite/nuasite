@@ -1,4 +1,5 @@
 import {
+	CmsCommitConflictError,
 	type CmsCore,
 	type CmsFileSystem,
 	isUnsafeFolder,
@@ -631,27 +632,43 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		const existing = await core.getEntry(collection, slug)
 		if (!existing) return error('not_found', `Entry not found: ${collection}/${slug}`)
 		const sourcePath = existing.sourcePath
+		const existingFrontmatter = existing.frontmatter
+
+		/** The 409 with the entry as it is now, so the client can offer "use server" vs "use ours". */
+		async function conflictResponse(serverHash: string): Promise<Response> {
+			const current = await core.getEntry(collection, slug)
+			const conflict: ConflictResponse = {
+				code: 'conflict',
+				serverHash,
+				serverFrontmatter: current?.frontmatter ?? existingFrontmatter,
+			}
+			if (current && current.content !== '') conflict.serverBody = current.content
+			return json(conflict, STATUS_BY_CODE.conflict)
+		}
 
 		return mutex.runExclusive(sourcePath, async () => {
 			// Re-hash under the lock so a concurrent writer cannot slip in between.
 			const serverHash = await hashSource(fs, sourcePath)
 			if (body.baseHash !== undefined && serverHash !== null && body.baseHash !== serverHash) {
-				const current = await core.getEntry(collection, slug)
-				const conflict: ConflictResponse = {
-					code: 'conflict',
-					serverHash,
-					serverFrontmatter: current?.frontmatter ?? existing.frontmatter,
-				}
-				if (current && current.content !== '') conflict.serverBody = current.content
-				return json(conflict, STATUS_BY_CODE.conflict)
+				return conflictResponse(serverHash)
 			}
 
-			const result = await core.updateEntry({
-				collection,
-				slug,
-				frontmatter: body.frontmatter,
-				body: body.body,
-			})
+			let result: MutationResult
+			try {
+				result = await core.updateEntry({
+					collection,
+					slug,
+					frontmatter: body.frontmatter,
+					body: body.body,
+				})
+			} catch (cause) {
+				// The core's commit found the file changed by a writer outside this server's lock.
+				if (!(cause instanceof CmsCommitConflictError)) throw cause
+				const currentHash = await hashSource(fs, sourcePath)
+				// Removed meanwhile: there is no server version to offer, only the plain conflict.
+				if (currentHash === null) throw cause
+				return conflictResponse(currentHash)
+			}
 			if (!result.success) return mutationResponse(result)
 
 			const newHash = await hashSource(fs, result.sourcePath ?? sourcePath)
@@ -685,6 +702,9 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 
 		try {
 			return await route(method, segments, req, url)
+		} catch (cause) {
+			if (cause instanceof CmsCommitConflictError) return error('conflict', cause.message)
+			throw cause
 		} finally {
 			// Any write may change what the shared scans read.
 			if (method !== 'GET') {

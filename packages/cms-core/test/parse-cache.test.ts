@@ -33,6 +33,9 @@ function makeCountingFs(initialMtime: number): {
 		writeFile() {
 			throw new Error('not used')
 		},
+		writeBytes() {
+			throw new Error('not used')
+		},
 		rename() {
 			throw new Error('not used')
 		},

@@ -1,8 +1,8 @@
 import { parse as parseBabel } from '@babel/parser'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
 import { getErrorCollector } from './error-collector'
+import { projectFiles } from './project/context'
 import type { ComponentDefinition, ComponentProp } from './types'
 
 /**
@@ -48,7 +48,7 @@ export class ComponentRegistry {
 	 * Scan a directory recursively for .astro files
 	 */
 	private async scanDirectory(dir: string, relativePath: string): Promise<void> {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)
@@ -67,7 +67,7 @@ export class ComponentRegistry {
 	 */
 	private async parseComponent(filePath: string, relativePath: string): Promise<void> {
 		try {
-			const content = await fs.readFile(filePath, 'utf-8')
+			const content = await projectFiles().readFile(filePath)
 			const componentName = path.basename(filePath, '.astro')
 
 			const props = await this.extractProps(content)

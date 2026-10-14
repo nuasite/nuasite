@@ -21,8 +21,37 @@
 	"exports": {
 		".": {
 			"types": "./src/index.ts",
+			"workerd": "./src/fields.ts",
 			"import": "./src/index.ts",
 			"default": "./src/index.ts"
+		},
+		"./fields": {
+			"types": "./src/fields.ts",
+			"import": "./src/fields.ts",
+			"default": "./src/fields.ts"
+		},
+		"./remark": {
+			"types": "./src/markdown/remark.ts",
+			"import": "./src/markdown/remark.ts",
+			"default": "./src/markdown/remark.ts"
+		},
+		"./rehype": {
+			"types": "./src/markdown/rehype.ts",
+			"import": "./src/markdown/rehype.ts",
+			"default": "./src/markdown/rehype.ts"
+		},
+		"./editor-host": {
+			"types": "./src/editor-host.ts",
+			"import": "./src/editor-host.ts",
+			"default": "./src/editor-host.ts"
+		},
+		"./package.json": "./package.json"
+	},
+	"imports": {
+		"#project-context-default": {
+			"types": "./src/project/default-node.ts",
+			"workerd": "./src/project/default-none.ts",
+			"default": "./src/project/default-node.ts"
 		}
 	},
 	"dependencies": {
@@ -69,7 +98,10 @@
 		"prosemirror-state": "catalog:editor",
 		"prosemirror-transform": "catalog:editor",
 		"prosemirror-view": "catalog:editor",
-		"tailwind-merge": "catalog:editor"
+		"tailwind-merge": "catalog:editor",
+		"remark-parse": "catalog:editor",
+		"remark-rehype": "^11.1.2",
+		"rehype-stringify": "^10.0.1"
 	},
 	"peerDependencies": {
 		"astro": "catalog:astro",
@@ -108,5 +140,8 @@
 		"devtools",
 		"nuasite",
 		"visual-editing"
-	]
+	],
+	"nuasite": {
+		"portableApi": 1
+	}
 }

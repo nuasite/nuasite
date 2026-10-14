@@ -1,10 +1,10 @@
 import type { ComponentNode, ElementNode, Node as AstroNode, TextNode } from '@astrojs/compiler/types'
 import { parse as parseBabel } from '@babel/parser'
 import type { Expression } from '@babel/types'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
+import { currentProjectContext, projectFiles } from '../project/context'
 import { escapeRegex } from '../utils'
 import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
@@ -48,7 +48,7 @@ export async function collectAstroFiles(dir: string): Promise<string[]> {
 	const results: string[] = []
 
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		await Promise.all(entries.map(async (entry) => {
 			const fullPath = path.join(dir, entry.name)
@@ -71,9 +71,6 @@ export async function collectAstroFiles(dir: string): Promise<string[]> {
 // Index Initialization
 // ============================================================================
 
-/** Shared promise so concurrent callers wait for the same initialization */
-let initPromise: Promise<void> | null = null
-
 /**
  * Initialize search index by pre-scanning all source files.
  * This is much faster than searching per-entry.
@@ -81,12 +78,14 @@ let initPromise: Promise<void> | null = null
  */
 export async function initializeSearchIndex(): Promise<void> {
 	if (isSearchIndexInitialized()) return
-	if (initPromise) return initPromise
-	initPromise = doInitializeSearchIndex()
+	const state = currentProjectContext().state
+	if (state.searchIndexBuild) return state.searchIndexBuild
+	const build = doInitializeSearchIndex()
+	state.searchIndexBuild = build
 	try {
-		await initPromise
+		await build
 	} finally {
-		initPromise = null
+		state.searchIndexBuild = null
 	}
 }
 
@@ -109,23 +108,16 @@ async function doInitializeSearchIndex(): Promise<void> {
 		}
 	}
 
-	// Parse all files in parallel and build indexes
-	await Promise.all(allFiles.map(async (filePath) => {
-		try {
-			const cached = await getCachedParsedFile(filePath)
-			if (!cached) return
-
-			const relFile = path.relative(getProjectRoot(), filePath)
-
-			// Index all text content from this file
-			indexFileContent(cached, relFile)
-
-			// Index all images from this file
-			indexFileImages(cached, relFile)
-		} catch {
-			// Skip files that fail to parse
-		}
-	}))
+	// Parse all files in parallel, then index them in path order: lookups that take the first
+	// of several equal matches must not depend on which parse finished first.
+	const parsed = await Promise.all(allFiles.map(filePath => getCachedParsedFile(filePath).catch(() => null)))
+	allFiles.forEach((filePath, index) => {
+		const cached = parsed[index]
+		if (!cached) return
+		const relFile = path.relative(getProjectRoot(), filePath)
+		indexFileContent(cached, relFile)
+		indexFileImages(cached, relFile)
+	})
 
 	// Index image-like values from content collection data files (JSON/YAML)
 	await indexContentCollectionImages()
@@ -141,9 +133,6 @@ async function doInitializeSearchIndex(): Promise<void> {
 // Incremental Re-indexing
 // ============================================================================
 
-/** Shared promise so concurrent callers wait for the same re-indexing */
-let reindexPromise: Promise<void> | null = null
-
 /**
  * Re-index only files that changed since the last indexing.
  * Much faster than a full rebuild — only re-parses dirty files.
@@ -154,12 +143,14 @@ let reindexPromise: Promise<void> | null = null
 export async function reindexDirtyFiles(): Promise<void> {
 	const dirty = getDirtyFiles()
 	if (dirty.size === 0) return
-	if (reindexPromise) return reindexPromise
-	reindexPromise = doReindexDirtyFiles()
+	const state = currentProjectContext().state
+	if (state.reindex) return state.reindex
+	const reindex = doReindexDirtyFiles()
+	state.reindex = reindex
 	try {
-		await reindexPromise
+		await reindex
 	} finally {
-		reindexPromise = null
+		state.reindex = null
 	}
 }
 
@@ -196,7 +187,7 @@ async function doReindexDirtyFiles(): Promise<void> {
 		} else if (/\.(json|ya?ml|mdx?)$/.test(absPath)) {
 			// Content collection data file — re-index images from it
 			try {
-				const content = await fs.readFile(absPath, 'utf-8')
+				const content = await projectFiles().readFile(absPath)
 				if (absPath.endsWith('.json')) {
 					indexJsonImages(content, relFile)
 					if (isTranslationFilePath(absPath)) {
@@ -898,7 +889,7 @@ const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?)$/i
  */
 async function indexContentCollectionImages(): Promise<void> {
 	const contentDir = path.join(getProjectRoot(), 'src', 'content')
-	const entries = await fs.readdir(contentDir, { withFileTypes: true }).catch(() => null)
+	const entries = await projectFiles().readdir(contentDir).catch(() => null)
 	if (!entries) return // No content directory
 
 	const dataFiles: string[] = []
@@ -910,7 +901,7 @@ async function indexContentCollectionImages(): Promise<void> {
 
 	await Promise.all(dataFiles.map(async (filePath) => {
 		try {
-			const content = await fs.readFile(filePath, 'utf-8')
+			const content = await projectFiles().readFile(filePath)
 			const relFile = path.relative(getProjectRoot(), filePath)
 
 			if (filePath.endsWith('.json')) {
@@ -930,7 +921,7 @@ const DATA_FILE_PATTERN = /\.(json|ya?ml|mdx?)$/
 
 async function collectDataFiles(dir: string, results: string[]): Promise<void> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 		await Promise.all(entries.map(async (entry) => {
 			const fullPath = path.join(dir, entry.name)
 			if (entry.isDirectory()) {
@@ -1028,7 +1019,7 @@ async function indexTranslationFiles(): Promise<void> {
 
 	await Promise.all(translationFiles.map(async (filePath) => {
 		try {
-			const content = await fs.readFile(filePath, 'utf-8')
+			const content = await projectFiles().readFile(filePath)
 			const relFile = path.relative(getProjectRoot(), filePath)
 			indexJsonTextValues(content, relFile)
 		} catch {
@@ -1043,7 +1034,7 @@ async function indexTranslationFiles(): Promise<void> {
  */
 async function collectTranslationFiles(dir: string, results: string[]): Promise<void> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 		await Promise.all(entries.map(async (entry) => {
 			const fullPath = path.join(dir, entry.name)
 			if (entry.isDirectory()) {
@@ -1061,7 +1052,7 @@ async function collectTranslationFiles(dir: string, results: string[]): Promise<
 
 async function collectJsonFilesRecursive(dir: string, results: string[]): Promise<void> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 		await Promise.all(entries.map(async (entry) => {
 			const fullPath = path.join(dir, entry.name)
 			if (entry.isDirectory()) {
@@ -1129,7 +1120,7 @@ async function searchDirForStringLiteral(
 	tag: string,
 ): Promise<{ file: string; line: number; lines: string[] } | undefined> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)
 			if (entry.isDirectory()) {
@@ -1286,12 +1277,13 @@ function imageEntryToLocation(entry: ImageIndexEntry): SourceLocation {
  */
 interface RankedMatches {
 	page?: SourceLocation
+	rendered?: SourceLocation
 	other?: SourceLocation
 }
 
 /** Best candidate found so far, in priority order. */
 function bestMatch(matches: RankedMatches): SourceLocation | undefined {
-	return matches.page ?? matches.other
+	return matches.page ?? matches.rendered ?? matches.other
 }
 
 function rankAndStash(
@@ -1299,9 +1291,11 @@ function rankAndStash(
 	result: SourceLocation,
 	pageFiles: readonly string[] | undefined,
 	matches: RankedMatches,
+	renderedFiles?: readonly string[],
 ): SourceLocation | undefined {
 	if (isCollectionFile(file)) return result
 	if (pageFiles?.includes(file)) matches.page ??= result
+	else if (renderedFiles?.includes(file)) matches.rendered ??= result
 	else matches.other ??= result
 	return undefined
 }
@@ -1365,7 +1359,7 @@ export function toProjectRelativePath(file: string): string {
 /**
  * Fast text lookup using pre-built index.
  *
- * Priority order: collection data files > entries in `pageFiles` > anything
+ * Priority order: collection data files > entries in `pageFiles` > entries in `renderedFiles` > anything
  * else. Translation-tag (i18n dictionary) hits beat non-collection template
  * matches — a dictionary entry is an authoritative translatable signal
  * whereas a same-text template hit is often coincidental.
@@ -1374,6 +1368,7 @@ export function findInTextIndex(
 	textContent: string,
 	tag: string,
 	pageFiles?: readonly string[],
+	renderedFiles?: readonly string[],
 ): SourceLocation | undefined {
 	const normalizedSearch = normalizeText(textContent)
 	const tagLower = tag.toLowerCase()
@@ -1384,7 +1379,7 @@ export function findInTextIndex(
 	for (const entry of index) {
 		if (entry.normalizedText !== normalizedSearch) continue
 		if (entry.tag === tagLower) {
-			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches)
+			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches, renderedFiles)
 			if (collectionHit) return collectionHit
 		} else if (entry.tag === TRANSLATION_TAG_MARKER) {
 			translationHit ??= textEntryToLocation(entry)
@@ -1399,7 +1394,7 @@ export function findInTextIndex(
 		for (const entry of index) {
 			if (entry.tag !== tagLower) continue
 			if (!entry.normalizedText.includes(textPreview)) continue
-			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches)
+			const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches, renderedFiles)
 			if (collectionHit) return collectionHit
 		}
 		const partial = bestMatch(matches)
@@ -1408,7 +1403,7 @@ export function findInTextIndex(
 
 	for (const entry of index) {
 		if (entry.normalizedText !== normalizedSearch) continue
-		const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches)
+		const collectionHit = rankAndStash(entry.file, textEntryToLocation(entry), pageFiles, matches, renderedFiles)
 		if (collectionHit) return collectionHit
 	}
 

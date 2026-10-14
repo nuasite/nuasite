@@ -1,9 +1,8 @@
-import { parse as parseAstro } from '@astrojs/compiler'
 import type { Node as AstroNode } from '@astrojs/compiler/types'
 import { parse as parseBabel } from '@babel/parser'
-import fs from 'node:fs/promises'
 
 import { getErrorCollector } from '../error-collector'
+import { currentProjectContext, projectFiles } from '../project/context'
 import { getParsedFileCache } from './cache'
 import type { BabelFile, CachedParsedFile, ParsedAstroFile } from './types'
 import { extractImports, extractPropAliases, extractVariableDefinitions } from './variable-extraction'
@@ -16,7 +15,7 @@ import { extractImports, extractPropAliases, extractVariableDefinitions } from '
  * Parse an Astro file and return both template AST and frontmatter content
  */
 export async function parseAstroFile(content: string): Promise<ParsedAstroFile> {
-	const result = await parseAstro(content, { position: true })
+	const result = await currentProjectContext().parseAstro(content, { position: true })
 
 	// Find frontmatter node
 	let frontmatterContent: string | null = null
@@ -65,9 +64,6 @@ export function parseFrontmatter(content: string, filePath?: string): BabelFile 
 // Cached File Access
 // ============================================================================
 
-/** Deduplicates concurrent parsing requests for the same file */
-const inFlightParsing = new Map<string, Promise<CachedParsedFile | null>>()
-
 /**
  * Get a cached parsed file, parsing it if not cached.
  * Concurrent requests for the same file are deduplicated to avoid
@@ -79,6 +75,7 @@ export async function getCachedParsedFile(filePath: string): Promise<CachedParse
 	if (cached) return cached
 
 	// Deduplicate concurrent requests for the same file
+	const inFlightParsing = currentProjectContext().state.parsing
 	const inFlight = inFlightParsing.get(filePath)
 	if (inFlight) return inFlight
 
@@ -97,7 +94,7 @@ async function parseAndCacheFile(
 	cache: Map<string, CachedParsedFile>,
 ): Promise<CachedParsedFile | null> {
 	try {
-		const content = await fs.readFile(filePath, 'utf-8')
+		const content = await projectFiles().readFile(filePath)
 		const lines = content.split('\n')
 
 		// Only parse .astro files with AST

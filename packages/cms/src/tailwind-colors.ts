@@ -1,7 +1,7 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { DEFAULT_TAILWIND_COLORS, SPECIAL_COLORS } from './color-patterns'
 import { getProjectRoot } from './config'
+import { projectFiles } from './project/context'
 import type { AvailableColors, AvailableTextStyles, TailwindColor, TextStyleValue } from './types'
 
 // Re-export all shared detection logic from color-patterns
@@ -399,7 +399,7 @@ export async function parseTailwindConfig(projectRoot: string = getProjectRoot()
 	for (const cssFile of cssFiles) {
 		const fullPath = path.join(projectRoot, cssFile)
 		try {
-			const content = await fs.readFile(fullPath, 'utf-8')
+			const content = await projectFiles().readFile(fullPath)
 			customColors = extractColorsFromCss(content)
 			if (customColors.length > 0) {
 				break
@@ -504,7 +504,7 @@ export async function parseTextStyles(projectRoot: string = getProjectRoot()): P
 	for (const cssFile of cssFiles) {
 		const fullPath = path.join(projectRoot, cssFile)
 		try {
-			const content = await fs.readFile(fullPath, 'utf-8')
+			const content = await projectFiles().readFile(fullPath)
 			customTextStyles = extractTextStylesFromCss(content)
 			// If we found any custom styles, use this file
 			if (Object.values(customTextStyles).some(arr => arr && arr.length > 0)) {

@@ -1,9 +1,9 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 
 import { isHugoStyleEntry } from '../astro-image-paths'
 import { getProjectRoot } from '../config'
+import { projectFiles } from '../project/context'
 import type { Attribute, CollectionDefinition, ManifestEntry } from '../types'
 import { escapeRegex, generateSourceHash, resolveSourcePath } from '../utils'
 import { buildDefinitionPath } from './ast-extractors'
@@ -27,7 +27,8 @@ import {
 	isTranslationFilePath,
 	toProjectRelativePath,
 } from './search-index'
-import type { CachedParsedFile, ImageMatch, SourceLocation } from './types'
+import { projectRelativeSource } from './source-files'
+import type { CachedParsedFile, ImageMatch, PageSources, SourceLocation } from './types'
 
 // ============================================================================
 // Text Normalization
@@ -527,7 +528,7 @@ export async function extractSourceSnippet(
 	try {
 		const filePath = resolveSourcePath(sourceFile)
 
-		const content = await fs.readFile(filePath, 'utf-8')
+		const content = await projectFiles().readFile(filePath)
 		const lines = content.split('\n')
 
 		// Extract the complete tag snippet (including wrapper element)
@@ -674,6 +675,22 @@ function resolveTranslationKeyFromSnippet(
 }
 
 /**
+ * Files to search first for where text rendered in `sourcePath` comes from: the files that
+ * invoke that component on this page, then every other file the page is rendered from. Another
+ * component with the same text is then only a candidate when the page has none.
+ */
+function preferredSourcesFor(sourcePath: string | undefined, page: PageSources | undefined): readonly string[] | undefined {
+	if (!page) return undefined
+	const own = sourcePath ? projectRelativeSource(sourcePath) : undefined
+	const invokers = Object.values(page.components).flatMap(component =>
+		component.invocationSourcePath && projectRelativeSource(component.sourcePath) === own
+			? [projectRelativeSource(component.invocationSourcePath)]
+			: []
+	)
+	return [...new Set([...invokers, ...page.renderedFiles])]
+}
+
+/**
  * Enhance manifest entries with actual source snippets from source files.
  * This reads the source files and extracts the innerHTML at the specified locations.
  * For images, it finds the correct line containing the src attribute.
@@ -685,6 +702,7 @@ export async function enhanceManifestWithSourceSnippets(
 	entries: Record<string, ManifestEntry>,
 	collectionDefinitions?: Record<string, CollectionDefinition>,
 	pageFiles?: readonly string[],
+	page?: PageSources,
 ): Promise<Record<string, ManifestEntry>> {
 	// Ensure the search index is ready (returns immediately if already built,
 	// otherwise waits for the in-flight initialization or triggers a new one).
@@ -754,7 +772,7 @@ export async function enhanceManifestWithSourceSnippets(
 	const readFileWithCache = async (filePath: string): Promise<{ content: string; lines: string[] }> => {
 		const cached = fileContentCache.get(filePath)
 		if (cached) return cached
-		const content = await fs.readFile(filePath, 'utf-8')
+		const content = await projectFiles().readFile(filePath)
 		const lines = content.split('\n')
 		const result = { content, lines }
 		fileContentCache.set(filePath, result)
@@ -933,7 +951,7 @@ export async function enhanceManifestWithSourceSnippets(
 				? findVariableHitInFile(trimmedEntryText, entry.tag, entry.sourcePath)
 				: undefined
 			const noCoords = !entry.sourcePath || !entry.sourceLine
-			const winner = sameFileHit ?? (noCoords ? findInTextIndex(trimmedEntryText, entry.tag, pageFiles) : undefined)
+			const winner = sameFileHit ?? (noCoords ? findInTextIndex(trimmedEntryText, entry.tag, pageFiles, page?.renderedFiles) : undefined)
 
 			if (winner) {
 				if (isTranslationFilePath(winner.file)) {
@@ -1040,6 +1058,7 @@ export async function enhanceManifestWithSourceSnippets(
 					// Cross-file search for prop-driven dynamic text
 					// When text comes from a prop (e.g., {title} where title = Astro.props.title),
 					// trace it to where the prop value is actually defined in a parent component
+					const preferredSources = preferredSourcesFor(entry.sourcePath, page)
 					if (cached) {
 						// Extract expression variables from the snippet to find props
 						const exprPattern = /\{(\w+(?:\.\w+|\[\d+\])*)\}/g
@@ -1055,6 +1074,8 @@ export async function enhanceManifestWithSourceSnippets(
 									propName,
 									exprPath,
 									entry.text!,
+									0,
+									preferredSources,
 								)
 								if (result) {
 									const propSnippet = result.snippet ?? trimmedText
@@ -1076,31 +1097,21 @@ export async function enhanceManifestWithSourceSnippets(
 
 						// Search for quoted prop values in parent components
 						// (handles <Component title="literal text" />)
-						const srcDir = path.join(getProjectRoot(), 'src')
-						for (const searchDir of ['pages', 'components', 'layouts']) {
-							try {
-								const result = await searchForPropInParents(
-									path.join(srcDir, searchDir),
-									trimmedText,
-								)
-								if (result) {
-									const parentSnippet = result.snippet ?? trimmedText
-									const propSourceHash = generateSourceHash(parentSnippet)
-									return [id, {
-										...entry,
-										sourcePath: result.file,
-										sourceLine: result.line,
-										sourceSnippet: parentSnippet,
-										variableName: result.variableName,
-										allowStyling: false,
-										attributes,
-										colorClasses,
-										sourceHash: propSourceHash,
-									}] as const
-								}
-							} catch {
-								// Directory doesn't exist
-							}
+						const result = await searchForPropInParents(trimmedText, preferredSources)
+						if (result) {
+							const parentSnippet = result.snippet ?? trimmedText
+							const propSourceHash = generateSourceHash(parentSnippet)
+							return [id, {
+								...entry,
+								sourcePath: result.file,
+								sourceLine: result.line,
+								sourceSnippet: parentSnippet,
+								variableName: result.variableName,
+								allowStyling: false,
+								attributes,
+								colorClasses,
+								sourceHash: propSourceHash,
+							}] as const
 						}
 					}
 
@@ -1135,7 +1146,7 @@ export async function enhanceManifestWithSourceSnippets(
 					// index stores relative ones, so both sides are normalized before the
 					// comparison — otherwise a same-file hit always looks like a new location
 					// and overwrites the coordinates Astro already gave us.
-					const indexHit = findInTextIndex(trimmedText, entry.tag, pageFiles)
+					const indexHit = findInTextIndex(trimmedText, entry.tag, pageFiles, page?.renderedFiles)
 					if (indexHit && indexHit.file !== toProjectRelativePath(entry.sourcePath)) {
 						const resolved = await applyTranslationSource(entry, indexHit, attributes, colorClasses)
 						return [id, resolved] as const

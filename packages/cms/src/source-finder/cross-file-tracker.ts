@@ -1,13 +1,14 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { getProjectRoot } from '../config'
+import { projectFiles } from '../project/context'
 import { escapeRegex, resolveSourcePath } from '../utils'
 import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
 import { getCachedParsedFile } from './ast-parser'
 import { findComponentProp, findExpressionProp, findSpreadProp } from './element-finder'
 import { wildcardPathToRegexBody } from './search-index'
 import { normalizeText } from './snippet-utils'
+import { astroFilesUnder, preferringFiles, templateSearchDirs } from './source-files'
 import type { ImportInfo, SourceLocation, VariableDefinition } from './types'
 import { getExportedDefinitions, resolveImportPath } from './variable-extraction'
 
@@ -42,191 +43,152 @@ export async function searchForExpressionProp(
 	expressionPath: string,
 	searchText: string,
 	depth: number = 0,
+	preferredFiles?: readonly string[],
 ): Promise<SourceLocation | undefined> {
 	// Limit recursion depth to prevent infinite loops
 	if (depth > 5) return undefined
-
-	const srcDir = path.join(getProjectRoot(), 'src')
-	const searchDirs = [
-		path.join(srcDir, 'pages'),
-		path.join(srcDir, 'components'),
-		path.join(srcDir, 'layouts'),
-	]
 
 	// Extract the component name from file name (e.g., 'Nav.astro' -> 'Nav')
 	const componentName = path.basename(componentFileName, '.astro')
 	const normalizedSearch = normalizeText(searchText)
 
-	for (const dir of searchDirs) {
-		try {
-			const result = await searchDirForExpressionProp(
-				dir,
-				componentName,
-				propName,
-				expressionPath,
-				normalizedSearch,
-				searchText,
-				depth,
-			)
-			if (result) return result
-		} catch {
-			// Directory doesn't exist, continue
-		}
+	for (const fullPath of preferringFiles(await astroFilesUnder(templateSearchDirs()), preferredFiles)) {
+		const result = await expressionPropIn(fullPath, componentName, propName, expressionPath, normalizedSearch, searchText, depth, preferredFiles)
+		if (result) return result
 	}
 
 	return undefined
 }
 
-async function searchDirForExpressionProp(
-	dir: string,
+async function expressionPropIn(
+	fullPath: string,
 	componentName: string,
 	propName: string,
 	expressionPath: string,
 	normalizedSearch: string,
 	searchText: string,
 	depth: number,
+	preferredFiles: readonly string[] | undefined,
 ): Promise<SourceLocation | undefined> {
-	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+	const cached = await getCachedParsedFile(fullPath)
+	if (!cached) return undefined
 
-		for (const entry of entries) {
-			const fullPath = path.join(dir, entry.name)
+	// First, try to find expression prop usage: <Nav items={navItems} />
+	const exprPropMatch = findExpressionProp(cached.ast, componentName, propName)
 
-			if (entry.isDirectory()) {
-				const result = await searchDirForExpressionProp(
-					fullPath,
-					componentName,
-					propName,
-					expressionPath,
-					normalizedSearch,
-					searchText,
-					depth,
-				)
-				if (result) return result
-			} else if (entry.isFile() && entry.name.endsWith('.astro')) {
-				const cached = await getCachedParsedFile(fullPath)
-				if (!cached) continue
+	if (exprPropMatch) {
+		// The expression text might be a simple variable like 'navItems'
+		const exprText = exprPropMatch.expressionText
+		// Substitute the parent's local name for the child's:
+		//   child `items[0]`  +  parent `navItems`  →  `navItems[0]`
+		// May contain `[*]` wildcards when the child resolved a `.map()` callback
+		// param — compare via regex to match concrete indices in the parent.
+		const parentPath = expressionPath.replace(/^[^.[]+/, exprText)
+		const parentPathRegex = parentPath.includes('[*]') ? buildWildcardPathRegex(parentPath) : null
 
-				// First, try to find expression prop usage: <Nav items={navItems} />
-				const exprPropMatch = findExpressionProp(cached.ast, componentName, propName)
-
-				if (exprPropMatch) {
-					// The expression text might be a simple variable like 'navItems'
-					const exprText = exprPropMatch.expressionText
-					// Substitute the parent's local name for the child's:
-					//   child `items[0]`  +  parent `navItems`  →  `navItems[0]`
-					// May contain `[*]` wildcards when the child resolved a `.map()` callback
-					// param — compare via regex to match concrete indices in the parent.
-					const parentPath = expressionPath.replace(/^[^.[]+/, exprText)
-					const parentPathRegex = parentPath.includes('[*]') ? buildWildcardPathRegex(parentPath) : null
-
-					for (const def of cached.variableDefinitions) {
-						const defPath = buildDefinitionPath(def)
-						const matches = parentPathRegex ? parentPathRegex.test(defPath) : defPath === parentPath
-						if (matches) {
-							const normalizedDef = normalizeText(def.value)
-							if (normalizedDef === normalizedSearch) {
-								return {
-									file: path.relative(getProjectRoot(), fullPath),
-									line: def.line,
-									snippet: cached.lines[def.line - 1] || '',
-									type: 'variable',
-									variableName: defPath,
-									definitionLine: def.line,
-								}
-							}
-						}
-					}
-
-					// Check if exprText is itself from props (multi-level prop drilling)
-					const baseVar = exprText.match(/^(\w+)/)?.[1]
-					if (baseVar && cached.propAliases.has(baseVar)) {
-						const actualPropName = cached.propAliases.get(baseVar)!
-						// Recursively search for where this component is used
-						const result = await searchForExpressionProp(
-							entry.name,
-							actualPropName,
-							parentPath, // Use the path with the parent's variable name
-							searchText,
-							depth + 1,
-						)
-						if (result) return result
-					}
-
-					continue
-				}
-
-				// Second, try to find spread prop usage: <Card {...cardProps} />
-				const spreadMatch = findSpreadProp(cached.ast, componentName)
-
-				if (spreadMatch) {
-					// Find the spread variable's definition
-					const spreadVarName = spreadMatch.spreadVarName
-
-					// The propName we're looking for should be a property of the spread object
-					// e.g., if propName is 'title' and spread is {...cardProps},
-					// we look for cardProps.title in the definitions
-					const spreadPropPath = `${spreadVarName}.${propName}`
-
-					// When spread is inside a .map() call, search for array element definitions
-					// e.g., packages.map(pkg => <Card {...pkg} />) -> look for packages[N].propName
-					if (spreadMatch.mapSourceArray) {
-						const mapSourceArray = spreadMatch.mapSourceArray
-						for (const def of cached.variableDefinitions) {
-							if (
-								def.name === propName
-								&& def.parentName?.startsWith(mapSourceArray + '[')
-								&& normalizeText(def.value) === normalizedSearch
-							) {
-								return {
-									file: path.relative(getProjectRoot(), fullPath),
-									line: def.line,
-									snippet: cached.lines[def.line - 1] || '',
-									type: 'variable',
-									variableName: buildDefinitionPath(def),
-									definitionLine: def.line,
-								}
-							}
-						}
-					}
-
-					for (const def of cached.variableDefinitions) {
-						const defPath = buildDefinitionPath(def)
-						if (defPath === spreadPropPath) {
-							const normalizedDef = normalizeText(def.value)
-							if (normalizedDef === normalizedSearch) {
-								return {
-									file: path.relative(getProjectRoot(), fullPath),
-									line: def.line,
-									snippet: cached.lines[def.line - 1] || '',
-									type: 'variable',
-									variableName: defPath,
-									definitionLine: def.line,
-								}
-							}
-						}
-					}
-
-					// Check if the spread variable itself comes from props
-					if (cached.propAliases.has(spreadVarName)) {
-						const actualPropName = cached.propAliases.get(spreadVarName)!
-						// For spread from props, we need to search for the full path
-						const result = await searchForExpressionProp(
-							entry.name,
-							actualPropName,
-							expressionPath,
-							searchText,
-							depth + 1,
-						)
-						if (result) return result
+		for (const def of cached.variableDefinitions) {
+			const defPath = buildDefinitionPath(def)
+			const matches = parentPathRegex ? parentPathRegex.test(defPath) : defPath === parentPath
+			if (matches) {
+				const normalizedDef = normalizeText(def.value)
+				if (normalizedDef === normalizedSearch) {
+					return {
+						file: path.relative(getProjectRoot(), fullPath),
+						line: def.line,
+						snippet: cached.lines[def.line - 1] || '',
+						type: 'variable',
+						variableName: defPath,
+						definitionLine: def.line,
 					}
 				}
 			}
 		}
-	} catch {
-		// Error reading directory
+
+		// Check if exprText is itself from props (multi-level prop drilling)
+		const baseVar = exprText.match(/^(\w+)/)?.[1]
+		if (baseVar && cached.propAliases.has(baseVar)) {
+			const actualPropName = cached.propAliases.get(baseVar)!
+			// Recursively search for where this component is used
+			const result = await searchForExpressionProp(
+				path.basename(fullPath),
+				actualPropName,
+				parentPath, // Use the path with the parent's variable name
+				searchText,
+				depth + 1,
+				preferredFiles,
+			)
+			if (result) return result
+		}
+
+		return undefined
 	}
 
+	// Second, try to find spread prop usage: <Card {...cardProps} />
+	const spreadMatch = findSpreadProp(cached.ast, componentName)
+
+	if (spreadMatch) {
+		// Find the spread variable's definition
+		const spreadVarName = spreadMatch.spreadVarName
+
+		// The propName we're looking for should be a property of the spread object
+		// e.g., if propName is 'title' and spread is {...cardProps},
+		// we look for cardProps.title in the definitions
+		const spreadPropPath = `${spreadVarName}.${propName}`
+
+		// When spread is inside a .map() call, search for array element definitions
+		// e.g., packages.map(pkg => <Card {...pkg} />) -> look for packages[N].propName
+		if (spreadMatch.mapSourceArray) {
+			const mapSourceArray = spreadMatch.mapSourceArray
+			for (const def of cached.variableDefinitions) {
+				if (
+					def.name === propName
+					&& def.parentName?.startsWith(mapSourceArray + '[')
+					&& normalizeText(def.value) === normalizedSearch
+				) {
+					return {
+						file: path.relative(getProjectRoot(), fullPath),
+						line: def.line,
+						snippet: cached.lines[def.line - 1] || '',
+						type: 'variable',
+						variableName: buildDefinitionPath(def),
+						definitionLine: def.line,
+					}
+				}
+			}
+		}
+
+		for (const def of cached.variableDefinitions) {
+			const defPath = buildDefinitionPath(def)
+			if (defPath === spreadPropPath) {
+				const normalizedDef = normalizeText(def.value)
+				if (normalizedDef === normalizedSearch) {
+					return {
+						file: path.relative(getProjectRoot(), fullPath),
+						line: def.line,
+						snippet: cached.lines[def.line - 1] || '',
+						type: 'variable',
+						variableName: defPath,
+						definitionLine: def.line,
+					}
+				}
+			}
+		}
+
+		// Check if the spread variable itself comes from props
+		if (cached.propAliases.has(spreadVarName)) {
+			const actualPropName = cached.propAliases.get(spreadVarName)!
+			// For spread from props, we need to search for the full path
+			const result = await searchForExpressionProp(
+				path.basename(fullPath),
+				actualPropName,
+				expressionPath,
+				searchText,
+				depth + 1,
+				preferredFiles,
+			)
+			if (result) return result
+		}
+	}
 	return undefined
 }
 
@@ -280,7 +242,7 @@ export async function searchForImportedValue(
 		if (defPath === targetPath) {
 			const normalizedDef = normalizeText(def.value)
 			if (normalizedDef === normalizedSearch) {
-				const importedFileContent = await fs.readFile(importedFilePath, 'utf-8')
+				const importedFileContent = await projectFiles().readFile(importedFilePath)
 				const importedLines = importedFileContent.split('\n')
 
 				return {
@@ -306,63 +268,57 @@ export async function searchForImportedValue(
  * Search for prop values passed to components using AST parsing.
  * Uses caching for better performance.
  */
-export async function searchForPropInParents(dir: string, textContent: string): Promise<SourceLocation | undefined> {
-	const entries = await fs.readdir(dir, { withFileTypes: true })
+export async function searchForPropInParents(
+	textContent: string,
+	preferredFiles?: readonly string[],
+): Promise<SourceLocation | undefined> {
+	for (const fullPath of preferringFiles(await astroFilesUnder(templateSearchDirs()), preferredFiles)) {
+		try {
+			// Use cached parsed file
+			const cached = await getCachedParsedFile(fullPath)
+			if (!cached) continue
 
-	for (const entry of entries) {
-		const fullPath = path.join(dir, entry.name)
+			const { lines, ast } = cached
 
-		if (entry.isDirectory()) {
-			const result = await searchForPropInParents(fullPath, textContent)
-			if (result) return result
-		} else if (entry.isFile() && entry.name.endsWith('.astro')) {
-			try {
-				// Use cached parsed file
-				const cached = await getCachedParsedFile(fullPath)
-				if (!cached) continue
+			// Find component props matching our text
+			const propMatch = findComponentProp(ast, textContent)
 
-				const { lines, ast } = cached
+			if (propMatch) {
+				// Extract component snippet for context
+				const componentStart = propMatch.line - 1
+				const snippetLines: string[] = []
+				let depth = 0
 
-				// Find component props matching our text
-				const propMatch = findComponentProp(ast, textContent)
+				for (let i = componentStart; i < Math.min(componentStart + 10, lines.length); i++) {
+					const line = lines[i]
+					if (!line) continue
+					snippetLines.push(line)
 
-				if (propMatch) {
-					// Extract component snippet for context
-					const componentStart = propMatch.line - 1
-					const snippetLines: string[] = []
-					let depth = 0
-
-					for (let i = componentStart; i < Math.min(componentStart + 10, lines.length); i++) {
-						const line = lines[i]
-						if (!line) continue
-						snippetLines.push(line)
-
-						// Check for self-closing or end of opening tag
-						if (line.includes('/>')) {
+					// Check for self-closing or end of opening tag
+					if (line.includes('/>')) {
+						break
+					}
+					if (line.includes('>') && !line.includes('/>')) {
+						// Count opening tags
+						const opens = (line.match(/<[A-Z]/g) || []).length
+						const closes = (line.match(/\/>/g) || []).length
+						depth += opens - closes
+						if (depth <= 0 || (i > componentStart && line.includes('>'))) {
 							break
 						}
-						if (line.includes('>') && !line.includes('/>')) {
-							// Count opening tags
-							const opens = (line.match(/<[A-Z]/g) || []).length
-							const closes = (line.match(/\/>/g) || []).length
-							depth += opens - closes
-							if (depth <= 0 || (i > componentStart && line.includes('>'))) {
-								break
-							}
-						}
-					}
-
-					return {
-						file: path.relative(getProjectRoot(), fullPath),
-						line: propMatch.line,
-						snippet: snippetLines.join('\n'),
-						type: 'prop',
-						variableName: propMatch.propName,
 					}
 				}
-			} catch {
-				// Error parsing file, continue
+
+				return {
+					file: path.relative(getProjectRoot(), fullPath),
+					line: propMatch.line,
+					snippet: snippetLines.join('\n'),
+					type: 'prop',
+					variableName: propMatch.propName,
+				}
 			}
+		} catch {
+			// Error parsing file, continue
 		}
 	}
 
@@ -510,7 +466,7 @@ async function searchDirForAttributeByValue(
 	depth: number,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)
@@ -562,7 +518,7 @@ async function searchForImportedAttributeByValue(
 	// Search for definitions matching propName and value
 	for (const def of exportedDefs) {
 		if (def.name === propName && def.value === resolvedValue) {
-			const importedFileContent = await fs.readFile(importedFilePath, 'utf-8')
+			const importedFileContent = await projectFiles().readFile(importedFilePath)
 			const importedLines = importedFileContent.split('\n')
 
 			return {
@@ -579,7 +535,7 @@ async function searchForImportedAttributeByValue(
 	// Also try matching by value only as fallback
 	for (const def of exportedDefs) {
 		if (def.value === resolvedValue) {
-			const importedFileContent = await fs.readFile(importedFilePath, 'utf-8')
+			const importedFileContent = await projectFiles().readFile(importedFilePath)
 			const importedLines = importedFileContent.split('\n')
 
 			return {
@@ -643,7 +599,7 @@ async function searchDirForAttributeProp(
 	depth: number,
 ): Promise<SourceLocation | undefined> {
 	try {
-		const entries = await fs.readdir(dir, { withFileTypes: true })
+		const entries = await projectFiles().readdir(dir)
 
 		for (const entry of entries) {
 			const fullPath = path.join(dir, entry.name)
@@ -773,7 +729,7 @@ async function searchForImportedAttribute(
 	for (const def of exportedDefs) {
 		const defPath = buildDefinitionPath(def)
 		if (defPath === targetPath) {
-			const importedFileContent = await fs.readFile(importedFilePath, 'utf-8')
+			const importedFileContent = await projectFiles().readFile(importedFilePath)
 			const importedLines = importedFileContent.split('\n')
 
 			return {

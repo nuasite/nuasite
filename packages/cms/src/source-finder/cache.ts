@@ -1,71 +1,44 @@
-import path from 'node:path'
+import { currentProjectContext } from '../project/context'
 import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types'
 
-// ============================================================================
-// File Parsing Cache - Avoid re-parsing the same files
-// ============================================================================
+// The source finder's caches, held per project context (see `ProjectState`).
 
-/** Cache for parsed Astro files - cleared between builds */
-const parsedFileCache = new Map<string, CachedParsedFile>()
-
-/** Cache for directory listings - cleared between builds */
-const directoryCache = new Map<string, string[]>()
-
-/** Cache for markdown file contents - cleared between builds */
-const markdownFileCache = new Map<string, { content: string; lines: string[] }>()
-
-/** Search indexes built once per build — use the same array instance and clear with length=0 to avoid stale references */
-const textSearchIndex: SearchIndexEntry[] = []
-const imageSearchIndex: ImageIndexEntry[] = []
-let searchIndexInitialized = false
-
-/** Pre-built reverse index: normalizedText → SourceLocation[] (collection data files) */
-let collectionTextIndex: Map<string, SourceLocation[]> | null = null
-
-/** Per-collection-directory index: declared page URL → file abs path — used by the same-slug URL-disambiguation fallback */
-const declaredUrlIndexCache = new Map<string, Map<string, string>>()
-
-/** Lazy reverse index on i18n entries: translationKey → SearchIndexEntry[]. Rebuilt on demand after any mutation. */
-let translationKeyIndex: Map<string, SearchIndexEntry[]> | null = null
-
-/** Files that changed since last indexing — tracked by Vite watcher */
-const dirtyFiles = new Set<string>()
-
-// ============================================================================
-// Cache Access Functions
-// ============================================================================
+function state() {
+	return currentProjectContext().state
+}
 
 export function getParsedFileCache(): Map<string, CachedParsedFile> {
-	return parsedFileCache
+	return state().parsedFiles
 }
 
 export function getDirectoryCache(): Map<string, string[]> {
-	return directoryCache
+	return state().directories
 }
 
 export function getMarkdownFileCache(): Map<string, { content: string; lines: string[] }> {
-	return markdownFileCache
+	return state().markdownFiles
 }
 
 export function getTextSearchIndex(): SearchIndexEntry[] {
-	return textSearchIndex
+	return state().textSearchIndex
 }
 
 export function getImageSearchIndex(): ImageIndexEntry[] {
-	return imageSearchIndex
+	return state().imageSearchIndex
 }
 
 export function isSearchIndexInitialized(): boolean {
-	return searchIndexInitialized
+	return state().searchIndexInitialized
 }
 
 export function setSearchIndexInitialized(value: boolean): void {
-	searchIndexInitialized = value
+	state().searchIndexInitialized = value
 }
 
 export function addToTextSearchIndex(entry: SearchIndexEntry): void {
-	textSearchIndex.push(entry)
-	translationKeyIndex = null
+	const current = state()
+	current.textSearchIndex.push(entry)
+	current.translationKeyIndex = null
 }
 
 /**
@@ -73,32 +46,33 @@ export function addToTextSearchIndex(entry: SearchIndexEntry): void {
  * mutations. Callers should treat the returned Map as read-only.
  */
 export function getTranslationKeyIndex(): Map<string, SearchIndexEntry[]> {
-	if (translationKeyIndex) return translationKeyIndex
+	const current = state()
+	if (current.translationKeyIndex) return current.translationKeyIndex
 	const map = new Map<string, SearchIndexEntry[]>()
-	for (const entry of textSearchIndex) {
+	for (const entry of current.textSearchIndex) {
 		if (!entry.translationKey) continue
 		const existing = map.get(entry.translationKey)
 		if (existing) existing.push(entry)
 		else map.set(entry.translationKey, [entry])
 	}
-	translationKeyIndex = map
+	current.translationKeyIndex = map
 	return map
 }
 
 export function addToImageSearchIndex(entry: ImageIndexEntry): void {
-	imageSearchIndex.push(entry)
+	state().imageSearchIndex.push(entry)
 }
 
 export function getCollectionTextIndex(): Map<string, SourceLocation[]> | null {
-	return collectionTextIndex
+	return state().collectionTextIndex
 }
 
 export function setCollectionTextIndex(index: Map<string, SourceLocation[]> | null): void {
-	collectionTextIndex = index
+	state().collectionTextIndex = index
 }
 
 export function getDeclaredUrlIndexCache(): Map<string, Map<string, string>> {
-	return declaredUrlIndexCache
+	return state().declaredUrlIndex
 }
 
 // ============================================================================
@@ -107,31 +81,19 @@ export function getDeclaredUrlIndexCache(): Map<string, Map<string, string>> {
 
 /**
  * Mark a file as dirty so its index entries are refreshed on next page load.
- * Called by the Vite file watcher when source files change.
+ * Called when source files change (the Vite watcher, or a host's invalidation).
  * @param absPath - Absolute path to the changed file
  */
 export function markFileDirty(absPath: string): void {
-	dirtyFiles.add(absPath)
-	// Also evict the parsed file cache so it's re-read from disk
-	parsedFileCache.delete(absPath)
-	// A changed file may add/remove/alter its declared URL, so drop the URL→file
-	// index for its collection directory. The index is keyed by collection dir:
-	// for a flat `<dir>/<slug>.md` that's the file's directory; for Hugo-style
-	// `<dir>/<slug>/index.md` it's the parent of the file's directory. Evict both
-	// candidates (deleting a non-existent key is a no-op) instead of clearing the
-	// whole cache, which would rebuild every collection's index on the next
-	// unmatched-page lookup.
-	const fileDir = path.dirname(absPath)
-	declaredUrlIndexCache.delete(fileDir)
-	declaredUrlIndexCache.delete(path.dirname(fileDir))
+	state().markFileDirty(absPath)
 }
 
 export function getDirtyFiles(): Set<string> {
-	return dirtyFiles
+	return state().dirtyFiles
 }
 
 export function clearDirtyFiles(): void {
-	dirtyFiles.clear()
+	state().dirtyFiles.clear()
 }
 
 /**
@@ -139,9 +101,10 @@ export function clearDirtyFiles(): void {
  * Used before re-indexing a changed file to avoid duplicates.
  */
 export function removeFileFromIndexes(relFile: string): void {
-	filterInPlace(textSearchIndex, (e) => e.file !== relFile)
-	filterInPlace(imageSearchIndex, (e) => e.file !== relFile)
-	translationKeyIndex = null
+	const current = state()
+	filterInPlace(current.textSearchIndex, (e) => e.file !== relFile)
+	filterInPlace(current.imageSearchIndex, (e) => e.file !== relFile)
+	current.translationKeyIndex = null
 }
 
 /** Remove non-matching elements in-place (single pass, no per-element splice). */
@@ -155,23 +118,9 @@ function filterInPlace<T>(arr: T[], keep: (item: T) => boolean): void {
 	arr.length = write
 }
 
-// ============================================================================
-// Cache Clear Function
-// ============================================================================
-
 /**
  * Clear all caches - call at start of each build
  */
 export function clearSourceFinderCache(): void {
-	parsedFileCache.clear()
-	directoryCache.clear()
-	markdownFileCache.clear()
-	dirtyFiles.clear()
-	// Clear arrays in-place to avoid stale references from consumers
-	textSearchIndex.length = 0
-	imageSearchIndex.length = 0
-	searchIndexInitialized = false
-	collectionTextIndex = null
-	translationKeyIndex = null
-	declaredUrlIndexCache.clear()
+	state().clear()
 }

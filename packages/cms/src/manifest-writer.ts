@@ -1,7 +1,7 @@
 import { resolvePathnameFromSpec } from '@nuasite/cms-core'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getProjectRoot } from './config'
+import { projectFiles } from './project/context'
 import { parseTailwindConfig, parseTextStyles } from './tailwind-colors'
 import type {
 	AvailableColors,
@@ -210,9 +210,6 @@ export class ManifestWriter {
 		seo?: PageSeoData,
 	): Promise<void> {
 		const manifestPath = this.getPageManifestPath(pagePath)
-		const manifestDir = path.dirname(manifestPath)
-
-		await fs.mkdir(manifestDir, { recursive: true })
 
 		// Generate metadata for this page manifest
 		const metadata: ManifestMetadata = {
@@ -247,7 +244,7 @@ export class ManifestWriter {
 			pageManifest.seo = seo
 		}
 
-		await fs.writeFile(manifestPath, JSON.stringify(pageManifest, null, 2), 'utf-8')
+		await projectFiles().writeFile(manifestPath, JSON.stringify(pageManifest, null, 2))
 	}
 
 	/**
@@ -319,11 +316,7 @@ export class ManifestWriter {
 			if (this.availableTextStyles) {
 				globalSettings.availableTextStyles = this.availableTextStyles
 			}
-			await fs.writeFile(
-				globalManifestPath,
-				JSON.stringify(globalSettings, null, 2),
-				'utf-8',
-			)
+			await projectFiles().writeFile(globalManifestPath, JSON.stringify(globalSettings, null, 2))
 		}
 
 		return {

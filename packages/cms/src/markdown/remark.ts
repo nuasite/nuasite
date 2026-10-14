@@ -1,4 +1,6 @@
-import type { Plugin } from 'unified'
+import remarkDirectiveExtension from 'remark-directive'
+import type { Plugin, Processor } from 'unified'
+import { withPortableModule } from './portable-module'
 
 // Render-side counterpart of the editor's directive plugins
 // (packages/cms-mdx-editor/src/{styled-list,youtube}-plugin.ts). The editor
@@ -160,6 +162,25 @@ function transform(node: MdastNode): void {
 	}
 }
 
-export const remarkListDirective: Plugin<[]> = () => (tree) => {
+const MODULE = '@nuasite/cms/remark'
+
+export const remarkListDirective: Plugin<[]> = withPortableModule(() => (tree) => {
 	transform(tree)
-}
+}, { module: MODULE, export: 'remarkListDirective' })
+
+/**
+ * `remark-directive` under a function of our own, so the portable module reference is set on
+ * this module's export and never on the third-party function object.
+ */
+export const remarkDirective: Plugin<[]> = withPortableModule(function remarkDirective(this: Processor): undefined {
+	remarkDirectiveExtension.call(this)
+}, { module: MODULE, export: 'remarkDirective' })
+
+/**
+ * Remark plugins that make the CMS list-style directive (`:::list{.class}`,
+ * emitted by the editor) render as `<ul class="class">`. `remark-directive`
+ * also stops MDX from treating the `{.class}` attribute block as a JS
+ * expression (which crashes acorn). Wired into the markdown/MDX pipeline by
+ * `@nuasite/nua`.
+ */
+export const cmsRemarkPlugins = [remarkDirective, remarkListDirective]

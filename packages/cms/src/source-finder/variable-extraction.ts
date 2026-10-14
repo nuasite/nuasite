@@ -1,7 +1,7 @@
 import { parse as parseBabel } from '@babel/parser'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 
+import { projectFiles } from '../project/context'
 import { extractArrayElements, extractObjectProperties, extractPossibleStringValues, getStringValue } from './ast-extractors'
 import type { BabelFile, BabelNode, ImportInfo, VariableDefinition } from './types'
 import { createFrontmatterLineTransformer, identityLine } from './types'
@@ -311,7 +311,7 @@ export async function resolveImportPath(source: string, fromFile: string): Promi
 	for (const ext of extensions) {
 		const fullPath = basePath + ext
 		try {
-			const stat = await fs.stat(fullPath)
+			const stat = await projectFiles().stat(fullPath)
 			if (stat.isFile()) return fullPath
 		} catch {
 			// File doesn't exist with this extension
@@ -322,7 +322,7 @@ export async function resolveImportPath(source: string, fromFile: string): Promi
 	for (const ext of ['.ts', '.js', '.tsx', '.jsx']) {
 		const indexPath = path.join(basePath, `index${ext}`)
 		try {
-			await fs.access(indexPath)
+			await projectFiles().access(indexPath)
 			return indexPath
 		} catch {
 			// File doesn't exist
@@ -341,7 +341,7 @@ export async function resolveImportPath(source: string, fromFile: string): Promi
  */
 export async function getExportedDefinitions(filePath: string): Promise<VariableDefinition[]> {
 	try {
-		const content = await fs.readFile(filePath, 'utf-8')
+		const content = await projectFiles().readFile(filePath)
 		const ast = parseBabel(content, {
 			sourceType: 'module',
 			plugins: ['typescript'],
