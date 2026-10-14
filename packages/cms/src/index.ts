@@ -16,8 +16,8 @@ import { rehypeCmsMarker } from './markdown/rehype'
 import { resolveMarkerConfig } from './marker-config'
 import type { MediaStorageAdapter } from './media/types'
 import { type CmsMode, resolveCmsMode } from './mode'
-import { mergeCmsRedirectsInto } from './redirects'
 import { createPublicStaticFileChecker } from './public-static-file'
+import { mergeCmsRedirectsInto } from './redirects'
 import { scanCollections } from './scan-cache'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
 import { createVitePlugin } from './vite-plugin'
@@ -470,6 +470,7 @@ export { scanCollections } from '@nuasite/cms-core'
 export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
 export { rehypeCmsMarker } from './markdown/rehype'
 export { type FieldMigration, migrateAstroImages, type MigrationOptions, type MigrationResult } from './migrate-astro-image'
+export { createPublicStaticFileChecker } from './public-static-file'
 export {
 	astroRedirectLines,
 	mergeCmsRedirectsInto,
@@ -478,7 +479,6 @@ export {
 	type MergeRedirectsIntoOptions,
 	type RedirectsLogger,
 } from './redirects'
-export { createPublicStaticFileChecker } from './public-static-file'
 export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
 export { findCollectionSource, parseMarkdownContent } from './source-finder'
 export type {
