@@ -18,6 +18,7 @@ import { gfm } from '@milkdown/preset-gfm'
 import { replaceAll } from '@milkdown/utils'
 import { useEffect, useRef, useState } from 'react'
 import { FormatToolbar } from './format-toolbar'
+import { historyKeymap, historyPlugin } from './history-plugin'
 import { markWhitespacePlugin } from './mark-whitespace'
 import type { MediaContext, MediaSource } from './media-source'
 
@@ -58,6 +59,8 @@ export function SlotEditor({ value, onChange, media, mediaContext }: SlotEditorP
 				.use(gfm)
 				.use(markWhitespacePlugin)
 				.use(listener)
+				.use(historyPlugin)
+				.use(historyKeymap)
 				.create()
 
 			if (destroyed) {

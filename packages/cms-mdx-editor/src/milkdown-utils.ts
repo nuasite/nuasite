@@ -5,6 +5,7 @@
  * (it never depended on preact — it operates on the raw view).
  */
 import { type Editor, editorViewCtx } from '@milkdown/core'
+import { liftTarget } from '@milkdown/prose/transform'
 import type { EditorView } from '@milkdown/prose/view'
 
 /** The image node the selection covers exactly — a click on an inline image selects the node itself. */
@@ -167,6 +168,22 @@ export function toggleHeading(view: EditorView, level: number): void {
 	const blockTo = state.selection.$to.after(state.selection.$to.depth)
 	view.dispatch(state.tr.setBlockType(blockFrom, blockTo, targetType, attrs))
 	view.focus()
+}
+
+/**
+ * Lift the selected blocks out of the innermost blockquote around them. One level per call,
+ * so nested quotes come apart step by step. A list inside the quote stays a list. Returns
+ * false when the selection is not inside a blockquote.
+ */
+export function liftOutOfBlockquote(view: EditorView): boolean {
+	const { state } = view
+	const { $from, $to } = state.selection
+	const range = $from.blockRange($to, node => node.type.name === 'blockquote')
+	const target = range ? liftTarget(range) : null
+	if (!range || target === null) return false
+	view.dispatch(state.tr.lift(range, target).scrollIntoView())
+	view.focus()
+	return true
 }
 
 /** Remove the link mark around the current cursor/selection. */
