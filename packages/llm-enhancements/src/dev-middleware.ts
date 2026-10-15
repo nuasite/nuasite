@@ -1,12 +1,16 @@
-import { createPublicStaticFileChecker } from '@nuasite/cms'
+import { createPublicStaticFileChecker } from '@nuasite/cms-core'
 import type { AstroConfig } from 'astro'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ViteDevServer } from 'vite'
-import { getCollectionContent } from './cms-marker'
-import { htmlToMarkdown } from './html-to-markdown'
+import { cms } from './cms'
+import { findCollectionPages } from './cms-marker'
+import { htmlToMarkdown, type HtmlToMarkdownResult } from './html-to-markdown'
 import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
 import { generateLlmsTxt } from './llms-txt-endpoint'
-import { createCollectionOutput, createStaticOutput, generateMarkdown } from './markdown-generator'
+import { generateMarkdown } from './markdown-generator'
+import { markdownSyntaxOf } from './mdx'
+import { resolvePageMarkdown, type SiteContent } from './page-markdown'
 import { injectMarkdownLink, LLM_ENDPOINT_PATH, LLMS_TXT_PATH, mdUrlToPagePath, normalizePath } from './paths'
 import type { ResolvedOptions } from './types'
 
@@ -20,86 +24,53 @@ async function generateMarkdownForPath(
 	host: string,
 	options: ResolvedOptions,
 	baseUrl: string,
+	site: SiteContent,
 ): Promise<string | null> {
-	// Try collection page first
-	const content = await getCollectionContent(pagePath, options.contentDir)
-	if (content) {
-		const output = createCollectionOutput(content.frontmatter, content.body, content.file)
-		return generateMarkdown(output, {
-			url: pagePath,
-			type: 'collection',
-			sourcePath: content.file,
-			baseUrl,
-		}, options.includeFrontmatter)
-	}
+	const resolved = await resolvePageMarkdown(pagePath, options, site, () => fetchPage(host, pagePath))
+	if (!resolved) return null
 
-	// Fall back to static page handling
-	if (!options.includeStaticPages) {
-		return null
-	}
+	return generateMarkdown(resolved.output, {
+		url: pagePath,
+		type: resolved.type,
+		sourcePath: resolved.sourcePath,
+		baseUrl,
+	}, options.includeFrontmatter)
+}
 
+/** The dev server's rendering of a page, converted to markdown, or `undefined` when it serves no HTML there. */
+async function fetchPage(host: string, pagePath: string): Promise<HtmlToMarkdownResult | undefined> {
 	const response = await fetch(`http://${host}${pagePath}`, {
 		headers: { Accept: 'text/html' },
 	})
 
-	if (!response.ok) return null
+	if (!response.ok) return undefined
 
 	const contentType = response.headers.get('content-type')
-	if (!contentType?.includes('text/html')) return null
+	if (!contentType?.includes('text/html')) return undefined
 
-	const html = await response.text()
-	const { metadata, body } = htmlToMarkdown(html)
-	const output = createStaticOutput(metadata, body)
-
-	return generateMarkdown(output, {
-		url: pagePath,
-		type: 'static',
-		baseUrl,
-	}, options.includeFrontmatter)
+	return htmlToMarkdown(await response.text())
 }
 
 /**
  * Discover all pages and their metadata for the LLM endpoint
  */
-async function discoverPages(host: string, options: ResolvedOptions): Promise<{ pages: PageEntry[]; siteMetadata: SiteMetadata }> {
+async function discoverPages(
+	host: string,
+	options: ResolvedOptions,
+	site: SiteContent,
+): Promise<{ pages: PageEntry[]; siteMetadata: SiteMetadata }> {
 	const pages: PageEntry[] = []
 	let siteMetadata: SiteMetadata = {}
 
-	// Fetch the sitemap or root to discover pages
-	// First try to get homepage metadata
-	try {
-		const homeResponse = await fetch(`http://${host}/`, {
-			headers: { Accept: 'text/html' },
-		})
-		if (homeResponse.ok) {
-			const html = await homeResponse.text()
-			const { metadata } = htmlToMarkdown(html)
-			siteMetadata = {
-				title: metadata.title,
-				description: metadata.description,
-			}
-		}
-	} catch {
-		// Ignore errors
-	}
+	// For now, we discover only the homepage: the dev server has no list of routes to offer. A homepage
+	// the dev server fails to render is still listed when its entry tells it.
+	const home = fetchPage(host, '/').catch(() => undefined)
+	const metadata = (await home)?.metadata
+	if (metadata) siteMetadata = { title: metadata.title, description: metadata.description }
 
-	// Try to get pages from Astro's dev server manifest via __astro_dev_toolbar__
-	// For now, we'll discover pages by checking common routes and the content directory
-	// In dev mode, we just report what we can discover
-
-	// Check if homepage exists
 	try {
-		const content = await getCollectionContent('/', options.contentDir)
-		if (content) {
-			pages.push({ pathname: '/', title: content.frontmatter.title as string | undefined, type: 'collection' })
-		} else if (options.includeStaticPages) {
-			const response = await fetch(`http://${host}/`, { headers: { Accept: 'text/html' } })
-			if (response.ok) {
-				const html = await response.text()
-				const { metadata } = htmlToMarkdown(html)
-				pages.push({ pathname: '/', title: metadata.title, type: 'static' })
-			}
-		}
+		const resolved = await resolvePageMarkdown('/', options, site, () => home)
+		if (resolved) pages.push({ pathname: '/', title: resolved.title, type: resolved.type })
 	} catch {
 		// Ignore
 	}
@@ -121,6 +92,30 @@ function getBaseUrl(config: AstroConfig): string {
  */
 export function createDevMiddleware(server: ViteDevServer, options: ResolvedOptions, config: AstroConfig) {
 	const baseUrl = getBaseUrl(config)
+	// Entries are read from Astro's root, as in the build, whatever the working directory is. The project
+	// and the pages that render an entry are kept between requests, and replaced after a change to the
+	// content, the routes or the content config. The routes are the ones the CMS reads, in `src/pages`.
+	const root = fileURLToPath(config.root)
+	const watched = [path.resolve(root, options.contentDir) + path.sep, path.join(root, 'src', 'pages') + path.sep]
+	const syntax = markdownSyntaxOf(config)
+	let project = cms?.projectAtRoot(root)
+	let site: Promise<SiteContent> | undefined
+	server.watcher?.on('all', (_event: string, file: string) => {
+		const changed = path.resolve(file)
+		if (watched.some(dir => changed.startsWith(dir)) || /content\.config\.[cm]?[jt]s$/.test(changed)) {
+			project = cms?.projectAtRoot(root)
+			site = undefined
+		}
+	})
+	/** Run `resolve` in the project, against the pages that render an entry. */
+	const withSite = <T>(resolve: (site: SiteContent) => Promise<T>): Promise<T> => {
+		const run = async () => {
+			site ??= findCollectionPages(options.contentDir, message => console.warn(`[llm-enhancements] ${message}`)).then(pages => ({ pages, syntax }))
+			return resolve(await site)
+		}
+		return project ? project.run(run) : run()
+	}
+
 	const isPublicStaticFile = createPublicStaticFileChecker(
 		config.publicDir ? fileURLToPath(config.publicDir) : undefined,
 	)
@@ -137,7 +132,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 
 			try {
 				const host = req.headers.host || 'localhost:4321'
-				const { pages, siteMetadata } = await discoverPages(host, options)
+				const { pages, siteMetadata } = await withSite(site => discoverPages(host, options, site))
 				const content = generateLlmsTxt(pages, { ...siteMetadata, baseUrl }, llmsTxtOptions)
 
 				res.setHeader('Content-Type', 'text/plain; charset=utf-8')
@@ -164,7 +159,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 
 			try {
 				const host = req.headers.host || 'localhost:4321'
-				const { pages, siteMetadata } = await discoverPages(host, options)
+				const { pages, siteMetadata } = await withSite(site => discoverPages(host, options, site))
 				const markdown = generateLlmMarkdown(pages, { ...siteMetadata, baseUrl }, llmEndpointOptions)
 
 				res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
@@ -187,11 +182,17 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 			return next()
 		}
 
-		const pagePath = mdUrlToPagePath(url)
+		// Decoded, as the pages that render an entry are keyed: `/aktuality/%C5%A1kola.md` is `/aktuality/škola`.
+		let pagePath: string
+		try {
+			pagePath = mdUrlToPagePath(decodeURI(url))
+		} catch {
+			return next()
+		}
 
 		try {
 			const host = req.headers.host || 'localhost:4321'
-			const markdown = await generateMarkdownForPath(pagePath, host, options, baseUrl)
+			const markdown = await withSite(site => generateMarkdownForPath(pagePath, host, options, baseUrl, site))
 
 			if (markdown) {
 				res.setHeader('Content-Type', 'text/markdown; charset=utf-8')

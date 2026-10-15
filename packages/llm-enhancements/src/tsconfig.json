@@ -4,6 +4,7 @@
 		"outDir": "../dist/types"
 	},
 	"references": [
-		{ "path": "../../cms/src" }
+		{ "path": "../../cms/src" },
+		{ "path": "../../cms-core/src" }
 	]
 }

@@ -1,11 +1,15 @@
 import type { AstroConfig, AstroIntegrationLogger } from 'astro'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { getCollectionContent } from './cms-marker'
+import { fileURLToPath } from 'node:url'
+import { cms } from './cms'
+import { findCollectionPages } from './cms-marker'
 import { htmlToMarkdown } from './html-to-markdown'
 import { generateLlmMarkdown, type PageEntry, type SiteMetadata } from './llm-endpoint'
 import { generateLlmsTxt } from './llms-txt-endpoint'
-import { createCollectionOutput, createStaticOutput, generateMarkdown } from './markdown-generator'
+import { generateMarkdown } from './markdown-generator'
+import { markdownSyntaxOf } from './mdx'
+import { resolvePageMarkdown } from './page-markdown'
 import { getHtmlPath, getLlmOutputPath, getLlmsTxtOutputPath, getMdOutputPath, injectMarkdownLink, normalizePath } from './paths'
 import type { ResolvedOptions } from './types'
 
@@ -23,9 +27,21 @@ function getBaseUrl(config: AstroConfig): string {
 }
 
 /**
- * Process build output and generate .md files for all pages
+ * Process build output and generate .md files for all pages. Entries are read from Astro's project
+ * root, which need not be the working directory (`astro build --root site`).
  */
-export async function processBuildOutput(
+export function processBuildOutput(
+	dir: URL,
+	pages: PageInfo[],
+	options: ResolvedOptions,
+	logger: AstroIntegrationLogger,
+	config: AstroConfig,
+): Promise<void> {
+	const run = () => processPages(dir, pages, options, logger, config)
+	return cms ? cms.runAtProjectRoot(fileURLToPath(config.root), run) : run()
+}
+
+async function processPages(
 	dir: URL,
 	pages: PageInfo[],
 	options: ResolvedOptions,
@@ -33,11 +49,16 @@ export async function processBuildOutput(
 	config: AstroConfig,
 ) {
 	const baseUrl = getBaseUrl(config)
-	const distDir = dir.pathname
+	const distDir = fileURLToPath(dir)
 	let collectionCount = 0
 	let staticCount = 0
 	const pageEntries: PageEntry[] = []
 	let siteMetadata: SiteMetadata = {}
+	// Found once for the whole build: resolving a page against a fresh scan made the build quadratic.
+	const site = {
+		pages: await findCollectionPages(options.contentDir, message => logger.warn(message)),
+		syntax: markdownSyntaxOf(config),
+	}
 
 	for (const page of pages) {
 		const pagePath = normalizePath(page.pathname === '' ? '/' : `/${page.pathname}`)
@@ -46,61 +67,41 @@ export async function processBuildOutput(
 			const mdPath = getMdOutputPath(distDir, pagePath)
 			const htmlPath = getHtmlPath(distDir, pagePath)
 
-			// Try collection page first
-			const content = await getCollectionContent(pagePath, options.contentDir)
-			if (content) {
-				const output = createCollectionOutput(content.frontmatter, content.body, content.file)
-				const markdown = generateMarkdown(output, {
-					url: pagePath,
-					type: 'collection',
-					sourcePath: content.file,
-					baseUrl,
-				}, options.includeFrontmatter)
+			// Read once, for the markdown and for the link injected into it.
+			let html: Promise<string | undefined> | undefined
+			const readHtml = () => (html ??= fs.readFile(htmlPath, 'utf-8').catch(() => undefined))
 
-				await writeMarkdownFile(mdPath, markdown)
-				await injectLinkIntoHtml(htmlPath, pagePath)
-				pageEntries.push({
-					pathname: pagePath,
-					title: extractTitle(content.frontmatter.title),
-					type: 'collection',
-				})
-				collectionCount++
-				continue
-			}
+			const resolved = await resolvePageMarkdown(pagePath, options, site, async () => {
+				const page = await readHtml()
+				return page === undefined ? undefined : htmlToMarkdown(page)
+			})
+			if (!resolved) continue
 
-			// Fall back to static page handling
-			if (!options.includeStaticPages) continue
-
-			const htmlExists = await fileExists(htmlPath)
-			if (!htmlExists) continue
-
-			const html = await fs.readFile(htmlPath, 'utf-8')
-			const { metadata, body } = htmlToMarkdown(html)
-			const output = createStaticOutput(metadata, body)
-
-			const markdown = generateMarkdown(output, {
+			const markdown = generateMarkdown(resolved.output, {
 				url: pagePath,
-				type: 'static',
+				type: resolved.type,
+				sourcePath: resolved.sourcePath,
 				baseUrl,
 			}, options.includeFrontmatter)
 
 			await writeMarkdownFile(mdPath, markdown)
-			await injectLinkIntoHtml(htmlPath, pagePath)
-			pageEntries.push({
-				pathname: pagePath,
-				title: metadata.title,
-				type: 'static',
-			})
+			pageEntries.push({ pathname: pagePath, title: resolved.title, type: resolved.type })
+			if (resolved.type === 'collection') collectionCount++
+			else staticCount++
 
-			// Extract site metadata from homepage
+			// The site's title and description, from the rendered homepage, also when an entry tells it.
 			if (pagePath === '/') {
-				siteMetadata = {
-					title: metadata.title,
-					description: metadata.description,
-				}
+				const page = resolved.metadata ? undefined : await readHtml()
+				const metadata = resolved.metadata ?? (page === undefined ? undefined : htmlToMarkdown(page).metadata)
+				if (metadata) siteMetadata = { title: metadata.title, description: metadata.description }
 			}
 
-			staticCount++
+			// The markdown is written whether or not its link can be added to the page.
+			try {
+				await injectLinkIntoHtml(htmlPath, pagePath, await readHtml())
+			} catch (error) {
+				logger.warn(`Failed to link ${pagePath} to its markdown: ${error}`)
+			}
 		} catch (error) {
 			logger.warn(`Failed to process ${pagePath}: ${error}`)
 		}
@@ -144,32 +145,13 @@ export async function processBuildOutput(
 	}
 }
 
-async function injectLinkIntoHtml(htmlPath: string, pagePath: string): Promise<void> {
-	try {
-		const html = await fs.readFile(htmlPath, 'utf-8')
-		await fs.writeFile(htmlPath, injectMarkdownLink(html, pagePath), 'utf-8')
-	} catch {
-		// File might not exist for some pages
-	}
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-	try {
-		await fs.access(filePath)
-		return true
-	} catch {
-		return false
-	}
+async function injectLinkIntoHtml(htmlPath: string, pagePath: string, html: string | undefined): Promise<void> {
+	// Some pages have no HTML file
+	if (html === undefined) return
+	await fs.writeFile(htmlPath, injectMarkdownLink(html, pagePath), 'utf-8')
 }
 
 async function writeMarkdownFile(filePath: string, content: string): Promise<void> {
 	await fs.mkdir(path.dirname(filePath), { recursive: true })
 	await fs.writeFile(filePath, content, 'utf-8')
-}
-
-function extractTitle(title: unknown): string | undefined {
-	if (typeof title === 'string') {
-		return title
-	}
-	return undefined
 }

@@ -298,7 +298,12 @@
       "name": "@nuasite/llm-enhancements",
       "version": "0.60.0",
       "dependencies": {
+        "@nuasite/cms-core": "workspace:*",
         "node-html-parser": "catalog:parsers",
+        "remark-directive": "^3.0.1",
+        "remark-mdx": "catalog:editor",
+        "remark-parse": "catalog:editor",
+        "unified": "catalog:editor",
       },
       "devDependencies": {
         "@types/bun": "catalog:build",
