@@ -62,12 +62,13 @@ async function discoverPages(
 	const pages: PageEntry[] = []
 	let siteMetadata: SiteMetadata = {}
 
-	// For now, we discover only the homepage: the dev server has no list of routes to offer.
-	try {
-		const home = fetchPage(host, '/')
-		const metadata = (await home)?.metadata
-		if (metadata) siteMetadata = { title: metadata.title, description: metadata.description }
+	// For now, we discover only the homepage: the dev server has no list of routes to offer. A homepage
+	// the dev server fails to render is still listed when its entry tells it.
+	const home = fetchPage(host, '/').catch(() => undefined)
+	const metadata = (await home)?.metadata
+	if (metadata) siteMetadata = { title: metadata.title, description: metadata.description }
 
+	try {
 		const resolved = await resolvePageMarkdown('/', options, site, () => home)
 		if (resolved) pages.push({ pathname: '/', title: resolved.title, type: resolved.type })
 	} catch {
@@ -93,7 +94,7 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 	const baseUrl = getBaseUrl(config)
 	// Entries are read from Astro's root, as in the build, whatever the working directory is. The project
 	// and the pages that render an entry are kept between requests, and replaced after a change to the
-	// content, the routes or the content config.
+	// content, the routes or the content config. The routes are the ones the CMS reads, in `src/pages`.
 	const root = fileURLToPath(config.root)
 	const watched = [path.resolve(root, options.contentDir) + path.sep, path.join(root, 'src', 'pages') + path.sep]
 	const syntax = markdownSyntaxOf(config)
@@ -181,7 +182,13 @@ export function createDevMiddleware(server: ViteDevServer, options: ResolvedOpti
 			return next()
 		}
 
-		const pagePath = mdUrlToPagePath(url)
+		// Decoded, as the pages that render an entry are keyed: `/aktuality/%C5%A1kola.md` is `/aktuality/škola`.
+		let pagePath: string
+		try {
+			pagePath = mdUrlToPagePath(decodeURI(url))
+		} catch {
+			return next()
+		}
 
 		try {
 			const host = req.headers.host || 'localhost:4321'

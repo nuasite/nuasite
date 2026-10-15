@@ -4,8 +4,6 @@ import { cms } from './cms'
 import { type MarkdownSyntax, mdxBodyAsMarkdown } from './mdx'
 import { normalizePath } from './paths'
 
-type Collections = Awaited<ReturnType<NonNullable<typeof cms>['scanProjectCollections']>>
-
 /** The pages that render a collection entry, by normalized pathname. */
 export type CollectionPages = Map<string, CollectionInfo>
 
@@ -16,7 +14,10 @@ export type CollectionPages = Map<string, CollectionInfo>
  */
 export type CollectionPage = Omit<MarkdownContent, 'body'> & { body: string | undefined }
 
-/** Entries whose body is markdown. A data entry (`.json`, `.yaml`) or Markdoc is told by its page. */
+/**
+ * Entries whose body is markdown. Any other entry (`.json`, `.yaml`, Markdoc) still owns its page, but
+ * is told by the rendered HTML, like an `.mdx` entry that renders components.
+ */
 const MARKDOWN_ENTRY = /\.(md|mdx|markdown)$/i
 
 export async function getCollectionContent(
@@ -25,8 +26,16 @@ export async function getCollectionContent(
 	syntax: MarkdownSyntax,
 ): Promise<CollectionPage | undefined> {
 	const collectionInfo = pages.get(normalizePath(pagePath))
-	if (!cms || !collectionInfo || !MARKDOWN_ENTRY.test(collectionInfo.file)) {
-		return undefined
+	if (!cms || !collectionInfo) return undefined
+	if (!MARKDOWN_ENTRY.test(collectionInfo.file)) {
+		return {
+			frontmatter: {},
+			body: undefined,
+			bodyStartLine: 0,
+			file: collectionInfo.file,
+			collectionName: collectionInfo.name,
+			collectionSlug: collectionInfo.slug,
+		}
 	}
 
 	const content = await cms.parseMarkdownContent(collectionInfo)
@@ -39,14 +48,23 @@ export async function getCollectionContent(
 /**
  * Find the pages that render a collection entry, once, for a caller about to resolve many pages: the URL
  * the CMS editor shows for each entry (see `collectionPagesByPathname` in `@nuasite/cms`). Runs in the
- * current project context. Empty without `@nuasite/cms`, or when the scan fails, which `warn` reports:
- * every page is then told by its rendered HTML.
+ * current project context. Empty without `@nuasite/cms`, when `contentDir` lies outside the project root
+ * (the CMS reads nothing there), or when the scan fails; `warn` reports the last two. Every page is then
+ * told by its rendered HTML.
  */
 export async function findCollectionPages(contentDir: string, warn: (message: string) => void): Promise<CollectionPages> {
 	if (!cms) return new Map()
+	const root = cms.getProjectRoot()
+	const relative = path.relative(root, path.resolve(root, contentDir))
+	if (relative.startsWith('..') || path.isAbsolute(relative)) {
+		warn(`contentDir ${contentDir} is outside the project root ${root}, every page is converted from its HTML`)
+		return new Map()
+	}
+
 	let found: CollectionPages
 	try {
-		found = await cms.collectionPagesByPathname(await scanContent(contentDir))
+		// Relative, as the CMS spells the source paths it reads entries from.
+		found = await cms.collectionPagesByPathname(await cms.scanProjectCollections(relative.split(path.sep).join('/') || '.'))
 	} catch (error) {
 		warn(`Could not scan the content collections in ${contentDir}, every page is converted from its HTML: ${error}`)
 		return new Map()
@@ -54,26 +72,4 @@ export async function findCollectionPages(contentDir: string, warn: (message: st
 	const pages: CollectionPages = new Map()
 	for (const [pathname, info] of found) pages.set(normalizePath(pathname), info)
 	return pages
-}
-
-/**
- * Scan the collections in `contentDir`. One outside the project root (`../shared/content`) is scanned
- * from its parent, since the CMS filesystem refuses paths outside its root, and its source paths are
- * then spelled from the project root again, which is how the rest of the CMS reads them.
- */
-async function scanContent(contentDir: string): Promise<Collections> {
-	const api = cms!
-	const root = api.getProjectRoot()
-	const absolute = path.resolve(root, contentDir)
-	const relative = path.relative(root, absolute)
-	if (!relative.startsWith('..') && !path.isAbsolute(relative)) return api.scanProjectCollections(contentDir)
-
-	const base = path.dirname(absolute)
-	const scanned = await api.runAtProjectRoot(base, () => api.scanProjectCollections(path.basename(absolute)))
-	const fromRoot = (sourcePath: string) => path.relative(root, path.resolve(base, sourcePath)).split(path.sep).join('/')
-	const rebased: Collections = {}
-	for (const [name, def] of Object.entries(scanned)) {
-		rebased[name] = { ...def, path: fromRoot(def.path), entries: def.entries?.map(entry => ({ ...entry, sourcePath: fromRoot(entry.sourcePath) })) }
-	}
-	return rebased
 }

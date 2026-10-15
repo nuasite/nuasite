@@ -85,23 +85,23 @@ async function processPages(
 			}, options.includeFrontmatter)
 
 			await writeMarkdownFile(mdPath, markdown)
-			await injectLinkIntoHtml(htmlPath, pagePath, await readHtml())
 			pageEntries.push({ pathname: pagePath, title: resolved.title, type: resolved.type })
+			if (resolved.type === 'collection') collectionCount++
+			else staticCount++
 
-			if (resolved.type === 'collection') {
-				collectionCount++
-				continue
+			// The site's title and description, from the rendered homepage, also when an entry tells it.
+			if (pagePath === '/') {
+				const page = resolved.metadata ? undefined : await readHtml()
+				const metadata = resolved.metadata ?? (page === undefined ? undefined : htmlToMarkdown(page).metadata)
+				if (metadata) siteMetadata = { title: metadata.title, description: metadata.description }
 			}
 
-			// Extract site metadata from homepage
-			if (pagePath === '/' && resolved.metadata) {
-				siteMetadata = {
-					title: resolved.metadata.title,
-					description: resolved.metadata.description,
-				}
+			// The markdown is written whether or not its link can be added to the page.
+			try {
+				await injectLinkIntoHtml(htmlPath, pagePath, await readHtml())
+			} catch (error) {
+				logger.warn(`Failed to link ${pagePath} to its markdown: ${error}`)
 			}
-
-			staticCount++
 		} catch (error) {
 			logger.warn(`Failed to process ${pagePath}: ${error}`)
 		}

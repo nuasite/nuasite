@@ -210,7 +210,7 @@ LLMs and crawlers are welcome to access markdown endpoints.
 
 - **Type**: `string`
 - **Default**: `'src/content'`
-- Directory containing Astro content collections.
+- Directory containing Astro content collections, inside the project root. The CMS reads nothing outside it, so a `contentDir` there is reported once and every page is converted from its HTML.
 
 ### `includeStaticPages`
 
@@ -329,7 +329,7 @@ When converting static pages, the integration:
 
 A page that renders a content collection entry is written from the entry's own markdown, with its source path in the frontmatter. Pages that are not backed by an entry are converted from their rendered HTML instead. The entry lookup comes from `@nuasite/cms`, an optional peer dependency (`@nuasite/nua` installs it); without it every page is converted from its HTML. The collections are scanned once per build.
 
-A page is an entry's when it is at the URL the CMS editor shows for that entry: from the collection's `cms.pathname` rule, else a URL the entry declares in its frontmatter (`urlPath`, `permalink`, …), else the route that renders the collection plus the entry's slug. So `src/pages/aktuality/[slug].astro` rendering `news` makes `/aktuality/x` the page of `news/x.md`, while a static `/team/jana` beside `blog/jana.md` stays a static page. A route under a dynamic folder (`[lang]/blog/[slug].astro`) gives no URL, so its entries need a `cms.pathname` rule or a declared URL. Only markdown entries (`.md`, `.mdx`) are written from source; a data entry (`.json`, `.yaml`) is told by its rendered page. Entries are read from Astro's `root`, so `astro build --root site` works from any directory, and a `contentDir` may lie outside it.
+A page is an entry's when it is at the URL the CMS editor shows for that entry: from the collection's `cms.pathname` rule, else a URL the entry declares in its frontmatter (`urlPath`, `permalink`, …), else the route that renders the collection plus the entry's slug. So `src/pages/aktuality/[slug].astro` rendering `news` makes `/aktuality/x` the page of `news/x.md`, while a static `/team/jana` beside `blog/jana.md` stays a static page. A route under a dynamic folder (`[lang]/blog/[slug].astro`) gives no URL, so its entries need a `cms.pathname` rule or a declared URL. Only markdown entries (`.md`, `.mdx`) are written from source; a data entry (`.json`, `.yaml`) is still a collection page, written from its rendered HTML like an `.mdx` entry that renders components. Entries are read from Astro's `root`, so `astro build --root site` works from any directory.
 
 An `.mdx` entry is written without its `import`/`export` blocks. It is parsed with the site's markdown syntax (directives when a remark-directive plugin is configured, as `@nuasite/nua` does). One whose body still uses a component (`<Tip>`, `<Card />`) or an expression (`{year}`) is converted from its rendered HTML instead, since those render text the source only names. It is still a collection page, so it is written even with `includeStaticPages: false`.
 

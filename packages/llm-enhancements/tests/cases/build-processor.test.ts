@@ -104,7 +104,7 @@ describe('processBuildOutput resolves collection pages from their source', () =>
 		expect(await Bun.file(path.join(root, 'dist/index.md')).exists()).toBe(false)
 	})
 
-	test('a data entry a pathname rule maps to the page is not written as its markdown', async () => {
+	test('a data entry a pathname rule maps to the page is its page, told by the HTML', async () => {
 		await write('src/content/products/x.json', '{ "slug": "x", "name": "Widget" }')
 		await write('dist/products/x/index.html', '<html><head><title>Widget</title></head><body><h1>Widget</h1></body></html>')
 		const scan = spyOn(cms, 'scanProjectCollections').mockResolvedValue({
@@ -121,14 +121,17 @@ describe('processBuildOutput resolves collection pages from their source', () =>
 			},
 		} as never)
 		try {
-			await build([{ pathname: 'products/x' }])
+			await build([{ pathname: 'products/x' }], resolveOptions({ includeStaticPages: false }))
 		} finally {
 			scan.mockRestore()
 		}
 
 		const markdown = await fs.readFile(path.join(root, 'dist/products/x.md'), 'utf-8')
-		expect(markdown).toContain('type: static')
+		expect(markdown).toContain('type: collection')
+		expect(markdown).toContain('source: src/content/products/x.json')
+		expect(markdown).toContain('# Widget')
 		expect(markdown).not.toContain('"slug"')
+		expect(await fs.readFile(path.join(root, 'dist/llms.txt'), 'utf-8')).toContain('[Widget](https://example.com/products/x.md)')
 	})
 
 	test('a static page is not given an entry that only shares its last segment', async () => {
@@ -195,22 +198,63 @@ describe('processBuildOutput resolves collection pages from their source', () =>
 		expect(await fs.readFile(path.join(root, 'dist/posts/p1.md'), 'utf-8')).toContain('type: static')
 	})
 
-	test('content outside the project root is still read', async () => {
+	test('content outside the project root is reported, and every page is converted from its HTML', async () => {
 		const shared = await fs.mkdtemp(path.join(os.tmpdir(), 'llm-shared-'))
 		try {
 			await fs.mkdir(path.join(shared, 'posts'), { recursive: true })
-			await fs.writeFile(path.join(shared, 'posts/far.md'), '---\ntitle: Far\n---\n\nFrom elsewhere.\n')
-			await write('dist/posts/far/index.html', '<html><head><title>Far</title></head><body></body></html>')
+			await fs.writeFile(path.join(shared, 'posts/p1.md'), '---\ntitle: Far\n---\n\nFrom elsewhere.\n')
 
-			await build([{ pathname: 'posts/far' }], resolveOptions({ contentDir: path.relative(root, shared) }))
+			await build(pages, resolveOptions({ contentDir: path.relative(root, shared) }))
 
-			const markdown = await fs.readFile(path.join(root, 'dist/posts/far.md'), 'utf-8')
-			expect(markdown).toContain('From elsewhere.')
-			expect(markdown).toContain(`source: ${path.relative(root, path.join(shared, 'posts/far.md'))}`)
-			expect(logged.filter(m => m.includes('Could not scan'))).toEqual([])
+			expect(logged.filter(m => m.includes('outside the project root'))).toHaveLength(1)
+			const markdown = await fs.readFile(path.join(root, 'dist/posts/p1.md'), 'utf-8')
+			expect(markdown).toContain('type: static')
+			expect(markdown).not.toContain('From elsewhere.')
 		} finally {
 			await fs.rm(shared, { recursive: true, force: true })
 		}
+	})
+
+	test('an absolute contentDir inside the project root is read like a relative one', async () => {
+		await build(pages, resolveOptions({ contentDir: path.join(root, 'src/content') }))
+
+		const markdown = await fs.readFile(path.join(root, 'dist/posts/p1.md'), 'utf-8')
+		expect(markdown).toContain('type: collection')
+		expect(markdown).toContain('source: src/content/posts/p1.md')
+	})
+
+	test('a homepage an entry tells still gives the site its title', async () => {
+		await write('src/content/pages/home.md', '---\ntitle: Welcome\n---\n\nHello.\n')
+		const find = spyOn(cms, 'collectionPagesByPathname').mockResolvedValue(
+			new Map([['/', { name: 'pages', slug: 'home', file: 'src/content/pages/home.md' }]]),
+		)
+		try {
+			await build([{ pathname: '' }])
+		} finally {
+			find.mockRestore()
+		}
+
+		expect(await fs.readFile(path.join(root, 'dist/index.md'), 'utf-8')).toContain('type: collection')
+		expect(await fs.readFile(path.join(root, 'dist/llms.txt'), 'utf-8')).toStartWith('# Home')
+	})
+
+	test('a page whose HTML cannot be linked is still written and listed', async () => {
+		const realWrite = fs.writeFile
+		const write = spyOn(fs, 'writeFile').mockImplementation(
+			((file: unknown, ...rest: unknown[]) =>
+				String(file).endsWith(path.join('posts/p1/index.html'))
+					? Promise.reject(new Error('read-only'))
+					: (realWrite as (...args: unknown[]) => Promise<void>)(file, ...rest)) as typeof fs.writeFile,
+		)
+		try {
+			await build()
+		} finally {
+			write.mockRestore()
+		}
+
+		expect(logged.some(m => m.includes('/posts/p1') && m.includes('read-only'))).toBe(true)
+		expect(logged).toContain('Generated 4 .md files (3 collection, 1 static)')
+		expect(await fs.readFile(path.join(root, 'dist/llms.txt'), 'utf-8')).toContain('[Post 1](https://example.com/posts/p1.md)')
 	})
 
 	test('the collections are scanned once for the build', async () => {

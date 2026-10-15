@@ -16,16 +16,6 @@ export interface MarkdownSyntax {
 }
 
 /**
- * Make an `.mdx` entry body readable as plain markdown, or say it cannot be.
- *
- * The body is parsed as MDX, so fences, multi-line ESM and code spans follow the same rules MDX itself
- * uses. ESM (`import`/`export`) is cut out of the source: none of it is content. A body that still renders
- * something the source only names returns `undefined`, so the page's rendered HTML is used instead:
- * a component (`<Card title="…" />`), an expression (`{new Date().getFullYear()}`, `{/* note *\/}`) or a
- * plain HTML tag whose attributes are expressions. A body MDX cannot parse returns `undefined` too.
- * `syntax` says which extensions the site parses MDX with, so the body reads as the site renders it.
- */
-/**
  * The syntax of the site's markdown pipeline, which `@astrojs/mdx` extends by default: directives when a
  * remark-directive plugin is in it (`@nuasite/nua` adds the CMS's). Plugins given to `mdx()` alone are not
  * visible here.
@@ -39,6 +29,16 @@ export function markdownSyntaxOf(config: AstroConfig): MarkdownSyntax {
 	return { directives }
 }
 
+/**
+ * Make an `.mdx` entry body readable as plain markdown, or say it cannot be.
+ *
+ * The body is parsed as MDX, so fences, multi-line ESM and code spans follow the same rules MDX itself
+ * uses. ESM (`import`/`export`) is cut out of the source: none of it is content. A body that still renders
+ * something the source only names returns `undefined`, so the page's rendered HTML is used instead:
+ * a component (`<Card title="…" />`), an expression (`{new Date().getFullYear()}`, `{/* note *\/}`) or a
+ * plain HTML tag whose attributes are expressions. A body MDX cannot parse returns `undefined` too.
+ * `syntax` says which extensions the site parses MDX with, so the body reads as the site renders it.
+ */
 export function mdxBodyAsMarkdown(body: string, syntax: MarkdownSyntax): string | undefined {
 	let tree: Node
 	try {

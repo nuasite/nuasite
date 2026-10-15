@@ -18,5 +18,6 @@ function isMissing(error: unknown): boolean {
 	const code = (error as { code?: unknown } | null)?.code
 	const message = error instanceof Error ? error.message : String(error)
 	return (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND' || /Cannot find (module|package)/.test(message))
-		&& message.includes('@nuasite/cms')
+		// Quoted, so a missing `@nuasite/cms-types` under an installed cms is not taken for cms itself.
+		&& /['"]@nuasite\/cms['"]/.test(message)
 }
