@@ -11,14 +11,14 @@
  * `media` serves an image already in the slot (its preview, "Replace image"); the toolbar
  * still offers no image insertion here.
  */
-import { defaultValueCtx, Editor, rootCtx } from '@milkdown/core'
+import { defaultValueCtx, Editor, editorViewCtx, rootCtx } from '@milkdown/core'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
 import { replaceAll } from '@milkdown/utils'
 import { useEffect, useRef, useState } from 'react'
 import { FormatToolbar } from './format-toolbar'
-import { historyKeymap, historyPlugin } from './history-plugin'
+import { clearHistory, historyKeymap, historyPlugin } from './history-plugin'
 import { markWhitespacePlugin } from './mark-whitespace'
 import type { MediaContext, MediaSource } from './media-source'
 
@@ -81,13 +81,18 @@ export function SlotEditor({ value, onChange, media, mediaContext }: SlotEditorP
 	}, [])
 
 	// Adopt external value changes (node re-render with different children) while
-	// the user isn't actively typing.
+	// the user isn't actively typing. Checked on every render, not only when `value`
+	// changes: an undo in the body editor can take back the text this editor handed
+	// over on blur in the same render, and `value` then arrives unchanged while the
+	// editor still shows the text that was taken back.
 	useEffect(() => {
 		if (!editorRef.current || focused.current) return
 		if (value === latest.current) return
 		editorRef.current.action(replaceAll(value))
+		// Undo must not bring back the text the host just replaced.
+		clearHistory(editorRef.current.ctx.get(editorViewCtx))
 		latest.current = value
-	}, [value])
+	})
 
 	return (
 		<div style={wrapper}>

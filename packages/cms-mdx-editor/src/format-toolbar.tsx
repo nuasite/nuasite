@@ -24,7 +24,7 @@ import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset
 import { callCommand } from '@milkdown/utils'
 import type { CmsListStyle } from '@nuasite/cms-types'
 import { useEffect, useState } from 'react'
-import { redo, undo } from './history-plugin'
+import { isMac, redo, undo } from './history-plugin'
 import { ImagePopover } from './image-popover'
 import { LinkPopover } from './link-popover'
 import { MediaLibrary } from './media-library'
@@ -68,11 +68,16 @@ function toggleBlockquote(editor: Editor) {
 	editor.action(callCommand(wrapInBlockquoteCommand.key))
 }
 
+// Focus first: a slot editor that still has the focus hands over its text when it loses it,
+// and undo then takes back that text instead of being overwritten by it right away.
 function runHistory(editor: Editor, command: typeof undo) {
 	const view = editor.ctx.get(editorViewCtx)
-	command(view.state, view.dispatch)
 	view.focus()
+	command(view.state, view.dispatch)
 }
+
+const undoTitle = isMac ? 'Undo (⌘Z)' : 'Undo (Ctrl+Z)'
+const redoTitle = isMac ? 'Redo (⌘⇧Z)' : 'Redo (Ctrl+Y)'
 
 function toggleList(editor: Editor, type: 'bullet' | 'ordered') {
 	const view = editor.ctx.get(editorViewCtx)
@@ -251,8 +256,8 @@ export function FormatToolbar({ editor, listStyles, media, mediaContext, field, 
 	return (
 		<div style={toolbarRoot}>
 			<div style={bar}>
-				<Btn title="Undo (Ctrl+Z)" onClick={() => editor && runHistory(editor, undo)}>↶</Btn>
-				<Btn title="Redo (Ctrl+Shift+Z)" onClick={() => editor && runHistory(editor, redo)}>↷</Btn>
+				<Btn title={undoTitle} onClick={() => editor && runHistory(editor, undo)}>↶</Btn>
+				<Btn title={redoTitle} onClick={() => editor && runHistory(editor, redo)}>↷</Btn>
 				<span style={sep} />
 				<Btn active={formats.bold} title="Bold" onClick={() => editor?.action(callCommand(toggleStrongCommand.key))} style={{ fontWeight: 700 }}>B</Btn>
 				<Btn

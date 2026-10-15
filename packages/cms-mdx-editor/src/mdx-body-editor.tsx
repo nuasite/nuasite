@@ -8,7 +8,7 @@
  * block-card prop labels; without it blocks still render and round-trip, just
  * without rich labels.
  */
-import { defaultValueCtx, Editor, rootCtx } from '@milkdown/core'
+import { defaultValueCtx, Editor, editorViewCtx, rootCtx } from '@milkdown/core'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
@@ -17,7 +17,7 @@ import type { CmsListStyle, ComponentDefinition } from '@nuasite/cms-types'
 import { useEffect, useRef, useState } from 'react'
 import { ComponentPicker } from './component-picker'
 import { FormatToolbar } from './format-toolbar'
-import { historyKeymap, historyPlugin } from './history-plugin'
+import { clearHistory, historyKeymap, historyPlugin } from './history-plugin'
 import { markWhitespacePlugin } from './mark-whitespace'
 import { insertMdxComponentCommand, mdxComponentNode, mdxEsmNode, remarkMdxPlugin } from './mdx-plugin'
 import { type ComponentResolver, createMdxComponentView } from './mdx-view'
@@ -217,6 +217,8 @@ export function MdxBodyEditor({ value, onChange, components, listStyles, media, 
 		if (value === latest.current) return
 		settingExternal.current = true
 		editorRef.current.action(replaceAll(value))
+		// Undo must not bring back the text the host just replaced.
+		clearHistory(editorRef.current.ctx.get(editorViewCtx))
 		latest.current = value
 		queueMicrotask(() => {
 			settingExternal.current = false
