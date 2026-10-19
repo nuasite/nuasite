@@ -403,6 +403,8 @@ export interface MediaLibraryState {
 	insertCallback: ((url: string, alt: string) => void) | null
 	/** When set, uploads inside the media library route to an Astro `image()` field's entry directory. */
 	uploadContext: MediaUploadContext | null
+	/** File-input `accept` of the field that opened the library; `null` keeps the library default. */
+	accept: string | null
 }
 
 export interface CreatePageState {

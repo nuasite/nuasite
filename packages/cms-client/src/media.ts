@@ -32,9 +32,6 @@ const SELF_LOADING = /^(https?:)?\/\/|^data:/i
 const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp|avif|svg|ico|bmp)(\?|#|$)/i
 const VIDEO_EXTENSION = /\.(mp4|webm)(\?|#|$)/i
 
-/** The file types a `video` field uploads by default — the two every browser plays in `<video>`. */
-export const VIDEO_UPLOAD_ACCEPT = 'video/mp4,video/webm'
-
 /**
  * The URL to put in `<img src>` or `<video src>` for a field value, or `''` when nothing can load it.
  *

@@ -127,6 +127,7 @@ function createInitialMediaLibraryState(): MediaLibraryState {
 		selectedItem: null,
 		insertCallback: null,
 		uploadContext: null,
+		accept: null,
 	}
 }
 
@@ -1095,12 +1096,14 @@ export function setMediaLibraryInsertCallback(
 export function openMediaLibraryWithCallback(
 	callback: (url: string, alt: string) => void,
 	uploadContext?: MediaUploadContext,
+	accept?: string,
 ): void {
 	mediaLibraryState.value = {
 		...mediaLibraryState.value,
 		isOpen: true,
 		insertCallback: callback,
 		uploadContext: uploadContext ?? null,
+		accept: accept ?? null,
 	}
 }
 

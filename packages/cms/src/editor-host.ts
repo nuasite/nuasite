@@ -13,7 +13,7 @@ import { reloadClientScript } from './reload-client'
 import { scanCollections } from './scan-cache'
 import type { CmsMarkerOptions, ComponentDefinition } from './types'
 
-const DEFAULT_MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+const DEFAULT_MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 const API_PREFIX = '/_nua/cms/'
 
 export interface EditorHostOptions extends CmsMarkerOptions {
@@ -39,7 +39,7 @@ export interface EditorHostOptions extends CmsMarkerOptions {
 	mdxComponentDirs?: string[]
 	/** Per-collection overrides, as in the Astro config. */
 	collections?: CollectionOverrides
-	/** @default 10 MB */
+	/** @default 20 MB */
 	maxUploadSize?: number
 	/** Inject the editor into every page {@link EditorHost.processPage} returns. */
 	editor?: {

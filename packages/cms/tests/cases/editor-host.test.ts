@@ -235,7 +235,7 @@ describe('createEditorHost', () => {
 		const host = await hostOver(project(), { editor: { src: '/editor.js', reloadUrl: '/_live' } })
 		const marked = await host.processPage('/', renderedPage('/project'), { revision: 'r1' })
 
-		expect(marked).toMatch(/<script>window\.NuaCmsConfig = \{"apiBase":"\/_nua\/cms","maxUploadSize":10485760\};<\/script>/)
+		expect(marked).toMatch(/<script>window\.NuaCmsConfig = \{"apiBase":"\/_nua\/cms","maxUploadSize":20971520\};<\/script>/)
 		expect(marked).toContain('<script type="module" src="/editor.js" data-nuasite-cms></script>')
 		expect(marked).toContain('"revision":"r1"')
 		expect(marked.indexOf('data-nuasite-cms')).toBeLessThan(marked.indexOf('</head>'))

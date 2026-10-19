@@ -47,6 +47,9 @@ export function isFieldType(value: string): value is FieldType {
 	return (FIELD_TYPES as readonly string[]).includes(value)
 }
 
+/** The file types a `video` field uploads by default — the two every browser plays in `<video>`. */
+export const VIDEO_UPLOAD_ACCEPT = 'video/mp4,video/webm'
+
 /**
  * Named transforms a derived field may apply to its source value. A fixed set, not
  * arbitrary functions: the content config is read *statically* through its AST, so a

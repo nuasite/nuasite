@@ -120,12 +120,12 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	/**
 	 * Maximum upload size in bytes. Applied to `/_nua/cms/media/upload` requests
 	 * (enforced on the server and pre-checked on the client).
-	 * @default 10 * 1024 * 1024 (10 MB)
+	 * @default 20 * 1024 * 1024 (20 MB)
 	 */
 	maxUploadSize?: number
 }
 
-const DEFAULT_MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+const DEFAULT_MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 
 const VIRTUAL_CMS_PATH = '/@nuasite/cms-editor.js'
 
