@@ -115,7 +115,7 @@ function projectAssetPath(value: string): string | null {
 }
 
 /**
- * Report `image` values pointing at no file, walking nested objects and object-array items
+ * Report `image` and `video` values pointing at no file, walking nested objects and object-array items
  * the same way the field data is shaped. Resolution goes through `resolveAssetCandidates`
  * with the entry's own directory, which is what `getEntryAsset` serves a relative value
  * from — the check therefore looks exactly where serving the asset looks.
@@ -145,7 +145,7 @@ async function checkAssets(
 			continue
 		}
 
-		if (field.type !== 'image' || typeof value !== 'string') continue
+		if ((field.type !== 'image' && field.type !== 'video') || typeof value !== 'string') continue
 		const assetPath = projectAssetPath(value)
 		if (assetPath === null) continue
 

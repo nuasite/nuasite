@@ -36,14 +36,15 @@ async function projectWith(files: Record<string, Buffer>): Promise<string> {
  * Drive one route through a real `node:http` server, exactly as the dev
  * middleware does — the handler writes to a genuine `ServerResponse`. It is handed
  * `route` verbatim, the way the middleware cuts it out of the raw request URL, and
- * reads `query` (`?a=b`) from the request itself, and `json`, when given, as the body.
+ * reads `query` (`?a=b`) from the request itself, and `body`, when given — a `FormData` as multipart,
+ * anything else as JSON.
  */
 async function callRoute<T>(
 	method: string,
 	route: string,
 	context: Omit<RouteContext, 'req' | 'res' | 'route'>,
 	query = '',
-	json?: unknown,
+	body?: unknown,
 ): Promise<{ status: number; body: T }> {
 	const server = createServer((req, res) => {
 		handleCmsApiRoute({ ...context, req, res, route }).catch((error: unknown) => {
@@ -55,13 +56,15 @@ async function callRoute<T>(
 		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 		const address: string | AddressInfo | null = server.address()
 		if (address === null || typeof address === 'string') throw new Error('expected a TCP address')
-		const init: RequestInit = json === undefined
+		const init: RequestInit = body === undefined
 			? { method }
-			: { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(json) }
+			: body instanceof FormData
+			? { method, body }
+			: { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
 		const response = await fetch(`http://127.0.0.1:${address.port}/_nua/cms/${route}${query}`, init)
 		// `Response.json()` is untyped; the route's wire shape is what we assert on.
-		const body: T = await response.json()
-		return { status: response.status, body }
+		const responseBody: T = await response.json()
+		return { status: response.status, body: responseBody }
 	} finally {
 		server.close()
 	}
@@ -257,5 +260,39 @@ describe('POST media/folder', () => {
 			'with space',
 			'ünïcode',
 		])
+	})
+})
+
+describe('POST media/upload', () => {
+	type UploadBody = { success?: boolean; url?: string; error?: string }
+
+	function form(name: string, type: string): FormData {
+		const data = new FormData()
+		data.append('file', new File([new Uint8Array(16)], name, { type }))
+		return data
+	}
+
+	test('an MP4 or WebM video is accepted into the uploads directory', async () => {
+		const root = await projectWith({})
+		const context = contextFor(root, path.join(root, 'public/uploads'))
+
+		for (const [name, type] of [['clip.mp4', 'video/mp4'], ['clip.webm', 'video/webm']]) {
+			const response = await callRoute<UploadBody>('POST', 'media/upload', context, '', form(name!, type!))
+			expect(response.status).toBe(200)
+			expect(response.body.url).toMatch(/^\/uploads\/.+\.(mp4|webm)$/)
+		}
+	})
+
+	test('a QuickTime movie is still refused', async () => {
+		const root = await projectWith({})
+		const response = await callRoute<UploadBody>(
+			'POST',
+			'media/upload',
+			contextFor(root, path.join(root, 'public/uploads')),
+			'',
+			form('clip.mov', 'video/quicktime'),
+		)
+		expect(response.status).toBe(400)
+		expect(response.body.error).toBe('File type not allowed: video/quicktime')
 	})
 })

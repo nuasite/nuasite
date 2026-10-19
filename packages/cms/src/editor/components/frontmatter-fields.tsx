@@ -1,4 +1,5 @@
 import { newRepeaterItem } from '@nuasite/cms-core/editor-write-model'
+import { VIDEO_UPLOAD_ACCEPT } from '@nuasite/cms-types'
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import { cn } from '../lib/cn'
@@ -546,6 +547,28 @@ export function SchemaFrontmatterField({
 			)
 		}
 
+		case 'video': {
+			const accept = hints?.accept ?? VIDEO_UPLOAD_ACCEPT
+			return (
+				<FileField
+					label={label}
+					value={(value as string) ?? ''}
+					accept={accept}
+					previewAsVideo
+					onChange={(v) => onChange(v)}
+					onBrowse={() => {
+						openMediaLibraryWithCallback(
+							(url: string) => {
+								onChange(url)
+							},
+							undefined,
+							accept,
+						)
+					}}
+				/>
+			)
+		}
+
 		case 'color':
 			return (
 				<ColorField
@@ -1037,6 +1060,8 @@ export function getPlaceholder(field: FieldDefinition): string {
 			return '/images/...'
 		case 'file':
 			return '/files/...'
+		case 'video':
+			return '/videos/...'
 		case 'color':
 			return '#000000'
 		case 'date':

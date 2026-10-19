@@ -27,6 +27,7 @@ export {
 	nextFreeSlug,
 	resolveCollectionNav,
 	slugify,
+	VIDEO_UPLOAD_ACCEPT,
 	withEntrySlug,
 	withRenamedEntrySlug,
 } from '@nuasite/cms-types'

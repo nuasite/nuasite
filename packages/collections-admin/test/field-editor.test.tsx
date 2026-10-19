@@ -99,6 +99,14 @@ describe('FieldEditor — field → widget mapping', () => {
 		expect(html).toContain('<img')
 	})
 
+	test('video → media picker with a <video> preview and the video accept list', () => {
+		const html = render({ name: 'clip', type: 'video', required: false }, '/uploads/intro.mp4')
+		expect(html).toContain('<video')
+		expect(html).not.toContain('<img')
+		expect(html).toContain('accept="video/mp4,video/webm"')
+		expect(html).toContain('Video URL or path')
+	})
+
 	test('reference → renders (loading state on initial render)', () => {
 		const html = render({ name: 'ref', type: 'reference', required: false, collection: 'authors' }, '')
 		// Effects do not run under static render, so we see the loading placeholder.

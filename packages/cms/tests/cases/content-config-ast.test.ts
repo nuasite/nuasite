@@ -19,6 +19,21 @@ describe('parseConfigSource — supported forms', () => {
 		expect(blog?.fields.find(f => f.name === 'cover')?.type).toBe('image')
 	})
 
+	test('detects `n.video()` with its accept hint', () => {
+		const result = parseConfigSource(`
+			import { defineCollection } from 'astro:content'
+			import { n } from '@nuasite/cms'
+			const sections = defineCollection({
+				schema: n.object({
+					animation: n.video({ accept: 'video/mp4' }),
+				}),
+			})
+			export const collections = { sections }
+		`)
+		const animation = result.get('sections')?.fields.find(f => f.name === 'animation')
+		expect(animation).toMatchObject({ type: 'video', hints: { accept: 'video/mp4' } })
+	})
+
 	test('detects fields in callback-form `({ image }) => z.object({...})`', () => {
 		const result = parseConfigSource(`
 			import { defineCollection } from 'astro:content'

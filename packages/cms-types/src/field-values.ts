@@ -232,7 +232,7 @@ export const ENTRY_SLUG_FIELD = 'slug'
  * What actually disqualifies a `slug` is holding something that is not a line of text at all. Those
  * are listed here; everything else is a spelling of a string, and the rules can read it.
  */
-const NON_TEXT_SLUG_TYPES = new Set<FieldType>(['array', 'object', 'reference', 'image', 'file', 'boolean', 'number', 'date', 'datetime'])
+const NON_TEXT_SLUG_TYPES = new Set<FieldType>(['array', 'object', 'reference', 'image', 'file', 'video', 'boolean', 'number', 'date', 'datetime'])
 
 /** Whether this field could hold an entry's address at all. */
 function holdsEntrySlug(field: SlugMirrorField): boolean {

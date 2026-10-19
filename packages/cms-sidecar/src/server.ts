@@ -2,6 +2,7 @@ import {
 	CmsCommitConflictError,
 	type CmsCore,
 	type CmsFileSystem,
+	type EntryAsset,
 	isUnsafeFolder,
 	listFilteredMedia,
 	listProjectImages,
@@ -11,6 +12,7 @@ import {
 	mediaErrorStatus,
 	parseMediaTypeFilter,
 	parseProjectCmsConfig,
+	resolveByteRange,
 	resolvePathnameFromSpec,
 	scanRouteCollections,
 } from '@nuasite/cms-core'
@@ -104,6 +106,19 @@ function error(code: ErrorCode, message: string, sourcePath?: string): Response 
 	const body: ApiError = { error: message, code }
 	if (sourcePath !== undefined) body.sourcePath = sourcePath
 	return json(body, STATUS_BY_CODE[code])
+}
+
+/** An asset's bytes, or the slice a `Range` request asked for — what a `<video>` preview needs to seek. */
+function assetBytesResponse(asset: EntryAsset, req: Request): Response {
+	const size = asset.bytes.byteLength
+	const headers = { 'content-type': asset.contentType, 'cache-control': 'no-cache', 'accept-ranges': 'bytes' }
+	const range = resolveByteRange(req.headers.get('range'), size)
+	if (range === null) return new Response(asset.bytes, { headers })
+	if (range === 'unsatisfiable') return new Response(null, { status: 416, headers: { ...headers, 'content-range': `bytes */${size}` } })
+	return new Response(asset.bytes.subarray(range.start, range.end + 1), {
+		status: 206,
+		headers: { ...headers, 'content-range': `bytes ${range.start}-${range.end}/${size}` },
+	})
 }
 
 /**
@@ -610,21 +625,21 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 	}
 
 	// --- GET entry asset (resolve an image/file value relative to the entry source, stream the bytes) ---
-	async function assetResponse(collection: string, slug: string, url: URL): Promise<Response> {
+	async function assetResponse(collection: string, slug: string, req: Request, url: URL): Promise<Response> {
 		const assetPath = url.searchParams.get('path')
 		if (assetPath === null || assetPath === '') return error('validation', 'A "path" query parameter is required')
 		const asset = await core.getEntryAsset(collection, slug, assetPath)
 		if (!asset) return error('not_found', `Asset not found for ${collection}/${slug}: ${assetPath}`)
-		return new Response(asset.bytes, { headers: { 'content-type': asset.contentType, 'cache-control': 'no-cache' } })
+		return assetBytesResponse(asset, req)
 	}
 
 	// --- GET project asset (resolve a root-relative /assets|/uploads value with no owning entry) ---
-	async function projectAssetResponse(url: URL): Promise<Response> {
+	async function projectAssetResponse(req: Request, url: URL): Promise<Response> {
 		const assetPath = url.searchParams.get('path')
 		if (assetPath === null || assetPath === '') return error('validation', 'A "path" query parameter is required')
 		const asset = await core.getProjectAsset(assetPath)
 		if (!asset) return error('not_found', `Asset not found: ${assetPath}`)
-		return new Response(asset.bytes, { headers: { 'content-type': asset.contentType, 'cache-control': 'no-cache' } })
+		return assetBytesResponse(asset, req)
 	}
 
 	// --- PATCH entry (optimistic concurrency + per-file mutex) ---
@@ -745,7 +760,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 				break
 
 			case 'asset':
-				if (method === 'GET') return projectAssetResponse(url)
+				if (method === 'GET') return projectAssetResponse(req, url)
 				break
 
 			case 'collections':
@@ -793,7 +808,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			if (action === 'rename' && method === 'POST') return renameEntryRoute(collection, slug, req)
 			if (action === 'array' && method === 'POST') return addArrayRoute(collection, slug, req)
 			if (action === 'array' && method === 'DELETE') return removeArrayRoute(collection, slug, req)
-			if (action === 'asset' && method === 'GET') return assetResponse(collection, slug, url)
+			if (action === 'asset' && method === 'GET') return assetResponse(collection, slug, req, url)
 		}
 
 		return error('not_found', `No route: ${method} /cms/v1/collections/${tail.join('/')}`)

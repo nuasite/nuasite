@@ -326,6 +326,8 @@ export interface FileFieldProps {
 	onChange: (value: string) => void
 	onBrowse: () => void
 	accept?: string
+	/** Show the file as a muted video frame instead of a document icon. */
+	previewAsVideo?: boolean
 	isDirty?: boolean
 	onReset?: () => void
 }
@@ -340,7 +342,7 @@ function getFileBasename(url: string): string {
 	}
 }
 
-export function FileField({ label, value, onChange, onBrowse, accept, isDirty, onReset }: FileFieldProps) {
+export function FileField({ label, value, onChange, onBrowse, accept, previewAsVideo, isDirty, onReset }: FileFieldProps) {
 	const hasFile = !!value && value.length > 0
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const [isUploading, setIsUploading] = useState(false)
@@ -430,6 +432,7 @@ export function FileField({ label, value, onChange, onBrowse, accept, isDirty, o
 							class={cn(containerClass, 'block')}
 							data-cms-ui
 						>
+							{previewAsVideo && <video src={value} muted playsInline preload="metadata" class="w-full max-h-40 bg-black object-contain" data-cms-ui />}
 							<div class="w-full h-20 flex items-center gap-3 px-3 text-white/80">
 								<svg class="w-8 h-8 flex-shrink-0 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
 									<path

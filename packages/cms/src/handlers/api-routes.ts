@@ -130,6 +130,8 @@ const ALLOWED_UPLOAD_TYPES = new Set([
 	'image/avif',
 	'image/x-icon',
 	'application/pdf',
+	'video/mp4',
+	'video/webm',
 ])
 
 /** Frontmatter shape the create route enriches with title/date for markdown entries. */

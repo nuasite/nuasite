@@ -1,4 +1,4 @@
-import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
+import { createCmsCore, createNodeFs, resolveByteRange } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
@@ -78,6 +78,21 @@ export function createDevMiddleware(
 					const ext = path.extname(filename).toLowerCase()
 					res.setHeader('Content-Type', mediaMimeFromExt(ext))
 					res.setHeader('Cache-Control', 'no-store')
+					res.setHeader('Accept-Ranges', 'bytes')
+					// A <video> preview seeks through Range requests; Safari plays nothing without them.
+					const range = resolveByteRange(req.headers.range ?? null, data.byteLength)
+					if (range === 'unsatisfiable') {
+						res.statusCode = 416
+						res.setHeader('Content-Range', `bytes */${data.byteLength}`)
+						res.end()
+						return
+					}
+					if (range !== null) {
+						res.statusCode = 206
+						res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${data.byteLength}`)
+						res.end(data.subarray(range.start, range.end + 1))
+						return
+					}
 					res.end(data)
 				})
 				.catch(() => next())

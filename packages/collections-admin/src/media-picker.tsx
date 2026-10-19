@@ -1,5 +1,5 @@
 /**
- * Media picker widget for `image`/`file`/`astroImage` fields (cms-headless F3.2).
+ * Media picker widget for `image`/`file`/`video`/`astroImage` fields (cms-headless F3.2).
  *
  * Holds a single URL string value. Lets the user paste/clear a URL and (when the
  * sidecar has a media adapter) upload a file via `POST …/media`.
@@ -10,7 +10,15 @@
  * keeping the manual URL field fully usable — the editor is never blocked on media.
  */
 
-import { type CmsClient, isMediaUnavailable, looksLikeImage, mediaPreviewSrc } from '@nuasite/cms-client'
+import {
+	type CmsClient,
+	isMediaUnavailable,
+	looksLikeImage,
+	looksLikeVideo,
+	type MediaFieldType,
+	mediaPreviewSrc,
+	VIDEO_UPLOAD_ACCEPT,
+} from '@nuasite/cms-client'
 import { useEffect, useRef, useState } from 'react'
 
 interface MediaPickerProps {
@@ -19,6 +27,7 @@ interface MediaPickerProps {
 	collection: string
 	entry?: string
 	field: string
+	fieldType: MediaFieldType
 	accept?: string
 	onChange: (url: string) => void
 }
@@ -30,7 +39,13 @@ type MediaState =
 	| { kind: 'uploading' }
 	| { kind: 'error'; message: string }
 
-export function MediaPicker({ client, value, collection, entry, field, accept, onChange }: MediaPickerProps) {
+const PLACEHOLDERS: Record<MediaFieldType, string> = {
+	image: 'Image URL or path',
+	file: 'File URL or path',
+	video: 'Video URL or path',
+}
+
+export function MediaPicker({ client, value, collection, entry, field, fieldType, accept, onChange }: MediaPickerProps) {
 	const [state, setState] = useState<MediaState>({ kind: 'probing' })
 	const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -77,17 +92,16 @@ export function MediaPicker({ client, value, collection, entry, field, accept, o
 	// — a root-relative `/uploads/…` goes through the sidecar rather than this SPA's own origin,
 	// which is the only resolution that holds for a host that does not also serve `public/`.
 	const previewSrc = mediaPreviewSrc(client, value, collection, entry)
-	const showPreview = previewSrc !== '' && looksLikeImage(value)
 
 	return (
 		<div className="nua-cadmin-media">
-			{showPreview ? <img className="nua-cadmin-img" src={previewSrc} alt="" /> : null}
+			<MediaPreview src={previewSrc} value={value} fieldType={fieldType} />
 			<div className="nua-cadmin-media-row">
 				<input
 					type="text"
 					className="nua-cadmin-input"
 					value={value}
-					placeholder="Image URL or path"
+					placeholder={PLACEHOLDERS[fieldType]}
 					onChange={e => onChange(e.target.value)}
 				/>
 				{value !== ''
@@ -109,7 +123,7 @@ export function MediaPicker({ client, value, collection, entry, field, accept, o
 						<input
 							ref={fileInputRef}
 							type="file"
-							accept={accept}
+							accept={accept ?? (fieldType === 'video' ? VIDEO_UPLOAD_ACCEPT : undefined)}
 							className="nua-cadmin-file-input"
 							disabled={!canUpload}
 							onChange={e => {
@@ -132,4 +146,13 @@ export function MediaPicker({ client, value, collection, entry, field, accept, o
 				: null}
 		</div>
 	)
+}
+
+function MediaPreview({ src, value, fieldType }: { src: string; value: string; fieldType: MediaFieldType }) {
+	if (src === '') return null
+	if (fieldType === 'video' || looksLikeVideo(value)) {
+		return <video className="nua-cadmin-img" src={src} muted playsInline controls preload="metadata" />
+	}
+	if (looksLikeImage(value)) return <img className="nua-cadmin-img" src={src} alt="" />
+	return null
 }

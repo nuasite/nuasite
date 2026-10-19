@@ -22,7 +22,14 @@
  * draining the remaining pages first so a match on page 3 is not reported missing.
  * See `Listing` and the drain effect for how that stays bounded and cancellable.
  */
-import { filterMediaItems, type MediaFolderItem, type MediaItem, type MediaListResult, type MediaTypeFilter } from '@nuasite/cms-types'
+import {
+	filterMediaItems,
+	type MediaFolderItem,
+	type MediaItem,
+	type MediaListResult,
+	type MediaTypeFilter,
+	VIDEO_UPLOAD_ACCEPT,
+} from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MediaAnnotationEditor } from './media-annotation-editor'
 import { isMediaUnavailableError, type MediaContext, type MediaSource } from './media-source'
@@ -112,6 +119,7 @@ const TYPE_FILTERS: Array<{ value: MediaTypeFilter; label: string }> = [
 	{ value: 'all', label: 'All' },
 	{ value: 'photo', label: 'Photos' },
 	{ value: 'graphic', label: 'Graphics' },
+	{ value: 'video', label: 'Videos' },
 	{ value: 'document', label: 'Documents' },
 ]
 
@@ -120,7 +128,7 @@ export interface MediaLibraryProps {
 	context?: MediaContext
 	/** Field name uploads are filed under (e.g. the image prop name, or 'body'). */
 	field?: string
-	/** File-input `accept`. Defaults to images + PDF. */
+	/** File-input `accept`. Defaults to images, PDF and MP4/WebM video. */
 	accept?: string
 	onSelect: (url: string, alt?: string) => void
 	onClose: () => void
@@ -250,7 +258,9 @@ const tileCaption: React.CSSProperties = {
 	textOverflow: 'ellipsis',
 }
 
-export function MediaLibrary({ media, context, field, accept = 'image/*,application/pdf', onSelect, onClose }: MediaLibraryProps) {
+export function MediaLibrary(
+	{ media, context, field, accept = `image/*,application/pdf,${VIDEO_UPLOAD_ACCEPT}`, onSelect, onClose }: MediaLibraryProps,
+) {
 	const [items, setItems] = useState<MediaItem[]>([])
 	const [folders, setFolders] = useState<MediaFolderItem[]>([])
 	const [currentFolder, setCurrentFolder] = useState('')
@@ -629,6 +639,16 @@ export function MediaLibrary({ media, context, field, accept = 'image/*,applicat
 													// `contain`, not `cover`: this grid exists to tell one asset from another, and a
 													// square crop of a wide photo throws away the part that identifies it.
 													style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+												/>
+											)
+											: item.contentType.startsWith('video/')
+											? (
+												<video
+													src={item.url}
+													muted
+													playsInline
+													preload="metadata"
+													style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
 												/>
 											)
 											: <span style={{ fontSize: 30 }}>{item.contentType === 'application/pdf' ? '📄' : '📎'}</span>}

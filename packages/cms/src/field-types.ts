@@ -110,6 +110,10 @@ export interface FileHints extends LayoutHints {
 	accept?: string
 }
 
+export interface VideoHints extends LayoutHints {
+	accept?: string
+}
+
 // --- Internals ---
 
 type OrderByDirection = 'asc' | 'desc'
@@ -185,6 +189,8 @@ export const n = {
 	image: (_hints?: ImageHints) => withOrderBy(z.string().describe('cms:image')),
 	/** File picker (opens media library for any file type — PDFs, docs, etc.). Accepts hints for the scanner; no Zod validation applied. */
 	file: (_hints?: FileHints) => withOrderBy(z.string().describe('cms:file')),
+	/** Video picker (MP4/WebM, rendered with `<Video>`). Accepts hints for the scanner; no Zod validation applied. */
+	video: (_hints?: VideoHints) => withOrderBy(z.string().describe('cms:video')),
 	/** URL input */
 	url: (hints?: TextHints) => stringField('url', hints),
 	/** Email input */

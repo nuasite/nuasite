@@ -1,5 +1,5 @@
 /**
- * Preview-URL resolution for `image`/`file` field values.
+ * Preview-URL resolution for `image`/`file`/`video` field values.
  *
  * A field holds whatever the author (or the agent) wrote, and each kind of value loads from a
  * different place — there is no single origin that serves them all:
@@ -17,7 +17,11 @@
  * thumbnail and preview should classify it the same way.
  */
 
+import type { FieldType } from '@nuasite/cms-types'
 import type { CmsClient } from './client'
+
+/** The field types whose value is a media reference and whose editor is a media picker. */
+export type MediaFieldType = Extract<FieldType, 'image' | 'file' | 'video'>
 
 /** The asset URL builders of {@link CmsClient}, narrowed so a preview stays testable without one. */
 export type MediaUrlBuilder = Pick<CmsClient, 'mediaFileUrl' | 'mediaAssetUrl'>
@@ -26,9 +30,10 @@ export type MediaUrlBuilder = Pick<CmsClient, 'mediaFileUrl' | 'mediaAssetUrl'>
 const SELF_LOADING = /^(https?:)?\/\/|^data:/i
 
 const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp|avif|svg|ico|bmp)(\?|#|$)/i
+const VIDEO_EXTENSION = /\.(mp4|webm)(\?|#|$)/i
 
 /**
- * The URL to put in `<img src>` for a field value, or `''` when nothing can load it.
+ * The URL to put in `<img src>` or `<video src>` for a field value, or `''` when nothing can load it.
  *
  * Entry-relative values are the only ones that need the owning entry, so they are the only ones
  * without a preview in create mode (no slug exists yet); a root-relative value previews there too.
@@ -44,4 +49,9 @@ export function mediaPreviewSrc(client: MediaUrlBuilder, value: string, collecti
 /** Whether the value looks like an image, so a `file` field does not render a broken thumbnail. */
 export function looksLikeImage(value: string): boolean {
 	return value.startsWith('data:image/') || IMAGE_EXTENSION.test(value)
+}
+
+/** Whether the value looks like a video, so a picker previews it with `<video>` rather than `<img>`. */
+export function looksLikeVideo(value: string): boolean {
+	return value.startsWith('data:video/') || VIDEO_EXTENSION.test(value)
 }

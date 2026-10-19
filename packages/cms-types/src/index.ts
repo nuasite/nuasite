@@ -28,6 +28,7 @@ export const FIELD_TYPES = [
 	'number',
 	'image',
 	'file',
+	'video',
 	'url',
 	'email',
 	'tel',
@@ -45,6 +46,9 @@ export type FieldType = (typeof FIELD_TYPES)[number]
 export function isFieldType(value: string): value is FieldType {
 	return (FIELD_TYPES as readonly string[]).includes(value)
 }
+
+/** The file types a `video` field uploads by default — the two every browser plays in `<video>`. */
+export const VIDEO_UPLOAD_ACCEPT = 'video/mp4,video/webm'
 
 /**
  * Named transforms a derived field may apply to its source value. A fixed set, not

@@ -1,4 +1,4 @@
-import { filterMediaItems } from '@nuasite/cms-types'
+import { filterMediaItems, VIDEO_UPLOAD_ACCEPT } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
 import { useSearchFilter } from '../hooks/useSearchFilter'
@@ -13,12 +13,28 @@ const TYPE_FILTERS: Array<{ value: MediaTypeFilter; label: string }> = [
 	{ value: 'all', label: 'All' },
 	{ value: 'photo', label: 'Photos' },
 	{ value: 'graphic', label: 'Graphics' },
+	{ value: 'video', label: 'Videos' },
 	{ value: 'document', label: 'Documents' },
 ]
+
+const DEFAULT_ACCEPT = `image/*,application/pdf,${VIDEO_UPLOAD_ACCEPT}`
+
+/** Whether a dropped file is one the file dialog would have offered: `type/*`, an exact type, or `.ext`. */
+function fileMatchesAccept(file: File, accept: string): boolean {
+	const name = file.name.toLowerCase()
+	const type = file.type.toLowerCase()
+	return accept.split(',').some((entry) => {
+		const pattern = entry.trim().toLowerCase()
+		if (pattern.startsWith('.')) return name.endsWith(pattern)
+		if (pattern.endsWith('/*')) return type.startsWith(pattern.slice(0, -1))
+		return type === pattern
+	})
+}
 
 export function MediaLibrary() {
 	const visible = isMediaLibraryOpen.value
 	const insertCallback = mediaLibraryState.value.insertCallback
+	const accept = mediaLibraryState.value.accept ?? DEFAULT_ACCEPT
 
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 	const [searchQuery, setSearchQuery] = useState('')
@@ -159,8 +175,8 @@ export function MediaLibrary() {
 		e.stopPropagation()
 
 		const file = e.dataTransfer?.files[0]
-		if (!file || !file.type.startsWith('image/')) {
-			showToast(STRINGS.media.imageRequired, 'error')
+		if (!file || !fileMatchesAccept(file, accept)) {
+			showToast(STRINGS.media.fileTypeNotAccepted, 'error')
 			return
 		}
 		await handleUploadFile(file)
@@ -305,7 +321,7 @@ export function MediaLibrary() {
 						<input
 							ref={fileInputRef}
 							type="file"
-							accept="image/*,application/pdf"
+							accept={accept}
 							class="hidden"
 							onChange={handleFileChange}
 							data-cms-ui
@@ -455,19 +471,21 @@ export function MediaLibrary() {
 											class="w-full h-full rounded-cms-sm overflow-hidden border-2 border-white/10 hover:border-cms-primary focus:outline-none focus:border-white/40 transition-all"
 											data-cms-ui
 										>
-											{item.contentType.startsWith('image/')
-												? (
-													<img
-														src={item.thumbnailUrl ?? item.url}
-														alt={item.annotation || item.filename}
-														class="w-full h-full object-contain"
-													/>
-												)
-												: (
-													<div class="w-full h-full flex flex-col items-center justify-center bg-white/5 gap-2">
-														<FileTypeIcon contentType={item.contentType} />
-													</div>
-												)}
+											{item.contentType.startsWith('image/') && (
+												<img
+													src={item.thumbnailUrl ?? item.url}
+													alt={item.annotation || item.filename}
+													class="w-full h-full object-contain"
+												/>
+											)}
+											{item.contentType.startsWith('video/') && (
+												<video src={item.url} muted playsInline preload="metadata" class="w-full h-full object-contain bg-black" />
+											)}
+											{!item.contentType.startsWith('image/') && !item.contentType.startsWith('video/') && (
+												<div class="w-full h-full flex flex-col items-center justify-center bg-white/5 gap-2">
+													<FileTypeIcon contentType={item.contentType} />
+												</div>
+											)}
 											<div class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors pointer-events-none" />
 											<div class="absolute bottom-0 left-0 right-0 p-2 bg-linear-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
 												<p class="text-xs text-white truncate">{item.filename}</p>

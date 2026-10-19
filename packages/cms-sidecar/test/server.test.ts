@@ -1084,6 +1084,28 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		expect(Buffer.from(await res.arrayBuffer())).toEqual(bytes)
 	})
 
+	// A <video> preview seeks by asking for byte ranges; Safari plays nothing without them.
+	test('GET /asset → answers a Range request with the requested slice', async () => {
+		const { server, root } = await freshServer()
+		await fs.mkdir(path.join(root, 'public', 'uploads'), { recursive: true })
+		await fs.writeFile(path.join(root, 'public', 'uploads', 'clip.mp4'), Buffer.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]))
+		const url = `${BASE}/asset?path=${encodeURIComponent('/uploads/clip.mp4')}`
+
+		const slice = await server.fetch(new Request(url, { headers: { range: 'bytes=2-5' } }))
+		expect(slice.status).toBe(206)
+		expect(slice.headers.get('content-type')).toBe('video/mp4')
+		expect(slice.headers.get('content-range')).toBe('bytes 2-5/10')
+		expect([...new Uint8Array(await slice.arrayBuffer())]).toEqual([2, 3, 4, 5])
+
+		const whole = await server.fetch(new Request(url))
+		expect(whole.status).toBe(200)
+		expect(whole.headers.get('accept-ranges')).toBe('bytes')
+
+		const past = await server.fetch(new Request(url, { headers: { range: 'bytes=10-' } }))
+		expect(past.status).toBe(416)
+		expect(past.headers.get('content-range')).toBe('bytes */10')
+	})
+
 	test('GET /asset → 400 without a path, 404 for a missing file', async () => {
 		const { server } = await freshServer()
 		expect((await call(server, 'GET', '/asset')).status).toBe(400)

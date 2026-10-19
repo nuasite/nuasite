@@ -27,6 +27,7 @@ import { resolvePathnameFromSpec, slugifyHref } from './shared'
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}/
 const URL_PATTERN = /^(https?:\/\/|\/)/
 const IMAGE_EXTENSIONS = /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i
+const VIDEO_EXTENSIONS = /\.(mp4|webm)$/i
 
 /** Maximum unique values before treating as free-form text instead of select */
 const MAX_SELECT_OPTIONS = 10
@@ -244,6 +245,10 @@ function inferFieldType(value: unknown, key: string): FieldType {
 		// Check for image paths
 		if (IMAGE_EXTENSIONS.test(value)) {
 			return 'image'
+		}
+
+		if (VIDEO_EXTENSIONS.test(value)) {
+			return 'video'
 		}
 
 		// Check for image-specific field names (exact word boundaries, not substrings)

@@ -38,6 +38,14 @@ Cloudflare Image Transform wrapper:
 - Optional domain whitelist
 - Customizable delivery base path (default: `/cdn-cgi/image`)
 
+#### Video (`src/video/index.astro`)
+
+`<video>` for `n.video()` field values:
+
+- `src` is used verbatim inside a `<source>` whose `type` comes from the extension (`utils.ts`)
+- `autoplay` forces `muted` and `playsinline` — browsers block autoplay with sound, iOS needs inline
+- `preload` defaults to `auto` with autoplay, `metadata` otherwise
+
 #### Reservation (`src/reservation/`)
 
 - `availability/index.astro` — Shows available time slots
@@ -46,4 +54,4 @@ Cloudflare Image Transform wrapper:
 
 ## Key Entry Point
 
-`src/index.ts` re-exports all components and types: `Form`, `Image`, `ReservationAvailability`, `ReservationCheckout`, `ReservationStatus`.
+`src/index.ts` re-exports all components and types: `Form`, `Image`, `ReservationAvailability`, `ReservationCheckout`, `ReservationStatus`, `Search`, `Video`.

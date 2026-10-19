@@ -87,6 +87,7 @@ export const STRINGS = {
 		notConfigured: 'CMS not configured',
 		loadFailed: 'Failed to load media library',
 		imageRequired: 'Please drop an image file',
+		fileTypeNotAccepted: 'This file type cannot be uploaded here',
 		uploadSucceeded: 'File uploaded successfully',
 		uploadedNextToEntry: 'Uploaded next to entry',
 		fileUploaded: 'File uploaded',

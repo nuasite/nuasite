@@ -241,6 +241,17 @@ withTempDir('collection-scanner: schema field filtering', (getCtx) => {
 		expect(fieldNames).toContain('title')
 		expect(fieldNames).toContain('priority')
 	})
+
+	test('infers a video field from an mp4 or webm value when no schema exists', async () => {
+		const ctx = getCtx()
+		await setupContentCollections(ctx, ['clips'])
+
+		await ctx.writeFile('src/content/clips/clip-1.md', `---\nloop: /videos/intro.mp4\nteaser: /videos/teaser.webm\n---\nContent`)
+
+		const result = await scanCollections(createNodeFs(process.cwd()))
+		const types = result['clips']!.fields.map((f: FieldDefinition) => [f.name, f.type])
+		expect(types).toEqual([['loop', 'video'], ['teaser', 'video']])
+	})
 })
 
 withTempDir('collection-scanner: n.xxx type detection', (getCtx) => {

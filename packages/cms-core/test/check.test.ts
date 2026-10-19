@@ -235,6 +235,16 @@ export const collections = {}
 		expect(report.findings[0]!.message).toContain('public/uploads/ada.jpg')
 	})
 
+	test('a video value with no file behind it is a warning', async () => {
+		await write({
+			'src/content/people/ada.md': '---\nname: Ada\nclip: /uploads/ada.mp4\n---\n',
+			'src/content.config.ts': config('n.object({ name: n.text(), clip: n.video() })'),
+		})
+
+		const report = await check()
+		expect(report.findings.map(f => [f.code, f.field])).toEqual([['entry/missing-asset', 'clip']])
+	})
+
 	// The two shapes that must stay silent: served out of public/, and kept outside it.
 	test('an image that resolves — under public/ or from the project root — reports nothing', async () => {
 		await write({
