@@ -56,6 +56,11 @@
 			"types": "./src/search/index.astro",
 			"import": "./src/search/index.astro",
 			"default": "./src/search/index.astro"
+		},
+		"./Video.astro": {
+			"types": "./src/video/index.astro",
+			"import": "./src/video/index.astro",
+			"default": "./src/video/index.astro"
 		}
 	},
 	"peerDependencies": {

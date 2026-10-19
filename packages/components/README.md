@@ -5,6 +5,7 @@ Reusable [Astro](https://astro.build/) components optimized for sites connected 
 
 - `Form`: Progressive enhancement for Nua Site form submissions with friendly UI states.
 - `Image`: Ergonomic Cloudflare Image Transform helper that builds `/cdn-cgi/image/<options>/<src>` URLs and responsive `srcset`.
+- `Video`: `<video>` with the defaults a site video needs, for `n.video()` field values.
 
 ## Install
 
@@ -61,6 +62,21 @@ Key props:
 
 Absolute `src` values keep their origin and prepend the transform path, e.g.
 `https://cdn.nuasite.com/cdn-cgi/image/.../assets/file.webp`.
+
+### Video
+
+```astro
+---
+import { Video } from '@nuasite/components'
+---
+
+<Video src={entry.data.animation} autoplay loop class="w-full" />
+```
+
+`src` is used verbatim, so an `n.video()` value works whether it is a repository path or a CDN URL.
+An `autoplay` video is always `muted` and `playsinline`, because browsers block autoplay with sound
+and iOS plays inline only when asked. `preload` defaults to `auto` for autoplay and `metadata`
+otherwise. Every other `<video>` attribute (`controls`, `loop`, `poster`, `width`, …) passes through.
 
 ## Types
 

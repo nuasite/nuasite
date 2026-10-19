@@ -1,0 +1,23 @@
+---
+import type { VideoProps } from './types'
+import { videoTypeOf } from './utils'
+
+export type Props = VideoProps
+
+const { src, autoplay, muted, playsinline, preload, ...rest } = Astro.props as VideoProps
+
+// Browsers refuse to autoplay a video with sound, and iOS only plays inline when asked to,
+// so an autoplaying video is always muted and inline. Without autoplay, fetch only the
+// metadata until the visitor presses play.
+const isAutoplay = Boolean(autoplay)
+---
+
+<video
+  autoplay={isAutoplay}
+  muted={isAutoplay || muted}
+  playsinline={isAutoplay || playsinline}
+  preload={preload ?? (isAutoplay ? 'auto' : 'metadata')}
+  {...rest}
+>
+  <source src={src} type={videoTypeOf(src)} />
+</video>
