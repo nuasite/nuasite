@@ -479,7 +479,7 @@ export function MediaLibrary() {
 												/>
 											)}
 											{item.contentType.startsWith('video/') && (
-												<video src={item.url} muted playsInline preload="metadata" class="w-full h-full object-contain bg-black" />
+												<video src={item.thumbnailUrl ?? item.url} muted playsInline preload="metadata" class="w-full h-full object-contain bg-black" />
 											)}
 											{!item.contentType.startsWith('image/') && !item.contentType.startsWith('video/') && (
 												<div class="w-full h-full flex flex-col items-center justify-center bg-white/5 gap-2">

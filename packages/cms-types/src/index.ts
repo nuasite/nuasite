@@ -607,7 +607,11 @@ export interface GetRedirectsResponse {
 export interface MediaItem {
 	id: string
 	url: string
-	/** Optional pre-sized variant for grid rendering; falls back to `url`. */
+	/**
+	 * Where a gallery loads the item's preview from, when that differs from `url`: a pre-sized image
+	 * variant, or an address the gallery's own origin can load (a host proxying repository files).
+	 * Falls back to `url`. For a video it must point at the video itself.
+	 */
 	thumbnailUrl?: string
 	filename: string
 	/**

@@ -644,7 +644,7 @@ export function MediaLibrary(
 											: item.contentType.startsWith('video/')
 											? (
 												<video
-													src={item.url}
+													src={item.thumbnailUrl ?? item.url}
 													muted
 													playsInline
 													preload="metadata"
