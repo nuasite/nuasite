@@ -12,6 +12,7 @@ export {
 	type AstroSourceAnalysis,
 	type AstroSourceImport,
 } from './astro-source-analysis'
+export { type ByteRange, resolveByteRange } from './byte-range'
 export { checkContent, type CheckContentOptions, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check'
 export {
 	collectionKind,
