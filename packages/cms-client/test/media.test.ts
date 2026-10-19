@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { looksLikeImage, mediaPreviewSrc, type MediaUrlBuilder } from '../src/media'
+import { looksLikeImage, looksLikeVideo, mediaPreviewSrc, type MediaUrlBuilder } from '../src/media'
 
 const base = '/app/project/acme/session/s1/cms'
 
@@ -56,5 +56,20 @@ describe('looksLikeImage', () => {
 		expect(looksLikeImage('')).toBe(false)
 		expect(looksLikeImage('/uploads/manual.pdf')).toBe(false)
 		expect(looksLikeImage('data:application/pdf;base64,AAA')).toBe(false)
+	})
+})
+
+describe('looksLikeVideo', () => {
+	test('accepts mp4 and webm, with a query or hash', () => {
+		expect(looksLikeVideo('/uploads/intro.mp4')).toBe(true)
+		expect(looksLikeVideo('https://cdn.nuasite.com/a/b.WEBM')).toBe(true)
+		expect(looksLikeVideo('/uploads/intro.mp4?v=2')).toBe(true)
+		expect(looksLikeVideo('data:video/mp4;base64,AAA')).toBe(true)
+	})
+
+	test('rejects images and other files', () => {
+		expect(looksLikeVideo('')).toBe(false)
+		expect(looksLikeVideo('/uploads/hero.webp')).toBe(false)
+		expect(looksLikeVideo('/uploads/clip.mov')).toBe(false)
 	})
 })

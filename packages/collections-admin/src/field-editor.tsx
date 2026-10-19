@@ -735,6 +735,7 @@ export function FieldEditor({ field, value, onChange, ctx }: FieldEditorProps) {
 			return <SelectWidget field={field} value={value} onChange={onChange} />
 		case 'image':
 		case 'file':
+		case 'video':
 			return (
 				<MediaPicker
 					client={ctx.client}
@@ -742,6 +743,7 @@ export function FieldEditor({ field, value, onChange, ctx }: FieldEditorProps) {
 					collection={ctx.collection}
 					entry={ctx.slug}
 					field={field.name}
+					fieldType={field.type}
 					accept={field.hints?.accept}
 					onChange={url => onChange(url)}
 				/>
