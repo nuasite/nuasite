@@ -3,6 +3,7 @@ import type { SitemapOptions } from '@astrojs/sitemap'
 import type { ChecksOptions } from '../../checks/src'
 import type { CmsMarkerOptions, NuaCmsOptions } from '../../cms/src'
 import type { PageMarkdownOptions } from '../../llm-enhancements/src'
+import type { NuaDomains } from './domains'
 
 export type { MdxOptions } from '@astrojs/mdx'
 export type { SitemapOptions } from '@astrojs/sitemap'
@@ -21,6 +22,12 @@ export interface NuaIntegrationOptions {
 	sitemap?: boolean | SitemapOptions
 	/** Enable/disable or configure @nuasite/checks (default: true) */
 	checks?: boolean | ChecksOptions
+	/**
+	 * Serve locales from their own domains on Nua hosting, keyed by locale path from `i18n.locales`:
+	 * `{ cs: 'https://www.example.cz', sk: 'https://www.example.sk' }`. The build keeps its prefixed
+	 * URLs; the hosting serves each prefix from the root of its domain and rewrites the links.
+	 */
+	domains?: NuaDomains
 }
 
 export interface ResolvedIntegrationOptions {
@@ -29,6 +36,7 @@ export interface ResolvedIntegrationOptions {
 	mdx: MdxOptions | false
 	sitemap: SitemapOptions | false
 	checks: ChecksOptions | false
+	domains: NuaDomains
 }
 
 /**
@@ -67,5 +75,6 @@ export function resolveOptions(options: NuaIntegrationOptions = {}): ResolvedInt
 		mdx: resolveOption(options.mdx),
 		sitemap: resolveOption(options.sitemap),
 		checks: resolveOption(options.checks),
+		domains: options.domains ?? {},
 	}
 }

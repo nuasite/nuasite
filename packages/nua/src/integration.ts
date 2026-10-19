@@ -5,11 +5,13 @@ import cms, { cmsRemarkPlugins, mergeConfigRedirectsInto } from '@nuasite/cms'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroConfig, AstroIntegration } from 'astro'
 import pageMarkdown from '../../llm-enhancements/src'
+import { type DomainMapping, resolveDomainMappings, writeDomainsFile } from './domains'
 import { type NuaIntegrationOptions, resolveOptions } from './types'
 
 export default function nua(options: NuaIntegrationOptions = {}): AstroIntegration {
 	const resolved = resolveOptions(options)
 	let capturedRedirects: AstroConfig['redirects'] = {}
+	let domainMappings: DomainMapping[] = []
 
 	return {
 		name: '@nuasite/nua',
@@ -74,6 +76,9 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				// them: Astro deep-merges config updates, so it still renders its own meta-refresh pages.
 				capturedRedirects = config.redirects ?? {}
 
+				// Resolved here so a locale the site does not have fails the build before it renders anything.
+				domainMappings = resolveDomainMappings(config.i18n, resolved.domains)
+
 				// Inject Vite plugins and integrations.
 				// CMS list-style directives (`:::list{.class}`) need `remark-directive`
 				// in the markdown pipeline — both to render `<ul class="class">` and to
@@ -104,6 +109,10 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				// Merged into the copy Astro took of `public/_redirects`, never written over it. The CMS
 				// merges its own rules after this and checks the limits on the final file.
 				await mergeConfigRedirectsInto(dir, logger, capturedRedirects, resolved.cms === false)
+				if (domainMappings.length > 0) {
+					await writeDomainsFile(dir, domainMappings)
+					logger.info(`Locale domains: ${domainMappings.map(it => `${it.prefix || '/'} → ${it.origin}`).join(', ')}`)
+				}
 			},
 		},
 	}
