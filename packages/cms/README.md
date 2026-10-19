@@ -255,6 +255,8 @@ All `n` methods return standard Zod schemas, so `.optional()`, `.nullable()`, `.
 | `n.number()`      | Number input   | `z.number()`                      |
 | `n.boolean()`     | Checkbox       | `z.boolean()`                     |
 | `n.image()`       | Image picker   | `z.string()`                      |
+| `n.file()`        | File picker    | `z.string()`                      |
+| `n.video()`       | Video picker   | `z.string()`                      |
 | `n.url()`         | URL input      | `z.string()`                      |
 | `n.email()`       | Email input    | `z.string()`                      |
 | `n.color()`       | Color picker   | `z.string()`                      |
@@ -290,8 +292,16 @@ n.image({ accept: 'image/png,image/jpeg' })
 | `n.datetime()` | `min`, `max`                            |
 | `n.time()`     | `min`, `max`                            |
 | `n.image()`    | `accept`                                |
+| `n.file()`     | `accept`                                |
+| `n.video()`    | `accept` (defaults to MP4 and WebM)     |
 
 Numeric hints (`min`, `max`, `step`, `maxLength`, `minLength`) also apply Zod validation — out-of-range values will be rejected at content build time.
+
+An `n.video()` value is a URL or a path, like an image. Render it with `Video` from `@nuasite/components`, which sets the attributes autoplaying site video needs:
+
+```astro
+<Video src={entry.data.animation} autoplay loop />
+```
 
 ### Collection Ordering
 
