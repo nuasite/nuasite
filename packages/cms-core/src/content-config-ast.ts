@@ -141,6 +141,7 @@ const FIELD_HELPER_TYPES = new Set([
 	'number',
 	'image',
 	'file',
+	'video',
 	'url',
 	'email',
 	'tel',

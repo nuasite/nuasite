@@ -28,6 +28,7 @@ export const FIELD_TYPES = [
 	'number',
 	'image',
 	'file',
+	'video',
 	'url',
 	'email',
 	'tel',

@@ -461,6 +461,7 @@ export {
 	type TextHints,
 	type Time,
 	type Url,
+	type VideoHints,
 } from './fields'
 export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, MediaStorageAdapter, MediaTypeFilter } from './media/types'
 export { type CmsMode, detectHostedFromEnv, resolveCmsMode } from './mode'
