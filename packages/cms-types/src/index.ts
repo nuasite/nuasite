@@ -169,6 +169,12 @@ export interface FieldDefinition {
 	 *  - `publish-toggle`: boolean controlling whether the entry is published (e.g. `draft`, `isDraft`, `published`).
 	 *  - `publish-date`: the publish/release date field (e.g. `date`, `publishDate`, `publishedAt`). */
 	role?: 'publish-toggle' | 'publish-date'
+	/**
+	 * For an `image` field: the sibling text field that holds its alt text, `coverAlt` next to
+	 * `cover`. An editor shows it together with the image instead of as a field of its own. The
+	 * pairing only names a field the schema already has — the site's template still has to read it.
+	 */
+	altField?: string
 }
 
 /**
