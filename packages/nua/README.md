@@ -110,3 +110,32 @@ A site can declare redirects in three places, and the build merges them into one
 **Editors redirect; code guards.** A rule from the CMS may only redirect (301, 302, 303, 307 or 308, no conditions, so no proxying), and it may not touch a path a guard in code covers: a rule with conditions such as a role gate (`Role=admin`), a 4xx, or a line not read as a rule. Listed first, an editor's rule could otherwise take access control off a path. The build leaves such a rule out with a warning, and the CMS editor refuses to save a rule the build would not read or allow.
 
 Paths in the config's `redirects` are root-relative, as Astro reads a key: `'old'` and `'/old'` both redirect `/old`, and a destination written without a slash gets one. Route params become the host's placeholders: `[slug]` is `:slug`, `[...rest]` is `*` (`:splat` in the destination).
+
+## Domains per language
+
+On Nua hosting, each language of a site can have its own domain: Czech on `www.example.cz`, Slovak on `www.example.sk`. Map them in `nua.domains`, keyed by the locale paths from `i18n.locales`:
+
+```ts
+import { defineConfig } from '@nuasite/nua/config'
+
+export default defineConfig({
+	site: 'https://www.example.cz',
+	i18n: {
+		defaultLocale: 'cs',
+		locales: ['cs', 'sk'],
+		routing: { prefixDefaultLocale: false },
+	},
+	nua: {
+		domains: {
+			cs: 'https://www.example.cz',
+			sk: 'https://www.example.sk',
+		},
+	},
+})
+```
+
+The build does not change. Every locale stays under its prefix (`/`, `/sk/`), so the same output works on preview URLs, and links are written as usual (`/sk/kontakt`). The build only adds `dist/_domains.json`, which tells the hosting which prefix each domain serves. On `www.example.sk` the hosting then serves `/sk/` from the root, redirects `/sk/...` URLs to the right domain, and rewrites links, canonical and `hreflang` alternates, `og:url` and sitemap URLs to the public addresses.
+
+Each domain also has to be added to the project in the Nua app. The config only says which language a domain shows.
+
+This is not Astro's `i18n.domains`, which only works with `output: 'server'`.
