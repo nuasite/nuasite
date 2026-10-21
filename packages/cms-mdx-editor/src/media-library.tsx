@@ -130,7 +130,12 @@ export interface MediaLibraryProps {
 	field?: string
 	/** File-input `accept`. Defaults to images, PDF and MP4/WebM video. */
 	accept?: string
-	onSelect: (url: string, alt?: string) => void
+	/**
+	 * `alt` is what to prefill — the item's default alt text, else its file name. `annotation` is
+	 * the default alt text alone, absent when none was ever set, for a caller that must not take a
+	 * file name for a description.
+	 */
+	onSelect: (url: string, alt?: string, annotation?: string) => void
 	onClose: () => void
 }
 
@@ -407,7 +412,7 @@ export function MediaLibrary(
 				// Astro image() uploads return entry-relative paths (`./foo.jpg`) that live
 				// under src/content, not the media adapter — select directly, don't list.
 				if (result.url.startsWith('./')) {
-					onSelect(result.url, result.annotation ?? '')
+					onSelect(result.url, result.annotation ?? '', result.annotation)
 					return
 				}
 				const newItem: MediaItem = {
@@ -629,7 +634,7 @@ export function MediaLibrary(
 										title={item.filename}
 										data-cms-media-item={item.id}
 										// `??`, not `||`: an annotation of '' is a deliberately empty alt.
-										onClick={() => onSelect(item.url, item.annotation ?? (item.filename || 'Image'))}
+										onClick={() => onSelect(item.url, item.annotation ?? (item.filename || 'Image'), item.annotation)}
 									>
 										{item.contentType.startsWith('image/')
 											? (

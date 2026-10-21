@@ -691,8 +691,9 @@ function applyParsedConfig(
 		const fieldsByName = new Map(def.fields.map(f => [f.name, f]))
 		for (const pf of parsedColl.fields) {
 			const field = fieldsByName.get(pf.name)
-			if (!field) continue
-			applyParsedFieldOverrides(field, pf)
+			if (field) applyParsedFieldOverrides(field, pf)
+			// Declared but in no entry yet — a field just added to the schema. Nested fields get the same.
+			else def.fields.push(parsedFieldToFieldDefinition(pf))
 		}
 
 		// Declarative form layout from `defineCmsCollection({ cms })`.
@@ -998,6 +999,20 @@ function assignSemanticRoles(collections: Record<string, CollectionDefinition>):
 	}
 }
 
+/** The types an image's alt text field may have: it is prose, so a select or a URL is not one. */
+const ALT_TEXT_TYPES: ReadonlySet<FieldType> = new Set(['text', 'textarea'])
+
+/** Pair every image field, at any depth, with a sibling `<name>Alt` text field (`cover` → `coverAlt`). */
+function pairImageAltFields(fields: FieldDefinition[]): void {
+	const byName = new Map(fields.map(field => [field.name, field]))
+	for (const field of fields) {
+		if (field.fields) pairImageAltFields(field.fields)
+		if (field.type !== 'image') continue
+		const alt = byName.get(`${field.name}Alt`)
+		if (alt && ALT_TEXT_TYPES.has(alt.type)) field.altField = alt.name
+	}
+}
+
 /** Suffixes that indicate a field is a derived href/url/slug companion */
 const HREF_SUFFIXES = ['href', 'url', 'link', 'slug', 'path'] as const
 
@@ -1236,6 +1251,7 @@ export async function scanCollections(
 	applyParsedConfig(collections, parsed)
 	detectReferenceFields(collections, parsed)
 	detectDerivedHrefFields(collections)
+	for (const def of Object.values(collections)) pairImageAltFields(def.fields)
 	assignSemanticRoles(collections)
 	applyCollectionOrderBy(collections, parsed)
 	warnOnPathnameCollisions(collections)
