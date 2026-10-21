@@ -763,4 +763,17 @@ describe('MediaLibrary — default alt text', () => {
 
 		expect(selected).toEqual(['', 'plain.png'])
 	})
+
+	test('hands over the stored annotation apart from the filename fallback', async () => {
+		const selected: Array<string | undefined> = []
+		const host = await mount({
+			media: fakeSource({ '': paginate([[editable('team.png', 'The team'), mediaItem('plain.png')]]) }).source,
+			onSelect: (_url, _alt, annotation) => selected.push(annotation),
+		})
+
+		await selectItem(host, 'team.png')
+		await selectItem(host, 'plain.png')
+
+		expect(selected).toEqual(['The team', undefined])
+	})
 })
