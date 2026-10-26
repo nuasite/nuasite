@@ -15,7 +15,7 @@ import { defaultValueCtx, Editor, editorViewCtx, rootCtx } from '@milkdown/core'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { commonmark } from '@milkdown/preset-commonmark'
 import { gfm } from '@milkdown/preset-gfm'
-import { replaceAll } from '@milkdown/utils'
+import { getMarkdown, replaceAll } from '@milkdown/utils'
 import { useEffect, useRef, useState } from 'react'
 import { FormatToolbar } from './format-toolbar'
 import { clearHistory, historyKeymap, historyPlugin } from './history-plugin'
@@ -105,6 +105,9 @@ export function SlotEditor({ value, onChange, media, mediaContext }: SlotEditorP
 				}}
 				onBlurCapture={() => {
 					focused.current = false
+					// Read the document itself: Milkdown reports changes only after a debounce,
+					// so `latest` can still miss the last keystrokes.
+					if (editorRef.current) latest.current = editorRef.current.action(getMarkdown())
 					if (latest.current !== value) onChangeRef.current(latest.current)
 				}}
 			/>

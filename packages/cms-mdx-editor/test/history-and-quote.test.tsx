@@ -211,6 +211,22 @@ test('undo in the body toolbar takes back what was typed in a block that still h
 	expect(markdown(body)).toBe('<Note>\n  one two\n</Note>\n')
 })
 
+test('the slot editor hands over what was typed just before it lost the focus', async () => {
+	const onChange = mock((_markdown: string) => {})
+	const editor = await mount(<SlotEditor value="Hello" onChange={onChange} />)
+	const view = editor.ctx.get(editorViewCtx)
+	await act(async () => view.focus())
+	select(editor, 'Hello')
+
+	// Blurred before Milkdown has reported the typing.
+	await act(async () => {
+		view.dispatch(view.state.tr.insertText(' world'))
+		view.dom.blur()
+	})
+
+	expect(onChange).toHaveBeenLastCalledWith('Hello world\n')
+})
+
 describe('the quote button', () => {
 	test('quotes a paragraph that is not in a quote', async () => {
 		const editor = await mount(<MdxBodyEditor value="Plain" onChange={() => {}} />)
