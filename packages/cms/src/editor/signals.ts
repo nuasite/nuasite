@@ -4,7 +4,8 @@ import { applyDerivedTransform } from '../shared'
 import { fetchManifest, getMarkdownContent } from './api'
 import type { ToastMessage, ToastType } from './components/toast/types'
 import { getConfig } from './config'
-import { clearMarkdownDraft, loadMarkdownDraft, saveMarkdownDraft } from './storage'
+import { buildOpenEntryMessage, buildOpenEntryMessageForFile, isEditedInHost, postToParent } from './post-message'
+import { clearMarkdownDraft, hasPendingEntryNavigation, loadMarkdownDraft, loadPendingEntryNavigation, saveMarkdownDraft } from './storage'
 import { STRINGS } from './strings'
 import type {
 	AttributeEditorState,
@@ -599,6 +600,12 @@ export function setHoveringAttributeButton(hovering: boolean): void {
 
 export const config = signal<CmsConfig>(getConfig())
 
+/** Whether the widget may edit the page at all (`features.inlineEditing`, on unless set to `false`) */
+export const isInlineEditingEnabled = computed(() => config.value.features?.inlineEditing !== false)
+
+/** Whether the host edits collection entries, so opening one hands it over (`features.openEntriesInParent`) */
+export const opensEntriesInParent = computed(() => config.value.features?.openEntriesInParent === true)
+
 // ============================================================================
 // Toast State
 // ============================================================================
@@ -984,10 +991,71 @@ async function maybeRecoverDraft(
 }
 
 /**
+ * Open the current page's collection entry: in the host's entry editor when the host edits
+ * entries (`openEntriesInParent`), otherwise in the in-page markdown editor. Resolves `false`
+ * when there is no entry to open here, or the widget may not edit.
+ */
+export async function openCurrentPageEntry(): Promise<boolean> {
+	const entry = currentPageCollection.value
+	if (entry && handOverPageEntry(entry, () => true)) return true
+	if (!isInlineEditingEnabled.value) return false
+	return openMarkdownEditorForCurrentPage()
+}
+
+/**
  * Open the markdown editor for the current page's collection entry.
  * Refreshes the manifest first to ensure we have the latest content.
  */
-export async function openMarkdownEditorForCurrentPage(): Promise<boolean> {
+export function openMarkdownEditorForCurrentPage(): Promise<boolean> {
+	return openPageEntryInMarkdownEditor(() => true)
+}
+
+/**
+ * Reopen the current page's entry after a reload, for a markdown draft or an entry navigation
+ * left in this session. When the host edits the entry it is handed over only for its own draft or
+ * a navigation to it: a draft of another file is no reason to open the host's editor.
+ */
+export function restoreCurrentPageEntry(): Promise<boolean> {
+	return openPageEntryInMarkdownEditor(entry => hasPendingEntryNavigation() || loadMarkdownDraft(entry.sourcePath) !== null)
+}
+
+/**
+ * When the host edits this entry, hand it over instead of opening it here — posted only when
+ * `wanted` — and drop the draft and entry navigation that would reopen it on the next load: the
+ * markdown editor never shows this entry again, and the host's editor does not read them.
+ * Returns whether the host edits the entry.
+ */
+function handOverPageEntry(entry: CollectionEntry, wanted: (entry: CollectionEntry) => boolean): boolean {
+	if (!opensEntriesInParent.value) return false
+	const handover = buildOpenEntryMessage(entry, manifest.value, window.location.pathname)
+	if (!handover) return false
+	if (wanted(entry)) postToParent(handover)
+	clearMarkdownDraft(entry.sourcePath)
+	loadPendingEntryNavigation()
+	return true
+}
+
+/**
+ * The markdown editor holds an entry the host now edits (`openEntriesInParent` arrived after it
+ * opened): hand the entry to the host and close the editor.
+ */
+export function handOverMarkdownEditor(): void {
+	const { isOpen, mode, currentPage } = markdownEditorState.value
+	if (!isOpen || mode !== 'edit' || !currentPage?.filePath) return
+	const handover = buildOpenEntryMessageForFile(manifest.value, currentPage.filePath, window.location.pathname)
+	if (!handover) return
+	postToParent(handover)
+	clearMarkdownDraft(currentPage.filePath)
+	loadPendingEntryNavigation()
+	resetMarkdownEditorState()
+}
+
+/** Whether new entries of this collection are left to the host, which edits its entries. */
+export function createsEntriesInHost(definition: CollectionDefinition): boolean {
+	return opensEntriesInParent.value && isEditedInHost(definition)
+}
+
+async function openPageEntryInMarkdownEditor(wanted: (entry: CollectionEntry) => boolean): Promise<boolean> {
 	// Refresh manifest to get the latest content
 	try {
 		const newManifest = await fetchManifest()
@@ -1026,7 +1094,12 @@ export async function openMarkdownEditorForCurrentPage(): Promise<boolean> {
 	// Look up collection definition for schema-aware field rendering
 	const collectionDefinition = manifest.value.collectionDefinitions?.[collection.collectionName]
 
+	// The host's features arrive after `cms-ready`, so it may take over entry editing while this
+	// loads, before or while the draft prompt is up.
+	if (handOverPageEntry(collection, wanted)) return true
 	const recovered = await maybeRecoverDraft(collection.sourcePath, frontmatter, content)
+	if (handOverPageEntry(collection, wanted)) return true
+	if (!isInlineEditingEnabled.value) return false
 
 	markdownEditorState.value = {
 		isOpen: true,
@@ -1052,6 +1125,8 @@ export function openMarkdownEditorForNewPage(
 	collectionName: string,
 	collectionDefinition: CollectionDefinition,
 ): void {
+	// No message hands the host a new entry; its entry editor creates them.
+	if (createsEntriesInHost(collectionDefinition)) return
 	// Built in cms-core so `nua check`, which predicts this write, cannot drift from it.
 	// It skips `title` (the header field owns it) and hidden fields (nothing can fill them in).
 	const initialFrontmatter = newEntryFrontmatter(collectionDefinition.fields)
@@ -1209,6 +1284,12 @@ export async function openMarkdownEditorForEntry(
 	sourcePath: string,
 	collectionDefinition: CollectionDefinition,
 ): Promise<void> {
+	const handover = opensEntriesInParent.value ? buildOpenEntryMessageForFile(manifest.value, sourcePath, window.location.pathname) : undefined
+	if (handover) {
+		postToParent(handover)
+		return
+	}
+
 	// Open the editor immediately with placeholder content so the modal
 	// transition feels seamless — content streams in once fetched.
 	markdownEditorState.value = {
@@ -1470,8 +1551,10 @@ export function setConfig(newConfig: CmsConfig): void {
 export function setFeatures(features: CmsConfig['features']): void {
 	const current = config.value.features
 	const next = { ...current, ...features }
-	// Bail out when nothing actually changes, to avoid re-triggering effects.
-	if (current?.selectElement === next.selectElement && current?.collectionManagement === next.collectionManagement) return
+	// Bail out when nothing actually changes, to avoid re-triggering effects. Every flag is
+	// compared, so a flag added later cannot be dropped here by being left off a list.
+	const before = new Map(Object.entries({ ...current }))
+	if (Object.entries(next).every(([flag, value]) => before.get(flag) === value)) return
 	config.value = { ...config.value, features: next }
 }
 

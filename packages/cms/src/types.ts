@@ -332,6 +332,24 @@ export interface CmsPageNavigatedMessage {
 	}
 }
 
+/**
+ * Asks the parent to open a collection entry in its own entry editor. Sent instead of opening the
+ * in-page markdown editor when the parent set `openEntriesInParent` (see {@link CmsFeatures}).
+ */
+export interface CmsOpenEntryMessage {
+	type: 'cms-open-entry'
+	entry: {
+		/** Collection name, as the collection scan (and the sidecar) names it */
+		collection: string
+		/** Entry slug, as the collection scan (and the sidecar) knows it */
+		slug: string
+		/** Path to the entry's file relative to the project root */
+		sourcePath: string
+		/** The page the entry was opened from */
+		pathname: string
+	}
+}
+
 /** All possible CMS postMessage types sent from the editor iframe to the parent */
 export type CmsPostMessage =
 	| CmsElementSelectedMessage
@@ -339,6 +357,7 @@ export type CmsPostMessage =
 	| CmsReadyMessage
 	| CmsStateChangedMessage
 	| CmsPageNavigatedMessage
+	| CmsOpenEntryMessage
 
 // ============================================================================
 // Feature Flags
@@ -353,6 +372,36 @@ export interface CmsFeatures {
 	 * Collections tab); inline text/image/color editing stays unaffected.
 	 */
 	collectionManagement?: boolean
+	/**
+	 * In-page editing. Defaults to enabled. When `false`, the widget offers nothing that edits:
+	 * no Edit Page (inline text, image, color, attribute and component editing), no markdown
+	 * entry editor, no New/Delete Page, SEO, redirects or media library. An edit mode already
+	 * running (e.g. restored after a reload) is stopped and its editors closed.
+	 *
+	 * The widget keeps doing what a host's preview relies on: it still posts `cms-ready`,
+	 * `cms-page-navigated` and `cms-state-changed`, and with `selectElement` the user can still
+	 * pick an element for the host. With `openEntriesInParent`, an entry's page still offers
+	 * Edit Content, which hands the entry to the host.
+	 */
+	inlineEditing?: boolean
+	/**
+	 * Entry editing is owned by the host. Defaults to `false`. When `true`, whatever would edit an
+	 * entry of a content collection in the page posts `cms-open-entry` to the parent window
+	 * instead, so there is one editor for those entries, the host's:
+	 *
+	 * - Edit Content, a markdown editor open when the flag arrives, and a markdown draft or entry
+	 *   navigation of the page's entry restored after a reload;
+	 * - in edit mode, the markdown body, every field read from an entry's file (frontmatter texts,
+	 *   images) and references (handing over the entry whose field holds the reference), which are
+	 *   not editable in the page then. Unsaved page edits of those fields are dropped.
+	 *
+	 * Entries of data (JSON/YAML) and hidden collections stay editable in the page. Edit Page on an
+	 * entry's page starts edit mode as on any other page, so layout texts (header, footer, anything
+	 * from .astro components or files outside the collections) stay editable in the page. New Page
+	 * and the collection browser offer no new entry of a content collection, and an entry's page no
+	 * Delete Page.
+	 */
+	openEntriesInParent?: boolean
 }
 
 // ============================================================================

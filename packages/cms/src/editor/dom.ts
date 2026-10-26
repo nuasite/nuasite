@@ -484,6 +484,8 @@ function preventInteraction(event: Event): void {
 	const target = event.currentTarget as HTMLElement
 	if (target.hasAttribute('data-cms-disabled')) {
 		event.preventDefault()
+		// An entry field inside a link hands its entry to the host on click, so the click must reach it.
+		if (event.target instanceof Element && event.target.closest(`[${CSS.ENTRY_HANDOVER_ATTRIBUTE}]`)) return
 		event.stopPropagation()
 		event.stopImmediatePropagation()
 	}

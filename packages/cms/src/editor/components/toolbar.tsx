@@ -52,6 +52,10 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		|| signals.isAttributeEditorOpen.value
 		|| signals.isBgImageOverlayOpen.value
 	const currentPageCollection = signals.currentPageCollection.value
+	// Without inline editing the menu keeps only what does not edit the page here: element
+	// selection and, when the host edits entries, Edit Content, which hands it the page's entry.
+	const inlineEditing = signals.isInlineEditingEnabled.value
+	const entriesInParent = signals.opensEntriesInParent.value
 	const [isMenuOpen, setIsMenuOpen] = useState(false)
 	const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
 	const [showVersion, setShowVersion] = useState(false)
@@ -96,10 +100,9 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		})
 	}
 
-	// When collection management is disabled (e.g. it lives in the host app's
-	// Collections tab), hide the in-preview collection browser entry points.
-	// Inline editing of the current page's content ("Edit Content") is kept.
-	const collectionManagementEnabled = signals.config.value.features?.collectionManagement !== false
+	// The in-preview collection browser is hidden when the host app manages collections, and
+	// without inline editing, as it edits entries in the page. "Edit Content" is decided separately.
+	const collectionManagementEnabled = signals.config.value.features?.collectionManagement !== false && inlineEditing
 
 	if (collectionDefinitions) {
 		const entries = Object.entries(collectionDefinitions)
@@ -116,7 +119,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 				}))
 				: []
 
-			if (currentPageCollection && callbacks.onEditContent) {
+			if (currentPageCollection && callbacks.onEditContent && (inlineEditing || entriesInParent)) {
 				contentItems.unshift({
 					label: 'Edit Content',
 					icon: (
@@ -142,29 +145,35 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		}
 	}
 
-	topLevelItems.push(
-		{
-			label: 'Edit Page',
-			icon: (
-				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
-				</svg>
-			),
-			onClick: () => callbacks.onEdit(),
-			isActive: isEditing,
-		},
-		{
-			label: 'New Page',
-			icon: (
-				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 5v14m-7-7h14" />
-				</svg>
-			),
-			onClick: () => signals.setCreatePageOpen(true),
-		},
-	)
+	if (inlineEditing) {
+		topLevelItems.push(
+			{
+				label: 'Edit Page',
+				icon: (
+					<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+					</svg>
+				),
+				onClick: () => callbacks.onEdit(),
+				isActive: isEditing,
+			},
+			{
+				label: 'New Page',
+				icon: (
+					<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M12 5v14m-7-7h14" />
+					</svg>
+				),
+				onClick: () => signals.setCreatePageOpen(true),
+			},
+		)
+	}
 
-	const destructiveItems: MenuItem[] = [
+	// Delete Page removes a page file under src/pages. An entry's page has none of its own (it is
+	// rendered by a dynamic route), so there it would only fail — and an entry is deleted where it
+	// is edited: in the host, when the host edits entries.
+	const canDeletePage = inlineEditing && !(entriesInParent && currentPageCollection)
+	const destructiveItems: MenuItem[] = !canDeletePage ? [] : [
 		{
 			label: 'Delete Page',
 			icon: (
@@ -181,7 +190,7 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 
 	const settingsItems: MenuItem[] = []
 
-	if (callbacks.onSeoEditor) {
+	if (inlineEditing && callbacks.onSeoEditor) {
 		settingsItems.push({
 			label: 'SEO',
 			icon: (
@@ -194,27 +203,36 @@ export const Toolbar = ({ callbacks, collectionDefinitions }: ToolbarProps) => {
 		})
 	}
 
-	settingsItems.push({
-		label: 'Redirects',
-		icon: (
-			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M9 18l6-6-6-6" />
-				<path d="M15 18l6-6-6-6" />
-			</svg>
-		),
-		onClick: () => signals.openRedirectsManager(),
-	})
+	if (inlineEditing) {
+		settingsItems.push({
+			label: 'Redirects',
+			icon: (
+				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M9 18l6-6-6-6" />
+					<path d="M15 18l6-6-6-6" />
+				</svg>
+			),
+			onClick: () => signals.openRedirectsManager(),
+		})
+	}
 
-	menuSections.push({
-		label: 'Settings',
-		icon: (
-			<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-				<circle cx="12" cy="12" r="3" />
-			</svg>
-		),
-		items: settingsItems,
-	})
+	if (settingsItems.length > 0) {
+		menuSections.push({
+			label: 'Settings',
+			icon: (
+				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+					<circle cx="12" cy="12" r="3" />
+				</svg>
+			),
+			items: settingsItems,
+		})
+	}
+
+	// Nothing to offer and nothing in progress (inline editing off, no element selection, no
+	// entry to hand over): no toolbar at all. Unsaved changes keep it, so Save/Discard stay reachable.
+	const hasMenuItems = topLevelItems.length > 0 || menuSections.length > 0 || destructiveItems.length > 0
+	if (!hasMenuItems && !isToolbarOpen && dirtyCount === 0 && !isSaving) return null
 
 	return (
 		<div

@@ -114,6 +114,8 @@ export const CSS = {
 	/** Data attribute set during edit mode on elements whose manifest entry has no source path;
 	 *  suppresses hover outlines and blocks interaction so the user doesn't type into a dead-end. */
 	LOCKED_ATTRIBUTE: 'data-cms-locked',
+	/** Data attribute set during edit mode on elements whose click hands their collection entry to the host. */
+	ENTRY_HANDOVER_ATTRIBUTE: 'data-cms-entry-handover',
 } as const
 
 /**
