@@ -5,6 +5,7 @@
  * (it never depended on preact — it operates on the raw view).
  */
 import { type Editor, editorViewCtx } from '@milkdown/core'
+import { liftTarget } from '@milkdown/prose/transform'
 import type { EditorView } from '@milkdown/prose/view'
 
 /** The image node the selection covers exactly — a click on an inline image selects the node itself. */
@@ -167,6 +168,28 @@ export function toggleHeading(view: EditorView, level: number): void {
 	const blockTo = state.selection.$to.after(state.selection.$to.depth)
 	view.dispatch(state.tr.setBlockType(blockFrom, blockTo, targetType, attrs))
 	view.focus()
+}
+
+/**
+ * Lift the selected blocks out of the innermost blockquote the selection starts in, the one
+ * that makes the toolbar show the quote as active. One level per call, so nested quotes come
+ * apart step by step; a selection running past the quote lifts only the part inside it. A list
+ * inside the quote stays a list. Returns false only when the selection does not start in a
+ * blockquote.
+ */
+export function liftOutOfBlockquote(view: EditorView): boolean {
+	const { state } = view
+	const { $from, $to } = state.selection
+	let depth = $from.depth
+	while (depth > 0 && $from.node(depth).type.name !== 'blockquote') depth--
+	if (depth === 0) return false
+	const $end = $to.pos > $from.end(depth) ? state.doc.resolve($from.end(depth)) : $to
+	const range = $from.blockRange($end, node => node === $from.node(depth))
+	const target = range ? liftTarget(range) : null
+	// In a quote that cannot be lifted, doing nothing beats wrapping it in yet another quote.
+	if (range && target !== null) view.dispatch(state.tr.lift(range, target).scrollIntoView())
+	view.focus()
+	return true
 }
 
 /** Remove the link mark around the current cursor/selection. */
