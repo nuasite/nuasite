@@ -19,14 +19,24 @@ const MANIFEST: CmsManifest = {
 }
 
 let posted: Array<'cms-element-selected' | 'cms-element-deselected'> = []
+/** Pathnames of `cms-page-navigated`: a host drops the selection on each. */
+let navigated: string[] = []
+const originalLocation = Object.getOwnPropertyDescriptor(window, 'location')
+
+/** Point the widget at another page, as a navigation does. */
+function setPageUrl(url: string): void {
+	Object.defineProperty(window, 'location', { value: new URL(url), configurable: true, writable: true })
+}
 const originalParent = Object.getOwnPropertyDescriptor(window, 'parent')
 const originalElementsFromPoint = document.elementsFromPoint
 
 beforeAll(() => {
+	setPageUrl('http://localhost/')
 	Object.defineProperty(window, 'parent', {
 		value: {
 			postMessage: (message: CmsPostMessage) => {
 				if (message.type === 'cms-element-selected' || message.type === 'cms-element-deselected') posted.push(message.type)
+				if (message.type === 'cms-page-navigated') navigated.push(message.page.pathname)
 			},
 		},
 		configurable: true,
@@ -43,6 +53,7 @@ afterAll(() => {
 	isSelectMode.value = false
 	if (originalParent) Object.defineProperty(window, 'parent', originalParent)
 	document.elementsFromPoint = originalElementsFromPoint
+	if (originalLocation) Object.defineProperty(window, 'location', originalLocation)
 })
 
 beforeEach(async () => {
@@ -54,6 +65,7 @@ beforeEach(async () => {
 		isSelectMode.value = true
 	})
 	posted = []
+	navigated = []
 })
 
 const element = (cmsId: string): HTMLElement => {
@@ -114,4 +126,35 @@ test('after the host lets the picked element go, picking it again selects it aga
 		element('title').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 	})
 	expect(posted).toEqual(['cms-element-selected', 'cms-element-deselected', 'cms-element-selected'])
+})
+
+test('hovering and picking an element is no page navigation', async () => {
+	await hover(element('title'))
+	await act(() => {
+		element('title').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+	})
+	await hover(element('claim'))
+	expect(navigated).toEqual([])
+})
+
+test('a manifest reload for the same page is no navigation, a load for another page is one', async () => {
+	await act(() => setManifest({ ...MANIFEST }))
+	expect(navigated).toEqual([])
+
+	setPageUrl('http://localhost/other')
+	await act(() => setManifest({ ...MANIFEST }))
+	await act(() => setManifest({ ...MANIFEST }))
+	expect(navigated).toEqual(['/other'])
+})
+
+test('a View Transitions navigation lets the picked element go', async () => {
+	await hover(element('title'))
+	await act(() => {
+		element('title').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+	})
+	await act(() => {
+		document.dispatchEvent(new Event('astro:after-swap'))
+	})
+	expect(selectModeElement.value).toBeNull()
+	expect(posted).toEqual(['cms-element-selected', 'cms-element-deselected'])
 })

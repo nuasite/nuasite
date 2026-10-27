@@ -111,6 +111,8 @@ const CmsUI = () => {
 	// Re-fetch manifest on View Transitions navigation (astro:after-swap)
 	useEffect(() => {
 		const onNavigation = () => {
+			// The picked element went with the old page.
+			signals.setSelectModeElement(null)
 			postToParent({ type: 'cms-page-navigated', page: { pathname: window.location.pathname } })
 			fetchManifest().then((manifest) => signals.setManifest(manifest)).catch(() => {})
 		}
@@ -200,20 +202,21 @@ const CmsUI = () => {
 		}
 	})
 
-	// Send cms-ready + cms-page-navigated when manifest loads
-	const prevManifestRef = useRef<boolean>(false)
+	// Send cms-ready when the manifest first loads, cms-page-navigated when it loads for another page.
+	// A reload for the same page (edit mode, the markdown editor) is no navigation: a host clears
+	// the user's selection on it.
+	const announcedPathnameRef = useRef<string | null>(null)
+	const loadedManifest = signals.manifest.value
 	useEffect(() => {
-		const m = signals.manifest.value
 		// Only fire when manifest has entries (i.e. actually loaded)
-		if (Object.keys(m.entries).length === 0) return
+		if (Object.keys(loadedManifest.entries).length === 0) return
+		const pathname = window.location.pathname
+		if (pathname === announcedPathnameRef.current) return
 
-		if (!prevManifestRef.current) {
-			prevManifestRef.current = true
-			postToParent(buildReadyMessage(m, window.location.pathname))
-		} else {
-			postToParent(buildPageNavigatedMessage(m, window.location.pathname))
-		}
-	})
+		const isFirst = announcedPathnameRef.current === null
+		announcedPathnameRef.current = pathname
+		postToParent(isFirst ? buildReadyMessage(loadedManifest, pathname) : buildPageNavigatedMessage(loadedManifest, pathname))
+	}, [loadedManifest])
 
 	// Send cms-state-changed when editor state changes
 	const prevStateRef = useRef<string>('')
