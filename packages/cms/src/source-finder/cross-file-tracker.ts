@@ -1,16 +1,16 @@
 import path from 'node:path'
 
-import { getProjectRoot } from '../config'
-import { projectFiles } from '../project/context'
-import { escapeRegex, resolveSourcePath } from '../utils'
-import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
-import { getCachedParsedFile } from './ast-parser'
-import { findComponentProp, findExpressionProp, findSpreadProp } from './element-finder'
-import { wildcardPathToRegexBody } from './search-index'
-import { normalizeText } from './snippet-utils'
-import { astroFilesUnder, preferringFiles, templateSearchDirs } from './source-files'
-import type { ImportInfo, SourceLocation, VariableDefinition } from './types'
-import { getExportedDefinitions, resolveImportPath } from './variable-extraction'
+import { getProjectRoot } from '../config.ts'
+import { projectFiles } from '../project/context.ts'
+import { escapeRegex, resolveSourcePath } from '../utils.ts'
+import { buildDefinitionPath, parseExpressionPath } from './ast-extractors.ts'
+import { getCachedParsedFile } from './ast-parser.ts'
+import { findComponentProp, findExpressionProp, findSpreadProp } from './element-finder.ts'
+import { wildcardPathToRegexBody } from './search-index.ts'
+import { normalizeText } from './snippet-utils.ts'
+import { astroFilesUnder, preferringFiles, templateSearchDirs } from './source-files.ts'
+import type { ImportInfo, SourceLocation, VariableDefinition } from './types.ts'
+import { getExportedDefinitions, resolveImportPath } from './variable-extraction.ts'
 
 /**
  * Compile a wildcard path like `navItems[*].label` into a regex matching

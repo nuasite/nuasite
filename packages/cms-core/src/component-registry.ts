@@ -1,7 +1,7 @@
 import { parse as parseBabel } from '@babel/parser'
 import type { ComponentDefinition, ComponentProp } from '@nuasite/cms-types'
 import path from 'node:path'
-import type { CmsFileSystem } from './fs/types'
+import type { CmsFileSystem } from './fs/types.ts'
 
 /**
  * Scan Astro component files under the given directories and extract their

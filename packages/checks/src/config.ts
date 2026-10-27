@@ -1,4 +1,4 @@
-import type { ChecksOptions, ResolvedChecksOptions } from './types'
+import type { ChecksOptions, ResolvedChecksOptions } from './types.ts'
 
 function resolveOption<T extends object>(value: boolean | T | undefined, defaultOptions: T = {} as T): T | false {
 	if (value === false) return false

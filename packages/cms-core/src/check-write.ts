@@ -29,9 +29,9 @@
  */
 
 import type { FieldType } from '@nuasite/cms-types'
-import type { CheckFinding } from './check'
-import { collectionKind, isPlainObject, type LoadedCollection, type LoadedCollections, type LoadedEntry } from './check-entries'
-import type { ParsedConfig, ParsedField } from './content-config-ast'
+import { collectionKind, isPlainObject, type LoadedCollection, type LoadedCollections, type LoadedEntry } from './check-entries.ts'
+import type { CheckFinding } from './check.ts'
+import type { ParsedConfig, ParsedField } from './content-config-ast.ts'
 import {
 	applyCreateRouteFields,
 	blankFieldValue,
@@ -42,9 +42,9 @@ import {
 	omitEmptyOnCreate,
 	withoutBlankArrayItems,
 	type WriteModelField,
-} from './editor-write-model'
-import { describeIssue, type LiveIssue, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port'
-import { firstAcceptedEntry } from './schema-probe'
+} from './editor-write-model.ts'
+import { describeIssue, type LiveIssue, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port.ts'
+import { firstAcceptedEntry } from './schema-probe.ts'
 
 export interface WriteCheckInput {
 	config: ParsedConfig

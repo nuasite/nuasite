@@ -3,12 +3,12 @@ import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getProjectRoot } from './config'
-import { detectArrayPattern, extractArrayElementProps } from './handlers/array-ops'
-import { extractPropsFromSource, findComponentInvocationLine, findFrontmatterEnd, getPageFileCandidates } from './handlers/component-ops'
-import { extractComponentName, processHtml } from './html-processor'
-import type { ManifestWriter } from './manifest-writer'
-import { generateComponentPreviews } from './preview-generator'
+import { getProjectRoot } from './config.ts'
+import { detectArrayPattern, extractArrayElementProps } from './handlers/array-ops.ts'
+import { extractPropsFromSource, findComponentInvocationLine, findFrontmatterEnd, getPageFileCandidates } from './handlers/component-ops.ts'
+import { extractComponentName, processHtml } from './html-processor.ts'
+import type { ManifestWriter } from './manifest-writer.ts'
+import { generateComponentPreviews } from './preview-generator.ts'
 import {
 	clearSourceFinderCache,
 	extractOpeningTagWithLine,
@@ -20,10 +20,10 @@ import {
 	parseMarkdownContent,
 	updateAttributeSources,
 	updateColorClassSources,
-} from './source-finder'
-import type { ComponentInstance } from './types'
-import type { CmsMarkerOptions, CollectionEntry } from './types'
-import { firstNonEmptyLine, resolveSourcePath } from './utils'
+} from './source-finder/index.ts'
+import type { ComponentInstance } from './types.ts'
+import type { CmsMarkerOptions, CollectionEntry } from './types.ts'
+import { firstNonEmptyLine, resolveSourcePath } from './utils.ts'
 
 // Concurrency limit for parallel processing
 const MAX_CONCURRENT = 10

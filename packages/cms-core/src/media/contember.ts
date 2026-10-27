@@ -1,5 +1,5 @@
 import type { MediaStorageAdapter, MediaUploadResult } from '@nuasite/cms-types'
-import { MEDIA_INVALID_ID } from './errors'
+import { MEDIA_INVALID_ID } from './errors.ts'
 
 export interface ContemberStorageOptions {
 	/** Base URL of the worker API, e.g. 'https://api.example.com' */

@@ -13,7 +13,7 @@
  * sophisticated (fuzzy / Levenshtein) waits for a real-world failure.
  */
 
-import { collectTextNodes, rangeFromOffsets } from './dom-walker'
+import { collectTextNodes, rangeFromOffsets } from './dom-walker.ts'
 
 export interface AnchorMatch {
 	range: Range

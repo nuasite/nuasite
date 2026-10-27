@@ -1,9 +1,9 @@
 import path from 'node:path'
-import { pickAstroImageTarget } from '../astro-image-paths'
-import type { ManifestWriter } from '../manifest-writer'
-import { projectFiles } from '../project/context'
-import type { MediaUploadContext } from '../types'
-import { resolveSourcePath } from '../utils'
+import { pickAstroImageTarget } from '../astro-image-paths.ts'
+import type { ManifestWriter } from '../manifest-writer.ts'
+import { projectFiles } from '../project/context.ts'
+import type { MediaUploadContext } from '../types.ts'
+import { resolveSourcePath } from '../utils.ts'
 
 export interface AstroImageUploadResult {
 	success: true

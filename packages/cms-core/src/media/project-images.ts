@@ -1,6 +1,6 @@
 import type { MediaItem } from '@nuasite/cms-types'
-import type { CmsFileSystem } from '../fs/types'
-import { MIME_BY_EXT, mimeFromExt } from './mime'
+import type { CmsFileSystem } from '../fs/types.ts'
+import { MIME_BY_EXT, mimeFromExt } from './mime.ts'
 
 const IMAGE_EXTENSIONS = new Set(Object.entries(MIME_BY_EXT).filter(([, mime]) => mime.startsWith('image/')).map(([ext]) => ext))
 

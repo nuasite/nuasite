@@ -1,6 +1,6 @@
 import type { Plugin } from 'vite'
-import { buildMapPattern } from './handlers/array-ops'
-import { findFrontmatterEnd } from './handlers/component-ops'
+import { buildMapPattern } from './handlers/array-ops.ts'
+import { findFrontmatterEnd } from './handlers/component-ops.ts'
 
 /**
  * Vite transform plugin that injects `data-cms-array-source` markers on root HTML

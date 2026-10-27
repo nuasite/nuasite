@@ -30,7 +30,7 @@ import type {
 	MediaTypeFilter,
 	MutationResult,
 } from '@nuasite/cms-types'
-import { hashContent, hashSource, KeyedMutex, SharedRun } from './concurrency'
+import { hashContent, hashSource, KeyedMutex, SharedRun } from './concurrency.ts'
 import {
 	type AddArrayItemBody,
 	type ApiError,
@@ -48,7 +48,7 @@ import {
 	STATUS_BY_CODE,
 	type UpdateEntryBody,
 	type UpdateMediaAnnotationBody,
-} from './types'
+} from './types.ts'
 
 /** Features the sidecar advertises so older/newer clients can degrade gracefully. */
 export const SIDECAR_FEATURES: readonly string[] = [

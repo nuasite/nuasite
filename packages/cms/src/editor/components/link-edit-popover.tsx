@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { cn } from '../lib/cn'
-import { HighlightMatch } from './fields'
-import { PrimaryButton } from './modal-shell'
+import { cn } from '../lib/cn.ts'
+import { HighlightMatch } from './fields.tsx'
+import { PrimaryButton } from './modal-shell.tsx'
 
 export interface LinkSuggestion {
 	value: string

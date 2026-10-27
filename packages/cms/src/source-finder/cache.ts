@@ -1,5 +1,5 @@
-import { currentProjectContext } from '../project/context'
-import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types'
+import { currentProjectContext } from '../project/context.ts'
+import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types.ts'
 
 // The source finder's caches, held per project context (see `ProjectState`).
 

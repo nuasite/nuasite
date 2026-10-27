@@ -24,10 +24,10 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { applySuggestion } from '../apply/apply-suggestion'
-import type { NotesJsonStore } from '../storage/json-store'
-import type { NoteItem, NoteItemPatch, NoteRange, NoteRole, NoteStatus, NoteType } from '../storage/types'
-import { parseJsonBody, sendError, sendJson } from './request-utils'
+import { applySuggestion } from '../apply/apply-suggestion.ts'
+import type { NotesJsonStore } from '../storage/json-store.ts'
+import type { NoteItem, NoteItemPatch, NoteRange, NoteRole, NoteStatus, NoteType } from '../storage/types.ts'
+import { parseJsonBody, sendError, sendJson } from './request-utils.ts'
 
 /** Read the requester's role from a request header. Defaults to client. */
 function readRole(req: IncomingMessage): NoteRole {

@@ -1,5 +1,5 @@
-import { Z_INDEX } from '../constants'
-import { redirectCountdown, stopRedirectCountdown } from '../signals'
+import { Z_INDEX } from '../constants.ts'
+import { redirectCountdown, stopRedirectCountdown } from '../signals.ts'
 
 export function RedirectCountdown() {
 	const state = redirectCountdown.value

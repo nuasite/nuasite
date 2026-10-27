@@ -1,9 +1,9 @@
 import type { CollectionEntryInfo, ComponentDefinition, MutationResult } from '@nuasite/cms-types'
 import path from 'node:path'
 import yaml from 'yaml'
-import { assetBaseDir, resolveAssetCandidates } from '../asset-paths'
-import { normalizeBasePath, scanCollections } from '../collection-scanner'
-import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast'
+import { assetBaseDir, resolveAssetCandidates } from '../asset-paths.ts'
+import { normalizeBasePath, scanCollections } from '../collection-scanner.ts'
+import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast.ts'
 import {
 	blankRequiredFields,
 	ENTRY_SLUG_FIELD,
@@ -14,10 +14,10 @@ import {
 	withEntrySlug,
 	withoutBlankArrayItems,
 	withRenamedEntrySlug,
-} from '../editor-write-model'
-import type { CmsFileSystem } from '../fs/types'
-import { mimeFromExt } from '../media/mime'
-import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared'
+} from '../editor-write-model.ts'
+import type { CmsFileSystem } from '../fs/types.ts'
+import { mimeFromExt } from '../media/mime.ts'
+import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared.ts'
 
 /** Frontmatter file extensions that hold markdown content (vs. pure data files). */
 const MARKDOWN_EXTENSIONS = ['md', 'mdx'] as const

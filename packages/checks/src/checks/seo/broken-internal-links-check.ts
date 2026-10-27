@@ -1,4 +1,4 @@
-import type { SiteCheck, SiteCheckContext, SiteCheckIssue } from '../../types'
+import type { SiteCheck, SiteCheckContext, SiteCheckIssue } from '../../types.ts'
 
 export function createBrokenInternalLinksCheck(): SiteCheck {
 	return {

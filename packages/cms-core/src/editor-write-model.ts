@@ -15,7 +15,7 @@
  */
 
 import { blankFieldValue, type WriteModelField } from '@nuasite/cms-types'
-import { isPlainRecord } from './shared'
+import { isPlainRecord } from './shared.ts'
 
 export {
 	blankFieldValue,

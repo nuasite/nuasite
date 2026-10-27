@@ -2,9 +2,9 @@ import type { MediaFolderItem, MediaListResult, MediaStorageAdapter, MediaUpload
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID, MEDIA_NOT_FOUND } from './errors'
-import { getFileExtension, mimeFromExt } from './mime'
-import { isUnsafeFolder } from './names'
+import { MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID, MEDIA_NOT_FOUND } from './errors.ts'
+import { getFileExtension, mimeFromExt } from './mime.ts'
+import { isUnsafeFolder } from './names.ts'
 
 export interface LocalStorageOptions {
 	/**

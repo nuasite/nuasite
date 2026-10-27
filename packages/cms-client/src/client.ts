@@ -140,12 +140,13 @@ export type UpdateEntryResult =
  * collection/entry (`not_found`) or a generic failure.
  */
 export class CmsClientError extends Error {
-	constructor(
-		readonly status: number,
-		readonly code: CmsErrorCode | 'forbidden' | 'unknown',
-		message: string,
-	) {
+	readonly status: number
+	readonly code: CmsErrorCode | 'forbidden' | 'unknown'
+
+	constructor(status: number, code: CmsErrorCode | 'forbidden' | 'unknown', message: string) {
 		super(message)
+		this.status = status
+		this.code = code
 		this.name = 'CmsClientError'
 	}
 

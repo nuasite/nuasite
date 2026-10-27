@@ -1,8 +1,8 @@
 import { resolvePathnameFromSpec } from '@nuasite/cms-core'
 import path from 'node:path'
-import { getProjectRoot } from './config'
-import { projectFiles } from './project/context'
-import { parseTailwindConfig, parseTextStyles } from './tailwind-colors'
+import { getProjectRoot } from './config.ts'
+import { projectFiles } from './project/context.ts'
+import { parseTailwindConfig, parseTextStyles } from './tailwind-colors.ts'
 import type {
 	AvailableColors,
 	AvailableTextStyles,
@@ -15,8 +15,8 @@ import type {
 	ManifestMetadata,
 	PageEntry,
 	PageSeoData,
-} from './types'
-import { generateManifestContentHash, generateSourceFileHashes } from './utils'
+} from './types.ts'
+import { generateManifestContentHash, generateSourceFileHashes } from './utils.ts'
 
 /** Current manifest schema version */
 const MANIFEST_VERSION = '1.0'

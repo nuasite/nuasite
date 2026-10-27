@@ -1,10 +1,10 @@
 import type { Plugin } from 'vite'
-import { invalidateCollectionRoutesCache } from './editor-service'
-import { expectedDeletions } from './expected-deletions'
-import type { ManifestWriter } from './manifest-writer'
-import { markFileDirty } from './source-finder'
-import type { CmsMarkerOptions, ComponentDefinition } from './types'
-import { createArrayTransformPlugin } from './vite-plugin-array-transform'
+import { invalidateCollectionRoutesCache } from './editor-service.ts'
+import { expectedDeletions } from './expected-deletions.ts'
+import type { ManifestWriter } from './manifest-writer.ts'
+import { markFileDirty } from './source-finder/index.ts'
+import type { CmsMarkerOptions, ComponentDefinition } from './types.ts'
+import { createArrayTransformPlugin } from './vite-plugin-array-transform.ts'
 
 export interface VitePluginContext {
 	manifestWriter: ManifestWriter

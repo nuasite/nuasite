@@ -1,4 +1,4 @@
-import type { MediaItem, MediaTypeFilter } from './index'
+import type { MediaItem, MediaTypeFilter } from './index.ts'
 
 /**
  * `image/*` that a raster pipeline cannot usefully resize — they belong under "graphics", not

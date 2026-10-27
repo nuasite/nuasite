@@ -1,4 +1,4 @@
-import type { Check, CheckReport, CheckResult, CheckSeverity, PageCheckContext, ResolvedChecksOptions, SiteCheck, SiteCheckContext } from './types'
+import type { Check, CheckReport, CheckResult, CheckSeverity, PageCheckContext, ResolvedChecksOptions, SiteCheck, SiteCheckContext } from './types.ts'
 
 export class CheckRunner {
 	private pageChecks: Check[] = []

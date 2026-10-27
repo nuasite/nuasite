@@ -1,22 +1,22 @@
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 
-import { isHugoStyleEntry } from '../astro-image-paths'
-import { getProjectRoot } from '../config'
-import { projectFiles } from '../project/context'
-import type { Attribute, CollectionDefinition, ManifestEntry } from '../types'
-import { escapeRegex, generateSourceHash, resolveSourcePath } from '../utils'
-import { buildDefinitionPath } from './ast-extractors'
-import { getCachedParsedFile } from './ast-parser'
+import { isHugoStyleEntry } from '../astro-image-paths.ts'
+import { getProjectRoot } from '../config.ts'
+import { projectFiles } from '../project/context.ts'
+import type { Attribute, CollectionDefinition, ManifestEntry } from '../types.ts'
+import { escapeRegex, generateSourceHash, resolveSourcePath } from '../utils.ts'
+import { buildDefinitionPath } from './ast-extractors.ts'
+import { getCachedParsedFile } from './ast-parser.ts'
 import {
 	buildCollectionTextIndex,
 	findFieldInCollectionEntry,
 	findFieldsInCollectionEntry,
 	findTextInAnyCollectionFrontmatter,
 	lookupCollectionText,
-} from './collection-finder'
-import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker'
-import { findImageElementNearLine, findImageSourceLocation } from './image-finder'
+} from './collection-finder.ts'
+import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker.ts'
+import { findImageElementNearLine, findImageSourceLocation } from './image-finder.ts'
 import {
 	extractTranslationKeyFromSnippet,
 	findInTextIndex,
@@ -26,9 +26,9 @@ import {
 	initializeSearchIndex,
 	isTranslationFilePath,
 	toProjectRelativePath,
-} from './search-index'
-import { projectRelativeSource } from './source-files'
-import type { CachedParsedFile, ImageMatch, PageSources, SourceLocation } from './types'
+} from './search-index.ts'
+import { projectRelativeSource } from './source-files.ts'
+import type { CachedParsedFile, ImageMatch, PageSources, SourceLocation } from './types.ts'
 
 // ============================================================================
 // Text Normalization

@@ -10,10 +10,10 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { NotesJsonStore } from '../storage/json-store'
-import type { NotesApiContext } from './api-handlers'
-import { handleNotesApiRoute } from './api-handlers'
-import { handleCors, sendError } from './request-utils'
+import type { NotesJsonStore } from '../storage/json-store.ts'
+import type { NotesApiContext } from './api-handlers.ts'
+import { handleNotesApiRoute } from './api-handlers.ts'
+import { handleCors, sendError } from './request-utils.ts'
 
 /** Minimal ViteDevServer interface — same shape used by `@nuasite/cms`. */
 export interface ViteDevServerLike {

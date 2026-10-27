@@ -12,8 +12,8 @@ import type {
 	CollectionEntryInfo,
 	ManifestEntry,
 	PageSeoData,
-} from '../types'
-import type { ComponentInstance } from '../types'
+} from '../types.ts'
+import type { ComponentInstance } from '../types.ts'
 
 /** Send a postMessage to the parent window (no-op when not in an iframe) */
 export function postToParent(msg: CmsPostMessage): void {

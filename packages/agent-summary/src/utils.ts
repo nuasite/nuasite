@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import type { PageMeta, RedirectMeta } from './types'
+import type { PageMeta, RedirectMeta } from './types.ts'
 
 export const AGENTS_PATH = path.resolve('AGENTS.md')
 export const SUMMARY_START = '<page_summary>'

@@ -10,7 +10,7 @@ import type { AstroConfig } from 'astro'
 import fs from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { isNodeError } from './utils'
+import { isNodeError } from './utils.ts'
 
 export interface RedirectsLogger {
 	info: (message: string) => void

@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs'
 import path from 'node:path'
-import type { Check, CheckIssue, PageCheckContext } from '../../types'
+import type { Check, CheckIssue, PageCheckContext } from '../../types.ts'
 
 function isExternalOrDataUrl(src: string): boolean {
 	return src.startsWith('data:') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')

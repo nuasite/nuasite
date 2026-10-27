@@ -1,4 +1,4 @@
-import type { BabelNode, LineTransformer, VariableDefinition } from './types'
+import type { BabelNode, LineTransformer, VariableDefinition } from './types.ts'
 
 // ============================================================================
 // String Value Extraction

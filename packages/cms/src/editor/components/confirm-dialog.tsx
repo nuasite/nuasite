@@ -1,6 +1,6 @@
-import { cn } from '../lib/cn'
-import { confirmDialogState } from '../signals'
-import { CancelButton, ModalBackdrop, ModalFooter } from './modal-shell'
+import { cn } from '../lib/cn.ts'
+import { confirmDialogState } from '../signals.ts'
+import { CancelButton, ModalBackdrop, ModalFooter } from './modal-shell.tsx'
 
 export function ConfirmDialog() {
 	const state = confirmDialogState.value

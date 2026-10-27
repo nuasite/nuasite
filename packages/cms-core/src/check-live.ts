@@ -7,10 +7,10 @@
  * actually apply. This is the same verdict `astro sync` would give, without the build.
  */
 
-import type { CheckFinding } from './check'
-import type { LoadedCollections } from './check-entries'
-import type { ParsedConfig } from './content-config-ast'
-import { describeIssue, type LiveParseResult, type LiveSchemas, schemaFor } from './schema-port'
+import type { LoadedCollections } from './check-entries.ts'
+import type { CheckFinding } from './check.ts'
+import type { ParsedConfig } from './content-config-ast.ts'
+import { describeIssue, type LiveParseResult, type LiveSchemas, schemaFor } from './schema-port.ts'
 
 export interface LiveCheckInput {
 	config: ParsedConfig

@@ -1,10 +1,10 @@
 import { parse as parseBabel } from '@babel/parser'
 import path from 'node:path'
 
-import { projectFiles } from '../project/context'
-import { extractArrayElements, extractObjectProperties, extractPossibleStringValues, getStringValue } from './ast-extractors'
-import type { BabelFile, BabelNode, ImportInfo, VariableDefinition } from './types'
-import { createFrontmatterLineTransformer, identityLine } from './types'
+import { projectFiles } from '../project/context.ts'
+import { extractArrayElements, extractObjectProperties, extractPossibleStringValues, getStringValue } from './ast-extractors.ts'
+import type { BabelFile, BabelNode, ImportInfo, VariableDefinition } from './types.ts'
+import { createFrontmatterLineTransformer, identityLine } from './types.ts'
 
 // ============================================================================
 // Variable Definition Extraction

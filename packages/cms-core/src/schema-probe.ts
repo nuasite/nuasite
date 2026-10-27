@@ -16,8 +16,8 @@
  * as "report nothing" — a rule that cannot get evidence has to stay quiet rather than guess.
  */
 
-import type { LoadedEntry } from './check-entries'
-import type { LiveSchema } from './schema-port'
+import type { LoadedEntry } from './check-entries.ts'
+import type { LiveSchema } from './schema-port.ts'
 
 /** One field in one record: the accepted entry to start from, and where the field sits in it. */
 export interface ProbePoint {

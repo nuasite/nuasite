@@ -1,5 +1,5 @@
-import { getMarkdownUrl } from './paths'
-import type { LlmEndpointOptions } from './types'
+import { getMarkdownUrl } from './paths.ts'
+import type { LlmEndpointOptions } from './types.ts'
 
 export interface PageEntry {
 	pathname: string

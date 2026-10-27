@@ -1,4 +1,4 @@
-import type { CmsConfig, CmsThemeConfig, CmsThemePreset } from './types'
+import type { CmsConfig, CmsThemeConfig, CmsThemePreset } from './types.ts'
 
 /**
  * Theme presets for CMS UI

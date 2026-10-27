@@ -1,6 +1,6 @@
 import remarkDirectiveExtension from 'remark-directive'
 import type { Plugin, Processor } from 'unified'
-import { withPortableModule } from './portable-module'
+import { withPortableModule } from './portable-module.ts'
 
 // Render-side counterpart of the editor's directive plugins
 // (packages/cms-mdx-editor/src/{styled-list,youtube}-plugin.ts). The editor

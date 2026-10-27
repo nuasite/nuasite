@@ -1,8 +1,8 @@
 /** @jsxImportSource preact */
 import { render } from 'preact'
-import { App } from './App'
-import { enableCmsBridge } from './lib/cms-bridge'
-import { isReviewMode, setReviewModeCookie } from './lib/url-mode'
+import { App } from './App.tsx'
+import { enableCmsBridge } from './lib/cms-bridge.ts'
+import { isReviewMode, setReviewModeCookie } from './lib/url-mode.ts'
 import OVERLAY_STYLES from './styles.css?inline'
 
 /**

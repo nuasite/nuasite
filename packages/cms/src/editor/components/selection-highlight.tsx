@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks'
-import { Z_INDEX } from '../constants'
-import { usePositionTracking } from '../hooks/utils'
-import { getComponentInstance } from '../manifest'
-import * as signals from '../signals'
+import { Z_INDEX } from '../constants.ts'
+import { usePositionTracking } from '../hooks/utils.ts'
+import { getComponentInstance } from '../manifest.ts'
+import * as signals from '../signals.ts'
 
 /**
  * Renders a persistent highlight around the currently selected element.

@@ -1,5 +1,5 @@
-import { projectFiles } from '../project/context'
-import { resolveAndValidatePath, slugify } from '../utils'
+import { projectFiles } from '../project/context.ts'
+import { resolveAndValidatePath, slugify } from '../utils.ts'
 
 const PAGE_EXTENSIONS = ['.astro', '.md', '.mdx']
 

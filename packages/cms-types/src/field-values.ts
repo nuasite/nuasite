@@ -28,7 +28,7 @@
  *   is the one write that relocates an entry, so it is the one write that may rewrite the copy.
  */
 
-import type { FieldType } from './index'
+import type { FieldType } from './index.ts'
 
 /** The parts of a field these rules read — satisfied by both `FieldDefinition` and a mapped `ParsedField`. */
 export interface WriteModelField {

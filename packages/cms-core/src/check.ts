@@ -12,15 +12,21 @@
  * `astro sync` already provides.
  */
 
-import { assetBaseDir, resolveAssetCandidates } from './asset-paths'
-import { isPlainObject, loadCollections, type LoadedEntry } from './check-entries'
-import { checkAgainstSchemas } from './check-live'
-import { checkFieldShapes } from './check-shape'
-import { checkEditorWrites } from './check-write'
-import { classifyEmptyContentConfig, CONTENT_CONFIG_PATHS, parseContentConfig, type ParsedCollection, type ParsedField } from './content-config-ast'
-import type { CmsFileSystem } from './fs/types'
-import { type LiveSchemas, schemaFor } from './schema-port'
-import { computePathnameFromSpec } from './shared'
+import { assetBaseDir, resolveAssetCandidates } from './asset-paths.ts'
+import { isPlainObject, loadCollections, type LoadedEntry } from './check-entries.ts'
+import { checkAgainstSchemas } from './check-live.ts'
+import { checkFieldShapes } from './check-shape.ts'
+import { checkEditorWrites } from './check-write.ts'
+import {
+	classifyEmptyContentConfig,
+	CONTENT_CONFIG_PATHS,
+	parseContentConfig,
+	type ParsedCollection,
+	type ParsedField,
+} from './content-config-ast.ts'
+import type { CmsFileSystem } from './fs/types.ts'
+import { type LiveSchemas, schemaFor } from './schema-port.ts'
+import { computePathnameFromSpec } from './shared.ts'
 
 export type CheckSeverity = 'error' | 'warning'
 

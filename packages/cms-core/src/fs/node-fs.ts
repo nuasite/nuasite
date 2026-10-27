@@ -1,8 +1,8 @@
 import type { Dirent } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { globMayMatchUnder, globToRegExp, UnreadableDirectoryError } from './glob'
-import type { CmsFileSystem } from './types'
+import { globMayMatchUnder, globToRegExp, UnreadableDirectoryError } from './glob.ts'
+import type { CmsFileSystem } from './types.ts'
 
 /**
  * Resolve a port-relative (or absolute) path against `root` and ensure it stays

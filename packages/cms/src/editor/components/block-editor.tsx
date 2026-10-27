@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { LAYOUT, Z_INDEX } from '../constants'
-import { getComponentDefinition, getComponentDefinitions, getComponentInstance, getComponentInstances } from '../manifest'
-import { manifest } from '../signals'
-import type { InsertPosition } from '../types'
-import { ComponentCard, getDefaultProps } from './component-card'
-import { PropEditor } from './prop-editor'
+import { LAYOUT, Z_INDEX } from '../constants.ts'
+import { getComponentDefinition, getComponentDefinitions, getComponentInstance, getComponentInstances } from '../manifest.ts'
+import { manifest } from '../signals.ts'
+import type { InsertPosition } from '../types.ts'
+import { ComponentCard, getDefaultProps } from './component-card.tsx'
+import { PropEditor } from './prop-editor.tsx'
 
 export interface BlockEditorProps {
 	visible: boolean

@@ -6,8 +6,8 @@
 // can validate field types against the exact contract the sidecar serves — the
 // same surfacing `@nuasite/cms` does. Keeps `@nuasite/cms-types` a real runtime dep.
 export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
-export { hashContent, hashSource, KeyedMutex } from './concurrency'
-export { type CmsSidecarServer, createServer, type CreateServerOptions, SIDECAR_FEATURES } from './server'
+export { hashContent, hashSource, KeyedMutex } from './concurrency.ts'
+export { type CmsSidecarServer, createServer, type CreateServerOptions, SIDECAR_FEATURES } from './server.ts'
 export type {
 	AddArrayItemBody,
 	ApiError,
@@ -24,5 +24,5 @@ export type {
 	RenameEntryBody,
 	UpdateEntryBody,
 	UpdateMediaAnnotationBody,
-} from './types'
-export { STATUS_BY_CODE } from './types'
+} from './types.ts'
+export { STATUS_BY_CODE } from './types.ts'

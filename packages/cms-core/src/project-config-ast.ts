@@ -1,7 +1,7 @@
 import { parse } from '@babel/parser'
 import type { ArrayExpression, File, Node, ObjectExpression } from '@babel/types'
 import type { CmsConfig, CmsListStyle } from '@nuasite/cms-types'
-import type { CmsFileSystem } from './fs/types'
+import type { CmsFileSystem } from './fs/types.ts'
 
 type Bindings = Map<string, Node>
 

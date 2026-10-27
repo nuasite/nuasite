@@ -7,12 +7,12 @@ import {
 	parseColorClass,
 	SPECIAL_COLORS,
 	STANDARD_SHADES,
-} from '../color-utils'
-import { CSS, Z_INDEX } from '../constants'
-import { cn } from '../lib/cn'
-import * as signals from '../signals'
-import type { Attribute, AvailableColors, ElementRect } from '../types'
-import { CloseButton } from './modal-shell'
+} from '../color-utils.ts'
+import { CSS, Z_INDEX } from '../constants.ts'
+import { cn } from '../lib/cn.ts'
+import * as signals from '../signals.ts'
+import type { Attribute, AvailableColors, ElementRect } from '../types.ts'
+import { CloseButton } from './modal-shell.tsx'
 
 export interface ColorToolbarProps {
 	visible: boolean

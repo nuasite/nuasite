@@ -1,7 +1,7 @@
-import type { CmsManifest, CmsOpenEntryMessage, ManifestEntry } from '../types'
-import { CSS } from './constants'
-import { buildOpenEntryMessage, buildOpenEntryMessageForFile } from './post-message'
-import * as signals from './signals'
+import type { CmsManifest, CmsOpenEntryMessage, ManifestEntry } from '../types.ts'
+import { CSS } from './constants.ts'
+import { buildOpenEntryMessage, buildOpenEntryMessageForFile } from './post-message.ts'
+import * as signals from './signals.ts'
 
 const MARKDOWN_ATTRIBUTE = 'data-cms-markdown'
 

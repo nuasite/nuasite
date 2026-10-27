@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { globToRegExp } from './glob'
-import type { CmsFileSystem } from './types'
+import { globToRegExp } from './glob.ts'
+import type { CmsFileSystem } from './types.ts'
 
 /**
  * Compare-and-commit for CMS mutations.
@@ -38,8 +38,11 @@ export interface CmsChangeset {
 export type CmsCommit = (changeset: CmsChangeset) => Promise<void>
 
 export class CmsCommitConflictError extends Error {
-	constructor(readonly paths: readonly string[]) {
+	readonly paths: readonly string[]
+
+	constructor(paths: readonly string[]) {
 		super(`Changed since the edit read them: ${paths.join(', ')}`)
+		this.paths = paths
 		this.name = 'CmsCommitConflictError'
 	}
 }

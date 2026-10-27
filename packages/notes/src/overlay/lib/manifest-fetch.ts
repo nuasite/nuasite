@@ -7,7 +7,7 @@
  * per-page file already contains everything we need and is much smaller.
  */
 
-import type { CmsPageManifest } from '../types'
+import type { CmsPageManifest } from '../types.ts'
 
 /**
  * Build the per-page manifest URL for a page path.

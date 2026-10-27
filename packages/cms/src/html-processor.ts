@@ -1,9 +1,9 @@
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import path from 'node:path'
-import { getProjectRoot } from './config'
-import { processSeoFromHtml } from './seo-processor'
+import { getProjectRoot } from './config.ts'
+import { processSeoFromHtml } from './seo-processor.ts'
 
-import { extractBackgroundImageClasses, extractColorClasses, extractTextStyleClasses } from './tailwind-colors'
+import { extractBackgroundImageClasses, extractColorClasses, extractTextStyleClasses } from './tailwind-colors.ts'
 import type {
 	Attribute,
 	BackgroundImageMetadata,
@@ -13,8 +13,8 @@ import type {
 	ManifestEntry,
 	PageSeoData,
 	SeoOptions,
-} from './types'
-import { generateStableId } from './utils'
+} from './types.ts'
+import { generateStableId } from './utils.ts'
 
 /** Type for parsed HTML element nodes from node-html-parser */
 type HTMLNode = ParsedHTMLElement

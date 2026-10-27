@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'preact/hooks'
-import { Z_INDEX } from '../constants'
-import { getCaretRangeFromPoint } from '../dom'
-import { entryHandoverFor } from '../entry-handover'
-import { getAstroUploadContextForCmsId } from '../manifest'
-import { postToParent } from '../post-message'
-import * as signals from '../signals'
+import { Z_INDEX } from '../constants.ts'
+import { getCaretRangeFromPoint } from '../dom.ts'
+import { entryHandoverFor } from '../entry-handover.ts'
+import { getAstroUploadContextForCmsId } from '../manifest.ts'
+import { postToParent } from '../post-message.ts'
+import * as signals from '../signals.ts'
 
 export interface ImageOverlayProps {
 	visible: boolean

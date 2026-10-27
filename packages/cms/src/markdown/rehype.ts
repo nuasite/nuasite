@@ -1,4 +1,4 @@
-import { withPortableModule } from './portable-module'
+import { withPortableModule } from './portable-module.ts'
 
 /**
  * Rehype plugin that marks the first element of rendered markdown/MDX content

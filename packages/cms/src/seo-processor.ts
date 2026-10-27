@@ -1,9 +1,19 @@
 import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import path from 'node:path'
-import { getProjectRoot } from './config'
-import { projectFiles } from './project/context'
-import { findSourceLocation } from './source-finder/source-lookup'
-import type { CanonicalUrl, JsonLdEntry, OpenGraphData, PageSeoData, SeoFavicon, SeoKeywords, SeoMetaTag, SeoTitle, TwitterCardData } from './types'
+import { getProjectRoot } from './config.ts'
+import { projectFiles } from './project/context.ts'
+import { findSourceLocation } from './source-finder/source-lookup.ts'
+import type {
+	CanonicalUrl,
+	JsonLdEntry,
+	OpenGraphData,
+	PageSeoData,
+	SeoFavicon,
+	SeoKeywords,
+	SeoMetaTag,
+	SeoTitle,
+	TwitterCardData,
+} from './types.ts'
 
 /** Type for parsed HTML element nodes from node-html-parser */
 type HTMLNode = ParsedHTMLElement

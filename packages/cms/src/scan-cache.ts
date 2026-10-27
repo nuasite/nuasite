@@ -1,7 +1,7 @@
 import { scanCollections as coreScanCollections } from '@nuasite/cms-core'
 import type { CollectionDefinition } from '@nuasite/cms-types'
-import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides'
-import { currentProjectContext } from './project/context'
+import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides.ts'
+import { currentProjectContext } from './project/context.ts'
 
 /**
  * Scan all content collections of the current project context. The context keeps one

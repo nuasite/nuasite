@@ -1,13 +1,13 @@
 import { computed, signal } from '@preact/signals'
-import * as signals from './signals'
+import * as signals from './signals.ts'
 import {
 	saveAttributeEditsToStorage,
 	saveBgImageEditsToStorage,
 	saveColorEditsToStorage,
 	saveEditsToStorage,
 	saveImageEditsToStorage,
-} from './storage'
-import type { Attribute, UndoAction, UndoTextAction } from './types'
+} from './storage.ts'
+import type { Attribute, UndoAction, UndoTextAction } from './types.ts'
 
 // ============================================================================
 // Undo/Redo Stack

@@ -1,4 +1,4 @@
-import type { Check, CheckIssue, PageCheckContext } from '../../types'
+import type { Check, CheckIssue, PageCheckContext } from '../../types.ts'
 
 export function createAriaLandmarksCheck(): Check {
 	return {

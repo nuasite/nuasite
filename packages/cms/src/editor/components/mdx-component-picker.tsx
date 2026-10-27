@@ -1,9 +1,9 @@
 import { useState } from 'preact/hooks'
-import { getComponentDefinitions } from '../manifest'
-import { manifest, mdxComponentPickerOpen } from '../signals'
-import { ComponentCard, getDefaultProps } from './component-card'
-import { CancelButton, ModalBackdrop, ModalHeader, PrimaryButton } from './modal-shell'
-import { PropEditor } from './prop-editor'
+import { getComponentDefinitions } from '../manifest.ts'
+import { manifest, mdxComponentPickerOpen } from '../signals.ts'
+import { ComponentCard, getDefaultProps } from './component-card.tsx'
+import { CancelButton, ModalBackdrop, ModalHeader, PrimaryButton } from './modal-shell.tsx'
+import { PropEditor } from './prop-editor.tsx'
 
 export interface MdxComponentPickerProps {
 	onInsert: (componentName: string, props: Record<string, string>, children?: string) => void

@@ -1,35 +1,35 @@
 import { render } from 'preact'
 import { useCallback, useEffect, useRef } from 'preact/hooks'
-import type { CmsElementDeselectedMessage, CmsElementSelectedMessage, CmsInboundMessage } from '../types'
-import { fetchManifest } from './api'
-import { AttributeEditor } from './components/attribute-editor'
-import { BgImageOverlay } from './components/bg-image-overlay'
-import { BlockEditor } from './components/block-editor'
-import { CollectionsBrowser } from './components/collections-browser'
-import { ColorToolbar } from './components/color-toolbar'
-import { ConfirmDialog } from './components/confirm-dialog'
-import { CreatePageModal } from './components/create-page-modal'
-import { DeletePageDialog } from './components/delete-page-dialog'
-import { EditableHighlights } from './components/editable-highlights'
-import { ErrorBoundary } from './components/error-boundary'
-import { ImageOverlay } from './components/image-overlay'
-import { MarkdownEditorOverlay } from './components/markdown-editor-overlay'
-import { MediaLibrary } from './components/media-library'
-import { Outline } from './components/outline'
-import { PlainTextChip } from './components/plain-text-chip'
-import { RedirectCountdown } from './components/redirect-countdown'
-import { RedirectsManager } from './components/redirects-manager'
-import { ReferencePicker } from './components/reference-picker'
-import { SelectionHighlight } from './components/selection-highlight'
-import { SeoEditor } from './components/seo-editor'
-import { TextStyleToolbar } from './components/text-style-toolbar'
-import { ToastContainer } from './components/toast/toast-container'
-import { Toolbar } from './components/toolbar'
-import { getConfig } from './config'
-import { Z_INDEX } from './constants'
-import { disableAllInteractiveElements, enableAllInteractiveElements, logDebug } from './dom'
-import { discardAllChanges, handleColorChange, saveAllChanges, startEditMode, stopEditMode, toggleShowOriginal } from './editor'
-import { canRedo, canUndo, performRedo, performUndo } from './history'
+import type { CmsElementDeselectedMessage, CmsElementSelectedMessage, CmsInboundMessage } from '../types.ts'
+import { fetchManifest } from './api.ts'
+import { AttributeEditor } from './components/attribute-editor.tsx'
+import { BgImageOverlay } from './components/bg-image-overlay.tsx'
+import { BlockEditor } from './components/block-editor.tsx'
+import { CollectionsBrowser } from './components/collections-browser.tsx'
+import { ColorToolbar } from './components/color-toolbar.tsx'
+import { ConfirmDialog } from './components/confirm-dialog.tsx'
+import { CreatePageModal } from './components/create-page-modal.tsx'
+import { DeletePageDialog } from './components/delete-page-dialog.tsx'
+import { EditableHighlights } from './components/editable-highlights.tsx'
+import { ErrorBoundary } from './components/error-boundary.tsx'
+import { ImageOverlay } from './components/image-overlay.tsx'
+import { MarkdownEditorOverlay } from './components/markdown-editor-overlay.tsx'
+import { MediaLibrary } from './components/media-library.tsx'
+import { Outline } from './components/outline.tsx'
+import { PlainTextChip } from './components/plain-text-chip.tsx'
+import { RedirectCountdown } from './components/redirect-countdown.tsx'
+import { RedirectsManager } from './components/redirects-manager.tsx'
+import { ReferencePicker } from './components/reference-picker.tsx'
+import { SelectionHighlight } from './components/selection-highlight.tsx'
+import { SeoEditor } from './components/seo-editor.tsx'
+import { TextStyleToolbar } from './components/text-style-toolbar.tsx'
+import { ToastContainer } from './components/toast/toast-container.tsx'
+import { Toolbar } from './components/toolbar.tsx'
+import { getConfig } from './config.ts'
+import { Z_INDEX } from './constants.ts'
+import { disableAllInteractiveElements, enableAllInteractiveElements, logDebug } from './dom.ts'
+import { discardAllChanges, handleColorChange, saveAllChanges, startEditMode, stopEditMode, toggleShowOriginal } from './editor.ts'
+import { canRedo, canUndo, performRedo, performUndo } from './history.ts'
 import {
 	useBgImageHoverDetection,
 	useBlockEditorHandlers,
@@ -38,7 +38,7 @@ import {
 	useImageHoverDetection,
 	useTextSelection,
 	useTooltipState,
-} from './hooks'
+} from './hooks/index.ts'
 import {
 	buildEditorState,
 	buildPageNavigatedMessage,
@@ -46,7 +46,7 @@ import {
 	buildSelectedElement,
 	buildStateChangedMessage,
 	postToParent,
-} from './post-message'
+} from './post-message.ts'
 import {
 	openCollectionsBrowser,
 	openCurrentPageEntry,
@@ -55,12 +55,12 @@ import {
 	setMediaLibraryOpen,
 	toggleShowEditableHighlights,
 	updateSettings,
-} from './signals'
-import * as signals from './signals'
-import { hasAnyMarkdownDraft, hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, saveSettingsToStorage } from './storage'
-import { STRINGS } from './strings'
+} from './signals.ts'
+import * as signals from './signals.ts'
+import { hasAnyMarkdownDraft, hasPendingEntryNavigation, loadEditingState, loadSettingsFromStorage, saveSettingsToStorage } from './storage.ts'
+import { STRINGS } from './strings.ts'
 import CMS_STYLES from './styles.css?inline'
-import { generateCSSVariables, resolveTheme } from './themes'
+import { generateCSSVariables, resolveTheme } from './themes.ts'
 
 /** Inline CSS values for Tailwind text style classes (for preview before save) */
 const TEXT_STYLE_INLINE_CSS: Record<string, Record<string, string>> = {
@@ -404,8 +404,8 @@ const CmsUI = () => {
 			if (!el) return
 
 			const entry = signals.manifest.value.entries[cmsId]
-			const originalClasses: Record<string, import('../types').Attribute> = {}
-			const newClasses: Record<string, import('../types').Attribute> = {}
+			const originalClasses: Record<string, import('../types.ts').Attribute> = {}
+			const newClasses: Record<string, import('../types.ts').Attribute> = {}
 			if (entry?.colorClasses) {
 				for (const [key, attr] of Object.entries(entry.colorClasses)) {
 					originalClasses[key] = { ...attr }

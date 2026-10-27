@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'preact/hooks'
-import { CSS, Z_INDEX } from '../constants'
-import { positionFloatingChip } from '../dom'
-import { cn } from '../lib/cn'
-import * as signals from '../signals'
+import { CSS, Z_INDEX } from '../constants.ts'
+import { positionFloatingChip } from '../dom.ts'
+import { cn } from '../lib/cn.ts'
+import * as signals from '../signals.ts'
 import {
 	getCurrentStyle,
 	getStyledSpanFromSelection,
@@ -14,7 +14,7 @@ import {
 	TAILWIND_STYLES,
 	type TextStyle,
 	toggleStyle,
-} from '../text-styling'
+} from '../text-styling.ts'
 
 export interface TextStyleToolbarProps {
 	visible: boolean

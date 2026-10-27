@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
-import type { NoteItem } from '../types'
-import { SidebarItem } from './SidebarItem'
+import type { NoteItem } from '../types.ts'
+import { SidebarItem } from './SidebarItem.tsx'
 
 interface SidebarProps {
 	page: string

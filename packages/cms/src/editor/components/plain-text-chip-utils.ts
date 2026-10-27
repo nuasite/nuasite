@@ -1,4 +1,4 @@
-import type { ManifestEntry } from '../../types'
+import type { ManifestEntry } from '../../types.ts'
 
 export function describeSource(entry: ManifestEntry | undefined): string {
 	if (!entry) return 'no formatting'

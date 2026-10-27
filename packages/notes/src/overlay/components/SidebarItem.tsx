@@ -1,7 +1,7 @@
 /** @jsxImportSource preact */
-import type { NoteItem } from '../types'
-import { DiffPreview } from './DiffPreview'
-import { StaleWarning } from './StaleWarning'
+import type { NoteItem } from '../types.ts'
+import { DiffPreview } from './DiffPreview.tsx'
+import { StaleWarning } from './StaleWarning.tsx'
 
 interface SidebarItemProps {
 	item: NoteItem

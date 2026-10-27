@@ -1,9 +1,9 @@
 import { parse as parseBabel } from '@babel/parser'
 import path from 'node:path'
-import { getProjectRoot } from './config'
-import { getErrorCollector } from './error-collector'
-import { projectFiles } from './project/context'
-import type { ComponentDefinition, ComponentProp } from './types'
+import { getProjectRoot } from './config.ts'
+import { getErrorCollector } from './error-collector.ts'
+import { projectFiles } from './project/context.ts'
+import type { ComponentDefinition, ComponentProp } from './types.ts'
 
 /**
  * Scans Astro component files and extracts their definitions including props

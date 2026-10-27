@@ -2,8 +2,8 @@ import { createNodeFs, scanCollections } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parseDocument } from 'yaml'
-import { pickAstroImageTarget } from './astro-image-paths'
-import { getProjectRoot } from './config'
+import { pickAstroImageTarget } from './astro-image-paths.ts'
+import { getProjectRoot } from './config.ts'
 
 export interface MigrationOptions {
 	/** When true, report what would change without writing anything. */

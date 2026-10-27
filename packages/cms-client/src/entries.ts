@@ -9,7 +9,7 @@
  */
 
 import type { CollectionEntryInfo } from '@nuasite/cms-types'
-import type { CmsClient } from './client'
+import type { CmsClient } from './client.ts'
 
 /**
  * The sidecar caps a page at 1000 (its `MAX_LIMIT`); asking for exactly that keeps a

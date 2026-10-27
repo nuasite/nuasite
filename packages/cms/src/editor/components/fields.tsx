@@ -1,14 +1,14 @@
 import type { ComponentChildren } from 'preact'
 import { createPortal } from 'preact/compat'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { getDropdownPosition } from '../constants'
-import { useClickOutsideEscape } from '../hooks/useClickOutsideEscape'
-import { useSearchFilter } from '../hooks/useSearchFilter'
-import { cn } from '../lib/cn'
-import { uploadMedia } from '../markdown-api'
-import { config, showToast } from '../signals'
-import { STRINGS } from '../strings'
-import { buildClosedComboBoxOptions, COMBOBOX_SELECT_LABEL, type ComboBoxOption, resolveComboBoxCommit } from './field-utils'
+import { getDropdownPosition } from '../constants.ts'
+import { useClickOutsideEscape } from '../hooks/useClickOutsideEscape.ts'
+import { useSearchFilter } from '../hooks/useSearchFilter.ts'
+import { cn } from '../lib/cn.ts'
+import { uploadMedia } from '../markdown-api.ts'
+import { config, showToast } from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import { buildClosedComboBoxOptions, COMBOBOX_SELECT_LABEL, type ComboBoxOption, resolveComboBoxCommit } from './field-utils.ts'
 
 // ============================================================================
 // Field Label

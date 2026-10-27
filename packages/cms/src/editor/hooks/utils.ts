@@ -1,6 +1,6 @@
 import type { RefObject } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
-import { CSS } from '../constants'
+import { CSS } from '../constants.ts'
 
 /**
  * Check if a mouse event originates from CMS UI elements.

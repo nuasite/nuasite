@@ -8,6 +8,6 @@
  */
 export { FIELD_TYPES, isFieldType } from '@nuasite/cms-types'
 export type { CollectionLayout, CollectionLayoutSection, PathnameSegment, PathnameSpec } from '@nuasite/cms-types'
-export { defineCmsCollection, n } from './field-types'
-export type { DateHints, FileHints, ImageHints, LayoutHints, NumberHints, TextareaHints, TextHints, VideoHints } from './field-types'
-export type { Color, Date, DateTime, Email, Image, Reference, Textarea, Time, Url } from './prop-types'
+export { defineCmsCollection, n } from './field-types.ts'
+export type { DateHints, FileHints, ImageHints, LayoutHints, NumberHints, TextareaHints, TextHints, VideoHints } from './field-types.ts'
+export type { Color, Date, DateTime, Email, Image, Reference, Textarea, Time, Url } from './prop-types.ts'

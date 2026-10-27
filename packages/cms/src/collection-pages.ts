@@ -1,6 +1,6 @@
-import { buildCollectionManifestPages, discoverCollectionRoutes } from './editor-service'
-import type { CollectionInfo } from './source-finder'
-import type { CollectionDefinition } from './types'
+import { buildCollectionManifestPages, discoverCollectionRoutes } from './editor-service.ts'
+import type { CollectionInfo } from './source-finder/index.ts'
+import type { CollectionDefinition } from './types.ts'
 
 /**
  * Every collection entry that has a page of its own, by that page's pathname: the URL the editor shows

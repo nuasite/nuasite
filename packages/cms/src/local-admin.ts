@@ -33,10 +33,10 @@ import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
 // (sandbox) mode never registers this middleware, so it never imports the peer.
 import type { CmsSidecarServer, createServer as CreateSidecarServer } from '@nuasite/cms-sidecar'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides'
-import { getProjectRoot } from './config'
-import { readBody } from './handlers/request-utils'
-import type { MediaStorageAdapter } from './media/types'
+import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides.ts'
+import { getProjectRoot } from './config.ts'
+import { readBody } from './handlers/request-utils.ts'
+import type { MediaStorageAdapter } from './media/types.ts'
 
 /** Minimal Vite dev-server surface this module needs (kept loose to dodge Vite version skew). */
 export interface AdminViteServerLike {

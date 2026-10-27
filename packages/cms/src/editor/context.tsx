@@ -1,6 +1,6 @@
 import { useEffect } from 'preact/hooks'
-import * as signals from './signals'
-import type { CmsConfig, EditorState } from './types'
+import * as signals from './signals.ts'
+import type { CmsConfig, EditorState } from './types.ts'
 
 export interface CmsProviderProps {
 	children: any

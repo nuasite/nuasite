@@ -1,9 +1,9 @@
 import { signal } from '@preact/signals'
 import { useMemo, useState } from 'preact/hooks'
-import { useSearchFilter } from '../hooks/useSearchFilter'
-import { cn } from '../lib/cn'
-import { getCollectionNav } from '../manifest'
-import { deleteMarkdownPage } from '../markdown-api'
+import { useSearchFilter } from '../hooks/useSearchFilter.ts'
+import { cn } from '../lib/cn.ts'
+import { getCollectionNav } from '../manifest.ts'
+import { deleteMarkdownPage } from '../markdown-api.ts'
 import {
 	closeCollectionsBrowser,
 	config,
@@ -15,10 +15,10 @@ import {
 	openMarkdownEditorForNewPage,
 	selectBrowserCollection,
 	selectedBrowserCollection,
-} from '../signals'
-import type { CollectionDefinition } from '../types'
-import { ChevronRightIcon, CollectionIcon } from './create-page-modal'
-import { CloseButton, ModalBackdrop, ModalHeader, PrimaryButton } from './modal-shell'
+} from '../signals.ts'
+import type { CollectionDefinition } from '../types.ts'
+import { ChevronRightIcon, CollectionIcon } from './create-page-modal.tsx'
+import { CloseButton, ModalBackdrop, ModalHeader, PrimaryButton } from './modal-shell.tsx'
 
 const deletingEntry = signal<string | null>(null)
 const confirmDeleteSlug = signal<string | null>(null)

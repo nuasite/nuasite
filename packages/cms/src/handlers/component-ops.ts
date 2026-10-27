@@ -1,9 +1,9 @@
 import path from 'node:path'
-import { getProjectRoot } from '../config'
-import type { ManifestWriter } from '../manifest-writer'
-import { projectFiles } from '../project/context'
-import type { CmsManifest, ComponentDefinition, ComponentInstance } from '../types'
-import { acquireFileLock, escapeHtml, escapeRegex, normalizePagePath, relativeImportPath, resolveAndValidatePath } from '../utils'
+import { getProjectRoot } from '../config.ts'
+import type { ManifestWriter } from '../manifest-writer.ts'
+import { projectFiles } from '../project/context.ts'
+import type { CmsManifest, ComponentDefinition, ComponentInstance } from '../types.ts'
+import { acquireFileLock, escapeHtml, escapeRegex, normalizePagePath, relativeImportPath, resolveAndValidatePath } from '../utils.ts'
 
 export type InsertPosition = 'before' | 'after'
 

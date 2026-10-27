@@ -2,7 +2,7 @@
  * Shadow DOM-based highlight overlay for CMS elements.
  * This component renders highlights without modifying the target element's styles.
  */
-import { Z_INDEX } from '../constants'
+import { Z_INDEX } from '../constants.ts'
 
 export interface HighlightState {
 	color: string

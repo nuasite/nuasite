@@ -1,5 +1,5 @@
-import { buildPoorTextSet, poorImageAlts } from '../../i18n/poor-texts'
-import type { Check, CheckIssue, PageCheckContext } from '../../types'
+import { buildPoorTextSet, poorImageAlts } from '../../i18n/poor-texts.ts'
+import type { Check, CheckIssue, PageCheckContext } from '../../types.ts'
 
 export function createImageAltQualityCheck(): Check {
 	return {

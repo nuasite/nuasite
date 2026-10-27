@@ -2,7 +2,7 @@
  * Everything cms-core offers that runs without `node:fs`. The package root resolves here under the
  * `workerd` condition; the default root adds the Node filesystem and the local media adapter.
  */
-export { resolveAssetCandidates } from './asset-paths'
+export { resolveAssetCandidates } from './asset-paths.ts'
 export {
 	analyzeAstroScript,
 	analyzeAstroSource,
@@ -11,9 +11,8 @@ export {
 	type AstroContentCall,
 	type AstroSourceAnalysis,
 	type AstroSourceImport,
-} from './astro-source-analysis'
-export { type ByteRange, resolveByteRange } from './byte-range'
-export { checkContent, type CheckContentOptions, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check'
+} from './astro-source-analysis.ts'
+export { type ByteRange, resolveByteRange } from './byte-range.ts'
 export {
 	collectionKind,
 	entryStem,
@@ -23,12 +22,13 @@ export {
 	type LoadedEntry,
 	normalizeBase,
 	parseEntry,
-} from './check-entries'
-export { checkAgainstSchemas, type LiveCheckInput } from './check-live'
-export { checkFieldShapes, type ShapeCheckInput } from './check-shape'
-export { checkEditorWrites, type WriteCheckInput } from './check-write'
-export { collectionScanReport, scanCollections } from './collection-scanner'
-export { scanComponentDefinitions } from './component-registry'
+} from './check-entries.ts'
+export { checkAgainstSchemas, type LiveCheckInput } from './check-live.ts'
+export { checkFieldShapes, type ShapeCheckInput } from './check-shape.ts'
+export { checkEditorWrites, type WriteCheckInput } from './check-write.ts'
+export { checkContent, type CheckContentOptions, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check.ts'
+export { collectionScanReport, scanCollections } from './collection-scanner.ts'
+export { scanComponentDefinitions } from './component-registry.ts'
 export {
 	classifyEmptyContentConfig,
 	CONTENT_CONFIG_PATHS,
@@ -44,9 +44,9 @@ export {
 	type ParsedReference,
 	readContentConfig,
 	UNREAD_CONTENT_CONFIG_PATHS,
-} from './content-config-ast'
-export { createCmsCore } from './core'
-export type { CmsCore, CmsCoreOptions } from './core'
+} from './content-config-ast.ts'
+export { createCmsCore } from './core.ts'
+export type { CmsCore, CmsCoreOptions } from './core.ts'
 export {
 	applyCreateRouteFields,
 	blankFieldValue,
@@ -63,8 +63,8 @@ export {
 	seedValueForRequiredField,
 	withoutBlankArrayItems,
 	type WriteModelField,
-} from './editor-write-model'
-export { globMayMatchUnder, globToRegExp, UnreadableDirectoryError } from './fs/glob'
+} from './editor-write-model.ts'
+export { globMayMatchUnder, globToRegExp, UnreadableDirectoryError } from './fs/glob.ts'
 export {
 	type CmsChangeset,
 	type CmsCommit,
@@ -77,8 +77,8 @@ export {
 	type StagedFileSystem,
 	versionMatches,
 	versionOf,
-} from './fs/staged'
-export type { CmsFileSystem, GlobOptions } from './fs/types'
+} from './fs/staged.ts'
+export type { CmsFileSystem, GlobOptions } from './fs/types.ts'
 export {
 	type AddArrayItemInput,
 	type CreateEntryInput,
@@ -90,7 +90,7 @@ export {
 	type RemoveArrayItemInput,
 	serializeFrontmatter,
 	type UpdateEntryInput,
-} from './handlers/entry-ops'
+} from './handlers/entry-ops.ts'
 export {
 	type ContemberStorageOptions,
 	createContemberStorageAdapter,
@@ -115,8 +115,8 @@ export {
 	parseMediaTypeFilter,
 	type S3StorageOptions,
 	uploadsDirRelativeToRoot,
-} from './media/index'
-export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast'
+} from './media/index.ts'
+export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast.ts'
 export {
 	CLOUDFLARE_REDIRECT_LIMITS,
 	CMS_REDIRECTS_FILE,
@@ -126,10 +126,10 @@ export {
 	type RedirectLayer,
 	type RedirectLine,
 	type RedirectRuleLine,
-} from './redirects'
-export { type RouteCollectionScan, scanRouteCollections } from './route-scan'
-export { describeIssue, type LiveIssue, type LiveParseResult, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port'
-export { acceptsMissing, firstAcceptedEntry, governsPath, pointAt, type ProbePoint, rejectsValueAt } from './schema-probe'
+} from './redirects.ts'
+export { type RouteCollectionScan, scanRouteCollections } from './route-scan.ts'
+export { describeIssue, type LiveIssue, type LiveParseResult, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port.ts'
+export { acceptsMissing, firstAcceptedEntry, governsPath, pointAt, type ProbePoint, rejectsValueAt } from './schema-probe.ts'
 export {
 	applyDerivedTransform,
 	computeDerivedFieldUpdates,
@@ -140,4 +140,4 @@ export {
 	resolvePathnameFromSpec,
 	slugify,
 	slugifyHref,
-} from './shared'
+} from './shared.ts'

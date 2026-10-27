@@ -1,7 +1,7 @@
-import type { ManifestEntry } from '../../types'
-import { Z_INDEX } from '../constants'
-import { positionFloatingChip } from '../dom'
-import { describeSource } from './plain-text-chip-utils'
+import type { ManifestEntry } from '../../types.ts'
+import { Z_INDEX } from '../constants.ts'
+import { positionFloatingChip } from '../dom.ts'
+import { describeSource } from './plain-text-chip-utils.ts'
 
 export interface PlainTextChipProps {
 	visible: boolean

@@ -1,4 +1,4 @@
-import type { MarkdownOutput } from './types'
+import type { MarkdownOutput } from './types.ts'
 
 /**
  * Serialize a value to YAML format

@@ -1,23 +1,23 @@
-export { isEventOnCmsUI, useComponentClickHandler, useElementDetection } from './useElementDetection'
-export type { ComponentClickHandlerOptions, OutlineState } from './useElementDetection'
+export { isEventOnCmsUI, useComponentClickHandler, useElementDetection } from './useElementDetection.ts'
+export type { ComponentClickHandlerOptions, OutlineState } from './useElementDetection.ts'
 
-export { isElementInCmsUI, usePositionTracking } from './utils'
+export { isElementInCmsUI, usePositionTracking } from './utils.ts'
 
-export { useTooltipState } from './useTooltipState'
-export type { TooltipState, UseTooltipStateOptions } from './useTooltipState'
+export { useTooltipState } from './useTooltipState.ts'
+export type { TooltipState, UseTooltipStateOptions } from './useTooltipState.ts'
 
-export { useBlockEditorHandlers } from './useBlockEditorHandlers'
-export type { BlockEditorHandlersOptions } from './useBlockEditorHandlers'
+export { useBlockEditorHandlers } from './useBlockEditorHandlers.ts'
+export type { BlockEditorHandlersOptions } from './useBlockEditorHandlers.ts'
 
-export { clearTextSelection, restoreSelection, saveSelection, useTextSelection } from './useTextSelection'
-export type { TextSelectionState } from './useTextSelection'
+export { clearTextSelection, restoreSelection, saveSelection, useTextSelection } from './useTextSelection.ts'
+export type { TextSelectionState } from './useTextSelection.ts'
 
-export { useImageHoverDetection } from './useImageHoverDetection'
-export type { ImageHoverState } from './useImageHoverDetection'
+export { useImageHoverDetection } from './useImageHoverDetection.ts'
+export type { ImageHoverState } from './useImageHoverDetection.ts'
 
-export { useBgImageHoverDetection } from './useBgImageHoverDetection'
-export type { BgImageHoverState } from './useBgImageHoverDetection'
+export { useBgImageHoverDetection } from './useBgImageHoverDetection.ts'
+export type { BgImageHoverState } from './useBgImageHoverDetection.ts'
 
-export { useClickOutsideEscape } from './useClickOutsideEscape'
+export { useClickOutsideEscape } from './useClickOutsideEscape.ts'
 
-export { useSearchFilter } from './useSearchFilter'
+export { useSearchFilter } from './useSearchFilter.ts'

@@ -3,7 +3,7 @@
  * switching yet. Parametrized messages are functions so a future `t(key, vars)`
  * helper can swap them in without touching call sites.
  */
-import type { InsertPosition } from './types'
+import type { InsertPosition } from './types.ts'
 
 export const STRINGS = {
 	dialog: {

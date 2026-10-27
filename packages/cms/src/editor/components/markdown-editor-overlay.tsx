@@ -1,12 +1,12 @@
 import { type Editor, editorViewCtx } from '@milkdown/core'
 import { omitEmptyOnCreate } from '@nuasite/cms-core/editor-write-model'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { resolveCreateRedirectUrl, slugify } from '../../shared'
-import { updateMarkdownPage } from '../api'
-import { STORAGE_KEYS, Z_INDEX } from '../constants'
-import { cn } from '../lib/cn'
-import { createMarkdownPage } from '../markdown-api'
-import { MDX_EXPR_PREFIX } from '../milkdown-mdx-plugin'
+import { resolveCreateRedirectUrl, slugify } from '../../shared.ts'
+import { updateMarkdownPage } from '../api.ts'
+import { STORAGE_KEYS, Z_INDEX } from '../constants.ts'
+import { cn } from '../lib/cn.ts'
+import { createMarkdownPage } from '../markdown-api.ts'
+import { MDX_EXPR_PREFIX } from '../milkdown-mdx-plugin.tsx'
 import {
 	config,
 	currentMarkdownPage,
@@ -19,15 +19,15 @@ import {
 	showToast,
 	startRedirectCountdown,
 	updateMarkdownFrontmatter,
-} from '../signals'
-import { clearMarkdownDraft } from '../storage'
-import { STRINGS } from '../strings'
-import type { FieldDefinition } from '../types'
-import { CreateModeFrontmatter, EditModeFrontmatter } from './frontmatter-fields'
-import { FrontmatterSidebar, partitionFields } from './frontmatter-sidebar'
-import { MarkdownInlineEditor } from './markdown-inline-editor'
-import { CancelButton, PrimaryButton } from './modal-shell'
-import { Spinner } from './spinner'
+} from '../signals.ts'
+import { clearMarkdownDraft } from '../storage.ts'
+import { STRINGS } from '../strings.ts'
+import type { FieldDefinition } from '../types.ts'
+import { CreateModeFrontmatter, EditModeFrontmatter } from './frontmatter-fields.tsx'
+import { FrontmatterSidebar, partitionFields } from './frontmatter-sidebar.tsx'
+import { MarkdownInlineEditor } from './markdown-inline-editor.tsx'
+import { CancelButton, PrimaryButton } from './modal-shell.tsx'
+import { Spinner } from './spinner.tsx'
 
 /**
  * Wrapper component that renders the editor in place of markdown content.

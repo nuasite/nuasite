@@ -30,7 +30,7 @@
  * labels are compared in, and it is the caller's to supply — see `CollectionNavOptions.locale`.
  */
 
-import type { CollectionDefinition } from './index'
+import type { CollectionDefinition } from './index.ts'
 
 /** A top-level collection and the collections nested under it. */
 export interface CollectionNavItem {

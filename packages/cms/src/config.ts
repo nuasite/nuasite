@@ -4,7 +4,7 @@
  */
 
 import { setDefaultProjectRoot } from '#project-context-default'
-import { currentProjectContext } from './project/context'
+import { currentProjectContext } from './project/context.ts'
 
 export function getProjectRoot(): string {
 	return currentProjectContext().root

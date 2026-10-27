@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { SiteCheck, SiteCheckContext, SiteCheckIssue } from '../../types'
+import type { SiteCheck, SiteCheckContext, SiteCheckIssue } from '../../types.ts'
 
 export function createRobotsTxtCheck(): SiteCheck {
 	return {

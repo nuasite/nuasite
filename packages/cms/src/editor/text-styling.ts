@@ -5,7 +5,7 @@
  * CSS values can be overridden by AvailableTextStyles from the manifest.
  */
 
-import type { AvailableTextStyles, TextStyleValue as ManifestTextStyleValue } from './types'
+import type { AvailableTextStyles, TextStyleValue as ManifestTextStyleValue } from './types.ts'
 
 /**
  * Tailwind text style categories with their class mappings and CSS values.

@@ -13,19 +13,26 @@ import { gfm, toggleStrikethroughCommand } from '@milkdown/preset-gfm'
 import { callCommand, insert, replaceAll } from '@milkdown/utils'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { lift } from 'prosemirror-commands'
-import { useLinkPopover } from '../hooks/useLinkPopover'
-import { cn } from '../lib/cn'
-import { markWhitespacePlugin } from '../mark-whitespace'
-import { uploadMedia } from '../markdown-api'
-import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-plugin'
-import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils'
-import { config, mdxComponentPickerOpen, openMediaLibraryWithCallback, resetMarkdownEditorState, showToast, updateMarkdownContent } from '../signals'
-import { STRINGS } from '../strings'
-import { mdxDirectiveSafetyPlugin, setBulletListStyleCommand, styledListPlugin } from '../styled-list-plugin'
-import { LinkEditPopover } from './link-edit-popover'
-import { MdxComponentIcon } from './mdx-block-view'
-import { MdxComponentPicker } from './mdx-component-picker'
-import { Spinner } from './spinner'
+import { useLinkPopover } from '../hooks/useLinkPopover.ts'
+import { cn } from '../lib/cn.ts'
+import { markWhitespacePlugin } from '../mark-whitespace.ts'
+import { uploadMedia } from '../markdown-api.ts'
+import { insertMdxComponentCommand, mdxComponentPlugin } from '../milkdown-mdx-plugin.tsx'
+import { type ActiveFormats, defaultActiveFormats, isInListType, setupFormatTracking, toggleHeading } from '../milkdown-utils.ts'
+import {
+	config,
+	mdxComponentPickerOpen,
+	openMediaLibraryWithCallback,
+	resetMarkdownEditorState,
+	showToast,
+	updateMarkdownContent,
+} from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import { mdxDirectiveSafetyPlugin, setBulletListStyleCommand, styledListPlugin } from '../styled-list-plugin.ts'
+import { LinkEditPopover } from './link-edit-popover.tsx'
+import { MdxComponentIcon } from './mdx-block-view.tsx'
+import { MdxComponentPicker } from './mdx-component-picker.tsx'
+import { Spinner } from './spinner.tsx'
 
 export interface MarkdownInlineEditorProps {
 	elementId: string

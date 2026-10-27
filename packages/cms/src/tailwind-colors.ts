@@ -1,8 +1,8 @@
 import path from 'node:path'
-import { DEFAULT_TAILWIND_COLORS, SPECIAL_COLORS } from './color-patterns'
-import { getProjectRoot } from './config'
-import { projectFiles } from './project/context'
-import type { AvailableColors, AvailableTextStyles, TailwindColor, TextStyleValue } from './types'
+import { DEFAULT_TAILWIND_COLORS, SPECIAL_COLORS } from './color-patterns.ts'
+import { getProjectRoot } from './config.ts'
+import { projectFiles } from './project/context.ts'
+import type { AvailableColors, AvailableTextStyles, TailwindColor, TextStyleValue } from './types.ts'
 
 // Re-export all shared detection logic from color-patterns
 export {
@@ -21,7 +21,7 @@ export {
 	SPECIAL_COLORS,
 	STANDARD_SHADES,
 	TEXT_STYLE_CLASS_PATTERNS,
-} from './color-patterns'
+} from './color-patterns.ts'
 
 /**
  * Complete Tailwind v4 default color palette with all shade values.

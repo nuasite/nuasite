@@ -1,8 +1,8 @@
 import type { CollectionInfo, MarkdownContent } from '@nuasite/cms'
 import path from 'node:path'
-import { cms } from './cms'
-import { type MarkdownSyntax, mdxBodyAsMarkdown } from './mdx'
-import { normalizePath } from './paths'
+import { cms } from './cms.ts'
+import { type MarkdownSyntax, mdxBodyAsMarkdown } from './mdx.ts'
+import { normalizePath } from './paths.ts'
 
 /** The pages that render a collection entry, by normalized pathname. */
 export type CollectionPages = Map<string, CollectionInfo>

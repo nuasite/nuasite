@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from 'preact/hooks'
-import { slugify } from '../../shared'
-import { useSearchFilter } from '../hooks/useSearchFilter'
-import { getCollectionEntryOptions } from '../manifest'
-import { manifest, openMediaLibraryWithCallback, pendingCollectionEntries } from '../signals'
-import type { ComponentProp } from '../types'
-import { DropdownPanel } from './fields'
-import { SchemaFrontmatterField } from './frontmatter-fields'
+import { slugify } from '../../shared.ts'
+import { useSearchFilter } from '../hooks/useSearchFilter.ts'
+import { getCollectionEntryOptions } from '../manifest.ts'
+import { manifest, openMediaLibraryWithCallback, pendingCollectionEntries } from '../signals.ts'
+import type { ComponentProp } from '../types.ts'
+import { DropdownPanel } from './fields.tsx'
+import { SchemaFrontmatterField } from './frontmatter-fields.tsx'
 
 export interface PropEditorProps {
 	prop: ComponentProp

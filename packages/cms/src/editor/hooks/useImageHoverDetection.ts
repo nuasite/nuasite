@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { CSS, TIMING } from '../constants'
-import * as signals from '../signals'
-import { isEventOnCmsUI, usePositionTracking } from './utils'
+import { CSS, TIMING } from '../constants.ts'
+import * as signals from '../signals.ts'
+import { isEventOnCmsUI, usePositionTracking } from './utils.ts'
 
 export interface ImageHoverState {
 	visible: boolean

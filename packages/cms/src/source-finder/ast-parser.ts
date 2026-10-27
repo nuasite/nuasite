@@ -1,11 +1,11 @@
 import type { Node as AstroNode } from '@astrojs/compiler/types'
 import { parse as parseBabel } from '@babel/parser'
 
-import { getErrorCollector } from '../error-collector'
-import { currentProjectContext, projectFiles } from '../project/context'
-import { getParsedFileCache } from './cache'
-import type { BabelFile, CachedParsedFile, ParsedAstroFile } from './types'
-import { extractImports, extractPropAliases, extractVariableDefinitions } from './variable-extraction'
+import { getErrorCollector } from '../error-collector.ts'
+import { currentProjectContext, projectFiles } from '../project/context.ts'
+import { getParsedFileCache } from './cache.ts'
+import type { BabelFile, CachedParsedFile, ParsedAstroFile } from './types.ts'
+import { extractImports, extractPropAliases, extractVariableDefinitions } from './variable-extraction.ts'
 
 // ============================================================================
 // Astro File Parsing

@@ -1,4 +1,4 @@
-import type { Attribute, BackgroundImageMetadata } from './types'
+import type { Attribute, BackgroundImageMetadata } from './types.ts'
 
 /**
  * Default Tailwind CSS v4 color names.

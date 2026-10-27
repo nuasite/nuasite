@@ -2,9 +2,9 @@ import { newRepeaterItem } from '@nuasite/cms-core/editor-write-model'
 import { VIDEO_UPLOAD_ACCEPT } from '@nuasite/cms-types'
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
-import { cn } from '../lib/cn'
-import { buildAstroUploadContext, getCollectionEntryOptions } from '../manifest'
-import { renameMarkdownPage } from '../markdown-api'
+import { cn } from '../lib/cn.ts'
+import { buildAstroUploadContext, getCollectionEntryOptions } from '../manifest.ts'
+import { renameMarkdownPage } from '../markdown-api.ts'
 import {
 	config,
 	manifest,
@@ -13,11 +13,11 @@ import {
 	showToast,
 	updateMarkdownFrontmatter,
 	updateMarkdownPageMeta,
-} from '../signals'
-import { STRINGS } from '../strings'
-import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
-import { ColorField, ComboBoxField, FileField, ImageField, MultiSelectField, NumberField, TextField, ToggleField } from './fields'
-import { groupFields } from './frontmatter-sidebar'
+} from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types.ts'
+import { ColorField, ComboBoxField, FileField, ImageField, MultiSelectField, NumberField, TextField, ToggleField } from './fields.tsx'
+import { groupFields } from './frontmatter-sidebar.tsx'
 
 function isArrayOfObjects(value: unknown[]): value is Record<string, unknown>[] {
 	return value.length > 0 && typeof value[0] === 'object' && value[0] !== null

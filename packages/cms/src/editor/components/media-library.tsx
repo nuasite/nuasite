@@ -1,13 +1,13 @@
 import { filterMediaItems, VIDEO_UPLOAD_ACCEPT } from '@nuasite/cms-types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { Z_INDEX } from '../constants'
-import { useSearchFilter } from '../hooks/useSearchFilter'
-import { createMediaFolder, fetchMediaLibrary, fetchProjectImages, uploadMedia } from '../markdown-api'
-import { config, isMediaLibraryOpen, mediaLibraryState, resetMediaLibraryState, showToast } from '../signals'
-import { STRINGS } from '../strings'
-import type { MediaFolderItem, MediaItem, MediaTypeFilter } from '../types'
-import { CloseButton, PrimaryButton } from './modal-shell'
-import { Spinner } from './spinner'
+import { Z_INDEX } from '../constants.ts'
+import { useSearchFilter } from '../hooks/useSearchFilter.ts'
+import { createMediaFolder, fetchMediaLibrary, fetchProjectImages, uploadMedia } from '../markdown-api.ts'
+import { config, isMediaLibraryOpen, mediaLibraryState, resetMediaLibraryState, showToast } from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import type { MediaFolderItem, MediaItem, MediaTypeFilter } from '../types.ts'
+import { CloseButton, PrimaryButton } from './modal-shell.tsx'
+import { Spinner } from './spinner.tsx'
 
 const TYPE_FILTERS: Array<{ value: MediaTypeFilter; label: string }> = [
 	{ value: 'all', label: 'All' },

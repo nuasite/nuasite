@@ -1,5 +1,5 @@
 import { useCallback } from 'preact/hooks'
-import { deletePage } from '../markdown-api'
+import { deletePage } from '../markdown-api.ts'
 import {
 	config,
 	deletePageState,
@@ -9,9 +9,9 @@ import {
 	setDeletePageRedirectTo,
 	setDeletingPage,
 	showToast,
-} from '../signals'
-import { STRINGS } from '../strings'
-import { CancelButton, ModalBackdrop, ModalFooter, ModalHeader } from './modal-shell'
+} from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import { CancelButton, ModalBackdrop, ModalFooter, ModalHeader } from './modal-shell.tsx'
 
 export function DeletePageDialog() {
 	const visible = isDeletePageOpen.value

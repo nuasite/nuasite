@@ -1,4 +1,4 @@
-import { analyzeAstroSource } from './astro-source-analysis'
+import { analyzeAstroSource } from './astro-source-analysis.ts'
 
 /** Content collections referenced by an Astro route, split by route role. */
 export interface RouteCollectionScan {

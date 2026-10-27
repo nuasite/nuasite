@@ -1,21 +1,21 @@
 import { type CmsCore, type CmsFileSystem, resolvePathnameFromSpec, scanRouteCollections } from '@nuasite/cms-core'
 import path from 'node:path'
-import type { CollectionOverrides } from './collection-overrides'
-import { getProjectRoot } from './config'
-import { handleCmsApiRequest } from './handlers/api-routes'
-import { buildMapPattern, detectArrayPattern, extractArrayElementProps, parseInlineArrayName } from './handlers/array-ops'
+import type { CollectionOverrides } from './collection-overrides.ts'
+import { getProjectRoot } from './config.ts'
+import { handleCmsApiRequest } from './handlers/api-routes.ts'
+import { buildMapPattern, detectArrayPattern, extractArrayElementProps, parseInlineArrayName } from './handlers/array-ops.ts'
 import {
 	extractPropsFromSource,
 	findComponentInvocationLine,
 	findFrontmatterEnd,
 	getPageFileCandidates,
 	normalizeFilePath,
-} from './handlers/component-ops'
-import { processHtml } from './html-processor'
-import type { ManifestWriter } from './manifest-writer'
-import type { MediaStorageAdapter } from './media/types'
-import { currentProjectContext, type ProjectContext, projectFiles, runInProjectContext } from './project/context'
-import type { CollectionRouteInfo } from './project/state'
+} from './handlers/component-ops.ts'
+import { processHtml } from './html-processor.ts'
+import type { ManifestWriter } from './manifest-writer.ts'
+import type { MediaStorageAdapter } from './media/types.ts'
+import { currentProjectContext, type ProjectContext, projectFiles, runInProjectContext } from './project/context.ts'
+import type { CollectionRouteInfo } from './project/state.ts'
 import {
 	declaredSitePathFromData,
 	enhanceManifestWithSourceSnippets,
@@ -24,9 +24,9 @@ import {
 	findSourceLocation,
 	parseMarkdownContent,
 	reindexDirtyFiles,
-} from './source-finder'
-import { projectRelativeSource } from './source-finder/source-files'
-import type { PageSources } from './source-finder/types'
+} from './source-finder/index.ts'
+import { projectRelativeSource } from './source-finder/source-files.ts'
+import type { PageSources } from './source-finder/types.ts'
 import type {
 	CmsMarkerOptions,
 	CollectionDefinition,
@@ -36,8 +36,8 @@ import type {
 	ComponentInstance,
 	ManifestEntry,
 	PageSeoData,
-} from './types'
-import { firstNonEmptyLine } from './utils'
+} from './types.ts'
+import { firstNonEmptyLine } from './utils.ts'
 
 /**
  * The visual editor's server side, independent of how pages are served: it marks rendered HTML
