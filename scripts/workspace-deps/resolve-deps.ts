@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { compileExports } from './compiled-exports.ts'
+import { peerRange, pinnedPeers } from './peer-ranges.ts'
 
 type J = Record<string, any>
 const FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
@@ -104,7 +105,12 @@ const collectCatalogs = (root: string) => {
 	return catalogs
 }
 
-const rewriteManifest = (pkgFile: string, versions: Map<string, string>, catalogs: Map<string, Map<string, string>>) => {
+const rewriteManifest = (
+	pkgFile: string,
+	versions: Map<string, string>,
+	catalogs: Map<string, Map<string, string>>,
+	options: { allowPinnedPeers: boolean },
+) => {
 	const json = readJSON(pkgFile)
 	const unresolved: string[] = []
 	for (const f of FIELDS) {
@@ -113,7 +119,9 @@ const rewriteManifest = (pkgFile: string, versions: Map<string, string>, catalog
 		for (const [name, range] of Object.entries(deps)) {
 			const r = String(range)
 
-			// Handle workspace: dependencies
+			// Handle workspace: dependencies. `workspace:*` becomes the exact version on
+			// purpose: every @nuasite package is released in lockstep, so the exact
+			// version is the set that was tested together. Do not widen it to a range.
 			if (r.startsWith('workspace:')) {
 				const v = versions.get(name)
 				if (!v) {
@@ -138,11 +146,14 @@ const rewriteManifest = (pkgFile: string, versions: Map<string, string>, catalog
 				if (!v) {
 					unresolved.push(`${f}:${name} (not found in catalog '${actualCatalogName}')`)
 					continue
-				}
-				;(deps as any)[name] = v
+				} // A third-party peer is published as a range from the catalog's exact version (see peer-ranges.ts).
+
+				;(deps as any)[name] = f === 'peerDependencies' ? peerRange(name, v, { allowPinned: options.allowPinnedPeers }) : v
 			}
 		}
 	}
+	// A hand-written exact third-party peer has no catalog to widen it from.
+	unresolved.push(...pinnedPeers(json.peerDependencies, { allowPinned: options.allowPinnedPeers }))
 	fs.writeFileSync(pkgFile, JSON.stringify(json, null, 2) + '\n')
 	return unresolved
 }
@@ -158,7 +169,7 @@ fs.mkdirSync(ledgerDir, { recursive: true })
 const ledgerPath = path.join(ledgerDir, Buffer.from(pkgDir).toString('base64url') + '.json')
 fs.writeFileSync(ledgerPath, fs.readFileSync(pkgFile, 'utf8'))
 
-const unresolved = rewriteManifest(pkgFile, versions, catalogs)
+const unresolved = rewriteManifest(pkgFile, versions, catalogs, { allowPinnedPeers: process.argv.includes('--allow-pinned-peers') })
 
 // A compiled package publishes its dist/ entry points (see compiled-exports.ts).
 if (process.argv.includes('--compiled-exports')) {
@@ -173,6 +184,8 @@ const after = fs.readFileSync(pkgFile, 'utf8')
 if (/"workspace:/.test(after) || /"catalog:/.test(after) || unresolved.length) {
 	console.error(`[workspace-deps] FAILED in ${path.basename(pkgDir)} | root=${repoRoot} | versions=${versions.size} | catalogs=${catalogs.size}`)
 	if (unresolved.length) console.error(`unresolved: ${unresolved.join(', ')}`)
+	// Put the manifest back: a failed pack must not leave resolved versions in the working tree.
+	fs.writeFileSync(pkgFile, fs.readFileSync(ledgerPath, 'utf8'))
 	process.exit(1)
 } else {
 	console.error(`[workspace-deps] OK in ${path.basename(pkgDir)}`)
