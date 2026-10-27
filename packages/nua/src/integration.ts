@@ -1,7 +1,7 @@
 import mdx from '@astrojs/mdx'
 import sitemap from '@astrojs/sitemap'
 import checks from '@nuasite/checks'
-import cms, { addMarkdownPlugins, cmsRemarkPlugins, mergeConfigRedirectsInto } from '@nuasite/cms'
+import cms, { addMarkdownPlugins, cmsRemarkPlugins, inlineNuasitePackages, mergeConfigRedirectsInto, userExternals } from '@nuasite/cms'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroConfig, AstroIntegration } from 'astro'
 import pageMarkdown from '../../llm-enhancements/src'
@@ -19,7 +19,9 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 
 				// Tailwind is required — the CMS color/text-style system
 				// expects the host site to compile Tailwind utility classes.
-				const vitePlugins = [...tailwindcss()]
+				// Every @nuasite package ships TypeScript source; in dev it has to stay
+				// inside Vite even when the CMS integration, which also adds this, is off.
+				const vitePlugins = [...tailwindcss(), inlineNuasitePackages({ keep: userExternals(config.vite) })]
 
 				// Add nuasite integrations
 				if (resolved.cms !== false) {
@@ -94,12 +96,14 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 					vite: {
 						plugins: vitePlugins,
 						ssr: {
-							// Without this, dev-mode SSR externalizes the package and its
-							// TS barrel is loaded by the runtime instead of Vite. Under Bun
-							// (the nua CLI runtime) the nested `.astro` imports then resolve
-							// to file-path strings via Bun's file loader, and Astro renders
-							// the components as literal path-named tags — `<Form>` loses its
-							// `<form>` wrapper and submits silently do nothing.
+							// Without this, SSR externalizes the package and its TS barrel is
+							// loaded by the runtime instead of Vite. Under Bun (the nua CLI
+							// runtime) the nested `.astro` imports then resolve to file-path
+							// strings via Bun's file loader, and Astro renders the components
+							// as literal path-named tags: `<Form>` loses its `<form>` wrapper
+							// and submits silently do nothing. In dev, Astro's crawl lists the
+							// package as an explicit external, which wins over this entry, so
+							// `inlineNuasitePackages` above removes it from that list.
 							noExternal: ['@nuasite/components'],
 						},
 					},
