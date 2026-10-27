@@ -26,7 +26,7 @@
         "astro": "catalog:astro",
       },
       "peerDependencies": {
-        "astro": "catalog:astro-peer",
+        "astro": "catalog:astro",
         "typescript": "catalog:build",
       },
     },
@@ -41,7 +41,7 @@
         "astro": "catalog:astro",
       },
       "peerDependencies": {
-        "astro": "catalog:astro-peer",
+        "astro": "catalog:astro",
         "typescript": "catalog:build",
       },
     },
@@ -93,6 +93,7 @@
         "@types/bun": "catalog:build",
         "@types/react": "^19.2.7",
         "@types/react-dom": "^19.2.3",
+        "astro": "catalog:astro",
         "clsx": "catalog:editor",
         "marked": "catalog:editor",
         "mdast-util-directive": "catalog:editor",
@@ -120,7 +121,7 @@
         "@aws-sdk/client-s3": "^3.0.0",
         "@nuasite/cms-sidecar": "workspace:*",
         "@nuasite/collections-admin": "workspace:*",
-        "astro": "catalog:astro-peer",
+        "astro": "catalog:astro",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "typescript": "catalog:build",
@@ -291,9 +292,9 @@
         "@astrojs/sitemap": "catalog:astro",
       },
       "peerDependencies": {
-        "@astrojs/check": "0.9.12",
-        "@astrojs/mdx": "8.1.1",
-        "@astrojs/sitemap": "3.7.4",
+        "@astrojs/check": "catalog:astro",
+        "@astrojs/mdx": "catalog:astro",
+        "@astrojs/sitemap": "catalog:astro",
       },
     },
     "packages/llm-enhancements": {
@@ -313,7 +314,7 @@
       },
       "peerDependencies": {
         "@nuasite/cms": "workspace:*",
-        "astro": "catalog:astro-peer",
+        "astro": "catalog:astro",
         "typescript": "catalog:build",
         "vite": "catalog:build",
       },
@@ -332,7 +333,7 @@
         "astro": "catalog:astro",
       },
       "peerDependencies": {
-        "astro": "catalog:astro-peer",
+        "astro": "catalog:astro",
         "typescript": "^6.0.2",
       },
     },
@@ -381,9 +382,6 @@
       "@astrojs/mdx": "8.1.1",
       "@astrojs/sitemap": "3.7.4",
       "astro": "7.4.2",
-    },
-    "astro-peer": {
-      "astro": "^7.4.2",
     },
     "build": {
       "@actions/core": "^3.0.0",

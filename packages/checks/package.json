@@ -31,7 +31,7 @@
 		"astro": "catalog:astro"
 	},
 	"peerDependencies": {
-		"astro": "catalog:astro-peer",
+		"astro": "catalog:astro",
 		"typescript": "catalog:build"
 	},
 	"scripts": {

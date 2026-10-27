@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { compileExports } from './compiled-exports.ts'
+import { peerRange, pinnedPeers } from './peer-ranges.ts'
 
 type J = Record<string, any>
 const FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
@@ -104,7 +105,12 @@ const collectCatalogs = (root: string) => {
 	return catalogs
 }
 
-const rewriteManifest = (pkgFile: string, versions: Map<string, string>, catalogs: Map<string, Map<string, string>>) => {
+const rewriteManifest = (
+	pkgFile: string,
+	versions: Map<string, string>,
+	catalogs: Map<string, Map<string, string>>,
+	options: { allowPinnedPeers: boolean },
+) => {
 	const json = readJSON(pkgFile)
 	const unresolved: string[] = []
 	for (const f of FIELDS) {
@@ -140,21 +146,14 @@ const rewriteManifest = (pkgFile: string, versions: Map<string, string>, catalog
 				if (!v) {
 					unresolved.push(`${f}:${name} (not found in catalog '${actualCatalogName}')`)
 					continue
-				}
-				;(deps as any)[name] = v
+				} // A third-party peer is published as a range from the catalog's exact version (see peer-ranges.ts).
+
+				;(deps as any)[name] = f === 'peerDependencies' ? peerRange(name, v, { allowPinned: options.allowPinnedPeers }) : v
 			}
 		}
 	}
-	// A peer on a package released apart from nuasite (astro) has to be a range.
-	// An exact pin would put every site on any other patch release into a peer
-	// conflict; such peers come from a range catalog (`catalog:astro-peer`), while
-	// devDependencies keep the exact version the tests run against. @nuasite/core
-	// exists to pin its peers and opts out with --allow-pinned-peers.
-	for (const [name, range] of Object.entries(process.argv.includes('--allow-pinned-peers') ? {} : json.peerDependencies ?? {})) {
-		if (!name.startsWith('@nuasite/') && /^\d+\.\d+\.\d+(-[\w.]+)?$/.test(String(range))) {
-			unresolved.push(`peerDependencies:${name} is pinned to ${range}; publish a range`)
-		}
-	}
+	// A hand-written exact third-party peer has no catalog to widen it from.
+	unresolved.push(...pinnedPeers(json.peerDependencies, { allowPinned: options.allowPinnedPeers }))
 	fs.writeFileSync(pkgFile, JSON.stringify(json, null, 2) + '\n')
 	return unresolved
 }
@@ -170,7 +169,7 @@ fs.mkdirSync(ledgerDir, { recursive: true })
 const ledgerPath = path.join(ledgerDir, Buffer.from(pkgDir).toString('base64url') + '.json')
 fs.writeFileSync(ledgerPath, fs.readFileSync(pkgFile, 'utf8'))
 
-const unresolved = rewriteManifest(pkgFile, versions, catalogs)
+const unresolved = rewriteManifest(pkgFile, versions, catalogs, { allowPinnedPeers: process.argv.includes('--allow-pinned-peers') })
 
 // A compiled package publishes its dist/ entry points (see compiled-exports.ts).
 if (process.argv.includes('--compiled-exports')) {
@@ -185,6 +184,8 @@ const after = fs.readFileSync(pkgFile, 'utf8')
 if (/"workspace:/.test(after) || /"catalog:/.test(after) || unresolved.length) {
 	console.error(`[workspace-deps] FAILED in ${path.basename(pkgDir)} | root=${repoRoot} | versions=${versions.size} | catalogs=${catalogs.size}`)
 	if (unresolved.length) console.error(`unresolved: ${unresolved.join(', ')}`)
+	// Put the manifest back: a failed pack must not leave resolved versions in the working tree.
+	fs.writeFileSync(pkgFile, fs.readFileSync(ledgerPath, 'utf8'))
 	process.exit(1)
 } else {
 	console.error(`[workspace-deps] OK in ${path.basename(pkgDir)}`)
