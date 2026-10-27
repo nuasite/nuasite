@@ -2,10 +2,10 @@ import mdx from '@astrojs/mdx'
 import sitemap from '@astrojs/sitemap'
 import checks from '@nuasite/checks'
 import cms, { addMarkdownPlugins, cmsRemarkPlugins, inlineNuasitePackages, mergeConfigRedirectsInto, userExternals } from '@nuasite/cms'
+import pageMarkdown from '@nuasite/llm-enhancements'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroConfig, AstroIntegration } from 'astro'
-import pageMarkdown from '../../llm-enhancements/src'
-import { type NuaIntegrationOptions, resolveOptions } from './types'
+import { type NuaIntegrationOptions, resolveOptions } from './types.ts'
 
 export default function nua(options: NuaIntegrationOptions = {}): AstroIntegration {
 	const resolved = resolveOptions(options)
@@ -83,7 +83,8 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				// `extendMarkdownConfig` (default true). `defineConfig` sets the `unified()`
 				// processor that runs them; a site that chose another one is told why
 				// directives do not render.
-				if (!addMarkdownPlugins(config, { remarkPlugins: cmsRemarkPlugins })) {
+				// The cast bridges two copies of the unified types (remark-directive's and Astro's).
+				if (!addMarkdownPlugins(config, { remarkPlugins: cmsRemarkPlugins as unknown as AstroConfig['markdown']['remarkPlugins'] })) {
 					logger.warn(
 						`The "${config.markdown.processor.name}" markdown processor does not run remark plugins, so CMS directives`
 							+ ` (\`:::list{.class}\`, \`::youtube{#id}\`) do not render. Set \`markdown.processor: unified()\` from @astrojs/markdown-remark.`,

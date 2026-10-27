@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 export default defineConfig({
 	plugins: [tailwindcss()],
 	build: {
+		// dist/ also holds the JS that tsc emitted for the package's entry points.
+		emptyOutDir: false,
 		lib: {
 			entry: 'src/editor/index.tsx',
 			formats: ['es'],

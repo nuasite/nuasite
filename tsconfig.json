@@ -9,6 +9,9 @@
 			"path": "./packages/llm-enhancements"
 		},
 		{
+			"path": "./packages/nua"
+		},
+		{
 			"path": "./packages/cli"
 		},
 		{

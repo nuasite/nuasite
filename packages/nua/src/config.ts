@@ -1,9 +1,9 @@
 import { unified } from '@astrojs/markdown-remark'
 import { defineConfig as astroDefineConfig } from 'astro/config'
-import nua from './integration'
-import type { NuaIntegrationOptions } from './types'
+import nua from './integration.ts'
+import type { NuaIntegrationOptions } from './types.ts'
 
-export type { NuaIntegrationOptions } from './types'
+export type { NuaIntegrationOptions } from './types.ts'
 
 type AstroUserConfig = Parameters<typeof astroDefineConfig>[0]
 
@@ -41,7 +41,7 @@ export interface NuaConfig extends AstroUserConfig {
  * })
  * ```
  */
-export function defineConfig(config: NuaConfig = {}) {
+export function defineConfig(config: NuaConfig = {}): AstroUserConfig {
 	const { nua: nuaOptions, integrations = [], vite = {}, markdown = {}, ...astroConfig } = config
 
 	const mergedVite = {
