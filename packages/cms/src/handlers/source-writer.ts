@@ -9,6 +9,7 @@ import { currentProjectContext, projectFiles } from '../project/context'
 import { extractAstroImageOriginalUrl } from '../source-finder/snippet-utils'
 import type { CmsManifest, ManifestEntry } from '../types'
 import { acquireFileLock, escapeRegex, escapeReplacement, normalizePagePath, relativeImportPath, resolveAndValidatePath } from '../utils'
+import { elementOnLine, findElements, lineEnd, lineOf, lineStart, locateSnippet, NAMED_ENTITIES, pickElement, tagEnd } from './element-span'
 
 export interface SaveBatchResponse {
 	updated: number
@@ -96,7 +97,7 @@ interface PendingFileOp {
 	bytes: Buffer
 }
 
-async function applyChanges(
+export async function applyChanges(
 	content: string,
 	changes: ChangePayload[],
 	manifest: CmsManifest,
@@ -113,10 +114,23 @@ async function applyChanges(
 	const failedChanges: Array<{ cmsId: string; error: string }> = []
 	const fileOps: PendingFileOp[] = []
 
-	// Sort changes by source line descending to prevent offset shifts
+	// Text changes go first. They are found by their recorded snippet, which a
+	// colour, attribute or image change on the same line would already have
+	// rewritten. Within each kind, changes run by source line descending to
+	// prevent offset shifts.
+	const isText = (change: ChangePayload) => !change.imageChange && !change.styleChange && !change.attributeChanges?.length
 	const sortedChanges = [...changes].sort(
-		(a, b) => (b.sourceLine ?? 0) - (a.sourceLine ?? 0),
+		(a, b) => Number(isText(b)) - Number(isText(a)) || (b.sourceLine ?? 0) - (a.sourceLine ?? 0),
 	)
+	// A colour or attribute change finds its element by the element's text. When
+	// the same save also edits that text, the element already shows the new one.
+	const newTextOf = new Map(changes.filter(isText).map(change => [change.cmsId, change.newValue]))
+	const identityOf = (cmsId: string): ElementIdentity | undefined => {
+		const entry = manifest.entries[cmsId]
+		if (!entry) return undefined
+		const edited = newTextOf.get(cmsId)
+		return { tag: entry.tag, text: edited !== undefined ? [entry.text, edited] : entry.text }
+	}
 
 	for (const change of sortedChanges) {
 		// Handle image changes
@@ -134,7 +148,7 @@ async function applyChanges(
 
 		// Handle style class changes (colors, text styles, bg images)
 		if (change.styleChange) {
-			const result = applyColorChange(newContent, change)
+			const result = applyColorChange(newContent, change, identityOf(change.cmsId))
 			if (result.success) {
 				newContent = result.content
 				appliedCount++
@@ -146,7 +160,7 @@ async function applyChanges(
 
 		// Handle attribute changes
 		if (change.attributeChanges && change.attributeChanges.length > 0) {
-			const result = applyAttributeChanges(newContent, change)
+			const result = applyAttributeChanges(newContent, change, identityOf(change.cmsId))
 			if (result.appliedCount > 0) {
 				newContent = result.content
 				appliedCount++
@@ -232,23 +246,14 @@ export async function applyImageChange(
 	let newContent = content
 	let replacedIndex = -1
 	for (const srcToFind of srcCandidates) {
-		// Use non-global patterns to replace only the first occurrence
-		const srcPatternDouble = new RegExp(`src="${escapeRegex(srcToFind)}"`)
-		const srcPatternSingle = new RegExp(`src='${escapeRegex(srcToFind)}'`)
-
-		const escapedNewSrc = escapeReplacement(newSrc)
-		const doubleMatch = newContent.match(srcPatternDouble)
-		if (doubleMatch && doubleMatch.index !== undefined) {
-			replacedIndex = doubleMatch.index
-			newContent = newContent.slice(0, replacedIndex)
-				+ newContent.slice(replacedIndex).replace(srcPatternDouble, `src="${escapedNewSrc}"`)
-			break
-		}
-		const singleMatch = newContent.match(srcPatternSingle)
-		if (singleMatch && singleMatch.index !== undefined) {
-			replacedIndex = singleMatch.index
-			newContent = newContent.slice(0, replacedIndex)
-				+ newContent.slice(replacedIndex).replace(srcPatternSingle, `src='${escapedNewSrc}'`)
+		// The same image often appears more than once in a file (a logo in the
+		// header and the footer), so the occurrence nearest the element's line wins.
+		const srcPattern = new RegExp(`src=(["'])${escapeRegex(srcToFind)}\\1`, 'g')
+		const match = nearestMatch(newContent, srcPattern, change.sourceLine)
+		if (match) {
+			const quote = match[1]!
+			replacedIndex = match.index
+			newContent = newContent.slice(0, replacedIndex) + `src=${quote}${newSrc}${quote}` + newContent.slice(replacedIndex + match[0].length)
 			break
 		}
 	}
@@ -300,15 +305,20 @@ export async function applyImageChange(
 		const lines = newContent.split('\n')
 		const targetLineIdx = change.sourceLine - 1
 
-		// Search a region around the source line for an <img with src attribute
-		const regionStart = Math.max(0, targetLineIdx - 3)
+		// Search a region around the source line for an <img with src attribute.
+		// The region starting at the line itself goes first: reaching three lines
+		// back first would pick up the previous image's src.
 		const regionEnd = Math.min(lines.length, targetLineIdx + 10)
-		const regionLines = lines.slice(regionStart, regionEnd)
-		const regionText = regionLines.join('\n')
+		const regionAt = (start: number) => {
+			const text = lines.slice(start, regionEnd).join('\n')
+			return { start, text, expr: findExpressionSrcAttribute(text) }
+		}
+		const wide = regionAt(Math.max(0, targetLineIdx - 3))
+		const tight = regionAt(Math.max(0, targetLineIdx))
+		const { start: regionStart, text: regionText, expr: exprMatch } = tight.expr ? tight : wide
 
 		// Verify we're in an img or Image component context before replacing
-		if (/<img\b/i.test(regionText) || /<Image\b/.test(regionText)) {
-			const exprMatch = findExpressionSrcAttribute(regionText)
+		if (/<img\b/i.test(wide.text) || /<Image\b/.test(wide.text)) {
 			if (exprMatch) {
 				const exprContent = regionText.slice(
 					exprMatch.index + regionText.slice(exprMatch.index).indexOf('{') + 1,
@@ -343,10 +353,15 @@ export async function applyImageChange(
 		return { success: false, error: `Image src not found in source file: ${originalSrc}` }
 	}
 
-	// Replace alt only in the same img tag context (within ~500 chars around the replaced src)
+	// Replace alt only in the image's own tag. A window around the src would
+	// reach the previous image's alt when two images sit close together. When
+	// the src was rewritten somewhere else (a frontmatter import, a data file),
+	// the tag is looked up on the element's line instead.
 	if (newAlt !== undefined) {
-		const searchStart = Math.max(0, replacedIndex - 200)
-		const searchEnd = Math.min(newContent.length, replacedIndex + 300)
+		const srcInTag = /^src\s*=/.test(newContent.slice(replacedIndex, replacedIndex + 8))
+		const ownTag = (srcInTag ? enclosingTag(newContent, replacedIndex) : null) ?? imageTagOnLine(newContent, change.sourceLine)
+		const searchStart = ownTag ? ownTag.start : Math.max(0, replacedIndex - 200)
+		const searchEnd = ownTag ? ownTag.end : Math.min(newContent.length, replacedIndex + 300)
 		const region = newContent.slice(searchStart, searchEnd)
 
 		// Try string-literal alt first, then expression alt with balanced braces
@@ -354,8 +369,8 @@ export async function applyImageChange(
 		let altLength = 0
 		let altQuote = '"'
 
-		const altPatternDouble = /alt="[^"]*"/
-		const altPatternSingle = /alt='[^']*'/
+		const altPatternDouble = /(?<![\w:-])alt="[^"]*"/
+		const altPatternSingle = /(?<![\w:-])alt='[^']*'/
 		const altDoubleMatch = region.match(altPatternDouble)
 		const altSingleMatch = region.match(altPatternSingle)
 
@@ -377,18 +392,68 @@ export async function applyImageChange(
 			}
 		}
 
+		const escapedAlt = altQuote === '"'
+			? newAlt.replace(/"/g, '&quot;')
+			: newAlt.replace(/'/g, '&#39;')
 		if (altIndex >= 0) {
 			const altAbsoluteIndex = searchStart + altIndex
-			const escapedAlt = altQuote === '"'
-				? newAlt.replace(/"/g, '&quot;')
-				: newAlt.replace(/'/g, '&#39;')
 			newContent = newContent.slice(0, altAbsoluteIndex)
 				+ `alt=${altQuote}${escapedAlt}${altQuote}`
 				+ newContent.slice(altAbsoluteIndex + altLength)
+		} else if (ownTag && newAlt && /^(img|Image|Picture)$/.test(ownTag.name)) {
+			// The image has no alt yet: it gets one at the end of its tag.
+			newContent = insertAttribute(newContent, ownTag.end, `alt="${escapedAlt}"`)
 		}
 	}
 
 	return { success: true, content: newContent, fileOp: pendingFileOp }
+}
+
+/**
+ * The match of a global `pattern` nearest to 1-based `line`, counted in lines,
+ * the earlier one winning a tie; the first match when no line is known.
+ */
+function nearestMatch(content: string, pattern: RegExp, line: number | undefined): RegExpExecArray | null {
+	pattern.lastIndex = 0
+	let best: RegExpExecArray | null = null
+	let bestDistance = Number.POSITIVE_INFINITY
+	for (let match = pattern.exec(content); match; match = pattern.exec(content)) {
+		if (!line || line < 1) return match
+		const distance = Math.abs(lineOf(content, match.index) - line)
+		if (distance < bestDistance) {
+			best = match
+			bestDistance = distance
+		}
+		if (distance === 0 || lineOf(content, match.index) > line) break
+	}
+	return best
+}
+
+/** The opening tag (`<img …>`, `<Image …/>`) that contains `offset`, or `null` when `offset` is not inside a tag. */
+function enclosingTag(content: string, offset: number): { start: number; end: number; name: string } | null {
+	// A `<` inside an earlier attribute value is not where the tag opens, so a few
+	// candidates are tried, nearest first.
+	let start = content.lastIndexOf('<', offset)
+	for (let tries = 0; start >= 0 && tries < 8; tries++, start = content.lastIndexOf('<', start - 1)) {
+		const name = content.slice(start + 1, start + 65).match(/^[a-zA-Z][\w.-]*/)?.[0]
+		if (!name) continue
+		const end = tagEnd(content, start)
+		if (end > offset) return { start, end, name }
+	}
+	return null
+}
+
+/** The single image tag that opens on 1-based `line`, or `null` when there is none or more than one. */
+function imageTagOnLine(content: string, line: number | undefined): { start: number; end: number; name: string } | null {
+	if (!line || line < 1) return null
+	const from = lineStart(content, line)
+	if (from < 0) return null
+	const to = lineEnd(content, from)
+	const tags = [...content.slice(from, to).matchAll(/<(img|Image|Picture)(?=[\s/>])/g)]
+	if (tags.length !== 1) return null
+	const start = from + tags[0]!.index
+	const end = tagEnd(content, start)
+	return end > 0 ? { start, end, name: tags[0]![1]! } : null
 }
 
 interface FrontmatterAssetImport {
@@ -448,7 +513,7 @@ function inlineJsxLiteralReplace(
 	for (let i = 0; i < regionStart; i++) regionStartOffset += lines[i]!.length + 1
 	const absIndex = regionStartOffset + exprMatch.index
 	return {
-		content: content.slice(0, absIndex) + `src="${escapeReplacement(newSrc)}"` + content.slice(absIndex + exprMatch.length),
+		content: content.slice(0, absIndex) + `src="${newSrc}"` + content.slice(absIndex + exprMatch.length),
 		replacedIndex: absIndex,
 	}
 }
@@ -543,9 +608,10 @@ async function readBoundedBody(res: Response, maxBytes: number): Promise<Buffer 
 	return Buffer.concat(chunks, total)
 }
 
-function applyColorChange(
+export function applyColorChange(
 	content: string,
 	change: ChangePayload,
+	entry?: ElementIdentity,
 ): { success: true; content: string } | { success: false; error: string } {
 	const { oldClass, newClass } = change.styleChange!
 	// Prefer styleChange's own sourceLine (points to the class attribute)
@@ -554,124 +620,150 @@ function applyColorChange(
 
 	// When oldClass is empty, we're adding a new color class (not replacing)
 	if (!oldClass) {
-		return appendClassToAttribute(content, newClass, sourceLine)
+		return appendClassToAttribute(content, newClass, sourceLine, entry)
 	}
 
-	return replaceClassInAttribute(content, oldClass, newClass, sourceLine)
+	return replaceClassInAttribute(content, oldClass, newClass, sourceLine, entry)
+}
+
+/**
+ * What the writer knows about the edited element: enough to pick it out of a
+ * line that holds others. `text` can list several, when the element's text is
+ * being edited in the same save.
+ */
+type ElementIdentity = { tag: ManifestEntry['tag']; text?: string | string[] }
+
+/**
+ * Quoted `class` attributes in `text[from, to)`, in order. `data-class=` and
+ * `class:list=` are not class attributes.
+ */
+function classAttributes(
+	text: string,
+	from: number,
+	to: number,
+): Array<{ index: number; prefix: string; quote: string; value: string; length: number }> {
+	const found: Array<{ index: number; prefix: string; quote: string; value: string; length: number }> = []
+	const pattern = /(?<![\w:-])(class\s*=\s*)(?:"([^"]*)"|'([^']*)')/g
+	const region = text.slice(from, to)
+	for (let match = pattern.exec(region); match; match = pattern.exec(region)) {
+		const quote = match[2] !== undefined ? '"' : "'"
+		found.push({ index: from + match.index, prefix: match[1]!, quote, value: match[2] ?? match[3]!, length: match[0].length })
+	}
+	return found
+}
+
+function rewriteClassAttribute(
+	content: string,
+	attr: { index: number; prefix: string; quote: string; length: number },
+	classes: string[],
+): string {
+	return content.slice(0, attr.index) + `${attr.prefix}${attr.quote}${classes.join(' ')}${attr.quote}` + content.slice(attr.index + attr.length)
+}
+
+/**
+ * Insert an attribute at the end of the opening tag that ends at `openEnd`.
+ * After every other attribute, so a `{...spread}` written earlier cannot
+ * override it.
+ */
+function insertAttribute(content: string, openEnd: number, attribute: string): string {
+	let at = openEnd - 1
+	if (content[at - 1] === '/') at--
+	while (at > 0 && /\s/.test(content[at - 1]!)) at--
+	return content.slice(0, at) + ` ${attribute}` + content.slice(at)
 }
 
 /**
  * Replace an existing class within a class attribute by splitting on whitespace.
  * This avoids \b word-boundary issues (e.g., \b matching `:` in `hover:bg-red-500`).
+ *
+ * When the line holds the edited element, only that element's opening tag is
+ * considered: the parent `<ul>` or a sibling on the same line can carry the
+ * same class.
  */
 function replaceClassInAttribute(
 	content: string,
 	oldClass: string,
 	newClass: string,
 	sourceLine?: number,
+	entry?: ElementIdentity,
 ): { success: true; content: string } | { success: false; error: string } {
-	const replaceOnLine = (line: string): string | null => {
-		// Build pattern dynamically to only exclude the actual quote character used,
-		// so bg-[url('/path')] works inside class="..." (single quotes allowed in double-quoted attr)
-		const dqMatch = line.match(/(class\s*=\s*)(")([^"]*)"/)
-		const sqMatch = line.match(/(class\s*=\s*)(')([^']*)'/)
-		const match = dqMatch || sqMatch
-		if (!match) return null
-
-		const prefix = match[1]!
-		const quote = match[2]!
-		const classContent = match[3]!
-
-		const classes = classContent.split(/\s+/).filter(Boolean)
-		const idx = classes.indexOf(oldClass)
-		if (idx === -1) return null
-
-		if (newClass) {
-			classes[idx] = newClass
-		} else {
-			classes.splice(idx, 1)
+	const replaceIn = (from: number, to: number): string | null => {
+		for (const attr of classAttributes(content, from, to)) {
+			const classes = attr.value.split(/\s+/).filter(Boolean)
+			const idx = classes.indexOf(oldClass)
+			if (idx === -1) continue
+			if (newClass) {
+				classes[idx] = newClass
+			} else {
+				classes.splice(idx, 1)
+			}
+			return rewriteClassAttribute(content, attr, classes)
 		}
-		return line.replace(match[0], `${prefix}${quote}${classes.join(' ')}${quote}`)
+		return null
 	}
 
 	if (sourceLine) {
-		const lines = content.split('\n')
-		const lineIndex = sourceLine - 1
+		const from = lineStart(content, sourceLine)
+		if (from < 0) return { success: false, error: `Invalid source line ${sourceLine}` }
 
-		if (lineIndex >= 0 && lineIndex < lines.length) {
-			const result = replaceOnLine(lines[lineIndex]!)
-			if (result !== null) {
-				lines[lineIndex] = result
-				return { success: true, content: lines.join('\n') }
-			}
-			return { success: false, error: `Color class '${oldClass}' not found on line ${sourceLine}` }
-		}
-		return { success: false, error: `Invalid source line ${sourceLine}` }
+		// Once the element is known, its own tag is the only place the class can be
+		// replaced: anything else on the line belongs to another element.
+		const element = elementOnLine(content, sourceLine, entry?.tag, entry?.text)
+		const result = element ? replaceIn(element.start, element.openEnd) : replaceIn(from, lineEnd(content, from))
+		if (result !== null) return { success: true, content: result }
+		return { success: false, error: `Color class '${oldClass}' not found on line ${sourceLine}` }
 	}
 
 	// Fallback: find the first class attribute in the content that contains oldClass
-	const lines = content.split('\n')
-	for (let i = 0; i < lines.length; i++) {
-		const result = replaceOnLine(lines[i]!)
-		if (result !== null) {
-			lines[i] = result
-			return { success: true, content: lines.join('\n') }
-		}
-	}
+	const result = replaceIn(0, content.length)
+	if (result !== null) return { success: true, content: result }
 	return { success: false, error: `Color class '${oldClass}' not found in source file` }
 }
 
 /**
  * Append a new class to an existing class attribute.
+ *
+ * When the line holds the edited element, the class goes on that element: into
+ * its own `class` attribute, or a new one when it has none. Without that, the
+ * first class attribute on the line would take it, which on
+ * `<ul class="list"><li>…` is the parent's.
  */
 function appendClassToAttribute(
 	content: string,
 	newClass: string,
 	sourceLine?: number,
+	entry?: ElementIdentity,
 ): { success: true; content: string } | { success: false; error: string } {
-	// Match class attribute with either quote, only excluding the actual quote used
-	// so bg-[url('/path')] works inside class="..."
-	const matchClassAttr = (line: string) => {
-		return line.match(/(class\s*=\s*")(([^"]*))(")/)
-			|| line.match(/(class\s*=\s*')(([^']*))(')/)
-	}
-
-	const doAppendOnLine = (line: string): string | null => {
-		const match = matchClassAttr(line)
-		if (!match) return null
-		const open = match[1]!
-		const classes = match[2]!
-		const close = match[4]!
-		const trimmed = classes.trimEnd()
-		const separator = trimmed ? ' ' : ''
-		const replacement = `${open}${trimmed}${separator}${escapeReplacement(newClass)}${close}`
-		return line.replace(match[0], replacement)
+	// The existing value is kept as written, line breaks and all.
+	const appendTo = (attr: { index: number; prefix: string; quote: string; value: string; length: number }) => {
+		const kept = attr.value.trimEnd()
+		return rewriteClassAttribute(content, attr, kept ? [kept, newClass] : [newClass])
 	}
 
 	if (sourceLine) {
-		const lines = content.split('\n')
-		const lineIndex = sourceLine - 1
+		const from = lineStart(content, sourceLine)
+		if (from < 0) return { success: false, error: `Invalid source line ${sourceLine}` }
 
-		if (lineIndex >= 0 && lineIndex < lines.length) {
-			const result = doAppendOnLine(lines[lineIndex]!)
-			if (result !== null) {
-				lines[lineIndex] = result
-				return { success: true, content: lines.join('\n') }
+		const element = elementOnLine(content, sourceLine, entry?.tag, entry?.text)
+		if (element) {
+			const [own] = classAttributes(content, element.start, element.openEnd)
+			if (own) return { success: true, content: appendTo(own) }
+			const openingTag = content.slice(element.start, element.openEnd)
+			// `class={…}` or `class:list={…}` is an expression the writer cannot extend.
+			if (/(?<![\w-])class(?::list)?\s*=/.test(openingTag)) {
+				return { success: false, error: `The class of this element is an expression on line ${sourceLine}; edit it in the source` }
 			}
-			return { success: false, error: `No class attribute found on line ${sourceLine}` }
+			return { success: true, content: insertAttribute(content, element.openEnd, `class="${newClass}"`) }
 		}
-		return { success: false, error: `Invalid source line ${sourceLine}` }
+
+		const [first] = classAttributes(content, from, lineEnd(content, from))
+		if (first) return { success: true, content: appendTo(first) }
+		return { success: false, error: `No class attribute found on line ${sourceLine}` }
 	}
 
 	// Fallback: find the first class attribute in the content
-	const lines = content.split('\n')
-	for (let i = 0; i < lines.length; i++) {
-		const result = doAppendOnLine(lines[i]!)
-		if (result !== null) {
-			lines[i] = result
-			return { success: true, content: lines.join('\n') }
-		}
-	}
+	const [first] = classAttributes(content, 0, content.length)
+	if (first) return { success: true, content: appendTo(first) }
 	return { success: false, error: 'No class attribute found in source file' }
 }
 
@@ -710,6 +802,7 @@ function replaceLiteralInSnippet(
 export function applyAttributeChanges(
 	content: string,
 	change: ChangePayload,
+	entry?: ElementIdentity,
 ): {
 	content: string
 	appliedCount: number
@@ -736,19 +829,37 @@ export function applyAttributeChanges(
 
 			if (lineIndex >= 0 && lineIndex < lines.length) {
 				const line = lines[lineIndex]!
+				// The attribute name must not be the tail of another one (`href` in `data-href`).
 				const doubleQuotePattern = new RegExp(
-					`(${escapeRegex(attributeName)}\\s*=\\s*)"(${escapeRegex(attrOldValue)})"`,
+					`(?<![\\w:-])(${escapeRegex(attributeName)}\\s*=\\s*)"(${escapeRegex(attrOldValue)})"`,
 				)
 				const singleQuotePattern = new RegExp(
-					`(${escapeRegex(attributeName)}\\s*=\\s*)'(${escapeRegex(attrOldValue)})'`,
+					`(?<![\\w:-])(${escapeRegex(attributeName)}\\s*=\\s*)'(${escapeRegex(attrOldValue)})'`,
 				)
 
 				const safeNewValue = escapeReplacement(attrNewValue)
-				if (doubleQuotePattern.test(line)) {
+				// A line can hold several elements carrying the same attribute and value
+				// (two `<a href="#">`, two `<img alt="">`). Once the edited element is
+				// known, only its own opening tag is written; without it, the line as a
+				// whole is searched as before.
+				const element = elementOnLine(newContent, targetLine, entry?.tag, entry?.text)
+				const openingTag = element ? newContent.slice(element.start, element.openEnd) : ''
+				const ownPattern = doubleQuotePattern.test(openingTag)
+					? doubleQuotePattern
+					: singleQuotePattern.test(openingTag)
+					? singleQuotePattern
+					: null
+				if (element && ownPattern) {
+					const quote = ownPattern === doubleQuotePattern ? '"' : "'"
+					newContent = newContent.slice(0, element.start)
+						+ openingTag.replace(ownPattern, `$1${quote}${safeNewValue}${quote}`)
+						+ newContent.slice(element.openEnd)
+					attrApplied++
+				} else if (!element && doubleQuotePattern.test(line)) {
 					lines[lineIndex] = line.replace(doubleQuotePattern, `$1"${safeNewValue}"`)
 					newContent = lines.join('\n')
 					attrApplied++
-				} else if (singleQuotePattern.test(line)) {
+				} else if (!element && singleQuotePattern.test(line)) {
 					lines[lineIndex] = line.replace(singleQuotePattern, `$1'${safeNewValue}'`)
 					newContent = lines.join('\n')
 					attrApplied++
@@ -790,10 +901,10 @@ export function applyAttributeChanges(
 		} else {
 			// Fallback: replace first occurrence in the whole file
 			const doubleQuotePattern = new RegExp(
-				`(${escapeRegex(attributeName)}\\s*=\\s*)"(${escapeRegex(attrOldValue)})"`,
+				`(?<![\\w:-])(${escapeRegex(attributeName)}\\s*=\\s*)"(${escapeRegex(attrOldValue)})"`,
 			)
 			const singleQuotePattern = new RegExp(
-				`(${escapeRegex(attributeName)}\\s*=\\s*)'(${escapeRegex(attrOldValue)})'`,
+				`(?<![\\w:-])(${escapeRegex(attributeName)}\\s*=\\s*)'(${escapeRegex(attrOldValue)})'`,
 			)
 
 			const safeNewValue = escapeReplacement(attrNewValue)
@@ -820,21 +931,55 @@ export function applyTextChange(
 	change: ChangePayload,
 	manifest: CmsManifest,
 ): { success: true; content: string } | { success: false; error: string } {
-	const { sourceSnippet, originalValue, newValue, htmlValue } = change
+	const { sourceSnippet: recordedSnippet, originalValue, newValue, htmlValue } = change
 
-	if (!sourceSnippet || !originalValue) {
+	if (!recordedSnippet || !originalValue) {
 		if (change.attributeChanges && change.attributeChanges.length > 0) {
 			return { success: true, content }
 		}
 		return { success: false, error: 'Missing sourceSnippet or originalValue in change payload' }
 	}
 
-	if (!content.includes(sourceSnippet)) {
-		return { success: false, error: 'Source snippet not found in file' }
+	// An identical snippet can sit elsewhere in the file (a repeated card, the
+	// same heading twice), so the write is anchored at the element's own line.
+	const entry = manifest.entries[change.cmsId]
+	const pickIn = (snippet: string) => entry?.tag ? pickElement(snippet, findElements(snippet, 0, snippet.length, entry.tag), entry.text) : null
+
+	let lineSnippet = recordedSnippet
+	let lineSnippetAt = locateSnippet(content, lineSnippet, change.sourceLine)
+	if (lineSnippetAt < 0) {
+		// An earlier change in the same save can have rewritten this line already
+		// (a sibling on it, its colour). The element itself is unchanged, so it is
+		// looked up on its own.
+		const stale = pickIn(lineSnippet)
+		const elementSource = stale ? lineSnippet.slice(stale.start, stale.end) : ''
+		const at = elementSource ? locateSnippet(content, elementSource, change.sourceLine) : -1
+		if (at < 0) {
+			return { success: false, error: 'Source snippet not found in file' }
+		}
+		lineSnippet = elementSource
+		lineSnippetAt = at
 	}
 
-	const entry = manifest.entries[change.cmsId]
-	const insideYaml = isYamlValueSource(content, sourceSnippet, change.sourcePath)
+	const insideYaml = isYamlValueSource(content, lineSnippet, change.sourcePath, lineSnippetAt)
+	const snippetIsJavaScript = isJavaScriptSource(change.sourcePath)
+		&& (!!entry?.variableName || !looksLikeMarkup(lineSnippet))
+
+	// The snippet holds whole lines, which can carry the parent's `<ul>`, a
+	// sibling, or another element with the same words. Everything below works on
+	// the edited element alone, so a match can never land on its neighbours.
+	const element = !insideYaml && !snippetIsJavaScript ? pickIn(lineSnippet) : null
+	const sourceSnippet = element ? lineSnippet.slice(element.start, element.end) : lineSnippet
+	const snippetAt = lineSnippetAt + (element?.start ?? 0)
+	// Within the element, text lives between its tags: a `title="…"` with the
+	// same words must not take the edit.
+	const innerFrom = element && !element.void ? element.openEnd - element.start : 0
+	const innerTo = element && !element.void ? element.closeStart - element.start : sourceSnippet.length
+	const replaceInText = (search: string, replacement: string): string => {
+		const at = sourceSnippet.indexOf(search, innerFrom)
+		if (at < 0 || at + search.length > innerTo) return sourceSnippet
+		return sourceSnippet.slice(0, at) + replacement + sourceSnippet.slice(at + search.length)
+	}
 
 	// Never write HTML back into entries that don't allow styling — these are string props,
 	// collection fields, etc. where inline HTML would produce invalid source code. A missing
@@ -850,7 +995,7 @@ export function applyTextChange(
 	// returns the entire line, not just the individual child tag).
 	const placeholderPattern = /\{\{cms:[^}]+\}\}/g
 	if (placeholderPattern.test(originalValue)) {
-		return applyTextChangeWithPlaceholders(insideYaml, content, sourceSnippet, originalValue, newText)
+		return applyTextChangeWithPlaceholders(insideYaml, content, snippetAt, sourceSnippet, originalValue, newText)
 	}
 
 	// No placeholders — resolve and match directly
@@ -859,7 +1004,7 @@ export function applyTextChange(
 
 	// Every path below hands its result to `write`, so the frontmatter guard sits on
 	// all of them rather than on whichever one happened to be the last resort.
-	const write = (updatedSnippet: string) => writeSnippet(content, sourceSnippet, updatedSnippet, insideYaml, resolvedNewText)
+	const write = (updatedSnippet: string) => writeSnippet(content, snippetAt, sourceSnippet, updatedSnippet, insideYaml, resolvedNewText)
 
 	// A markup-free snippet in a JavaScript file is a frontmatter constant.
 	// Substituting the text verbatim there would write an unescaped apostrophe or
@@ -868,8 +1013,6 @@ export function applyTextChange(
 	// the same but escapes differently, and belongs to `tryYamlValueReplacement`.
 	// A traced variable is a definition whatever its snippet swept up; otherwise the
 	// snippet has to look markup-free on its own.
-	const snippetIsJavaScript = isJavaScriptSource(change.sourcePath)
-		&& (!!entry?.variableName || !looksLikeMarkup(sourceSnippet))
 	if (snippetIsJavaScript) {
 		const literalResult = tryJsStringLiteralChange(sourceSnippet, resolvedOriginal, resolvedNewText)
 		if (literalResult !== null) {
@@ -893,7 +1036,7 @@ export function applyTextChange(
 	}
 
 	// Replace resolvedOriginal with resolvedNewText WITHIN the sourceSnippet
-	const updatedSnippet = sourceSnippet.replace(resolvedOriginal, escapeReplacement(resolvedNewText))
+	const updatedSnippet = replaceInText(resolvedOriginal, resolvedNewText)
 
 	if (updatedSnippet === sourceSnippet) {
 		// Try YAML key-value replacement for multi-line frontmatter values
@@ -915,7 +1058,7 @@ export function applyTextChange(
 		}
 
 		// resolvedOriginal wasn't found in snippet - try HTML entity handling
-		const matchedText = findTextInSnippet(sourceSnippet, resolvedOriginal)
+		const matchedText = findTextInSnippet(sourceSnippet.slice(innerFrom, innerTo), resolvedOriginal)
 		if (matchedText) {
 			// Entity-aware matching means the source spells some characters as entities;
 			// the replacement has to keep that spelling. Splicing only the span that
@@ -929,7 +1072,7 @@ export function applyTextChange(
 				?? (/<[^>]+>/.test(resolvedNewText)
 					? encodeNbspLike(resolvedNewText, matchedText)
 					: encodeEntitiesLike(resolvedNewText, matchedText))
-			const updatedWithEntity = sourceSnippet.replace(matchedText, escapeReplacement(replacement))
+			const updatedWithEntity = replaceInText(matchedText, replacement)
 			return write(updatedWithEntity)
 		}
 		// Try inner content replacement for text spanning inline HTML elements
@@ -975,6 +1118,7 @@ export function applyTextChange(
 function applyTextChangeWithPlaceholders(
 	insideYaml: boolean,
 	content: string,
+	snippetAt: number,
 	sourceSnippet: string,
 	originalValue: string,
 	newText: string,
@@ -1020,7 +1164,7 @@ function applyTextChangeWithPlaceholders(
 		return { success: false, error: 'No text changes detected between original and new values' }
 	}
 
-	return writeSnippet(content, sourceSnippet, updatedSnippet, insideYaml, newText)
+	return writeSnippet(content, snippetAt, sourceSnippet, updatedSnippet, insideYaml, newText)
 }
 
 // ============================================================================
@@ -1043,7 +1187,7 @@ const YAML_FRONTMATTER_SOURCE = /\.(md|mdx|markdown)$/i
  * shape: a markdown *body* line reads `Poznámka: text` exactly like a mapping
  * entry, and running prose through the YAML serializer would quote it.
  */
-function isYamlValueSource(content: string, sourceSnippet: string, sourcePath: string | undefined): boolean {
+function isYamlValueSource(content: string, sourceSnippet: string, sourcePath: string | undefined, snippetAt?: number): boolean {
 	if (!sourcePath) return false
 	if (YAML_DOCUMENT_SOURCE.test(sourcePath)) return true
 	if (!YAML_FRONTMATTER_SOURCE.test(sourcePath)) return false
@@ -1051,7 +1195,8 @@ function isYamlValueSource(content: string, sourceSnippet: string, sourcePath: s
 	const block = frontmatterBlock(content)
 	if (!block) return false
 
-	const snippetStart = content.indexOf(sourceSnippet)
+	// The same line can sit in the frontmatter and again in the body.
+	const snippetStart = snippetAt ?? content.indexOf(sourceSnippet)
 	return snippetStart >= block.start && snippetStart + sourceSnippet.length <= block.end
 }
 
@@ -1257,14 +1402,17 @@ function spliceTextAcrossInlineMarkup(
 	const tokens = innerContent.split(/(<[^>]+>)/)
 	const isTag = (token: string) => token.startsWith('<')
 
-	// Offset of each text token within the concatenated plain text
-	const runs: Array<{ index: number; start: number; end: number }> = []
+	// Offset of each text token within the concatenated plain text. A run's
+	// source can spell characters as entities (`&ndash;`), so each one keeps the
+	// source offset of every decoded character.
+	const runs: Array<{ index: number; start: number; end: number; offsets: number[] }> = []
 	let plain = ''
 	for (let i = 0; i < tokens.length; i++) {
 		const token = tokens[i]!
 		if (isTag(token) || !token) continue
-		runs.push({ index: i, start: plain.length, end: plain.length + token.length })
-		plain += token
+		const { text, offsets } = decodeEntitiesWithOffsets(token)
+		runs.push({ index: i, start: plain.length, end: plain.length + text.length, offsets })
+		plain += text
 	}
 	if (plain !== originalText) return null
 
@@ -1296,9 +1444,9 @@ function spliceTextAcrossInlineMarkup(
 	if (!run) return null
 
 	const token = tokens[run.index]!
-	tokens[run.index] = token.slice(0, start - run.start)
+	tokens[run.index] = token.slice(0, run.offsets[start - run.start])
 		+ newText.slice(start, newEnd)
-		+ token.slice(originalEnd - run.start)
+		+ token.slice(run.offsets[originalEnd - run.start])
 	return tokens.join('')
 }
 
@@ -1322,10 +1470,7 @@ const ENTITY_ALTERNATIVES = new Map<string, string[]>([
 ])
 
 /**
- * Find the original text within a source snippet, accounting for HTML entities.
- */
-/**
- * Find the element inside a snippet whose text content is exactly `text`.
+ * The element inside a snippet whose text is exactly `text`.
  *
  * The whole snippet is tried first, then every element in it, preferring `tag`
  * when the manifest knows it. Returns the element split into its open tag, inner
@@ -1337,49 +1482,32 @@ function findElementByText(
 	text: string,
 	tag?: string,
 ): { before: string; openTag: string; innerContent: string; closeTag: string; after: string } | null {
-	const textOf = (inner: string) => inner.replace(/<[^>]+>/g, '')
-
 	const whole = snippet.match(/^(\s*<(\w+)\b[^>]*>)([\s\S]*)(<\/\2>\s*)$/)
-	if (whole && textOf(whole[3]!) === text) {
+	if (whole && plainTextOf(whole[3]!) === text) {
 		return { before: '', openTag: whole[1]!, innerContent: whole[3]!, closeTag: whole[4]!, after: '' }
 	}
 
-	const candidates: Array<{ before: string; openTag: string; innerContent: string; closeTag: string; after: string; tag: string }> = []
-	const openPattern = /<(\w+)\b[^>]*>/g
-	for (let open = openPattern.exec(snippet); open; open = openPattern.exec(snippet)) {
-		const name = open[1]!
-		if (open[0].endsWith('/>')) continue
-		const innerStart = open.index + open[0].length
-		// Walk same-named tags to find the close tag that balances this one.
-		const tagPattern = new RegExp(`<(/?)${name}\\b[^>]*>`, 'gi')
-		tagPattern.lastIndex = innerStart
-		let depth = 1
-		for (let t = tagPattern.exec(snippet); t; t = tagPattern.exec(snippet)) {
-			if (t[0].endsWith('/>')) continue
-			depth += t[1] ? -1 : 1
-			if (depth === 0) {
-				const innerContent = snippet.slice(innerStart, t.index)
-				if (textOf(innerContent) === text) {
-					candidates.push({
-						before: snippet.slice(0, open.index),
-						openTag: open[0],
-						innerContent,
-						closeTag: t[0],
-						after: snippet.slice(t.index + t[0].length),
-						tag: name.toLowerCase(),
-					})
-				}
-				break
-			}
-		}
-	}
-
-	const match = (tag && candidates.find(c => c.tag === tag.toLowerCase())) || candidates[0]
+	const candidates = findElements(snippet, 0, snippet.length)
+		.filter(span => plainTextOf(snippet.slice(span.openEnd, span.closeStart)) === text)
+	const match = candidates.find(span => span.tag === tag?.toLowerCase()) ?? candidates[0]
 	if (!match) return null
-	const { tag: _, ...element } = match
-	return element
+	return {
+		before: snippet.slice(0, match.start),
+		openTag: snippet.slice(match.start, match.openEnd),
+		innerContent: snippet.slice(match.openEnd, match.closeStart),
+		closeTag: snippet.slice(match.closeStart, match.end),
+		after: snippet.slice(match.end),
+	}
 }
 
+/** The text markup renders: tags dropped, entities decoded. */
+function plainTextOf(markup: string): string {
+	return decodeEntitiesWithOffsets(markup.replace(/<[^>]+>/g, '')).text
+}
+
+/**
+ * Find the original text within a source snippet, accounting for HTML entities.
+ */
 function findTextInSnippet(snippet: string, decodedText: string): string | null {
 	if (snippet.includes(decodedText)) {
 		return decodedText
@@ -1440,15 +1568,6 @@ function decodeEntitiesWithOffsets(source: string): { text: string; offsets: num
 	}
 	offsets.push(source.length)
 	return { text, offsets }
-}
-
-const NAMED_ENTITIES: Record<string, string> = {
-	amp: '&',
-	lt: '<',
-	gt: '>',
-	quot: '"',
-	apos: "'",
-	nbsp: '\u00A0',
 }
 
 function decodeEntityMatch(match: RegExpExecArray): string | undefined {
@@ -1554,7 +1673,7 @@ function resolveCmsPlaceholders(text: string, manifest: CmsManifest): string {
  * Returns the match with index and length, or null if not found.
  */
 function findExpressionAttribute(text: string, attr: string): { index: number; length: number } | null {
-	const exprStart = new RegExp(`${attr}\\s*=\\s*\\{`)
+	const exprStart = new RegExp(`(?<![\\w:-])${attr}\\s*=\\s*\\{`)
 	const match = text.match(exprStart)
 	if (!match || match.index === undefined) return null
 
@@ -1767,6 +1886,7 @@ function scalarSays(actual: unknown, expected: string): boolean {
  */
 function writeSnippet(
 	content: string,
+	snippetAt: number,
 	sourceSnippet: string,
 	updatedSnippet: string,
 	insideYaml: boolean,
@@ -1778,7 +1898,7 @@ function writeSnippet(
 			error: `"${expected.substring(0, 50)}" cannot be written into this frontmatter field without breaking it`,
 		}
 	}
-	return { success: true, content: content.replace(sourceSnippet, escapeReplacement(updatedSnippet)) }
+	return { success: true, content: content.slice(0, snippetAt) + updatedSnippet + content.slice(snippetAt + sourceSnippet.length) }
 }
 
 /**
