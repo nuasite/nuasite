@@ -143,6 +143,19 @@ const VIRTUAL_ADMIN_ENTRY = '/@nuasite/cms-admin-entry.js'
  */
 const DEFAULT_CDN_EDITOR_SRC = 'https://cdn.nuasite.com/script/latest/cms-editor.js'
 
+/**
+ * Tailwind's Vite plugin, for the editor styles when the editor is served from source (the monorepo, where
+ * `dist/editor.js` is not built). `@tailwindcss/vite` is only a dev dependency, so an installed package,
+ * which ships the bundle, never loads it.
+ *
+ * Imported here, at the top level. Astro evaluates the integration through a Vite module runner that it
+ * closes once the config is loaded, so an import made in `astro:config:setup` fails with "Vite module runner
+ * has been closed" (#116). A top-level await finishes while the config is still loading.
+ */
+const editorTailwind = existsSync(join(dirname(fileURLToPath(import.meta.url)), '../dist/editor.js'))
+	? undefined
+	: (await import('@tailwindcss/vite').catch(() => undefined))?.default
+
 export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 	const {
 		// CMS editor options
@@ -346,8 +359,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 						})
 
 						// Add Tailwind CSS Vite plugin for editor styles
-						const tailwindcss = (await import('@tailwindcss/vite')).default
-						vitePlugins.push(tailwindcss())
+						if (editorTailwind) vitePlugins.push(editorTailwind())
 					}
 				}
 
