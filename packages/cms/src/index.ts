@@ -4,27 +4,27 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createLocalStorageAdapter, createNodeFs, createPublicStaticFileChecker, parseProjectCmsConfig } from '@nuasite/cms-core'
-import { processBuildOutput } from './build-processor'
-import type { CollectionOverrides } from './collection-overrides'
-import { ComponentRegistry } from './component-registry'
-import { getProjectRoot, resetProjectRoot } from './config'
-import { createDevMiddleware } from './dev-middleware'
-import { getErrorCollector, resetErrorCollector } from './error-collector'
-import { ADMIN_ROUTE, createLocalAdminMiddleware } from './local-admin'
-import { ManifestWriter } from './manifest-writer'
-import { addMarkdownPlugins } from './markdown/processor'
-import { rehypeCmsMarker } from './markdown/rehype'
-import { resolveMarkerConfig } from './marker-config'
-import type { MediaStorageAdapter } from './media/types'
-import { type CmsMode, resolveCmsMode } from './mode'
-import { mergeCmsRedirectsInto } from './redirects'
-import { scanCollections } from './scan-cache'
-import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
-import { createVitePlugin } from './vite-plugin'
-import { inlineNuasitePackages, userExternals } from './vite-plugin-inline-nuasite'
+import { processBuildOutput } from './build-processor.ts'
+import type { CollectionOverrides } from './collection-overrides.ts'
+import { ComponentRegistry } from './component-registry.ts'
+import { getProjectRoot, resetProjectRoot } from './config.ts'
+import { createDevMiddleware } from './dev-middleware.ts'
+import { getErrorCollector, resetErrorCollector } from './error-collector.ts'
+import { ADMIN_ROUTE, createLocalAdminMiddleware } from './local-admin.ts'
+import { ManifestWriter } from './manifest-writer.ts'
+import { addMarkdownPlugins } from './markdown/processor.ts'
+import { rehypeCmsMarker } from './markdown/rehype.ts'
+import { resolveMarkerConfig } from './marker-config.ts'
+import type { MediaStorageAdapter } from './media/types.ts'
+import { type CmsMode, resolveCmsMode } from './mode.ts'
+import { mergeCmsRedirectsInto } from './redirects.ts'
+import { scanCollections } from './scan-cache.ts'
+import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types.ts'
+import { inlineNuasitePackages, userExternals } from './vite-plugin-inline-nuasite.ts'
+import { createVitePlugin } from './vite-plugin.ts'
 
-export { addMarkdownPlugins, unifiedOptionsOf } from './markdown/processor'
-export { cmsRemarkPlugins } from './markdown/remark'
+export { addMarkdownPlugins, unifiedOptionsOf } from './markdown/processor.ts'
+export { cmsRemarkPlugins } from './markdown/remark.ts'
 
 export interface NuaCmsOptions extends CmsMarkerOptions {
 	/**
@@ -208,7 +208,8 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				// Inject dev-only component preview route (prerender:false → SSR with query param access)
 				injectRoute({
 					pattern: '/_nua/preview',
-					entrypoint: new URL('./pages/component-preview.astro', import.meta.url).pathname,
+					// `../src/` resolves the same from src/ in the monorepo and from the published dist/.
+					entrypoint: new URL('../src/pages/component-preview.astro', import.meta.url).pathname,
 					prerender: false,
 				})
 
@@ -259,7 +260,8 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				}
 
 				const vitePlugins: any[] = [...(createVitePlugin(pluginContext) as any), inlineNuasitePackages({ keep: userExternals(config.vite) })]
-				const cmsDir = dirname(fileURLToPath(import.meta.url))
+				// The package root, whether this runs from src/ (monorepo) or from the published dist/.
+				const cmsDir = dirname(dirname(fileURLToPath(import.meta.url)))
 
 				// Local-mode (cms-headless F7): resolve the /_nua/admin SPA entry virtual
 				// module to src/admin/entry.tsx so Vite transforms it (TSX → JS, real
@@ -269,14 +271,14 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 						name: 'nuasite-cms-admin-entry',
 						resolveId(id: string) {
 							if (id === VIRTUAL_ADMIN_ENTRY) {
-								return join(cmsDir, 'admin/entry.tsx')
+								return join(cmsDir, 'src/admin/entry.tsx')
 							}
 						},
 					})
 				}
 
 				// Detect pre-built editor bundle (present when installed from npm)
-				const editorBundlePath = join(cmsDir, '../dist/editor.js')
+				const editorBundlePath = join(cmsDir, 'dist/editor.js')
 				const hasPrebuiltBundle = existsSync(editorBundlePath)
 
 				// Resolve which editor script dev-preview injects:
@@ -345,7 +347,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 							name: 'nuasite-cms-editor',
 							resolveId(id: string) {
 								if (id === VIRTUAL_CMS_PATH) {
-									return join(cmsDir, 'editor/index.tsx')
+									return join(cmsDir, 'src/editor/index.tsx')
 								}
 							},
 						})
@@ -482,17 +484,17 @@ export {
 	type Time,
 	type Url,
 	type VideoHints,
-} from './fields'
-export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, MediaStorageAdapter, MediaTypeFilter } from './media/types'
-export { type CmsMode, detectHostedFromEnv, resolveCmsMode } from './mode'
+} from './fields.ts'
+export type { MediaFolderItem, MediaItem, MediaListOptions, MediaListResult, MediaStorageAdapter, MediaTypeFilter } from './media/types.ts'
+export { type CmsMode, detectHostedFromEnv, resolveCmsMode } from './mode.ts'
 
 export { scanCollections } from '@nuasite/cms-core'
 export { createPublicStaticFileChecker } from '@nuasite/cms-core'
-export { collectionPagesByPathname } from './collection-pages'
-export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config'
-export { rehypeCmsMarker } from './markdown/rehype'
-export { type FieldMigration, migrateAstroImages, type MigrationOptions, type MigrationResult } from './migrate-astro-image'
-export { type ProjectAtRoot, projectAtRoot, runAtProjectRoot } from './project/at-root'
+export { collectionPagesByPathname } from './collection-pages.ts'
+export { getProjectRoot, resetProjectRoot, setProjectRoot } from './config.ts'
+export { rehypeCmsMarker } from './markdown/rehype.ts'
+export { type FieldMigration, migrateAstroImages, type MigrationOptions, type MigrationResult } from './migrate-astro-image.ts'
+export { type ProjectAtRoot, projectAtRoot, runAtProjectRoot } from './project/at-root.ts'
 export {
 	astroRedirectLines,
 	mergeCmsRedirectsInto,
@@ -500,8 +502,8 @@ export {
 	mergeRedirectsInto,
 	type MergeRedirectsIntoOptions,
 	type RedirectsLogger,
-} from './redirects'
-export { inlineNuasitePackages, userExternals } from './vite-plugin-inline-nuasite'
+} from './redirects.ts'
+export { inlineNuasitePackages, userExternals } from './vite-plugin-inline-nuasite.ts'
 /**
  * Scan the content collections of the current project (its root, or the one entered with
  * {@link runAtProjectRoot}). Unlike cms-core's `scanCollections`, it takes no filesystem and shares the
@@ -509,9 +511,9 @@ export { inlineNuasitePackages, userExternals } from './vite-plugin-inline-nuasi
  * change labels. Hand the result to {@link findCollectionSource} or {@link collectionPagesByPathname}
  * when resolving many pages in a row: without it, every call scans every collection again.
  */
-export { scanCollections as scanProjectCollections } from './scan-cache'
-export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder'
-export { findCollectionSource, parseMarkdownContent } from './source-finder'
+export { scanCollections as scanProjectCollections } from './scan-cache.ts'
+export type { CollectionInfo, MarkdownContent, SourceLocation, VariableReference } from './source-finder/index.ts'
+export { findCollectionSource, parseMarkdownContent } from './source-finder/index.ts'
 export type {
 	Attribute,
 	AvailableColors,
@@ -557,4 +559,4 @@ export type {
 	TailwindColor,
 	TextStyleValue,
 	TwitterCardData,
-} from './types'
+} from './types.ts'

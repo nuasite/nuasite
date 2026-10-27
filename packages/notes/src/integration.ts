@@ -2,9 +2,9 @@ import type { AstroIntegration } from 'astro'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createNotesDevMiddleware } from './dev/middleware'
-import { NotesJsonStore } from './storage/json-store'
-import type { NuaNotesOptions } from './types'
+import { createNotesDevMiddleware } from './dev/middleware.ts'
+import { NotesJsonStore } from './storage/json-store.ts'
+import type { NuaNotesOptions } from './types.ts'
 
 /**
  * `@nuasite/notes` Astro integration.
@@ -64,10 +64,11 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 				//     source `overlay/index.tsx` and let Vite compile it on the
 				//     fly using the JSX-pragma transform plugin below. preact is
 				//     resolved through the workspace devDependency.
-				const notesDirAbs = dirname(fileURLToPath(import.meta.url))
-				const overlayBundlePath = join(notesDirAbs, '../dist/overlay.js')
+				// The package root, whether this runs from src/ (monorepo) or from the published dist/.
+				const notesRoot = dirname(dirname(fileURLToPath(import.meta.url)))
+				const overlayBundlePath = join(notesRoot, 'dist/overlay.js')
 				const hasPrebuiltBundle = existsSync(overlayBundlePath)
-				const overlayEntry = join(notesDirAbs, 'overlay/index.tsx')
+				const overlayEntry = join(notesRoot, 'src/overlay/index.tsx')
 
 				// Inject a small loader on every page. It writes the runtime config
 				// (window.__NuaNotesConfig) and adds the overlay script tag once.
