@@ -18,18 +18,20 @@ export default defineConfig({
 			formats: ['es'],
 			fileName: () => 'overlay.js',
 		},
-		rollupOptions: {
+		rolldownOptions: {
 			output: {
-				inlineDynamicImports: true,
+				codeSplitting: false,
 			},
 		},
 		// Notes is dev-only and the overlay is small enough that minification
 		// adds little value while making debugging in DevTools harder.
 		minify: false,
 	},
-	esbuild: {
-		jsx: 'automatic',
-		jsxImportSource: 'preact',
+	oxc: {
+		jsx: {
+			runtime: 'automatic',
+			importSource: 'preact',
+		},
 	},
 	resolve: {
 		alias: {

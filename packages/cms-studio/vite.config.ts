@@ -18,9 +18,11 @@ export default defineConfig({
 		outDir: 'dist/spa',
 		emptyOutDir: true,
 	},
-	esbuild: {
-		jsx: 'automatic',
-		jsxImportSource: 'react',
+	oxc: {
+		jsx: {
+			runtime: 'automatic',
+			importSource: 'react',
+		},
 	},
 	resolve: {
 		dedupe: ['react', 'react-dom'],

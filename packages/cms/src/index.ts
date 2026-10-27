@@ -12,6 +12,7 @@ import { createDevMiddleware } from './dev-middleware'
 import { getErrorCollector, resetErrorCollector } from './error-collector'
 import { ADMIN_ROUTE, createLocalAdminMiddleware } from './local-admin'
 import { ManifestWriter } from './manifest-writer'
+import { addMarkdownPlugins } from './markdown/processor'
 import { rehypeCmsMarker } from './markdown/rehype'
 import { resolveMarkerConfig } from './marker-config'
 import type { MediaStorageAdapter } from './media/types'
@@ -21,6 +22,7 @@ import { scanCollections } from './scan-cache'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
 import { createVitePlugin } from './vite-plugin'
 
+export { addMarkdownPlugins, unifiedOptionsOf } from './markdown/processor'
 export { cmsRemarkPlugins } from './markdown/remark'
 
 export interface NuaCmsOptions extends CmsMarkerOptions {
@@ -198,7 +200,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 	return {
 		name: '@nuasite/cms',
 		hooks: {
-			'astro:config:setup': async ({ updateConfig, command, injectScript, injectRoute, logger }) => {
+			'astro:config:setup': async ({ config, updateConfig, command, injectScript, injectRoute, logger }) => {
 				// CMS is only needed during dev — skip all setup during build
 				if (command !== 'dev') return
 
@@ -348,7 +350,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 						})
 
 						// Prepend @jsxImportSource pragma for editor .tsx files
-						// so Vite's esbuild uses Preact's h function
+						// so Vite's Oxc uses Preact's h function
 						vitePlugins.push({
 							name: 'nuasite-cms-preact-jsx',
 							transform(code: string, id: string) {
@@ -376,10 +378,15 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				// (monorepo dev) — an external/CDN editor URL needs no module rewriting.
 				const needsAliases = servesBundledEditor
 
+				// Marks where rendered markdown starts, so the HTML processor can find the entry's wrapper.
+				if (!addMarkdownPlugins(config, { rehypePlugins: [rehypeCmsMarker] })) {
+					logger.warn(
+						`The "${config.markdown.processor.name}" markdown processor does not run rehype plugins, so markdown content is not marked`
+							+ ` for editing. Set \`markdown.processor: unified()\` from @astrojs/markdown-remark (@nuasite/nua does this by default).`,
+					)
+				}
+
 				updateConfig({
-					markdown: {
-						rehypePlugins: [rehypeCmsMarker],
-					},
 					vite: {
 						plugins: vitePlugins,
 						resolve: needsAliases

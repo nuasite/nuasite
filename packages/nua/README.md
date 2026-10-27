@@ -44,7 +44,7 @@ This single line gives you:
 - Sitemap generation via `@astrojs/sitemap`
 - CMS markers via `@nuasite/cms-marker`
 - Page markdown output via `@nuasite/llm-enhancements`
-- Sensible defaults: `site: 'http://localhost:4321'`, `vite.build.sourcemap: true`
+- Sensible defaults: `site: 'http://localhost:4321'`, `vite.build.sourcemap: true`, `compressHTML: true` (Astro 6's whitespace handling) and the `unified()` markdown processor (see [Markdown](#markdown))
 
 ### Configuration options
 
@@ -72,10 +72,28 @@ import { defineConfig } from '@nuasite/nua/config'
 export default defineConfig({
 	nua: {
 		sitemap: { filter: (page) => !page.includes('/draft/') },
-		mdx: { remarkPlugins: [myRemarkPlugin] },
 	},
 })
 ```
+
+### Markdown
+
+Astro 7 renders `.md` and `.mdx` with Sätteri by default, which does not run remark or rehype plugins. The CMS's directives (`:::list{.class}`, `::youtube{#id}`) and its markdown markers are remark and rehype plugins, so `defineConfig` sets `markdown.processor` to `unified()` from `@astrojs/markdown-remark`, and the integrations add their plugins to it. MDX uses the same processor.
+
+To add plugins of your own, pass your own `unified()`. The integrations add theirs to it:
+
+```ts
+import { unified } from '@astrojs/markdown-remark'
+import { defineConfig } from '@nuasite/nua/config'
+
+export default defineConfig({
+	markdown: {
+		processor: unified({ remarkPlugins: [myRemarkPlugin] }),
+	},
+})
+```
+
+With another processor (`satteri()`), the CMS directives do not render and markdown is not marked for editing. The dev server and build warn about it.
 
 ### Using the integration directly
 
@@ -90,6 +108,8 @@ export default defineConfig({
 	integrations: [nua()],
 })
 ```
+
+Astro's own `defineConfig` does not set nua's defaults. Set `markdown.processor: unified()` from `@astrojs/markdown-remark` for the CMS directives, and `compressHTML: true` to keep the whitespace between inline elements.
 
 ## Redirects
 

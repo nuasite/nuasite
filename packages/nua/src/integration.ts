@@ -1,7 +1,7 @@
 import mdx from '@astrojs/mdx'
 import sitemap from '@astrojs/sitemap'
 import checks from '@nuasite/checks'
-import cms, { cmsRemarkPlugins, mergeConfigRedirectsInto } from '@nuasite/cms'
+import cms, { addMarkdownPlugins, cmsRemarkPlugins, mergeConfigRedirectsInto } from '@nuasite/cms'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroConfig, AstroIntegration } from 'astro'
 import pageMarkdown from '../../llm-enhancements/src'
@@ -74,17 +74,23 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				// them: Astro deep-merges config updates, so it still renders its own meta-refresh pages.
 				capturedRedirects = config.redirects ?? {}
 
-				// Inject Vite plugins and integrations.
 				// CMS list-style directives (`:::list{.class}`) need `remark-directive`
-				// in the markdown pipeline — both to render `<ul class="class">` and to
+				// in the markdown pipeline, both to render `<ul class="class">` and to
 				// stop MDX from parsing the `{.class}` attributes as a JS expression
-				// (which crashes acorn). `@astrojs/mdx` inherits these via
-				// `extendMarkdownConfig` (default true).
+				// (which crashes acorn). `@astrojs/mdx` inherits the processor via
+				// `extendMarkdownConfig` (default true). `defineConfig` sets the `unified()`
+				// processor that runs them; a site that chose another one is told why
+				// directives do not render.
+				if (!addMarkdownPlugins(config, { remarkPlugins: cmsRemarkPlugins })) {
+					logger.warn(
+						`The "${config.markdown.processor.name}" markdown processor does not run remark plugins, so CMS directives`
+							+ ` (\`:::list{.class}\`, \`::youtube{#id}\`) do not render. Set \`markdown.processor: unified()\` from @astrojs/markdown-remark.`,
+					)
+				}
+
+				// Inject Vite plugins and integrations.
 				updateConfig({
 					redirects: {},
-					markdown: {
-						remarkPlugins: cmsRemarkPlugins,
-					},
 					vite: {
 						plugins: vitePlugins,
 						ssr: {

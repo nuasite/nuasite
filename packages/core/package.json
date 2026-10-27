@@ -23,8 +23,8 @@
 		"@astrojs/sitemap": "catalog:astro"
 	},
 	"peerDependencies": {
-		"@astrojs/check": "0.9.8",
-		"@astrojs/mdx": "5.0.3",
-		"@astrojs/sitemap": "3.7.2"
+		"@astrojs/check": "0.9.12",
+		"@astrojs/mdx": "8.1.1",
+		"@astrojs/sitemap": "3.7.4"
 	}
 }
