@@ -19,7 +19,7 @@
 		"nua": "src/index.ts"
 	},
 	"scripts": {
-		"build": "bun build --target=bun --outdir=dist --external lightningcss --external @vitejs/devtools src/index.ts",
+		"build": "bun build --target=bun --outdir=dist --external lightningcss --external @vitejs/devtools --external esbuild src/index.ts",
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
 	},
 	"dependencies": {
