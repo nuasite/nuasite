@@ -1,15 +1,15 @@
 import path from 'node:path'
 
-import { getProjectRoot } from '../config'
-import { projectFiles } from '../project/context'
-import { getCachedParsedFile } from './ast-parser'
-import { isSearchIndexInitialized } from './cache'
-import { searchForExpressionProp, searchForImportedValue, searchForPropInParents } from './cross-file-tracker'
-import { findElementWithText } from './element-finder'
-import { findInTextIndex } from './search-index'
-import { definitionSnippet, extractCompleteTagSnippet, extractOpeningTagSnippet } from './snippet-utils'
-import { astroFilesUnder, preferringFiles } from './source-files'
-import type { SourceLocation } from './types'
+import { getProjectRoot } from '../config.ts'
+import { projectFiles } from '../project/context.ts'
+import { getCachedParsedFile } from './ast-parser.ts'
+import { isSearchIndexInitialized } from './cache.ts'
+import { searchForExpressionProp, searchForImportedValue, searchForPropInParents } from './cross-file-tracker.ts'
+import { findElementWithText } from './element-finder.ts'
+import { findInTextIndex } from './search-index.ts'
+import { definitionSnippet, extractCompleteTagSnippet, extractOpeningTagSnippet } from './snippet-utils.ts'
+import { astroFilesUnder, preferringFiles } from './source-files.ts'
+import type { SourceLocation } from './types.ts'
 
 // ============================================================================
 // Main Source Location Finding

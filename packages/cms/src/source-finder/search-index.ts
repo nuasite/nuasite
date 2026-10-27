@@ -3,11 +3,11 @@ import { parse as parseBabel } from '@babel/parser'
 import type { Expression } from '@babel/types'
 import path from 'node:path'
 
-import { getProjectRoot } from '../config'
-import { currentProjectContext, projectFiles } from '../project/context'
-import { escapeRegex } from '../utils'
-import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
-import { getCachedParsedFile } from './ast-parser'
+import { getProjectRoot } from '../config.ts'
+import { currentProjectContext, projectFiles } from '../project/context.ts'
+import { escapeRegex } from '../utils.ts'
+import { buildDefinitionPath, parseExpressionPath } from './ast-extractors.ts'
+import { getCachedParsedFile } from './ast-parser.ts'
 import {
 	addToImageSearchIndex,
 	addToTextSearchIndex,
@@ -22,9 +22,9 @@ import {
 	removeFileFromIndexes,
 	setCollectionTextIndex,
 	setSearchIndexInitialized,
-} from './cache'
-import { definitionSnippet, extractAstroImageOriginalUrl, extractImageSnippet, normalizeText } from './snippet-utils'
-import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types'
+} from './cache.ts'
+import { definitionSnippet, extractAstroImageOriginalUrl, extractImageSnippet, normalizeText } from './snippet-utils.ts'
+import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from './types.ts'
 
 /** Collection data files live under this path — used to prefer them over templates */
 const CONTENT_DIR_PREFIX = 'src/content/'

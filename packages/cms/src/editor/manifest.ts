@@ -1,6 +1,6 @@
 import { type CollectionNavSection, resolveCollectionNav } from '@nuasite/cms-types'
-import type { MediaUploadContext } from '../types'
-import type { CmsManifest, CollectionDefinition, ComponentDefinition, ComponentInstance, FieldDefinition, ManifestEntry } from './types'
+import type { MediaUploadContext } from '../types.ts'
+import type { CmsManifest, CollectionDefinition, ComponentDefinition, ComponentInstance, FieldDefinition, ManifestEntry } from './types.ts'
 
 type GetManifestEntry = (manifest: CmsManifest, id: string) => ManifestEntry | undefined
 export const getManifestEntry: GetManifestEntry = (manifest, id) => manifest.entries[id]

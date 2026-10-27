@@ -1,4 +1,4 @@
-import type { Attribute, CmsFeatures, CmsManifest, CollectionDefinition, ComponentInstance, MediaUploadContext, RedirectRule } from '../types'
+import type { Attribute, CmsFeatures, CmsManifest, CollectionDefinition, ComponentInstance, MediaUploadContext, RedirectRule } from '../types.ts'
 
 // Re-export shared types from @nuasite/cms-marker (source of truth)
 export type {
@@ -29,7 +29,7 @@ export type {
 	TailwindColor,
 	TextStyleValue,
 	TwitterCardData,
-} from '../types'
+} from '../types.ts'
 
 export interface CmsThemeConfig {
 	// Colors
@@ -393,7 +393,7 @@ export interface MediaItem {
 	folder?: string
 }
 
-export type { MediaFolderItem, MediaTypeFilter } from '../media/types'
+export type { MediaFolderItem, MediaTypeFilter } from '../media/types.ts'
 
 export interface MediaLibraryState {
 	isOpen: boolean
@@ -435,7 +435,7 @@ export type {
 	RedirectOperationResponse,
 	RedirectRule,
 	UpdateRedirectRequest,
-} from '../types'
+} from '../types.ts'
 
 export interface RedirectsManagerState {
 	isOpen: boolean

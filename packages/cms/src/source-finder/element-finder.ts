@@ -1,8 +1,8 @@
 import type { ComponentNode, ElementNode, Node as AstroNode, TextNode } from '@astrojs/compiler/types'
 
-import { buildDefinitionPath, parseExpressionPath } from './ast-extractors'
-import { makeLeafPathRegex, resolveMapChain } from './search-index'
-import { normalizeText } from './snippet-utils'
+import { buildDefinitionPath, parseExpressionPath } from './ast-extractors.ts'
+import { makeLeafPathRegex, resolveMapChain } from './search-index.ts'
+import { normalizeText } from './snippet-utils.ts'
 import type {
 	ComponentPropMatch,
 	ExpressionPropMatch,
@@ -11,7 +11,7 @@ import type {
 	SpreadPropMatch,
 	TemplateMatch,
 	VariableDefinition,
-} from './types'
+} from './types.ts'
 
 // ============================================================================
 // Text Content Extraction

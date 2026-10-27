@@ -1,6 +1,6 @@
 import type { ParseCache } from '@nuasite/cms-core'
 import path from 'node:path'
-import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from '../source-finder/types'
+import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from '../source-finder/types.ts'
 
 /**
  * A collection's route info: a usable static URL prefix (e.g. '/blog/'), or

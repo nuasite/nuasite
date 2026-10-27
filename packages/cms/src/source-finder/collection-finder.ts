@@ -2,13 +2,13 @@ import { resolvePathnameFromSpec } from '@nuasite/cms-core'
 import path from 'node:path'
 import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument } from 'yaml'
 
-import { getProjectRoot } from '../config'
-import { currentProjectContext, projectFiles } from '../project/context'
-import { scanCollections } from '../scan-cache'
-import type { CollectionDefinition } from '../types'
-import { getCollectionTextIndex, getDeclaredUrlIndexCache, getMarkdownFileCache, setCollectionTextIndex } from './cache'
-import { normalizeText } from './snippet-utils'
-import type { CollectionInfo, MarkdownContent, SourceLocation } from './types'
+import { getProjectRoot } from '../config.ts'
+import { currentProjectContext, projectFiles } from '../project/context.ts'
+import { scanCollections } from '../scan-cache.ts'
+import type { CollectionDefinition } from '../types.ts'
+import { getCollectionTextIndex, getDeclaredUrlIndexCache, getMarkdownFileCache, setCollectionTextIndex } from './cache.ts'
+import { normalizeText } from './snippet-utils.ts'
+import type { CollectionInfo, MarkdownContent, SourceLocation } from './types.ts'
 
 // ============================================================================
 // Collection Text Index — pre-built reverse index for fast text→source lookups

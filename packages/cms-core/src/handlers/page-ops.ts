@@ -1,6 +1,6 @@
 import type { CreatePageRequest, DeletePageRequest, DuplicatePageRequest, LayoutInfo, PageOperationResponse } from '@nuasite/cms-types'
-import type { CmsFileSystem } from '../fs/types'
-import { escapeHtml, slugify } from '../shared'
+import type { CmsFileSystem } from '../fs/types.ts'
+import { escapeHtml, slugify } from '../shared.ts'
 
 const PAGE_EXTENSIONS = ['.astro', '.md', '.mdx']
 

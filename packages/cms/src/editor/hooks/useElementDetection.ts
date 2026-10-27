@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { CSS, LAYOUT, TIMING } from '../constants'
-import { getCmsElementAtPosition, getComponentAtPosition, isNearElementEdge } from '../dom'
-import { getComponentInstance } from '../manifest'
-import * as signals from '../signals'
-import type { SelectedElement } from '../signals'
-import { isEventOnCmsUI, usePositionTracking } from './utils'
+import { CSS, LAYOUT, TIMING } from '../constants.ts'
+import { getCmsElementAtPosition, getComponentAtPosition, isNearElementEdge } from '../dom.ts'
+import { getComponentInstance } from '../manifest.ts'
+import * as signals from '../signals.ts'
+import type { SelectedElement } from '../signals.ts'
+import { isEventOnCmsUI, usePositionTracking } from './utils.ts'
 
 export interface OutlineState {
 	visible: boolean

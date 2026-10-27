@@ -1,8 +1,8 @@
 import type { AstroIntegration } from 'astro'
 import fs from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import type { PageMeta, RedirectMeta } from './types'
-import { extractMetaFromHtml, formatDestination, normalizeRoute, resolveHtmlPath, updateAgentsSummary } from './utils'
+import type { PageMeta, RedirectMeta } from './types.ts'
+import { extractMetaFromHtml, formatDestination, normalizeRoute, resolveHtmlPath, updateAgentsSummary } from './utils.ts'
 
 export const agentsSummary = (): AstroIntegration => {
 	const redirectPathnames = new Set<string>()

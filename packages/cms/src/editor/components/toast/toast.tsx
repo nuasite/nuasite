@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'preact/hooks'
-import { TIMING } from '../../constants'
-import type { ToastMessage } from './types'
+import { TIMING } from '../../constants.ts'
+import type { ToastMessage } from './types.ts'
 
 interface ToastProps extends ToastMessage {
 	onRemove: (id: string) => void

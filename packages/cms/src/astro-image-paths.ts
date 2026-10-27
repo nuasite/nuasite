@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
-import { projectFiles } from './project/context'
+import { projectFiles } from './project/context.ts'
 
 const HUGO_INDEX_RE = /^index\.(md|mdx)$/i
 

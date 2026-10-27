@@ -1,13 +1,13 @@
 import type { ComponentChildren, FunctionComponent } from 'preact'
 import { useRef, useState } from 'preact/hooks'
-import { CMS_VERSION, Z_INDEX } from '../constants'
-import { cn } from '../lib/cn'
-import { getCollectionNavList } from '../manifest'
-import * as signals from '../signals'
-import { showConfirmDialog } from '../signals'
-import { STRINGS } from '../strings'
-import type { CollectionDefinition } from '../types'
-import { Spinner } from './spinner'
+import { CMS_VERSION, Z_INDEX } from '../constants.ts'
+import { cn } from '../lib/cn.ts'
+import { getCollectionNavList } from '../manifest.ts'
+import * as signals from '../signals.ts'
+import { showConfirmDialog } from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import type { CollectionDefinition } from '../types.ts'
+import { Spinner } from './spinner.tsx'
 
 export interface ToolbarCallbacks {
 	onEdit: () => void

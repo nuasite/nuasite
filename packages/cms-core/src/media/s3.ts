@@ -1,9 +1,9 @@
 import type { MediaFolderItem, MediaListResult, MediaStorageAdapter, MediaUploadResult } from '@nuasite/cms-types'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import { MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID } from './errors'
-import { getFileExtension, mimeFromExt } from './mime'
-import { hasDotSegment, isUnsafeFolder } from './names'
+import { MEDIA_INVALID_FOLDER, MEDIA_INVALID_ID } from './errors.ts'
+import { getFileExtension, mimeFromExt } from './mime.ts'
+import { hasDotSegment, isUnsafeFolder } from './names.ts'
 
 /*
  * S3 keys are literal, so `.` and `..` name nothing special there. Whatever sits in

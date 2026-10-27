@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'preact/hooks'
-import { logDebug } from '../dom'
-import { getComponentInstances } from '../manifest'
-import * as signals from '../signals'
-import { STRINGS } from '../strings'
-import type { CmsConfig, CmsManifest, ComponentInstance, InsertPosition } from '../types'
+import { logDebug } from '../dom.ts'
+import { getComponentInstances } from '../manifest.ts'
+import * as signals from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import type { CmsConfig, CmsManifest, ComponentInstance, InsertPosition } from '../types.ts'
 
 /**
  * Detect whether a component is rendered from a data array via `.map()`.

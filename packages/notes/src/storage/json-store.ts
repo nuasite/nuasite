@@ -14,9 +14,9 @@
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { generateNoteId } from './id-gen'
-import { normalizePagePath, pageToSlug } from './slug'
-import type { NoteHistoryAction, NoteHistoryEntry, NoteItem, NoteItemPatch, NoteRole, NotesPageFile } from './types'
+import { generateNoteId } from './id-gen.ts'
+import { normalizePagePath, pageToSlug } from './slug.ts'
+import type { NoteHistoryAction, NoteHistoryEntry, NoteItem, NoteItemPatch, NoteRole, NotesPageFile } from './types.ts'
 
 const FILE_VERSION_HEADER = '// @nuasite/notes v1\n'
 
@@ -58,8 +58,10 @@ export interface JsonStoreOptions {
 
 export class NotesJsonStore {
 	private readonly pagesDir: string
+	private readonly options: JsonStoreOptions
 
-	constructor(private readonly options: JsonStoreOptions) {
+	constructor(options: JsonStoreOptions) {
+		this.options = options
 		this.pagesDir = path.resolve(options.projectRoot, options.notesDir, 'pages')
 	}
 

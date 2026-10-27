@@ -6,9 +6,9 @@ import { render } from 'preact'
 import remarkMdx from 'remark-mdx'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
-import { MdxBlockCard } from './components/mdx-block-view'
-import { getComponentDefinition } from './manifest'
-import { manifest } from './signals'
+import { MdxBlockCard } from './components/mdx-block-view.tsx'
+import { getComponentDefinition } from './manifest.ts'
+import { manifest } from './signals.ts'
 
 /** Prefix used to distinguish expression attributes from string literals in serialized props */
 export const MDX_EXPR_PREFIX = '__mdx_expr__:'

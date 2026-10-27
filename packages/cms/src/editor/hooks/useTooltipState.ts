@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'preact/hooks'
-import { CSS } from '../constants'
-import * as signals from '../signals'
+import { CSS } from '../constants.ts'
+import * as signals from '../signals.ts'
 
 export interface TooltipState {
 	elementId: string | null

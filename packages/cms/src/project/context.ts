@@ -3,8 +3,8 @@ import type { parse } from '@astrojs/compiler'
 import { type CmsCommit, type CmsFileSystem, createStagedFileSystem } from '@nuasite/cms-core'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import path from 'node:path'
-import { createProjectFiles, type ProjectFiles } from './files'
-import { ProjectState } from './state'
+import { createProjectFiles, type ProjectFiles } from './files.ts'
+import { ProjectState } from './state.ts'
 
 export type AstroParse = typeof parse
 

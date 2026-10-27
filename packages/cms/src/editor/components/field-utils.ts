@@ -1,4 +1,4 @@
-import type { FieldDefinition } from '../types'
+import type { FieldDefinition } from '../types.ts'
 
 export function partitionFields(fields: FieldDefinition[]): { sidebar: FieldDefinition[]; header: FieldDefinition[] } {
 	const sidebar: FieldDefinition[] = []

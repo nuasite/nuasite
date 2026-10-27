@@ -46,8 +46,8 @@
 		}
 	},
 	"scripts": {
-		"build": "bun build --target=bun --outdir=dist src/cli.ts",
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
+		"build": "bun build --target=bun --outfile=dist/cli.bundle.js src/cli.ts",
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts --compiled-exports"
 	},
 	"keywords": [
 		"cms",

@@ -1,12 +1,12 @@
 import { newEntryFrontmatter } from '@nuasite/cms-core/editor-write-model'
 import { batch, computed, effect, type Signal, signal } from '@preact/signals'
-import { applyDerivedTransform } from '../shared'
-import { fetchManifest, getMarkdownContent } from './api'
-import type { ToastMessage, ToastType } from './components/toast/types'
-import { getConfig } from './config'
-import { buildOpenEntryMessage, buildOpenEntryMessageForFile, isEditedInHost, postToParent } from './post-message'
-import { clearMarkdownDraft, hasPendingEntryNavigation, loadMarkdownDraft, loadPendingEntryNavigation, saveMarkdownDraft } from './storage'
-import { STRINGS } from './strings'
+import { applyDerivedTransform } from '../shared.ts'
+import { fetchManifest, getMarkdownContent } from './api.ts'
+import type { ToastMessage, ToastType } from './components/toast/types.ts'
+import { getConfig } from './config.ts'
+import { buildOpenEntryMessage, buildOpenEntryMessageForFile, isEditedInHost, postToParent } from './post-message.ts'
+import { clearMarkdownDraft, hasPendingEntryNavigation, loadMarkdownDraft, loadPendingEntryNavigation, saveMarkdownDraft } from './storage.ts'
+import { STRINGS } from './strings.ts'
 import type {
 	AttributeEditorState,
 	BlockEditorState,
@@ -37,7 +37,7 @@ import type {
 	PendingSeoChange,
 	RedirectsManagerState,
 	SeoEditorState,
-} from './types'
+} from './types.ts'
 
 // ============================================================================
 // Map Signal Helpers - reduces boilerplate for Map-based signals
@@ -835,7 +835,7 @@ export function setMarkdownActiveElement(elementId: string | null): void {
 	}
 }
 
-export function updateMarkdownFrontmatter(updates: Partial<import('./types').BlogFrontmatter>): void {
+export function updateMarkdownFrontmatter(updates: Partial<import('./types.ts').BlogFrontmatter>): void {
 	if (markdownEditorState.value.currentPage) {
 		// Auto-sync derived fields (e.g. categoryHref from category)
 		const derivedUpdates = computeDerivedUpdates(updates)
@@ -1106,7 +1106,7 @@ async function openPageEntryInMarkdownEditor(wanted: (entry: CollectionEntry) =>
 		currentPage: {
 			filePath: collection.sourcePath,
 			slug: collection.collectionSlug,
-			frontmatter: recovered.frontmatter as import('./types').BlogFrontmatter,
+			frontmatter: recovered.frontmatter as import('./types.ts').BlogFrontmatter,
 			content: recovered.content,
 			isDirty: recovered.isDirty,
 		},
@@ -1486,8 +1486,8 @@ export function openAttributeEditor(elementId: string, rect: DOMRect): void {
 		const manifestEntry = manifest.value.entries[elementId]
 		if (manifestEntry?.attributes && Object.keys(manifestEntry.attributes).length > 0) {
 			// Deep copy the flat attributes map
-			const originalAttributes: Record<string, import('./types').Attribute> = {}
-			const newAttributes: Record<string, import('./types').Attribute> = {}
+			const originalAttributes: Record<string, import('./types.ts').Attribute> = {}
+			const newAttributes: Record<string, import('./types.ts').Attribute> = {}
 			for (const [key, attr] of Object.entries(manifestEntry.attributes)) {
 				originalAttributes[key] = { ...attr }
 				newAttributes[key] = { ...attr }

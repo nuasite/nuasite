@@ -1,13 +1,13 @@
 import type { ComponentNode, ElementNode, Node as AstroNode } from '@astrojs/compiler/types'
 import path from 'node:path'
 
-import { getProjectRoot } from '../config'
-import { projectFiles } from '../project/context'
-import { getCachedParsedFile } from './ast-parser'
-import { isSearchIndexInitialized } from './cache'
-import { findInImageIndex } from './search-index'
-import { extractImageSnippet } from './snippet-utils'
-import type { ImageMatch, SourceLocation } from './types'
+import { getProjectRoot } from '../config.ts'
+import { projectFiles } from '../project/context.ts'
+import { getCachedParsedFile } from './ast-parser.ts'
+import { isSearchIndexInitialized } from './cache.ts'
+import { findInImageIndex } from './search-index.ts'
+import { extractImageSnippet } from './snippet-utils.ts'
+import type { ImageMatch, SourceLocation } from './types.ts'
 
 // ============================================================================
 // Image Element Finding

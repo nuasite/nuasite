@@ -6,8 +6,8 @@ import type {
 	RedirectRule,
 	UpdateRedirectRequest,
 } from '@nuasite/cms-types'
-import type { CmsFileSystem } from '../fs/types'
-import { CMS_REDIRECTS_FILE, parseRedirectRule } from '../redirects'
+import type { CmsFileSystem } from '../fs/types.ts'
+import { CMS_REDIRECTS_FILE, parseRedirectRule } from '../redirects.ts'
 
 const DEFAULT_STATUS_CODE = 307
 const REDIRECTS_FILE = CMS_REDIRECTS_FILE

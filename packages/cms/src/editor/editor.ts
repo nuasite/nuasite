@@ -1,6 +1,6 @@
-import type { CmsOpenEntryMessage } from '../types'
-import { fetchManifest, getMarkdownContent, saveBatchChanges } from './api'
-import { CSS, TIMING } from './constants'
+import type { CmsOpenEntryMessage } from '../types.ts'
+import { fetchManifest, getMarkdownContent, saveBatchChanges } from './api.ts'
+import { CSS, TIMING } from './constants.ts'
 import {
 	cleanupHighlightSystem,
 	disableAllInteractiveElements,
@@ -15,12 +15,12 @@ import {
 	logDebug,
 	makeElementEditable,
 	makeElementNonEditable,
-} from './dom'
-import { entryHandoverFor, findOwnerEntry } from './entry-handover'
-import { clearHistory, forgetHistory, isApplyingUndoRedo, recordChange, recordTextChange } from './history'
-import { getManifestEntryCount, hasManifestEntry } from './manifest'
-import { postToParent } from './post-message'
-import * as signals from './signals'
+} from './dom.ts'
+import { entryHandoverFor, findOwnerEntry } from './entry-handover.ts'
+import { clearHistory, forgetHistory, isApplyingUndoRedo, recordChange, recordTextChange } from './history.ts'
+import { getManifestEntryCount, hasManifestEntry } from './manifest.ts'
+import { postToParent } from './post-message.ts'
+import * as signals from './signals.ts'
 import {
 	clearAllEditsFromStorage,
 	loadAttributeEditsFromStorage,
@@ -36,10 +36,10 @@ import {
 	saveEditingState,
 	saveEditsToStorage,
 	saveImageEditsToStorage,
-} from './storage'
-import { STRINGS } from './strings'
-import type { Attribute } from './types'
-import type { AttributeChangePayload, ChangePayload, CmsConfig, ManifestEntry, SavedAttributeEdit } from './types'
+} from './storage.ts'
+import { STRINGS } from './strings.ts'
+import type { Attribute } from './types.ts'
+import type { AttributeChangePayload, ChangePayload, CmsConfig, ManifestEntry, SavedAttributeEdit } from './types.ts'
 
 // CSS attribute for markdown content elements
 const MARKDOWN_ATTRIBUTE = 'data-cms-markdown'
@@ -839,7 +839,7 @@ export function discardAllChanges(onStateChange?: () => void): void {
 }
 
 function findSeoSourceById(
-	seoData: import('./types').PageSeoData | undefined,
+	seoData: import('./types.ts').PageSeoData | undefined,
 	id: string,
 ): { sourcePath: string; sourceLine: number; sourceSnippet: string; content: string } | null {
 	if (!seoData) return null
@@ -1056,7 +1056,7 @@ export async function saveAllChanges(
 
 		// Add SEO changes to the payload
 		dirtySeoChanges.forEach(([cmsId, change]) => {
-			const seoData = (manifest as any).seo as import('./types').PageSeoData | undefined
+			const seoData = (manifest as any).seo as import('./types.ts').PageSeoData | undefined
 			const sourceInfo = findSeoSourceById(seoData, cmsId)
 			changes.push({
 				cmsId,
@@ -1290,7 +1290,7 @@ function setupMarkdownClickHandler(
 			signals.setMarkdownPage({
 				filePath: result.filePath,
 				slug: entry.collectionSlug || '',
-				frontmatter: result.frontmatter as import('./types').BlogFrontmatter,
+				frontmatter: result.frontmatter as import('./types.ts').BlogFrontmatter,
 				content: result.content,
 				isDirty: false,
 			})
@@ -1314,7 +1314,7 @@ function setupImageClickHandler(
 	config: CmsConfig,
 	el: HTMLImageElement,
 	cmsId: string,
-	savedEdit: import('./types').SavedImageEdit | undefined,
+	savedEdit: import('./types.ts').SavedImageEdit | undefined,
 	signal: AbortSignal,
 	onStateChange?: () => void,
 ): void {
@@ -1416,7 +1416,7 @@ function setupColorTracking(
 	config: CmsConfig,
 	el: HTMLElement,
 	cmsId: string,
-	savedEdit: import('./types').SavedColorEdit | undefined,
+	savedEdit: import('./types.ts').SavedColorEdit | undefined,
 ): void {
 	// Get the manifest entry to find the color classes
 	const manifest = signals.manifest.value
@@ -1475,7 +1475,7 @@ function setupBgImageTracking(
 	config: CmsConfig,
 	el: HTMLElement,
 	cmsId: string,
-	savedEdit: import('./types').SavedBackgroundImageEdit | undefined,
+	savedEdit: import('./types.ts').SavedBackgroundImageEdit | undefined,
 ): void {
 	const manifest = signals.manifest.value
 	const entry = manifest.entries[cmsId]

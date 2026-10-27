@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { compileExports } from './compiled-exports.ts'
 
 type J = Record<string, any>
 const FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
@@ -158,6 +159,14 @@ const ledgerPath = path.join(ledgerDir, Buffer.from(pkgDir).toString('base64url'
 fs.writeFileSync(ledgerPath, fs.readFileSync(pkgFile, 'utf8'))
 
 const unresolved = rewriteManifest(pkgFile, versions, catalogs)
+
+// A compiled package publishes its dist/ entry points (see compiled-exports.ts).
+if (process.argv.includes('--compiled-exports')) {
+	const json = readJSON(pkgFile)
+	const missing = compileExports(json, pkgDir)
+	fs.writeFileSync(pkgFile, JSON.stringify(json, null, 2) + '\n')
+	for (const target of missing) unresolved.push(`exports: ${target} was not built`)
+}
 
 // fail-fast if any workspace or catalog remains
 const after = fs.readFileSync(pkgFile, 'utf8')

@@ -4,9 +4,9 @@ import {
 	destroyHighlightContainer,
 	initHighlightContainer,
 	setElementHighlight,
-} from './components/highlight-overlay'
-import { CSS } from './constants'
-import type { ChildCmsElement } from './types'
+} from './components/highlight-overlay.ts'
+import { CSS } from './constants.ts'
+import type { ChildCmsElement } from './types.ts'
 
 /**
  * Parse an rgb/rgba color string into r, g, b components.

@@ -7,8 +7,8 @@ import {
 	parseColorClass,
 	SPECIAL_COLORS,
 	STANDARD_SHADES,
-} from '../color-patterns'
-import type { Attribute, AvailableColors } from './types'
+} from '../color-patterns.ts'
+import type { Attribute, AvailableColors } from './types.ts'
 
 // Re-export shared detection logic for consumers
 export {
@@ -21,7 +21,7 @@ export {
 	parseColorClass,
 	SPECIAL_COLORS,
 	STANDARD_SHADES,
-} from '../color-patterns'
+} from '../color-patterns.ts'
 
 /**
  * Map of Tailwind color names to their CSS color values for preview.

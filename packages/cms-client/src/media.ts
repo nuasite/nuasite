@@ -18,7 +18,7 @@
  */
 
 import type { FieldType } from '@nuasite/cms-types'
-import type { CmsClient } from './client'
+import type { CmsClient } from './client.ts'
 
 /** The field types whose value is a media reference and whose editor is a media picker. */
 export type MediaFieldType = Extract<FieldType, 'image' | 'file' | 'video'>

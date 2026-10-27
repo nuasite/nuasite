@@ -1,4 +1,4 @@
-import type { ProjectContext } from './context'
+import type { ProjectContext } from './context.ts'
 
 // Where there is no Node filesystem (the `workerd` condition) there is no project at the working
 // directory: every call runs inside a context a host entered with `runInProjectContext`.

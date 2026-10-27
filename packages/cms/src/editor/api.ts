@@ -1,6 +1,6 @@
-import { API } from './constants'
-import { fetchWithTimeout } from './fetch'
-import { setAvailableTextStyles } from './text-styling'
+import { API } from './constants.ts'
+import { fetchWithTimeout } from './fetch.ts'
+import { setAvailableTextStyles } from './text-styling.ts'
 import type {
 	CmsManifest,
 	ComponentInsertOperation,
@@ -8,7 +8,7 @@ import type {
 	SaveBatchResponse,
 	UpdateMarkdownPageRequest,
 	UpdateMarkdownPageResponse,
-} from './types'
+} from './types.ts'
 
 /**
  * Response from fetching markdown content

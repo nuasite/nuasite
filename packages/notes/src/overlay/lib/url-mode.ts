@@ -11,7 +11,7 @@
  * controls vs the read-only client view.
  */
 
-import type { NoteRole } from '../types'
+import type { NoteRole } from '../types.ts'
 
 const MODE_COOKIE = 'nua-notes-mode'
 const ROLE_COOKIE = 'nua-notes-role'

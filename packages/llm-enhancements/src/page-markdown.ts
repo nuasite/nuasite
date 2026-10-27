@@ -1,8 +1,8 @@
-import { type CollectionPages, getCollectionContent } from './cms-marker'
-import type { HtmlToMarkdownResult } from './html-to-markdown'
-import { createCollectionOutput, createStaticOutput } from './markdown-generator'
-import type { MarkdownSyntax } from './mdx'
-import type { MarkdownOutput, ResolvedOptions } from './types'
+import { type CollectionPages, getCollectionContent } from './cms-marker.ts'
+import type { HtmlToMarkdownResult } from './html-to-markdown.ts'
+import { createCollectionOutput, createStaticOutput } from './markdown-generator.ts'
+import type { MarkdownSyntax } from './mdx.ts'
+import type { MarkdownOutput, ResolvedOptions } from './types.ts'
 
 /** What a page is resolved against: the pages that render an entry, and how the site parses markdown. */
 export interface SiteContent {

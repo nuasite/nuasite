@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { slugify } from '../../shared'
-import { getCollectionNavList } from '../manifest'
-import { checkSlugExists, createPage, duplicatePage, getLayouts } from '../markdown-api'
+import { slugify } from '../../shared.ts'
+import { getCollectionNavList } from '../manifest.ts'
+import { checkSlugExists, createPage, duplicatePage, getLayouts } from '../markdown-api.ts'
 import {
 	config,
 	createPageMode,
@@ -13,10 +13,10 @@ import {
 	setCreatePageMode,
 	setCreatingPage,
 	showToast,
-} from '../signals'
-import type { CollectionDefinition, LayoutInfo } from '../types'
-import { CancelButton, ModalBackdrop, ModalFooter, ModalHeader } from './modal-shell'
-import { Spinner } from './spinner'
+} from '../signals.ts'
+import type { CollectionDefinition, LayoutInfo } from '../types.ts'
+import { CancelButton, ModalBackdrop, ModalFooter, ModalHeader } from './modal-shell.tsx'
+import { Spinner } from './spinner.tsx'
 
 export function CreatePageModal() {
 	const visible = isCreatePageOpen.value

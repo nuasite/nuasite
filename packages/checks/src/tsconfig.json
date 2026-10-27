@@ -1,6 +1,10 @@
 {
 	"extends": "../tsconfig.settings.json",
 	"compilerOptions": {
-		"outDir": "../dist/types"
+		"outDir": "../dist",
+		"rootDir": ".",
+		// Compiled JS is what the published package runs (see scripts/workspace-deps).
+		"emitDeclarationOnly": false,
+		"rewriteRelativeImportExtensions": true
 	}
 }

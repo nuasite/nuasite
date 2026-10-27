@@ -10,8 +10,8 @@
  * the URL helpers maintain.
  */
 
-import type { NoteItem, NoteRange, NotesPageFile, NoteStatus, NoteType } from '../types'
-import { resolveRole } from './url-mode'
+import type { NoteItem, NoteRange, NotesPageFile, NoteStatus, NoteType } from '../types.ts'
+import { resolveRole } from './url-mode.ts'
 
 const BASE = '/_nua/notes'
 const TIMEOUT_MS = 10_000

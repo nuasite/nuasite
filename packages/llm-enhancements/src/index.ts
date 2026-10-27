@@ -1,7 +1,7 @@
 import type { AstroConfig, AstroIntegration } from 'astro'
-import { processBuildOutput } from './build-processor'
-import { createDevMiddleware } from './dev-middleware'
-import { type PageMarkdownOptions, resolveOptions } from './types'
+import { processBuildOutput } from './build-processor.ts'
+import { createDevMiddleware } from './dev-middleware.ts'
+import { type PageMarkdownOptions, resolveOptions } from './types.ts'
 
 export default function pageMarkdown(options: PageMarkdownOptions = {}): AstroIntegration {
 	const resolvedOptions = resolveOptions(options)
@@ -27,4 +27,4 @@ export default function pageMarkdown(options: PageMarkdownOptions = {}): AstroIn
 	}
 }
 
-export type { LlmEndpointOptions, LlmsTxtOptions, MarkdownOutput, PageMarkdownOptions } from './types'
+export type { LlmEndpointOptions, LlmsTxtOptions, MarkdownOutput, PageMarkdownOptions } from './types.ts'

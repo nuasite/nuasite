@@ -22,7 +22,7 @@
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { NoteItem } from '../storage/types'
+import type { NoteItem } from '../storage/types.ts'
 
 export type ApplyResult =
 	| { ok: true; file: string; before: string; after: string }

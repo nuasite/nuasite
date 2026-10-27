@@ -2,9 +2,9 @@ import { parse } from '@astrojs/compiler'
 import { type CmsFileSystem, createNodeFs } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { ProjectContext } from './context'
-import type { ProjectFiles } from './files'
-import { ProjectState } from './state'
+import type { ProjectContext } from './context.ts'
+import type { ProjectFiles } from './files.ts'
+import { ProjectState } from './state.ts'
 
 // The context of the Astro integration and of code that runs outside any host context: the
 // project at the working directory (or the root set with `setProjectRoot`), on `node:fs`.

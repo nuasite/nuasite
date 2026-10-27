@@ -1,17 +1,17 @@
 import { type CmsCommit, type CmsFileSystem, createCmsCore, parseProjectCmsConfig } from '@nuasite/cms-core'
 import path from 'node:path'
-import type { CollectionOverrides } from './collection-overrides'
-import { ComponentRegistry } from './component-registry'
-import { EditorService, invalidateCollectionRoutesCache } from './editor-service'
-import { errorResponse, jsonResponse, preflightResponse } from './handlers/request-utils'
-import type { NuaCmsOptions } from './index'
-import { ManifestWriter } from './manifest-writer'
-import { resolveMarkerConfig } from './marker-config'
-import type { MediaStorageAdapter } from './media/types'
-import { type AstroParse, createProjectContext, runInProjectContext } from './project/context'
-import { reloadClientScript } from './reload-client'
-import { scanCollections } from './scan-cache'
-import type { CmsMarkerOptions, ComponentDefinition } from './types'
+import type { CollectionOverrides } from './collection-overrides.ts'
+import { ComponentRegistry } from './component-registry.ts'
+import { EditorService, invalidateCollectionRoutesCache } from './editor-service.ts'
+import { errorResponse, jsonResponse, preflightResponse } from './handlers/request-utils.ts'
+import type { NuaCmsOptions } from './index.ts'
+import { ManifestWriter } from './manifest-writer.ts'
+import { resolveMarkerConfig } from './marker-config.ts'
+import type { MediaStorageAdapter } from './media/types.ts'
+import { type AstroParse, createProjectContext, runInProjectContext } from './project/context.ts'
+import { reloadClientScript } from './reload-client.ts'
+import { scanCollections } from './scan-cache.ts'
+import type { CmsMarkerOptions, ComponentDefinition } from './types.ts'
 
 const DEFAULT_MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 const API_PREFIX = '/_nua/cms/'
@@ -242,4 +242,4 @@ function injectIntoHead(html: string, snippet: string): string {
 	}
 	return `${snippet}\n${html}`
 }
-export { type ReloadClientOptions, reloadClientScript } from './reload-client'
+export { type ReloadClientOptions, reloadClientScript } from './reload-client.ts'

@@ -1,7 +1,7 @@
 import type { AstroIntegrationLogger } from 'astro'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { CheckReport, CheckResult } from './types'
+import type { CheckReport, CheckResult } from './types.ts'
 
 export function logReport(report: CheckReport, logger: AstroIntegrationLogger): void {
 	const { totalPages, totalChecks, errors, warnings, infos } = report

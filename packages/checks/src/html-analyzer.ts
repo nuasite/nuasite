@@ -9,7 +9,7 @@ import type {
 	MetaTagData,
 	ScriptData,
 	StylesheetData,
-} from './types'
+} from './types.ts'
 
 /**
  * Parse HTML and extract all data needed by checks.

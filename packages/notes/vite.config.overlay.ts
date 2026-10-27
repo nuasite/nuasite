@@ -13,6 +13,8 @@ import { defineConfig } from 'vite'
  */
 export default defineConfig({
 	build: {
+		// dist/ also holds the JS that tsc emitted for the package's entry points.
+		emptyOutDir: false,
 		lib: {
 			entry: 'src/overlay/index.tsx',
 			formats: ['es'],

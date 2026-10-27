@@ -1,4 +1,4 @@
-import type { CmsConfig } from './types'
+import type { CmsConfig } from './types.ts'
 
 export const DEFAULT_CONFIG: CmsConfig = {
 	apiBase: '/_nua/cms',

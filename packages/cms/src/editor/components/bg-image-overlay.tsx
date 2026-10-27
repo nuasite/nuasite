@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks'
-import { Z_INDEX } from '../constants'
-import { entryHandoverFor } from '../entry-handover'
-import { isApplyingUndoRedo, recordChange } from '../history'
-import { cn } from '../lib/cn'
-import { postToParent } from '../post-message'
-import * as signals from '../signals'
-import { saveBgImageEditsToStorage } from '../storage'
-import { FieldLabel, ImageField, SelectField } from './fields'
-import { CloseButton } from './modal-shell'
+import { Z_INDEX } from '../constants.ts'
+import { entryHandoverFor } from '../entry-handover.ts'
+import { isApplyingUndoRedo, recordChange } from '../history.ts'
+import { cn } from '../lib/cn.ts'
+import { postToParent } from '../post-message.ts'
+import * as signals from '../signals.ts'
+import { saveBgImageEditsToStorage } from '../storage.ts'
+import { FieldLabel, ImageField, SelectField } from './fields.tsx'
+import { CloseButton } from './modal-shell.tsx'
 
 export interface BgImageOverlayProps {
 	visible: boolean

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo } from 'preact/hooks'
-import { Z_INDEX } from '../constants'
-import * as signals from '../signals'
-import { saveAttributeEditsToStorage } from '../storage'
-import type { Attribute } from '../types'
-import { ComboBoxField, FieldLabel, ImageField, NumberField, SelectField, TextField, ToggleField } from './fields'
-import { CloseButton } from './modal-shell'
+import { Z_INDEX } from '../constants.ts'
+import * as signals from '../signals.ts'
+import { saveAttributeEditsToStorage } from '../storage.ts'
+import type { Attribute } from '../types.ts'
+import { ComboBoxField, FieldLabel, ImageField, NumberField, SelectField, TextField, ToggleField } from './fields.tsx'
+import { CloseButton } from './modal-shell.tsx'
 
 // ============================================================================
 // Attribute Field Configuration

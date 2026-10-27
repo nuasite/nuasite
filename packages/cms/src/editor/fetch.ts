@@ -1,4 +1,4 @@
-import { API } from './constants'
+import { API } from './constants.ts'
 
 export async function fetchWithTimeout(
 	url: string,

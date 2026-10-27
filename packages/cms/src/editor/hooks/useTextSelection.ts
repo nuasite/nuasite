@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { CSS, TIMING } from '../constants'
-import * as signals from '../signals'
-import { getTextSelection, type TextSelection } from '../text-styling'
-import { isElementInCmsUI, usePositionTracking } from './utils'
+import { CSS, TIMING } from '../constants.ts'
+import * as signals from '../signals.ts'
+import { getTextSelection, type TextSelection } from '../text-styling.ts'
+import { isElementInCmsUI, usePositionTracking } from './utils.ts'
 
 export interface TextSelectionState {
 	hasSelection: boolean

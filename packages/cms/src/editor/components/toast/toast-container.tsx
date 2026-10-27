@@ -1,6 +1,6 @@
-import { Z_INDEX } from '../../constants'
-import { Toast } from './toast'
-import type { ToastMessage } from './types'
+import { Z_INDEX } from '../../constants.ts'
+import { Toast } from './toast.tsx'
+import type { ToastMessage } from './types.ts'
 
 export interface ToastContainerProps {
 	toasts: ToastMessage[]

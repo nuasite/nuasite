@@ -4,10 +4,10 @@ import { toggleLinkCommand, updateLinkCommand } from '@milkdown/preset-commonmar
 import { callCommand } from '@milkdown/utils'
 import type { RefObject } from 'preact'
 import { useCallback, useMemo, useState } from 'preact/hooks'
-import type { LinkSuggestion } from '../components/link-edit-popover'
-import type { ActiveFormats } from '../milkdown-utils'
-import { removeLinkMark } from '../milkdown-utils'
-import { manifest } from '../signals'
+import type { LinkSuggestion } from '../components/link-edit-popover.tsx'
+import type { ActiveFormats } from '../milkdown-utils.ts'
+import { removeLinkMark } from '../milkdown-utils.ts'
+import { manifest } from '../signals.ts'
 
 export interface LinkPopoverState {
 	href: string

@@ -1,6 +1,6 @@
-import type { MediaUploadContext } from '../types'
-import { API } from './constants'
-import { fetchWithTimeout, getJson, postJson } from './fetch'
+import type { MediaUploadContext } from '../types.ts'
+import { API } from './constants.ts'
+import { fetchWithTimeout, getJson, postJson } from './fetch.ts'
 import type {
 	AddRedirectRequest,
 	CmsConfig,
@@ -19,7 +19,7 @@ import type {
 	UpdateMarkdownPageRequest,
 	UpdateMarkdownPageResponse,
 	UpdateRedirectRequest,
-} from './types'
+} from './types.ts'
 
 // Markdown operations
 

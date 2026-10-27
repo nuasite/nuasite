@@ -1,5 +1,5 @@
-export { checks } from './checks-integration'
-export { checks as default } from './checks-integration'
+export { checks } from './checks-integration.ts'
+export { checks as default } from './checks-integration.ts'
 export type {
 	AccessibilityChecksConfig,
 	AiChecksConfig,
@@ -19,4 +19,4 @@ export type {
 	SiteCheck,
 	SiteCheckContext,
 	SiteCheckIssue,
-} from './types'
+} from './types.ts'

@@ -1,9 +1,9 @@
 import { parse as parseBabel } from '@babel/parser'
-import { getProjectRoot } from '../config'
-import type { ManifestWriter } from '../manifest-writer'
-import { projectFiles } from '../project/context'
-import type { CmsManifest, ComponentInstance } from '../types'
-import { acquireFileLock, escapeRegex, normalizePagePath, resolveAndValidatePath } from '../utils'
+import { getProjectRoot } from '../config.ts'
+import type { ManifestWriter } from '../manifest-writer.ts'
+import { projectFiles } from '../project/context.ts'
+import type { CmsManifest, ComponentInstance } from '../types.ts'
+import { acquireFileLock, escapeRegex, normalizePagePath, resolveAndValidatePath } from '../utils.ts'
 import {
 	findComponentInvocationFile,
 	findComponentInvocationLine,
@@ -11,7 +11,7 @@ import {
 	getComponentOccurrenceIndex,
 	getIndentation,
 	normalizeFilePath,
-} from './component-ops'
+} from './component-ops.ts'
 
 /**
  * Parse an inline array component name like `__array:varName` or `__array:varName#1`.

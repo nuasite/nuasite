@@ -6,8 +6,11 @@ const MAX_BODY_SIZE = 10 * 1024 * 1024
 /** Thrown by readBody when the streamed body exceeds the configured limit.
  *  Lets callers distinguish "client sent too much" from transport errors. */
 export class BodyTooLargeError extends Error {
-	constructor(public readonly maxSize: number) {
+	readonly maxSize: number
+
+	constructor(maxSize: number) {
 		super(`Request body exceeds maximum size of ${maxSize} bytes`)
+		this.maxSize = maxSize
 		this.name = 'BodyTooLargeError'
 	}
 }

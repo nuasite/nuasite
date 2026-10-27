@@ -1,8 +1,8 @@
 import { parse } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { ComponentDefinition, ComponentInstance, ManifestEntry } from './types'
-import type { CollectionEntry, PageSeoData } from './types'
+import type { ComponentDefinition, ComponentInstance, ManifestEntry } from './types.ts'
+import type { CollectionEntry, PageSeoData } from './types.ts'
 
 type PageData = {
 	entries: Record<string, ManifestEntry>

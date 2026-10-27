@@ -1,4 +1,4 @@
-import type { ComponentDefinition } from '../types'
+import type { ComponentDefinition } from '../types.ts'
 
 export function getDefaultProps(definition: ComponentDefinition): Record<string, any> {
 	const defaultProps: Record<string, any> = {}

@@ -16,11 +16,11 @@
  * that does not follow.
  */
 
-import type { CheckFinding } from './check'
-import type { LoadedCollections, LoadedEntry } from './check-entries'
-import type { ParsedConfig, ParsedField } from './content-config-ast'
-import { type LiveSchemas, schemaFor } from './schema-port'
-import { acceptsMissing, firstAcceptedEntry, governsPath, pointAt, rejectsValueAt } from './schema-probe'
+import type { LoadedCollections, LoadedEntry } from './check-entries.ts'
+import type { CheckFinding } from './check.ts'
+import type { ParsedConfig, ParsedField } from './content-config-ast.ts'
+import { type LiveSchemas, schemaFor } from './schema-port.ts'
+import { acceptsMissing, firstAcceptedEntry, governsPath, pointAt, rejectsValueAt } from './schema-probe.ts'
 
 export interface ShapeCheckInput {
 	config: ParsedConfig

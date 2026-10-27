@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { clampPanelPosition, Z_INDEX } from '../constants'
-import { useClickOutsideEscape } from '../hooks/useClickOutsideEscape'
-import { useSearchFilter } from '../hooks/useSearchFilter'
-import { getCollectionEntryOptions } from '../manifest'
-import { updateMarkdownPage } from '../markdown-api'
-import { closeReferencePicker, config, manifest, referencePickerState, showToast } from '../signals'
-import { STRINGS } from '../strings'
-import { Spinner } from './spinner'
+import { clampPanelPosition, Z_INDEX } from '../constants.ts'
+import { useClickOutsideEscape } from '../hooks/useClickOutsideEscape.ts'
+import { useSearchFilter } from '../hooks/useSearchFilter.ts'
+import { getCollectionEntryOptions } from '../manifest.ts'
+import { updateMarkdownPage } from '../markdown-api.ts'
+import { closeReferencePicker, config, manifest, referencePickerState, showToast } from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import { Spinner } from './spinner.tsx'
 
 const PANEL_WIDTH = 320
 

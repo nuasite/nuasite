@@ -1,6 +1,7 @@
+import type { AstroConfig } from 'astro'
 import remarkDirectiveExtension from 'remark-directive'
-import type { Plugin, Processor } from 'unified'
-import { withPortableModule } from './portable-module'
+import type { Processor } from 'unified'
+import { withPortableModule } from './portable-module.ts'
 
 // Render-side counterpart of the editor's directive plugins
 // (packages/cms-mdx-editor/src/{styled-list,youtube}-plugin.ts). The editor
@@ -164,15 +165,19 @@ function transform(node: MdastNode): void {
 
 const MODULE = '@nuasite/cms/remark'
 
-export const remarkListDirective: Plugin<[]> = withPortableModule(() => (tree) => {
-	transform(tree)
+/** A remark plugin as Astro types it: a unified plugin over mdast's root. */
+type RemarkPlugin = Extract<NonNullable<AstroConfig['markdown']['remarkPlugins']>[number], (...args: never[]) => unknown>
+
+export const remarkListDirective: RemarkPlugin = withPortableModule(() => (tree) => {
+	// The walk reads the tree through the loose `MdastNode` view, not mdast's node union.
+	transform(tree as MdastNode)
 }, { module: MODULE, export: 'remarkListDirective' })
 
 /**
  * `remark-directive` under a function of our own, so the portable module reference is set on
  * this module's export and never on the third-party function object.
  */
-export const remarkDirective: Plugin<[]> = withPortableModule(function remarkDirective(this: Processor): undefined {
+export const remarkDirective: RemarkPlugin = withPortableModule(function remarkDirective(this: Processor): undefined {
 	remarkDirectiveExtension.call(this)
 }, { module: MODULE, export: 'remarkDirective' })
 
@@ -183,4 +188,4 @@ export const remarkDirective: Plugin<[]> = withPortableModule(function remarkDir
  * expression (which crashes acorn). Wired into the markdown/MDX pipeline by
  * `@nuasite/nua`.
  */
-export const cmsRemarkPlugins = [remarkDirective, remarkListDirective]
+export const cmsRemarkPlugins: RemarkPlugin[] = [remarkDirective, remarkListDirective]

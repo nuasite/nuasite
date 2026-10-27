@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks'
-import { Z_INDEX } from '../constants'
-import { getOutlineColor, isElementVisible } from '../dom'
-import * as signals from '../signals'
+import { Z_INDEX } from '../constants.ts'
+import { getOutlineColor, isElementVisible } from '../dom.ts'
+import * as signals from '../signals.ts'
 
 export interface EditableHighlightsProps {
 	visible: boolean

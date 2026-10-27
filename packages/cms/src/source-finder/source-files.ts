@@ -1,6 +1,6 @@
 import path from 'node:path'
-import { getProjectRoot } from '../config'
-import { projectFiles } from '../project/context'
+import { getProjectRoot } from '../config.ts'
+import { projectFiles } from '../project/context.ts'
 
 /** The directories whose components can pass a prop on: pages, components and layouts. */
 export function templateSearchDirs(): string[] {

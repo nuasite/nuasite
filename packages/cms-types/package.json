@@ -32,7 +32,7 @@
 		"typescript": "catalog:build"
 	},
 	"scripts": {
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts --compiled-exports"
 	},
 	"keywords": [
 		"cms",

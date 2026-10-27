@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact'
-import { Z_INDEX } from '../constants'
-import { cn } from '../lib/cn'
+import { Z_INDEX } from '../constants.ts'
+import { cn } from '../lib/cn.ts'
 
 export function ModalBackdrop({ onClose, maxWidth = 'max-w-lg', extraClass, children }: {
 	onClose: () => void

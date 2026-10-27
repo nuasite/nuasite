@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from './constants'
+import { STORAGE_KEYS } from './constants.ts'
 import type {
 	CmsSettings,
 	PendingAttributeChange,
@@ -11,7 +11,7 @@ import type {
 	SavedColorEdits,
 	SavedEdits,
 	SavedImageEdits,
-} from './types'
+} from './types.ts'
 
 // ============================================================================
 // JSON-based storage helpers — all browser-storage access in this module

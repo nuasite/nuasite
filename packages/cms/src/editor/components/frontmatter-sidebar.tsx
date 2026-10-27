@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { cn } from '../lib/cn'
-import { updateMarkdownFrontmatter } from '../signals'
-import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types'
-import { groupFields, partitionFields } from './field-utils'
-import { formatFieldLabel, FrontmatterField, SchemaFrontmatterField } from './frontmatter-fields'
+import { cn } from '../lib/cn.ts'
+import { updateMarkdownFrontmatter } from '../signals.ts'
+import type { CollectionDefinition, FieldDefinition, MarkdownPageEntry } from '../types.ts'
+import { groupFields, partitionFields } from './field-utils.ts'
+import { formatFieldLabel, FrontmatterField, SchemaFrontmatterField } from './frontmatter-fields.tsx'
 
-export { groupFields, partitionFields } from './field-utils'
+export { groupFields, partitionFields } from './field-utils.ts'
 
 // ============================================================================
 // Group Header

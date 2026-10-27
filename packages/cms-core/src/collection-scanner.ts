@@ -19,9 +19,9 @@ import {
 	type ParsedField,
 	readContentConfig,
 	UNREAD_CONTENT_CONFIG_PATHS,
-} from './content-config-ast'
-import type { CmsFileSystem, GlobOptions } from './fs/types'
-import { resolvePathnameFromSpec, slugifyHref } from './shared'
+} from './content-config-ast.ts'
+import type { CmsFileSystem, GlobOptions } from './fs/types.ts'
+import { resolvePathnameFromSpec, slugifyHref } from './shared.ts'
 
 /** Regex patterns for type inference */
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}/

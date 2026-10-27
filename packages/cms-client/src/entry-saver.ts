@@ -17,8 +17,8 @@
  */
 
 import type { FieldDefinition, MutationResult } from '@nuasite/cms-types'
-import { type CmsClient, CmsClientError, type CmsConflict } from './client'
-import { draftFromServerFrontmatter, type EntryDraft } from './form-model'
+import { type CmsClient, CmsClientError, type CmsConflict } from './client.ts'
+import { draftFromServerFrontmatter, type EntryDraft } from './form-model.ts'
 
 /**
  * What a save attempt did. A `409` is an outcome, not an error — the editor has a dialog for it.

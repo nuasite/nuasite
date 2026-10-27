@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'preact/hooks'
-import { saveBatchChanges } from '../api'
-import { isApplyingUndoRedo, recordChange } from '../history'
-import { cn } from '../lib/cn'
+import { saveBatchChanges } from '../api.ts'
+import { isApplyingUndoRedo, recordChange } from '../history.ts'
+import { cn } from '../lib/cn.ts'
 import {
 	clearPendingSeoChanges,
 	closeSeoEditor,
@@ -14,12 +14,12 @@ import {
 	pendingSeoChanges,
 	setPendingSeoChange,
 	showToast,
-} from '../signals'
-import { STRINGS } from '../strings'
-import type { ChangePayload, PageSeoData, PendingSeoChange } from '../types'
-import { ColorField, ComboBoxField, ImageField } from './fields'
-import { CancelButton, CloseButton, ModalBackdrop, Section } from './modal-shell'
-import { Spinner } from './spinner'
+} from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import type { ChangePayload, PageSeoData, PendingSeoChange } from '../types.ts'
+import { ColorField, ComboBoxField, ImageField } from './fields.tsx'
+import { CancelButton, CloseButton, ModalBackdrop, Section } from './modal-shell.tsx'
+import { Spinner } from './spinner.tsx'
 
 const OG_TYPE_OPTIONS = [
 	{ value: 'website', label: 'Website', description: 'Default type for most pages' },

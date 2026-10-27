@@ -11,7 +11,7 @@ import {
 	type PathnameSegment,
 	type PathnameSpec,
 } from '@nuasite/cms-types'
-import type { CmsFileSystem } from './fs/types'
+import type { CmsFileSystem } from './fs/types.ts'
 
 export interface ParsedReference {
 	target: string

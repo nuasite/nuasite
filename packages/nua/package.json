@@ -32,7 +32,7 @@
 		"directory": "packages/nua"
 	},
 	"scripts": {
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts --compiled-exports"
 	},
 	"dependencies": {
 		"@astrojs/check": "catalog:astro",

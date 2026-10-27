@@ -1,4 +1,4 @@
-import type { CmsMarkerOptions } from './types'
+import type { CmsMarkerOptions } from './types.ts'
 
 /** The marker options with the defaults of the Astro integration filled in. */
 export function resolveMarkerConfig(options: CmsMarkerOptions): Required<CmsMarkerOptions> {

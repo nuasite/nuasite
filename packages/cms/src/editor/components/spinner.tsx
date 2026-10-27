@@ -1,4 +1,4 @@
-import { cn } from '../lib/cn'
+import { cn } from '../lib/cn.ts'
 
 const sizes = {
 	xs: 'h-3 w-3',

@@ -1,2 +1,2 @@
-export { type MediaAdapterKind, mediaFromEnv, type MediaFromEnvResult } from './media-from-env'
-export * from './portable'
+export { type MediaAdapterKind, mediaFromEnv, type MediaFromEnvResult } from './media-from-env.ts'
+export * from './portable.ts'

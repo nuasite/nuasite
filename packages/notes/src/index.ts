@@ -1,2 +1,2 @@
-export { default, nuaNotes } from './integration'
-export type { NuaNotesOptions } from './types'
+export { default, nuaNotes } from './integration.ts'
+export type { NuaNotesOptions } from './types.ts'

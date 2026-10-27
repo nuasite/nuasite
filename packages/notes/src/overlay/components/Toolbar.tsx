@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import type { NoteRole } from '../types'
+import type { NoteRole } from '../types.ts'
 
 interface ToolbarProps {
 	page: string

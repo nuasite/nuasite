@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'preact/hooks'
-import type { Attribute } from '../../types'
-import { getColorPreview, parseColorClass } from '../color-utils'
-import { Z_INDEX } from '../constants'
-import { isPageDark } from '../dom'
-import * as signals from '../signals'
+import type { Attribute } from '../../types.ts'
+import { getColorPreview, parseColorClass } from '../color-utils.ts'
+import { Z_INDEX } from '../constants.ts'
+import { isPageDark } from '../dom.ts'
+import * as signals from '../signals.ts'
 
 export interface OutlineProps {
 	visible: boolean

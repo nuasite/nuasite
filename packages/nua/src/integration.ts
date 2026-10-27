@@ -2,10 +2,10 @@ import mdx from '@astrojs/mdx'
 import sitemap from '@astrojs/sitemap'
 import checks from '@nuasite/checks'
 import cms, { addMarkdownPlugins, cmsRemarkPlugins, inlineNuasitePackages, mergeConfigRedirectsInto, userExternals } from '@nuasite/cms'
+import pageMarkdown from '@nuasite/llm-enhancements'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroConfig, AstroIntegration } from 'astro'
-import pageMarkdown from '../../llm-enhancements/src'
-import { type NuaIntegrationOptions, resolveOptions } from './types'
+import { type NuaIntegrationOptions, resolveOptions } from './types.ts'
 
 export default function nua(options: NuaIntegrationOptions = {}): AstroIntegration {
 	const resolved = resolveOptions(options)

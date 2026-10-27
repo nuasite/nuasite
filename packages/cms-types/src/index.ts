@@ -953,22 +953,22 @@ export {
 	withoutBlankArrayItems,
 	withRenamedEntrySlug,
 	type WriteModelField,
-} from './field-values'
+} from './field-values.ts'
 
 // ============================================================================
 // Collection browser arrangement — see `collection-nav.ts` for the rule every browser applies
 // ============================================================================
 
-export { type CollectionNavItem, type CollectionNavOptions, type CollectionNavSection, resolveCollectionNav } from './collection-nav'
+export { type CollectionNavItem, type CollectionNavOptions, type CollectionNavSection, resolveCollectionNav } from './collection-nav.ts'
 
 // ============================================================================
 // Slug derivation — see `slug.ts` for why the server and the clients share it
 // ============================================================================
 
-export { nextFreeSlug, slugify } from './slug'
+export { nextFreeSlug, slugify } from './slug.ts'
 
 // ============================================================================
 // Media type tabs: see `media-type-filter.ts` for why the server and the galleries share them
 // ============================================================================
 
-export { filterMediaItems, matchesMediaType } from './media-type-filter'
+export { filterMediaItems, matchesMediaType } from './media-type-filter.ts'

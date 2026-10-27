@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
-import { getProjectRoot } from './config'
-import { currentProjectContext } from './project/context'
-import type { ManifestEntry } from './types'
+import { getProjectRoot } from './config.ts'
+import { currentProjectContext } from './project/context.ts'
+import type { ManifestEntry } from './types.ts'
 
 /**
  * Normalize a page path by removing query strings, hashes, and trailing slashes.
@@ -201,7 +201,7 @@ export async function acquireFileLock(filePath: string): Promise<() => void> {
 	}
 }
 
-export { slugify } from './shared'
+export { slugify } from './shared.ts'
 
 /**
  * Return the first non-empty, trimmed line from a text block (e.g. markdown body).

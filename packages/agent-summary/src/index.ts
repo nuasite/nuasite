@@ -1,2 +1,2 @@
-export * from './agent-summary-integration'
-export * from './types'
+export * from './agent-summary-integration.ts'
+export * from './types.ts'

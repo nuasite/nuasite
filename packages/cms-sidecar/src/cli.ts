@@ -3,8 +3,8 @@ import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { mediaFromEnv } from './media-from-env'
-import { createServer } from './server'
+import { mediaFromEnv } from './media-from-env.ts'
+import { createServer } from './server.ts'
 
 interface ServeArgs {
 	port: number

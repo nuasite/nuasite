@@ -1,4 +1,4 @@
-import type { Check, CheckIssue, PageCheckContext } from '../../types'
+import type { Check, CheckIssue, PageCheckContext } from '../../types.ts'
 
 const ALLOWED_DUPLICATES = new Set([
 	'property:og:image',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'preact/hooks'
-import { addRedirect, deleteRedirect, getRedirects, updateRedirect } from '../markdown-api'
+import { addRedirect, deleteRedirect, getRedirects, updateRedirect } from '../markdown-api.ts'
 import {
 	closeRedirectsManager,
 	config,
@@ -8,10 +8,10 @@ import {
 	setRedirectsManagerEditing,
 	setRedirectsManagerRules,
 	showToast,
-} from '../signals'
-import { STRINGS } from '../strings'
-import type { RedirectRule } from '../types'
-import { ModalBackdrop, ModalHeader, Section } from './modal-shell'
+} from '../signals.ts'
+import { STRINGS } from '../strings.ts'
+import type { RedirectRule } from '../types.ts'
+import { ModalBackdrop, ModalHeader, Section } from './modal-shell.tsx'
 
 export function RedirectsManager() {
 	const visible = isRedirectsManagerOpen.value

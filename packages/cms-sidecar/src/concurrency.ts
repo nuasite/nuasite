@@ -34,7 +34,11 @@ export class SharedRun<T> {
 	private current: { generation: number; promise: Promise<T> } | null = null
 	private generation = 0
 
-	constructor(private readonly run: () => Promise<T>) {}
+	private readonly run: () => Promise<T>
+
+	constructor(run: () => Promise<T>) {
+		this.run = run
+	}
 
 	get(): Promise<T> {
 		if (this.current !== null && this.current.generation === this.generation) return this.current.promise

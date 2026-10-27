@@ -2,12 +2,12 @@ import type { AstroIntegration } from 'astro'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CheckRunner } from './check-runner'
-import { resolveChecksOptions } from './config'
-import { analyzeHtml } from './html-analyzer'
-import { registerAllChecks } from './register'
-import { logReport, writeJsonReport } from './report'
-import type { CheckResult, ChecksOptions, ExtractedPageData } from './types'
+import { CheckRunner } from './check-runner.ts'
+import { resolveChecksOptions } from './config.ts'
+import { analyzeHtml } from './html-analyzer.ts'
+import { registerAllChecks } from './register.ts'
+import { logReport, writeJsonReport } from './report.ts'
+import type { CheckResult, ChecksOptions, ExtractedPageData } from './types.ts'
 
 /**
  * Try to read an HTML file for a given page pathname in the dist directory.

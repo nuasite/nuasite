@@ -1,5 +1,5 @@
-import { runInProjectContext } from './context'
-import { createNodeProjectContext } from './default-node'
+import { runInProjectContext } from './context.ts'
+import { createNodeProjectContext } from './default-node.ts'
 
 /** The project at a fixed root on `node:fs`; see {@link projectAtRoot}. */
 export interface ProjectAtRoot {

@@ -9,10 +9,10 @@
 
 import path from 'node:path'
 import yaml from 'yaml'
-import type { ParsedCollection, ParsedConfig } from './content-config-ast'
-import type { CollectionKind } from './editor-write-model'
-import { UnreadableDirectoryError } from './fs/glob'
-import type { CmsFileSystem } from './fs/types'
+import type { ParsedCollection, ParsedConfig } from './content-config-ast.ts'
+import type { CollectionKind } from './editor-write-model.ts'
+import { UnreadableDirectoryError } from './fs/glob.ts'
+import type { CmsFileSystem } from './fs/types.ts'
 
 export interface LoadedEntry {
 	/** Root-relative path of the source file. */

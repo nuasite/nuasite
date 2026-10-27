@@ -15,11 +15,11 @@ import type {
 	RedirectOperationResponse,
 	UpdateRedirectRequest,
 } from '@nuasite/cms-types'
-import { collectionScanReport, scanCollections } from './collection-scanner'
-import { scanComponentDefinitions } from './component-registry'
-import { type ParseCache } from './content-config-ast'
-import { type CmsCommit, createStagedFileSystem } from './fs/staged'
-import type { CmsFileSystem } from './fs/types'
+import { collectionScanReport, scanCollections } from './collection-scanner.ts'
+import { scanComponentDefinitions } from './component-registry.ts'
+import { type ParseCache } from './content-config-ast.ts'
+import { type CmsCommit, createStagedFileSystem } from './fs/staged.ts'
+import type { CmsFileSystem } from './fs/types.ts'
 import {
 	addArrayItem as addArrayItemOp,
 	type AddArrayItemInput,
@@ -37,19 +37,19 @@ import {
 	renameEntry as renameEntryOp,
 	updateEntry as updateEntryOp,
 	type UpdateEntryInput,
-} from './handlers/entry-ops'
+} from './handlers/entry-ops.ts'
 import {
 	createPage as createPageOp,
 	deletePage as deletePageOp,
 	duplicatePage as duplicatePageOp,
 	getLayouts as getLayoutsOp,
-} from './handlers/page-ops'
+} from './handlers/page-ops.ts'
 import {
 	addRedirect as addRedirectOp,
 	deleteRedirect as deleteRedirectOp,
 	listRedirects as listRedirectsOp,
 	updateRedirect as updateRedirectOp,
-} from './handlers/redirect-ops'
+} from './handlers/redirect-ops.ts'
 
 export interface CmsCoreOptions {
 	/** Content collections directory, relative to the filesystem root. Defaults to `src/content`. */
