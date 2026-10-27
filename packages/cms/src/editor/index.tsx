@@ -200,45 +200,6 @@ const CmsUI = () => {
 		}
 	})
 
-	// Send hovered element info to parent window via postMessage (when inside an iframe)
-	const prevOutlineRef = useRef<{ cmsId: string | null; isComponent: boolean }>({ cmsId: null, isComponent: false })
-	useEffect(() => {
-		const prev = prevOutlineRef.current
-		const changed = outlineState.cmsId !== prev.cmsId
-			|| outlineState.isComponent !== prev.isComponent
-			|| (!outlineState.visible && (prev.cmsId !== null || prev.isComponent))
-
-		if (!changed) return
-		prevOutlineRef.current = { cmsId: outlineState.cmsId, isComponent: outlineState.isComponent }
-
-		if (outlineState.visible && (outlineState.cmsId || outlineState.isComponent)) {
-			const manifestData = signals.manifest.value
-			const entry = outlineState.cmsId ? manifestData.entries[outlineState.cmsId] : undefined
-			const componentEl = outlineState.element
-			const componentId = componentEl?.getAttribute('data-cms-component-id') ?? undefined
-			const instance = componentId ? manifestData.components?.[componentId] : undefined
-			const rect = outlineState.rect
-
-			const msg: CmsElementSelectedMessage = {
-				type: 'cms-element-selected',
-				element: buildSelectedElement({
-					cmsId: outlineState.cmsId,
-					isComponent: outlineState.isComponent,
-					componentName: outlineState.componentName,
-					componentId,
-					tagName: outlineState.tagName,
-					rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
-					entry,
-					instance,
-				}),
-			}
-			postToParent(msg)
-		} else {
-			const msg: CmsElementDeselectedMessage = { type: 'cms-element-deselected' }
-			postToParent(msg)
-		}
-	}, [outlineState])
-
 	// Send cms-ready + cms-page-navigated when manifest loads
 	const prevManifestRef = useRef<boolean>(false)
 	useEffect(() => {
@@ -304,6 +265,7 @@ const CmsUI = () => {
 
 			if (msg.type === 'cms-deselect-element') {
 				handleBlockEditorClose()
+				signals.setSelectModeElement(null)
 			} else if (msg.type === 'cms-set-features') {
 				signals.setFeatures(msg.features)
 			}
