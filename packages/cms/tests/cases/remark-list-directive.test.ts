@@ -11,8 +11,9 @@ interface Node {
 	data?: { hName?: string; hProperties?: { className?: string[]; src?: string } }
 }
 
+// The fixtures are hand-built trees in a loose shape, not mdast's node union.
 function run(tree: Node): Node {
-	return unified().use(remarkListDirective).runSync(tree)
+	return unified().use(remarkListDirective).runSync(tree as never) as unknown as Node
 }
 
 function paragraph(...children: Node[]): Node {

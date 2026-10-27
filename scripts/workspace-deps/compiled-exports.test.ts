@@ -14,8 +14,8 @@ function packageWith(files: string[]): string {
 }
 
 describe('compileExports', () => {
-	test('points import, default and types at dist/, keeping workerd and non-source targets', () => {
-		const dir = packageWith(['dist/index.js', 'dist/index.d.ts', 'dist/markdown/remark.js', 'dist/markdown/remark.d.ts'])
+	test('points every condition at dist/, keeping non-source targets', () => {
+		const dir = packageWith(['dist/index.js', 'dist/index.d.ts', 'dist/fields.js', 'dist/markdown/remark.js', 'dist/markdown/remark.d.ts'])
 		const json = {
 			module: './src/index.ts',
 			exports: {
@@ -29,7 +29,7 @@ describe('compileExports', () => {
 		expect(json).toEqual({
 			module: './dist/index.js',
 			exports: {
-				'.': { types: './dist/index.d.ts', workerd: './src/fields.ts', import: './dist/index.js', default: './dist/index.js' },
+				'.': { types: './dist/index.d.ts', workerd: './dist/fields.js', import: './dist/index.js', default: './dist/index.js' },
 				'./remark': { types: './dist/markdown/remark.d.ts', import: './dist/markdown/remark.js' },
 				'./styles.css': './src/styles.css',
 				'./package.json': './package.json',
@@ -44,7 +44,7 @@ describe('compileExports', () => {
 	})
 
 	test('rewrites subpath imports too', () => {
-		const dir = packageWith(['dist/project/default-node.js', 'dist/project/default-node.d.ts'])
+		const dir = packageWith(['dist/project/default-node.js', 'dist/project/default-node.d.ts', 'dist/project/default-none.js'])
 		const json = {
 			imports: {
 				'#project-context-default': {
@@ -57,7 +57,7 @@ describe('compileExports', () => {
 		expect(compileExports(json, dir)).toEqual([])
 		expect(json.imports['#project-context-default']).toEqual({
 			types: './dist/project/default-node.d.ts',
-			workerd: './src/project/default-none.ts',
+			workerd: './dist/project/default-none.js',
 			default: './dist/project/default-node.js',
 		})
 	})
@@ -67,6 +67,24 @@ describe('compileExports', () => {
 		const json = { module: 'src/index.ts' }
 		expect(compileExports(json, dir)).toEqual([])
 		expect(json.module).toBe('./dist/index.js')
+	})
+
+	test('leaves declaration files alone and maps .mts and .cts', () => {
+		const dir = packageWith(['dist/a.mjs', 'dist/a.d.mts', 'dist/b.cjs'])
+		const json = { exports: { './env': { types: './src/env.d.ts' }, './a': { types: './src/a.mts', import: './src/a.mts' }, './b': './src/b.cts' } }
+		expect(compileExports(json, dir)).toEqual([])
+		expect(json.exports).toEqual({
+			'./env': { types: './src/env.d.ts' },
+			'./a': { types: './dist/a.d.mts', import: './dist/a.mjs' },
+			'./b': './dist/b.cjs',
+		})
+	})
+
+	test('rewrites fallback arrays', () => {
+		const dir = packageWith(['dist/a.js'])
+		const json = { exports: { '.': ['./src/a.ts', './fallback.js'] } }
+		expect(compileExports(json, dir)).toEqual([])
+		expect(json.exports['.']).toEqual(['./dist/a.js', './fallback.js'])
 	})
 
 	test('maps a .tsx source to .js', () => {

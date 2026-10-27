@@ -1,6 +1,6 @@
 import type { AstroIntegration } from 'astro'
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createLocalStorageAdapter, createNodeFs, createPublicStaticFileChecker, parseProjectCmsConfig } from '@nuasite/cms-core'
@@ -17,6 +17,7 @@ import { rehypeCmsMarker } from './markdown/rehype.ts'
 import { resolveMarkerConfig } from './marker-config.ts'
 import type { MediaStorageAdapter } from './media/types.ts'
 import { type CmsMode, resolveCmsMode } from './mode.ts'
+import { packageRoot } from './package-root.ts'
 import { mergeCmsRedirectsInto } from './redirects.ts'
 import { scanCollections } from './scan-cache.ts'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types.ts'
@@ -155,7 +156,8 @@ const DEFAULT_CDN_EDITOR_SRC = 'https://cdn.nuasite.com/script/latest/cms-editor
  * closes once the config is loaded, so an import made in `astro:config:setup` fails with "Vite module runner
  * has been closed" (#116). A top-level await finishes while the config is still loading.
  */
-const editorTailwind = existsSync(join(dirname(fileURLToPath(import.meta.url)), '../dist/editor.js'))
+const cmsRoot = packageRoot(import.meta.url)
+const editorTailwind = existsSync(join(cmsRoot, 'dist/editor.js'))
 	? undefined
 	: (await import('@tailwindcss/vite').catch(() => undefined))?.default
 
@@ -208,8 +210,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				// Inject dev-only component preview route (prerender:false → SSR with query param access)
 				injectRoute({
 					pattern: '/_nua/preview',
-					// `../src/` resolves the same from src/ in the monorepo and from the published dist/.
-					entrypoint: new URL('../src/pages/component-preview.astro', import.meta.url).pathname,
+					entrypoint: join(cmsRoot, 'src/pages/component-preview.astro'),
 					prerender: false,
 				})
 
@@ -260,8 +261,6 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				}
 
 				const vitePlugins: any[] = [...(createVitePlugin(pluginContext) as any), inlineNuasitePackages({ keep: userExternals(config.vite) })]
-				// The package root, whether this runs from src/ (monorepo) or from the published dist/.
-				const cmsDir = dirname(dirname(fileURLToPath(import.meta.url)))
 
 				// Local-mode (cms-headless F7): resolve the /_nua/admin SPA entry virtual
 				// module to src/admin/entry.tsx so Vite transforms it (TSX → JS, real
@@ -271,14 +270,14 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 						name: 'nuasite-cms-admin-entry',
 						resolveId(id: string) {
 							if (id === VIRTUAL_ADMIN_ENTRY) {
-								return join(cmsDir, 'src/admin/entry.tsx')
+								return join(cmsRoot, 'src/admin/entry.tsx')
 							}
 						},
 					})
 				}
 
 				// Detect pre-built editor bundle (present when installed from npm)
-				const editorBundlePath = join(cmsDir, 'dist/editor.js')
+				const editorBundlePath = join(cmsRoot, 'dist/editor.js')
 				const hasPrebuiltBundle = existsSync(editorBundlePath)
 
 				// Resolve which editor script dev-preview injects:
@@ -347,7 +346,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 							name: 'nuasite-cms-editor',
 							resolveId(id: string) {
 								if (id === VIRTUAL_CMS_PATH) {
-									return join(cmsDir, 'src/editor/index.tsx')
+									return join(cmsRoot, 'src/editor/index.tsx')
 								}
 							},
 						})

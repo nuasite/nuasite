@@ -83,8 +83,7 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				// `extendMarkdownConfig` (default true). `defineConfig` sets the `unified()`
 				// processor that runs them; a site that chose another one is told why
 				// directives do not render.
-				// The cast bridges two copies of the unified types (remark-directive's and Astro's).
-				if (!addMarkdownPlugins(config, { remarkPlugins: cmsRemarkPlugins as unknown as AstroConfig['markdown']['remarkPlugins'] })) {
+				if (!addMarkdownPlugins(config, { remarkPlugins: cmsRemarkPlugins })) {
 					logger.warn(
 						`The "${config.markdown.processor.name}" markdown processor does not run remark plugins, so CMS directives`
 							+ ` (\`:::list{.class}\`, \`::youtube{#id}\`) do not render. Set \`markdown.processor: unified()\` from @astrojs/markdown-remark.`,

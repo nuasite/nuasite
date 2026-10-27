@@ -1,8 +1,9 @@
 import type { AstroIntegration } from 'astro'
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createNotesDevMiddleware } from './dev/middleware.ts'
+import { packageRoot } from './package-root.ts'
 import { NotesJsonStore } from './storage/json-store.ts'
 import type { NuaNotesOptions } from './types.ts'
 
@@ -64,8 +65,7 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 				//     source `overlay/index.tsx` and let Vite compile it on the
 				//     fly using the JSX-pragma transform plugin below. preact is
 				//     resolved through the workspace devDependency.
-				// The package root, whether this runs from src/ (monorepo) or from the published dist/.
-				const notesRoot = dirname(dirname(fileURLToPath(import.meta.url)))
+				const notesRoot = packageRoot(import.meta.url)
 				const overlayBundlePath = join(notesRoot, 'dist/overlay.js')
 				const hasPrebuiltBundle = existsSync(overlayBundlePath)
 				const overlayEntry = join(notesRoot, 'src/overlay/index.tsx')

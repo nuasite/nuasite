@@ -33,6 +33,7 @@ import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
 // (sandbox) mode never registers this middleware, so it never imports the peer.
 import type { CmsSidecarServer, createServer as CreateSidecarServer } from '@nuasite/cms-sidecar'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createRequire } from 'node:module'
 import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides.ts'
 import { getProjectRoot } from './config.ts'
 import { readBody } from './handlers/request-utils.ts'
@@ -101,7 +102,8 @@ export interface AdminPeerLoader {
 }
 
 /**
- * Default peer loader: lazily `import()` the optional peers on first use. The
+ * Default peer loader: lazily `import()` the sidecar, and look up whether the admin
+ * SPA is installed, on first use. The
  * module ids are bound to `const`s so they are NOT static-import string literals —
  * a slim site that doesn't install the peers never resolves them, and the import
  * only runs in local mode on the first `/_nua/admin` (or admin-api) hit. Both
@@ -117,11 +119,15 @@ export const defaultAdminPeerLoader: AdminPeerLoader = {
 		return loaded === null ? null : loaded.createServer
 	},
 	async isCollectionsAdminInstalled() {
-		const moduleId = '@nuasite/collections-admin'
-		return import(moduleId).then(
-			() => true,
-			() => false,
-		)
+		// Resolved, not imported: the package publishes `.tsx` source that only Vite
+		// can load, so an `import()` from the compiled integration fails under Node
+		// even when the package is installed. Vite loads it later, from the admin entry.
+		try {
+			createRequire(import.meta.url).resolve('@nuasite/collections-admin')
+			return true
+		} catch {
+			return false
+		}
 	},
 }
 

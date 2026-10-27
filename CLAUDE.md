@@ -84,9 +84,9 @@ Media storage uses a pluggable adapter pattern (`MediaStorageAdapter`, defined i
 - **TypeScript**: strict mode, ESNext target, bundler module resolution, `jsx: "react-jsx"` (CMS uses `jsxImportSource: "preact"`)
 - In the monorepo, every package's `exports` name its TypeScript source (`./src/*.ts`), which Bun and Vite load directly, so tests, the playground and `tsc` need no build step
 - Relative imports spell out their extension (`./foo.ts`, `./bar/index.ts`). Node only loads TypeScript that way, and `tsc` rewrites the extensions to `.js` when it emits
-- Packages that run under Node on an installed site (agent-summary, checks, cms-types, cms-core, cms-client, cms, llm-enhancements, nua, notes, cms-sidecar) emit JS into `dist/` with the same layout as `src/`. Their `prepack` runs `resolve-deps.ts --compiled-exports`, which points the published `exports`/`imports`/`module` at `dist/` (`scripts/workspace-deps/compiled-exports.ts`; the `workerd` condition keeps the source). The other packages (components, collections-admin, cms-mdx-editor, cli, cms-studio) are only loaded by Vite, a bundler or Bun, and publish their source
-- Code that locates its own files (`import.meta.url`) has to resolve the same from `src/` and from `dist/`: go through the package root, one level up from either
-- `bun run verify:pack` packs every package, installs the tarballs into a throwaway project and loads every compiled entry point with plain Node (CI job `verify-pack`). Run it after `bun run build` when touching `exports`, `tsconfig` or the build
+- Packages that run under Node on an installed site (agent-summary, checks, cms-types, cms-core, cms-client, cms, llm-enhancements, nua, notes, cms-sidecar) emit JS into `dist/` with the same layout as `src/`. Their `prepack` runs `resolve-deps.ts --compiled-exports`, which points every condition of the published `exports`/`imports`/`module` at `dist/`, `workerd` included (`scripts/workspace-deps/compiled-exports.ts`). The other packages (components, collections-admin, cms-mdx-editor, cli, cms-studio) are only loaded by Vite, a bundler or Bun, and publish their source
+- Code that locates its own files has to resolve the same from `src/` and from `dist/`: go through `packageRoot(import.meta.url)` (`src/package-root.ts` in cms and notes)
+- `bun run verify:pack` packs every package, installs the tarballs into a throwaway project and loads every compiled entry point with plain Node (the CI `build` job runs it). Run it after `bun run build` when touching `exports`, `tsconfig` or the build
 
 ## Testing
 

@@ -20,13 +20,10 @@ jobs:
             run_script: bun run format:check
 
           # Bundles every package, not just the declarations, so a broken
-          # bundle shows up on the PR instead of at publish time.
+          # bundle shows up on the PR instead of at publish time. Then installs
+          # the packed tarballs and loads every compiled entry point with plain
+          # Node, as an installed site's Astro does.
           - job_name: build
-            run_script: bun run build
-
-          # Installs the packed tarballs and loads every compiled entry point with
-          # plain Node, as an installed site's Astro does.
-          - job_name: verify-pack
             run_script: |
               bun run build
               bun run verify:pack
