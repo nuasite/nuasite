@@ -481,11 +481,11 @@ Sent when the manifest reloads after navigating to a different page:
 
 ### `cms-element-selected`
 
-Sent when the user hovers or clicks a CMS element. Contains full element metadata from the manifest including `sourcePath`, `sourceLine`, `sourceSnippet`, `sourceHash`, `stableId`, `contentPath`, image/color/attribute data, and component instance info.
+Sent when the user picks an element with Select Element (the `selectElement` feature). Hovering sends nothing. Contains full element metadata from the manifest including `sourcePath`, `sourceLine`, `sourceSnippet`, `sourceHash`, `stableId`, `contentPath`, image/color/attribute data, and component instance info.
 
 ### `cms-element-deselected`
 
-Sent when no element is hovered. No additional data.
+Sent when the picked element is let go: Escape, a click on empty space, leaving Select Element, or [`cms-deselect-element`](#cms-deselect-element) from the parent. No additional data.
 
 ### `cms-open-entry`
 
