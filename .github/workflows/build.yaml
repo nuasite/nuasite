@@ -24,6 +24,13 @@ jobs:
           - job_name: build
             run_script: bun run build
 
+          # Installs the packed tarballs and loads every compiled entry point with
+          # plain Node, as an installed site's Astro does.
+          - job_name: verify-pack
+            run_script: |
+              bun run build
+              bun run verify:pack
+
           - job_name: lint-deps
             run_script: bun run lint:deps
 
