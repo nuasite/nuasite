@@ -1,35 +1,43 @@
 import { describe, expect, test } from 'bun:test'
-import { inlineIn, inlineNuasitePackages } from '../../src/vite-plugin-inline-nuasite'
+import { dropCrawledExternals, inlineNuasitePackages, userExternals } from '../../src/vite-plugin-inline-nuasite'
 
 describe('inlineNuasitePackages', () => {
-	test('drops @nuasite packages from the explicit externals and inlines them', () => {
-		const resolve = { external: ['@nuasite/cms-core', 'zod', '@nuasite/cms-types'], noExternal: ['astro'] as Array<string | RegExp> }
-		inlineIn(resolve)
+	test('drops @nuasite packages from an explicit external list', () => {
+		const resolve = { external: ['@nuasite/cms-core', 'zod', '@nuasite/cms-types'] }
+		dropCrawledExternals(resolve)
 		expect(resolve.external).toEqual(['zod'])
-		expect(resolve.noExternal).toEqual(['astro', /^@nuasite\//])
 	})
 
-	test('keeps external: true and noExternal: true as they are', () => {
-		const everything = { external: true as const, noExternal: true as const }
-		inlineIn(everything)
-		expect(everything).toEqual({ external: true, noExternal: true })
+	test('keeps an @nuasite external the site set itself', () => {
+		const resolve = { external: ['@nuasite/cms-core', '@nuasite/cms-sidecar'] }
+		dropCrawledExternals(resolve, new Set(['@nuasite/cms-sidecar']))
+		expect(resolve.external).toEqual(['@nuasite/cms-sidecar'])
 	})
 
-	test('wraps a single noExternal entry, and adds the pattern only once', () => {
-		const resolve: { external: string[]; noExternal: string | RegExp | Array<string | RegExp> } = { external: [], noExternal: 'astro' }
-		inlineIn(resolve)
-		inlineIn(resolve)
-		expect(resolve.noExternal).toEqual(['astro', /^@nuasite\//])
+	test('leaves external: true alone', () => {
+		const resolve = { external: true as const }
+		dropCrawledExternals(resolve)
+		expect(resolve.external).toBe(true)
 	})
 
 	test('applies to the top-level config and every environment, in dev only', () => {
 		const plugin = inlineNuasitePackages()
 		expect(plugin.apply).toBe('serve')
-		const astro = { resolve: { external: ['@nuasite/cms-core'], noExternal: [] } }
-		const ssr = { resolve: { external: ['@nuasite/core'], noExternal: [] } }
-		const config = { resolve: { external: [], noExternal: [] }, environments: { astro, ssr } }
-		;(plugin.configResolved as (c: unknown) => void)(config)
+		const top = { external: ['@nuasite/components'] }
+		const astro = { resolve: { external: ['@nuasite/cms-core'] } }
+		const ssr = { resolve: { external: ['@nuasite/core', 'sharp'] } }
+		;(plugin.configResolved as (c: unknown) => void)({ resolve: top, environments: { astro, ssr } })
+		expect(top.external).toEqual([])
 		expect(astro.resolve.external).toEqual([])
-		expect(ssr.resolve.external).toEqual([])
+		expect(ssr.resolve.external).toEqual(['sharp'])
+	})
+
+	test("collects the site's own @nuasite externals from every place Vite reads them", () => {
+		expect(userExternals({
+			ssr: { external: ['@nuasite/a', 'zod'] },
+			resolve: { external: ['@nuasite/b'] },
+			environments: { astro: { resolve: { external: ['@nuasite/c'] } }, ssr: { resolve: { external: true } } },
+		})).toEqual(['@nuasite/a', '@nuasite/b', '@nuasite/c'])
+		expect(userExternals(undefined)).toEqual([])
 	})
 })
