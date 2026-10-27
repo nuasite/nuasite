@@ -9,7 +9,18 @@ import { currentProjectContext, projectFiles } from '../project/context'
 import { extractAstroImageOriginalUrl } from '../source-finder/snippet-utils'
 import type { CmsManifest, ManifestEntry } from '../types'
 import { acquireFileLock, escapeRegex, escapeReplacement, normalizePagePath, relativeImportPath, resolveAndValidatePath } from '../utils'
-import { elementOnLine, findElements, lineEnd, lineOf, lineStart, locateSnippet, NAMED_ENTITIES, pickElement, tagEnd } from './element-span'
+import {
+	elementOnLine,
+	findElements,
+	lineEnd,
+	lineOf,
+	lineStart,
+	locateSnippet,
+	NAMED_ENTITIES,
+	pickElement,
+	selfClosingSlash,
+	tagEnd,
+} from './element-span'
 
 export interface SaveBatchResponse {
 	updated: number
@@ -114,13 +125,13 @@ export async function applyChanges(
 	const failedChanges: Array<{ cmsId: string; error: string }> = []
 	const fileOps: PendingFileOp[] = []
 
-	// Text changes go first. They are found by their recorded snippet, which a
-	// colour, attribute or image change on the same line would already have
-	// rewritten. Within each kind, changes run by source line descending to
-	// prevent offset shifts.
+	// Sort changes by source line descending to prevent offset shifts. On one
+	// line, text changes go first: they are found by their recorded snippet,
+	// which a colour, attribute or image change on that line would already have
+	// rewritten.
 	const isText = (change: ChangePayload) => !change.imageChange && !change.styleChange && !change.attributeChanges?.length
 	const sortedChanges = [...changes].sort(
-		(a, b) => Number(isText(b)) - Number(isText(a)) || (b.sourceLine ?? 0) - (a.sourceLine ?? 0),
+		(a, b) => (b.sourceLine ?? 0) - (a.sourceLine ?? 0) || Number(isText(b)) - Number(isText(a)),
 	)
 	// A colour or attribute change finds its element by the element's text. When
 	// the same save also edits that text, the element already shows the new one.
@@ -402,7 +413,7 @@ export async function applyImageChange(
 				+ newContent.slice(altAbsoluteIndex + altLength)
 		} else if (ownTag && newAlt && /^(img|Image|Picture)$/.test(ownTag.name)) {
 			// The image has no alt yet: it gets one at the end of its tag.
-			newContent = insertAttribute(newContent, ownTag.end, `alt="${escapedAlt}"`)
+			newContent = insertAttribute(newContent, ownTag.start, ownTag.end, `alt="${escapedAlt}"`)
 		}
 	}
 
@@ -434,7 +445,7 @@ function enclosingTag(content: string, offset: number): { start: number; end: nu
 	// A `<` inside an earlier attribute value is not where the tag opens, so a few
 	// candidates are tried, nearest first.
 	let start = content.lastIndexOf('<', offset)
-	for (let tries = 0; start >= 0 && tries < 8; tries++, start = content.lastIndexOf('<', start - 1)) {
+	for (let tries = 0; start >= 0 && tries < 32; tries++, start = content.lastIndexOf('<', start - 1)) {
 		const name = content.slice(start + 1, start + 65).match(/^[a-zA-Z][\w.-]*/)?.[0]
 		if (!name) continue
 		const end = tagEnd(content, start)
@@ -665,10 +676,10 @@ function rewriteClassAttribute(
  * After every other attribute, so a `{...spread}` written earlier cannot
  * override it.
  */
-function insertAttribute(content: string, openEnd: number, attribute: string): string {
-	let at = openEnd - 1
-	if (content[at - 1] === '/') at--
-	while (at > 0 && /\s/.test(content[at - 1]!)) at--
+function insertAttribute(content: string, tagStart: number, openEnd: number, attribute: string): string {
+	const slash = selfClosingSlash(content, tagStart, openEnd)
+	let at = slash >= 0 ? slash : openEnd - 1
+	while (at > tagStart && /\s/.test(content[at - 1]!)) at--
 	return content.slice(0, at) + ` ${attribute}` + content.slice(at)
 }
 
@@ -753,7 +764,7 @@ function appendClassToAttribute(
 			if (/(?<![\w-])class(?::list)?\s*=/.test(openingTag)) {
 				return { success: false, error: `The class of this element is an expression on line ${sourceLine}; edit it in the source` }
 			}
-			return { success: true, content: insertAttribute(content, element.openEnd, `class="${newClass}"`) }
+			return { success: true, content: insertAttribute(content, element.start, element.openEnd, `class="${newClass}"`) }
 		}
 
 		const [first] = classAttributes(content, from, lineEnd(content, from))
@@ -995,7 +1006,7 @@ export function applyTextChange(
 	// returns the entire line, not just the individual child tag).
 	const placeholderPattern = /\{\{cms:[^}]+\}\}/g
 	if (placeholderPattern.test(originalValue)) {
-		return applyTextChangeWithPlaceholders(insideYaml, content, snippetAt, sourceSnippet, originalValue, newText)
+		return applyTextChangeWithPlaceholders(insideYaml, content, snippetAt, sourceSnippet, originalValue, newText, innerFrom, innerTo)
 	}
 
 	// No placeholders — resolve and match directly
@@ -1089,7 +1100,9 @@ export function applyTextChange(
 			// so the edit is spliced into the text run it actually touched instead.
 			const isHtmlReplacement = /<[^>]+>/.test(resolvedNewText)
 			if (isHtmlReplacement || !/<[^>]+>/.test(innerContent)) {
-				return writeElement(openTag + resolvedNewText + closeTag)
+				// Plain text keeps the entities it did not touch (`&copy;`, `&ndash;`).
+				const spliced = isHtmlReplacement ? null : spliceIntoEntitySource(innerContent, resolvedOriginal, resolvedNewText)
+				return writeElement(openTag + (spliced ?? resolvedNewText) + closeTag)
 			}
 			const splicedInner = spliceTextAcrossInlineMarkup(innerContent, resolvedOriginal, resolvedNewText)
 			if (splicedInner !== null) {
@@ -1122,6 +1135,8 @@ function applyTextChangeWithPlaceholders(
 	sourceSnippet: string,
 	originalValue: string,
 	newText: string,
+	innerFrom = 0,
+	innerTo = sourceSnippet.length,
 ): { success: true; content: string } | { success: false; error: string } {
 	const placeholderPattern = /\{\{cms:[^}]+\}\}/g
 
@@ -1132,7 +1147,9 @@ function applyTextChangeWithPlaceholders(
 		return { success: false, error: 'Placeholder structure mismatch between original and new values' }
 	}
 
-	let updatedSnippet = sourceSnippet
+	// Only the element's content is searched: its opening tag can carry the same
+	// words in an attribute (`title="Volejte nám"`).
+	let updatedInner = sourceSnippet.slice(innerFrom, innerTo)
 	let anyChange = false
 
 	for (let i = 0; i < originalParts.length; i++) {
@@ -1144,13 +1161,13 @@ function applyTextChangeWithPlaceholders(
 		}
 
 		// Try direct match first, then entity-aware match
-		const matchedText = findTextInSnippet(updatedSnippet, oldPart)
+		const matchedText = findTextInSnippet(updatedInner, oldPart)
 		if (matchedText) {
 			// When entity-aware matching was needed, encode the same entities in the replacement
 			if (matchedText !== oldPart) {
 				newPart = encodeEntitiesLike(newPart, matchedText)
 			}
-			updatedSnippet = updatedSnippet.replace(matchedText, escapeReplacement(newPart))
+			updatedInner = updatedInner.replace(matchedText, escapeReplacement(newPart))
 			anyChange = true
 		} else {
 			return {
@@ -1164,6 +1181,7 @@ function applyTextChangeWithPlaceholders(
 		return { success: false, error: 'No text changes detected between original and new values' }
 	}
 
+	const updatedSnippet = sourceSnippet.slice(0, innerFrom) + updatedInner + sourceSnippet.slice(innerTo)
 	return writeSnippet(content, snippetAt, sourceSnippet, updatedSnippet, insideYaml, newText)
 }
 

@@ -1,5 +1,3 @@
-import { normalizeText } from '../source-finder/snippet-utils'
-
 /**
  * Locating one element inside source markup, by string scanning.
  *
@@ -132,6 +130,20 @@ export function locateSnippet(content: string, snippet: string, line?: number): 
 	return best
 }
 
+/**
+ * Offset of the `/` that makes the tag at `[start, end)` self-closing, or -1.
+ * The slash has to stand on its own: in `<img src=/x/>` it ends an unquoted
+ * value, and the tag is not self-closing.
+ */
+export function selfClosingSlash(text: string, start: number, end: number): number {
+	const slash = end - 2
+	if (slash <= start || text[slash] !== '/') return -1
+	const before = text[slash - 1]!
+	if (/[\s"'}]/.test(before)) return slash
+	// `<br/>`: nothing but the tag name before the slash.
+	return /^<[a-zA-Z][\w:.-]*$/.test(text.slice(start, slash)) ? slash : -1
+}
+
 interface TagToken {
 	start: number
 	end: number
@@ -141,9 +153,10 @@ interface TagToken {
 }
 
 /**
- * The tags of `text` in order, in one pass. Comments, quoted attribute values,
- * `{…}` expressions and the content of raw-text elements (`<script>`, `<style>`)
- * are stepped over, so a `<li>` written inside any of them is not a tag.
+ * The tags of `text` in order, in one pass. Comments, quoted attribute values
+ * and `{…}` expressions inside a tag, and the content of raw-text elements
+ * (`<script>`, `<style>`) are stepped over, so a `<li>` written inside any of
+ * them is not a tag. An expression in text (`{'<li>'}`) is not.
  */
 function tokenize(text: string): TagToken[] {
 	const tokens: TagToken[] = []
@@ -166,9 +179,10 @@ function tokenize(text: string): TagToken[] {
 		if (end < 0) break
 		const name = match[2]!
 		const closing = match[1] === '/'
-		tokens.push({ start: i, end, name, closing, selfClosing: !closing && text[end - 2] === '/' })
+		tokens.push({ start: i, end, name, closing, selfClosing: !closing && selfClosingSlash(text, i, end) >= 0 })
 		i = end
-		if (!closing && RAW_TEXT_ELEMENTS.has(name.toLowerCase())) {
+		// Only the HTML element: a `<Title>` or `<Script>` component holds markup.
+		if (!closing && RAW_TEXT_ELEMENTS.has(name)) {
 			lower ??= text.toLowerCase()
 			const close = lower.indexOf(`</${name.toLowerCase()}`, end)
 			if (close < 0) break
@@ -231,7 +245,7 @@ export const NAMED_ENTITIES: Record<string, string> = {
 	rdquo: '\u201D',
 	bdquo: '\u201E',
 	sbquo: '\u201A',
-	shy: '',
+	shy: '\u00AD',
 	copy: '\u00A9',
 	reg: '\u00AE',
 	trade: '\u2122',
@@ -253,47 +267,63 @@ const EXPRESSION = /\{[^{}]*\}/g
 /** Stands in for a placeholder or an expression while comparing text. */
 const HOLE = '\u0000'
 
-/** The text an element's inner markup renders, normalized the way the search index normalizes it. */
+/**
+ * The text markup renders, with whitespace collapsed and the escapes the search
+ * index folds (see `normalizeText`) undone, but its case kept.
+ */
+function renderedCased(markup: string): string {
+	return decodeEntities(
+		markup.replace(/<br\b[^>]*>/gi, ' ').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, '').replace(/\\(['"])/g, '$1'),
+	)
+		.replace(/\u00AD/g, '')
+		.replace(/\s+/g, ' ')
+		.trim()
+}
+
+/** The text an element's inner markup renders, normalized for comparison. */
 export function renderedText(innerMarkup: string): string {
-	return normalizeText(decodeEntities(innerMarkup.replace(/<br\b[^>]*>/gi, ' ').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, '')))
+	return renderedCased(innerMarkup).toLowerCase()
 }
 
-/** Normalized text with every placeholder and expression reduced to one `HOLE`. */
+/** Rendered text with every placeholder and expression reduced to one `HOLE`. */
 function withHoles(text: string): string {
-	return renderedText(text.replace(PLACEHOLDER, HOLE).replace(EXPRESSION, HOLE)).replace(new RegExp(`\\s*${HOLE}\\s*`, 'g'), HOLE)
+	return renderedCased(text.replace(PLACEHOLDER, HOLE).replace(EXPRESSION, HOLE)).replace(new RegExp(`\\s*${HOLE}\\s*`, 'g'), HOLE)
 }
 
-/** Does `text` contain `parts` in order, the first at its start and the last at its end? */
-function containsInOrder(text: string, parts: string[]): boolean {
-	const first = parts[0]!
-	const last = parts[parts.length - 1]!
-	if (!text.startsWith(first) || !text.endsWith(last) || first.length + last.length > text.length) return false
-	let at = first.length
-	for (const middle of parts.slice(1, -1)) {
-		if (!middle) continue
-		const found = text.indexOf(middle, at)
-		if (found < 0) return false
-		at = found + middle.length
-	}
-	return at <= text.length - last.length
+/** Does `pattern`, with each `HOLE` standing for any text, match the whole of `text`? */
+function matchesWithHoles(pattern: string, text: string): boolean {
+	if (!pattern.includes(HOLE)) return pattern === text
+	const source = pattern.split(HOLE).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s\\S]*')
+	return new RegExp(`^${source}$`).test(text)
 }
+
+/** How well a candidate's text matches: 0 not at all, higher is better. */
+type Fit = 0 | 1 | 2 | 3
 
 /**
- * Does markup render `elementText`?
+ * How well markup renders `elementText`.
  *
  * Either side can have holes. The manifest writes a nested CMS element into its
  * parent's text as `{{cms:cms-5}}`, which stands for whatever the child renders;
  * the source can have a `{expression}` that rendered as some text. The parts
  * around the holes on one side have to appear, in order, in the other.
+ *
+ * Exact case beats a case-only difference (3 over 2). Markup that is nothing
+ * but expressions matches any text, so it only fits weakly (1): it can stand for
+ * the element when nothing else on the line does.
  */
-export function rendersText(innerMarkup: string, elementText: string): boolean {
+function textFit(innerMarkup: string, elementText: string): Fit {
 	const source = withHoles(innerMarkup)
 	const wanted = withHoles(elementText)
-	if (!source.includes(HOLE) && !wanted.includes(HOLE)) return source === wanted
-	if (source.includes(HOLE) && wanted.includes(HOLE)) return source === wanted
-	return source.includes(HOLE)
-		? containsInOrder(wanted, source.split(HOLE).map(part => part.trim()))
-		: containsInOrder(source, wanted.split(HOLE).map(part => part.trim()))
+	const fits = (a: string, b: string) => matchesWithHoles(a, b) || matchesWithHoles(b, a)
+	if (!fits(source.toLowerCase(), wanted.toLowerCase())) return 0
+	if (!source.replaceAll(HOLE, '').trim()) return 1
+	return fits(source, wanted) ? 3 : 2
+}
+
+/** Does markup render `elementText`? */
+export function rendersText(innerMarkup: string, elementText: string): boolean {
+	return textFit(innerMarkup, elementText) > 0
 }
 
 /** The quoted attribute values of an opening tag. */
@@ -301,20 +331,21 @@ function attributeValues(openingTag: string): string[] {
 	return [...openingTag.matchAll(/\s[\w:-]+\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map(m => decodeEntities(m[1] ?? m[2] ?? ''))
 }
 
-/** Does this candidate stand for the element whose manifest text is `elementText`? */
-function candidateFits(text: string, candidate: ElementSpan, elementText: string): boolean {
+/** How well this candidate stands for the element whose manifest text is `elementText`. */
+function candidateFit(text: string, candidate: ElementSpan, elementText: string): Fit {
 	// A void element renders no text; the manifest's text for one (an image's alt or src) is an attribute value.
-	if (candidate.void) return attributeValues(text.slice(candidate.start, candidate.openEnd)).includes(elementText.trim())
-	return rendersText(text.slice(candidate.openEnd, candidate.closeStart), elementText)
+	if (candidate.void) return attributeValues(text.slice(candidate.start, candidate.openEnd)).includes(elementText.trim()) ? 3 : 0
+	return textFit(text.slice(candidate.openEnd, candidate.closeStart), elementText)
 }
 
 /**
  * Of the candidate elements, the one the edit is about.
  *
  * When the element's text is known, the candidate has to render it, even when
- * it is the only one. Without the text, a lone candidate is taken. When no
- * candidate, or more than one, fits, the answer is `null` and the caller keeps
- * its whole-line behaviour rather than guess.
+ * it is the only one. Without the text, a lone candidate is taken. The best fit
+ * wins (see `textFit`); when no candidate fits, or more than one fits equally
+ * well at the best level, the answer is `null` and the caller keeps its
+ * whole-line behaviour rather than guess.
  *
  * `rivals` are what else in the same stretch could be the rendered element: a
  * component (`<Button>` may render the `<a>` being edited) or a markdown link
@@ -328,19 +359,21 @@ export function pickElement(
 	rivals?: { from: number; to: number },
 ): ElementSpan | null {
 	const known = !!elementText && !!renderedText(elementText.replace(PLACEHOLDER, ''))
-	const matching = known ? candidates.filter(c => candidateFits(text, c, elementText!)) : candidates
+	if (!known) return candidates.length === 1 ? candidates[0]! : null
+
+	const fits = candidates.map(c => ({ candidate: c, fit: candidateFit(text, c, elementText!) }))
+	const best = Math.max(0, ...fits.map(f => f.fit))
+	const matching = fits.filter(f => f.fit === best && best > 0)
 	if (matching.length !== 1) return null
-	const picked = matching[0]!
+	const picked = matching[0]!.candidate
 
 	const from = rivals?.from ?? 0
 	const to = rivals?.to ?? text.length
-	if (known) {
-		const components = findElements(text, from, to).filter(c => c.name !== c.tag && c.start !== picked.start)
-		if (components.some(c => candidateFits(text, c, elementText!))) return null
-		const wanted = withHoles(elementText!)
-		for (const link of text.slice(from, to).matchAll(/\[([^\]\n]+)\]\(/g)) {
-			if (withHoles(link[1]!) === wanted) return null
-		}
+	const components = findElements(text, from, to).filter(c => c.name !== c.tag && c.start !== picked.start)
+	if (components.some(c => candidateFit(text, c, elementText!) >= best)) return null
+	const wanted = withHoles(elementText!).toLowerCase()
+	for (const link of text.slice(from, to).matchAll(/\[([^\]\n]+)\]\(/g)) {
+		if (withHoles(link[1]!).toLowerCase() === wanted) return null
 	}
 	return picked
 }

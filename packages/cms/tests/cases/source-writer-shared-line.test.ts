@@ -379,3 +379,104 @@ test('a markdown body line that repeats a frontmatter line is not treated as YAM
 	)
 	expect(result).toEqual({ success: true, content: '---\ntitle: Ahoj\n---\ntitle: Nazdar\n' })
 })
+
+describe('third review pass', () => {
+	test('a text edit that adds a line does not shift a colour change further down', async () => {
+		const content = '<p class="a">Řádek</p>\n<p class="b">Druhý</p>\n<p class="c">Třetí</p>'
+		const result = await applyChanges(
+			content,
+			[
+				makeChange({ cmsId: 'one', sourceLine: 1, sourceSnippet: '<p class="a">Řádek</p>', originalValue: 'Řádek', newValue: 'Řádek\nnový' }),
+				makeChange({ cmsId: 'three', sourceLine: 3, styleChange: { oldClass: '', newClass: 'font-bold', type: 'text', sourceLine: 3 } }),
+			],
+			{
+				entries: {
+					one: { id: 'one', tag: 'p', text: 'Řádek' } as ManifestEntry,
+					three: { id: 'three', tag: 'p', text: 'Třetí' } as ManifestEntry,
+				},
+				components: {},
+				componentDefinitions: {},
+			},
+			'/test.astro',
+			'http://localhost',
+		)
+		expect(result.failedChanges).toEqual([])
+		expect(result.newContent).toBe('<p class="a">Řádek\nnový</p>\n<p class="b">Druhý</p>\n<p class="c font-bold">Třetí</p>')
+	})
+
+	test('a <Title> component is markup, not raw text', () => {
+		const content = '<Title>Nadpis <span>X</span></Title> <span>X</span>'
+		const result = applyTextChange(
+			content,
+			makeChange({ sourceSnippet: content, originalValue: 'X', newValue: 'Y' }),
+			manifestFor({ tag: 'span', text: 'X' }),
+		)
+		expect(result).toEqual({ success: true, content: '<Title>Nadpis <span>Y</span></Title> <span>X</span>' })
+	})
+
+	test('a slash ending an unquoted value is not a self-closing slash', () => {
+		const result = applyColorChange(
+			'<img src=/x/>',
+			makeChange({ styleChange: { oldClass: '', newClass: 'z', type: 'text', sourceLine: 1 } }),
+			{ tag: 'img', text: '' },
+		)
+		expect(result).toEqual({ success: true, content: '<img src=/x/ class="z">' })
+	})
+
+	test('&shy; keeps its place in the text', () => {
+		const content = '<p>Ne&shy;dělej <b>to</b> teď</p>'
+		const result = applyTextChange(
+			content,
+			makeChange({ sourceSnippet: content, originalValue: 'Ne­dělej to teď', newValue: 'Ne­dělej to zítra' }),
+			manifestFor({ tag: 'p', text: 'Ne­dělej to teď' }),
+		)
+		expect(result).toEqual({ success: true, content: '<p>Ne&shy;dělej <b>to</b> zítra</p>' })
+	})
+
+	test('an untouched entity keeps its spelling', () => {
+		const content = '<ul><li>&copy; 2024 Firma</li>'
+		const result = applyTextChange(
+			content,
+			makeChange({ sourceSnippet: content, originalValue: '© 2024 Firma', newValue: '© 2025 Firma' }),
+			manifestFor({ tag: 'li', text: '© 2024 Firma' }),
+		)
+		expect(result).toEqual({ success: true, content: '<ul><li>&copy; 2025 Firma</li>' })
+	})
+
+	test('a placeholder edit leaves the same words in an attribute alone', () => {
+		const content = '<p title="Volejte nám">Volejte <a href="tel:1">nám</a> kdykoli</p>'
+		const result = applyTextChange(
+			content,
+			makeChange({ sourceSnippet: content, originalValue: 'Volejte {{cms:cms-1}} kdykoli', newValue: 'Pište {{cms:cms-1}} kdykoli' }),
+			manifestFor({ tag: 'p', text: 'Volejte {{cms:cms-1}} kdykoli' }),
+		)
+		expect(result).toEqual({ success: true, content: '<p title="Volejte nám">Pište <a href="tel:1">nám</a> kdykoli</p>' })
+	})
+
+	test('an element with literal text beats a sibling that is only an expression', () => {
+		const result = applyColorChange(
+			'<p class="a">{a > b ? \'ano\' : \'ne\'}</p><p class="a">Druhý</p>',
+			makeChange({ styleChange: { oldClass: 'a', newClass: 'z', type: 'text', sourceLine: 1 } }),
+			{ tag: 'p', text: 'Druhý' },
+		)
+		expect(result).toEqual({ success: true, content: '<p class="a">{a > b ? \'ano\' : \'ne\'}</p><p class="z">Druhý</p>' })
+	})
+
+	test('exact case beats a case-only difference', () => {
+		const result = applyColorChange(
+			'<p class="a">Hello</p><p class="a">hello</p>',
+			makeChange({ styleChange: { oldClass: 'a', newClass: 'z', type: 'text', sourceLine: 1 } }),
+			{ tag: 'p', text: 'hello' },
+		)
+		expect(result).toEqual({ success: true, content: '<p class="a">Hello</p><p class="z">hello</p>' })
+	})
+
+	test('a .map() row with expressions on both sides is still found', () => {
+		const result = applyColorChange(
+			'<ul class="list">{items.map(i => <li>{i.t} <b>{i.n}</b></li>)}</ul>',
+			makeChange({ styleChange: { oldClass: '', newClass: 'z', type: 'text', sourceLine: 1 } }),
+			{ tag: 'li', text: 'Jablka {{cms:cms-9}}' },
+		)
+		expect(result).toEqual({ success: true, content: '<ul class="list">{items.map(i => <li class="z">{i.t} <b>{i.n}</b></li>)}</ul>' })
+	})
+})
