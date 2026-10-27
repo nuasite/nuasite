@@ -13,7 +13,7 @@
 		"lint:deps": "deptective",
 		"format": "dprint fmt",
 		"format:check": "dprint check",
-		"test": "bun test --conditions=typescript packages",
+		"test": "bun test --conditions=typescript packages scripts",
 		"ts:build": "tsc --build && tsc -p packages/cms/tsconfig.workerd.json",
 		"ts:watch": "tsc --build --watch",
 		"ts:clean": "tsc --build --clean"

@@ -132,7 +132,7 @@
 	},
 	"scripts": {
 		"build": "vite build --config vite.config.editor.ts",
-		"prepack": "bun run build && bun run ../../scripts/workspace-deps/resolve-deps.ts"
+		"prepack": "bun run build && bun run ../../scripts/workspace-deps/resolve-deps.ts --compiled-exports"
 	},
 	"keywords": [
 		"astro",
