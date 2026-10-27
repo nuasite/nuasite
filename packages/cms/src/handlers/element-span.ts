@@ -132,16 +132,20 @@ export function locateSnippet(content: string, snippet: string, line?: number): 
 
 /**
  * Offset of the `/` that makes the tag at `[start, end)` self-closing, or -1.
- * The slash has to stand on its own: in `<img src=/x/>` it ends an unquoted
- * value, and the tag is not self-closing.
+ * The slash is self-closing unless it is the tail of an unquoted attribute
+ * value: `<img src=/x/>` and `<a href=/>` are not self-closing, while `<br/>`,
+ * `<div hidden/>` and `<img src="a"/>` are.
  */
 export function selfClosingSlash(text: string, start: number, end: number): number {
 	const slash = end - 2
 	if (slash <= start || text[slash] !== '/') return -1
 	const before = text[slash - 1]!
 	if (/[\s"'}]/.test(before)) return slash
-	// `<br/>`: nothing but the tag name before the slash.
-	return /^<[a-zA-Z][\w:.-]*$/.test(text.slice(start, slash)) ? slash : -1
+	// The run of non-space characters the slash ends: a tag name, a boolean
+	// attribute, or `name=value` with the value unquoted.
+	const head = text.slice(start, slash)
+	const run = head.slice(Math.max(head.lastIndexOf(' '), head.lastIndexOf('\t'), head.lastIndexOf('\n')) + 1)
+	return run.includes('=') ? -1 : slash
 }
 
 interface TagToken {
@@ -153,17 +157,31 @@ interface TagToken {
 }
 
 /**
- * The tags of `text` in order, in one pass. Comments, quoted attribute values
- * and `{…}` expressions inside a tag, and the content of raw-text elements
- * (`<script>`, `<style>`) are stepped over, so a `<li>` written inside any of
- * them is not a tag. An expression in text (`{'<li>'}`) is not.
+ * The tags of `text` in order, in one pass. HTML comments, JSX block comments, the
+ * frontmatter, quoted attribute values and `{…}` expressions inside a tag, and
+ * the content of raw-text elements (`<script>`, `<style>`) are stepped over, so
+ * a `<li>` written inside any of them is not a tag. A string in a template
+ * expression (`{'<li>'}`) is not stepped over.
  */
 function tokenize(text: string): TagToken[] {
 	const tokens: TagToken[] = []
 	const tagName = /^<(\/?)([a-zA-Z][\w:.-]*)/
 	let lower: string | undefined
+	// Regions that are code, not markup: the frontmatter fence and JSX block
+	// comments in the template. A `'</li>'` in either is not a tag.
+	const skipped: Array<[number, number]> = []
+	const fence = /^(?:\uFEFF)?---\r?\n[\s\S]*?\r?\n---(?=\r?\n|$)/.exec(text)
+	if (fence) skipped.push([0, fence[0].length])
+	for (const comment of text.matchAll(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g)) skipped.push([comment.index, comment.index + comment[0].length])
+	let nextSkip = 0
 	let i = text.indexOf('<')
 	while (i >= 0 && i < text.length) {
+		while (nextSkip < skipped.length && skipped[nextSkip]![1] <= i) nextSkip++
+		const region = skipped[nextSkip]
+		if (region && region[0] <= i) {
+			i = text.indexOf('<', region[1])
+			continue
+		}
 		if (text.startsWith('<!--', i)) {
 			const close = text.indexOf('-->', i + 4)
 			if (close < 0) break
@@ -202,6 +220,16 @@ function tokenize(text: string): TagToken[] {
  */
 export function findElements(text: string, from: number, to: number, tag?: string): ElementSpan[] {
 	const wanted = tag?.toLowerCase()
+	return allElements(text).filter(e => e.start >= from && e.start < to && (!wanted || e.tag === wanted))
+}
+
+// One save looks up elements in the same file several times (each candidate,
+// each rival check, each change), so the last file's elements are kept.
+let lastText: string | undefined
+let lastElements: ElementSpan[] = []
+
+function allElements(text: string): ElementSpan[] {
+	if (text === lastText) return lastElements
 	const open = new Map<string, TagToken[]>()
 	const found: ElementSpan[] = []
 	for (const token of tokenize(text)) {
@@ -209,21 +237,22 @@ export function findElements(text: string, from: number, to: number, tag?: strin
 		const key = token.name === lower ? lower : token.name
 		if (token.closing) {
 			const opener = open.get(key)?.pop()
-			if (opener && opener.start >= from && opener.start < to && (!wanted || lower === wanted)) {
+			if (opener) {
 				found.push({ start: opener.start, openEnd: opener.end, closeStart: token.start, end: token.end, tag: lower, name: opener.name, void: false })
 			}
 			continue
 		}
-		if (token.selfClosing || VOID_ELEMENTS.has(lower)) {
-			if (token.start >= from && token.start < to && (!wanted || lower === wanted)) {
-				found.push({ start: token.start, openEnd: token.end, closeStart: token.end, end: token.end, tag: lower, name: token.name, void: true })
-			}
+		// A capitalized `<Link>` or `<Input>` is a component with children, not a void element.
+		if (token.selfClosing || (token.name === lower && VOID_ELEMENTS.has(lower))) {
+			found.push({ start: token.start, openEnd: token.end, closeStart: token.end, end: token.end, tag: lower, name: token.name, void: true })
 			continue
 		}
 		if (!open.has(key)) open.set(key, [])
 		open.get(key)!.push(token)
 	}
-	return found.sort((a, b) => a.start - b.start)
+	lastText = text
+	lastElements = found.sort((a, b) => a.start - b.start)
+	return lastElements
 }
 
 /** Named entities common in hand-written markup. */
@@ -255,8 +284,8 @@ export const NAMED_ENTITIES: Record<string, string> = {
 
 function decodeEntities(text: string): string {
 	return text.replace(/&(?:#x([0-9a-f]+)|#(\d+)|([a-z]+));/gi, (whole, hex: string | undefined, dec: string | undefined, name: string | undefined) => {
-		if (hex) return String.fromCodePoint(parseInt(hex, 16))
-		if (dec) return String.fromCodePoint(parseInt(dec, 10))
+		const code = hex ? parseInt(hex, 16) : dec ? parseInt(dec, 10) : -1
+		if (code >= 0) return code <= 0x10FFFF ? String.fromCodePoint(code) : whole
 		return NAMED_ENTITIES[name!.toLowerCase()] ?? whole
 	})
 }
@@ -290,11 +319,25 @@ function withHoles(text: string): string {
 	return renderedCased(text.replace(PLACEHOLDER, HOLE).replace(EXPRESSION, HOLE)).replace(new RegExp(`\\s*${HOLE}\\s*`, 'g'), HOLE)
 }
 
-/** Does `pattern`, with each `HOLE` standing for any text, match the whole of `text`? */
+/**
+ * Does `pattern`, with each `HOLE` standing for any text, match the whole of
+ * `text`? Matched part by part, leftmost first, which is exact for wildcards
+ * and linear (a backtracking regex is not).
+ */
 function matchesWithHoles(pattern: string, text: string): boolean {
 	if (!pattern.includes(HOLE)) return pattern === text
-	const source = pattern.split(HOLE).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s\\S]*')
-	return new RegExp(`^${source}$`).test(text)
+	const parts = pattern.split(HOLE)
+	const first = parts[0]!
+	const last = parts[parts.length - 1]!
+	if (first.length + last.length > text.length || !text.startsWith(first) || !text.endsWith(last)) return false
+	let at = first.length
+	const limit = text.length - last.length
+	for (const middle of parts.slice(1, -1)) {
+		const found = text.indexOf(middle, at)
+		if (found < 0 || found + middle.length > limit) return false
+		at = found + middle.length
+	}
+	return true
 }
 
 /** How well a candidate's text matches: 0 not at all, higher is better. */

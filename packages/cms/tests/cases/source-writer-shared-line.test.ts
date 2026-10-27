@@ -480,3 +480,73 @@ describe('third review pass', () => {
 		expect(result).toEqual({ success: true, content: '<ul class="list">{items.map(i => <li class="z">{i.t} <b>{i.n}</b></li>)}</ul>' })
 	})
 })
+
+describe('code review findings', () => {
+	test('a boolean attribute before the slash still makes the tag self-closing', () => {
+		const result = applyColorChange(
+			'<div class="outer"><div hidden/><p>x</p></div>',
+			makeChange({ styleChange: { oldClass: '', newClass: 'bg-red', type: 'bg', sourceLine: 1 } }),
+			{ tag: 'div', text: 'x' },
+		)
+		expect(result).toEqual({ success: true, content: '<div class="outer bg-red"><div hidden/><p>x</p></div>' })
+	})
+
+	test('a <Link> component is not a void element, and makes the line ambiguous', () => {
+		const content = '<Link href="/k">Kontakt</Link> <a href="/k">Kontakt</a>'
+		const result = applyTextChange(
+			content,
+			makeChange({ sourceSnippet: content, originalValue: 'Kontakt', newValue: 'Napište' }),
+			manifestFor({ tag: 'a', text: 'Kontakt' }),
+		)
+		expect(result).toEqual({ success: true, content: '<Link href="/k">Napište</Link> <a href="/k">Kontakt</a>' })
+	})
+
+	test('many placeholders against a long line stay fast', () => {
+		const children = Array.from({ length: 9 }, (_, i) => `{{cms:c${i}}}`).join(', ')
+		const commas = Array.from({ length: 60 }, (_, i) => `slovo${i}`).join(', ')
+		const content = `<p class="a">${commas}</p><p class="a">${commas} konec</p>`
+		const started = performance.now()
+		applyColorChange(
+			content,
+			makeChange({ styleChange: { oldClass: 'a', newClass: 'b', type: 'text', sourceLine: 1 } }),
+			{ tag: 'p', text: `${children} nic` },
+		)
+		expect(performance.now() - started).toBeLessThan(500)
+	})
+
+	test('a numeric entity past U+10FFFF does not throw', () => {
+		expect(() =>
+			applyColorChange(
+				'<p class="a">a &#99999999; b</p><p class="a">c</p>',
+				makeChange({ styleChange: { oldClass: 'a', newClass: 'b', type: 'text', sourceLine: 1 } }),
+				{ tag: 'p', text: 'c' },
+			)
+		).not.toThrow()
+	})
+
+	test('a closing tag inside a JSX comment does not end the element', () => {
+		const result = applyColorChange(
+			'<ul class="list"><li>Text <b>x</b> {/* </li> */} more</li>',
+			makeChange({ styleChange: { oldClass: '', newClass: 'z', type: 'text', sourceLine: 1 } }),
+			{ tag: 'li', text: 'Text x more' },
+		)
+		expect(result).toEqual({ success: true, content: '<ul class="list"><li class="z">Text <b>x</b> {/* </li> */} more</li>' })
+	})
+
+	test('a real src beats a data-src with the same value nearer the line', async () => {
+		const content = '<img data-src="/a.jpg" src="/ph.gif">\n<img src="/a.jpg">'
+		const result = await applyImageChange(
+			content,
+			makeChange({ originalValue: '/a.jpg', sourceLine: 1, imageChange: { newSrc: '/b.jpg' } }),
+		)
+		expect(result).toMatchObject({ success: true, content: '<img data-src="/a.jpg" src="/ph.gif">\n<img src="/b.jpg">' })
+	})
+
+	test('a lone data-src is still rewritten', async () => {
+		const result = await applyImageChange(
+			'<img data-src="/a.jpg" src="/ph.gif">',
+			makeChange({ originalValue: '/a.jpg', imageChange: { newSrc: '/b.jpg' } }),
+		)
+		expect(result).toMatchObject({ success: true, content: '<img data-src="/b.jpg" src="/ph.gif">' })
+	})
+})

@@ -9,18 +9,7 @@ import { currentProjectContext, projectFiles } from '../project/context'
 import { extractAstroImageOriginalUrl } from '../source-finder/snippet-utils'
 import type { CmsManifest, ManifestEntry } from '../types'
 import { acquireFileLock, escapeRegex, escapeReplacement, normalizePagePath, relativeImportPath, resolveAndValidatePath } from '../utils'
-import {
-	elementOnLine,
-	findElements,
-	lineEnd,
-	lineOf,
-	lineStart,
-	locateSnippet,
-	NAMED_ENTITIES,
-	pickElement,
-	selfClosingSlash,
-	tagEnd,
-} from './element-span'
+import { elementOnLine, findElements, lineEnd, lineStart, locateSnippet, NAMED_ENTITIES, pickElement, selfClosingSlash } from './element-span'
 
 export interface SaveBatchResponse {
 	updated: number
@@ -259,12 +248,15 @@ export async function applyImageChange(
 	for (const srcToFind of srcCandidates) {
 		// The same image often appears more than once in a file (a logo in the
 		// header and the footer), so the occurrence nearest the element's line wins.
-		const srcPattern = new RegExp(`src=(["'])${escapeRegex(srcToFind)}\\1`, 'g')
-		const match = nearestMatch(newContent, srcPattern, change.sourceLine)
+		// A real `src` wins over a lazy-loading `data-src` with the same value,
+		// which is still taken when it is the only one.
+		const escaped = escapeRegex(srcToFind)
+		const match = nearestMatch(newContent, new RegExp(`(?<![\\w:-])(src\\s*=\\s*)(["'])${escaped}\\2`, 'g'), change.sourceLine)
+			?? nearestMatch(newContent, new RegExp(`(src\\s*=\\s*)(["'])${escaped}\\2`, 'g'), change.sourceLine)
 		if (match) {
-			const quote = match[1]!
+			const quote = match[2]!
 			replacedIndex = match.index
-			newContent = newContent.slice(0, replacedIndex) + `src=${quote}${newSrc}${quote}` + newContent.slice(replacedIndex + match[0].length)
+			newContent = newContent.slice(0, replacedIndex) + `${match[1]}${quote}${newSrc}${quote}` + newContent.slice(replacedIndex + match[0].length)
 			break
 		}
 	}
@@ -411,7 +403,7 @@ export async function applyImageChange(
 			newContent = newContent.slice(0, altAbsoluteIndex)
 				+ `alt=${altQuote}${escapedAlt}${altQuote}`
 				+ newContent.slice(altAbsoluteIndex + altLength)
-		} else if (ownTag && newAlt && /^(img|Image|Picture)$/.test(ownTag.name)) {
+		} else if (ownTag && newAlt && IMAGE_TAG.test(ownTag.name)) {
 			// The image has no alt yet: it gets one at the end of its tag.
 			newContent = insertAttribute(newContent, ownTag.start, ownTag.end, `alt="${escapedAlt}"`)
 		}
@@ -428,30 +420,27 @@ function nearestMatch(content: string, pattern: RegExp, line: number | undefined
 	pattern.lastIndex = 0
 	let best: RegExpExecArray | null = null
 	let bestDistance = Number.POSITIVE_INFINITY
+	// Lines are counted incrementally from one match to the next.
+	let matchLine = 1
+	let countedTo = 0
 	for (let match = pattern.exec(content); match; match = pattern.exec(content)) {
 		if (!line || line < 1) return match
-		const distance = Math.abs(lineOf(content, match.index) - line)
+		for (let i = content.indexOf('\n', countedTo); i >= 0 && i < match.index; i = content.indexOf('\n', i + 1)) matchLine++
+		countedTo = match.index
+		const distance = Math.abs(matchLine - line)
 		if (distance < bestDistance) {
 			best = match
 			bestDistance = distance
 		}
-		if (distance === 0 || lineOf(content, match.index) > line) break
+		if (distance === 0 || matchLine > line) break
 	}
 	return best
 }
 
 /** The opening tag (`<img …>`, `<Image …/>`) that contains `offset`, or `null` when `offset` is not inside a tag. */
 function enclosingTag(content: string, offset: number): { start: number; end: number; name: string } | null {
-	// A `<` inside an earlier attribute value is not where the tag opens, so a few
-	// candidates are tried, nearest first.
-	let start = content.lastIndexOf('<', offset)
-	for (let tries = 0; start >= 0 && tries < 32; tries++, start = content.lastIndexOf('<', start - 1)) {
-		const name = content.slice(start + 1, start + 65).match(/^[a-zA-Z][\w.-]*/)?.[0]
-		if (!name) continue
-		const end = tagEnd(content, start)
-		if (end > offset) return { start, end, name }
-	}
-	return null
+	const element = findElements(content, 0, offset + 1).filter(e => e.start <= offset && offset < e.openEnd).pop()
+	return element ? { start: element.start, end: element.openEnd, name: element.name } : null
 }
 
 /** The single image tag that opens on 1-based `line`, or `null` when there is none or more than one. */
@@ -459,13 +448,11 @@ function imageTagOnLine(content: string, line: number | undefined): { start: num
 	if (!line || line < 1) return null
 	const from = lineStart(content, line)
 	if (from < 0) return null
-	const to = lineEnd(content, from)
-	const tags = [...content.slice(from, to).matchAll(/<(img|Image|Picture)(?=[\s/>])/g)]
-	if (tags.length !== 1) return null
-	const start = from + tags[0]!.index
-	const end = tagEnd(content, start)
-	return end > 0 ? { start, end, name: tags[0]![1]! } : null
+	const images = findElements(content, from, lineEnd(content, from)).filter(e => IMAGE_TAG.test(e.name))
+	return images.length === 1 ? { start: images[0]!.start, end: images[0]!.openEnd, name: images[0]!.name } : null
 }
+
+const IMAGE_TAG = /^(img|Image|Picture)$/
 
 interface FrontmatterAssetImport {
 	/** Local binding name (e.g., `hero`). */
@@ -1110,8 +1097,8 @@ export function applyTextChange(
 			}
 			return {
 				success: false,
-				error: 'Cannot apply this edit without dropping the inline markup inside the element '
-					+ '— edit the styled part separately',
+				error: 'Cannot apply this edit without dropping the inline markup inside the element. '
+					+ 'Edit the styled part separately',
 			}
 		}
 
@@ -1280,7 +1267,7 @@ function decodeJsString(raw: string): string {
 				const close = raw.indexOf('}', i + 2)
 				if (close !== -1) {
 					const code = parseInt(raw.slice(i + 2, close), 16)
-					if (!Number.isNaN(code)) {
+					if (!Number.isNaN(code) && code <= 0x10FFFF) {
 						out += String.fromCodePoint(code)
 						i = close
 						continue
@@ -1490,10 +1477,11 @@ const ENTITY_ALTERNATIVES = new Map<string, string[]>([
 /**
  * The element inside a snippet whose text is exactly `text`.
  *
- * The whole snippet is tried first, then every element in it, preferring `tag`
- * when the manifest knows it. Returns the element split into its open tag, inner
- * content and close tag, plus the markup around it, or `null` when no element's
- * text matches.
+ * The whole snippet is tried first. Otherwise the elements in it whose text
+ * matches go through `pickElement`, limited to `tag` when the manifest knows
+ * it, so a line it cannot decide on stays undecided here too. Returns the
+ * element split into its open tag, inner content and close tag, plus the markup
+ * around it, or `null`.
  */
 function findElementByText(
 	snippet: string,
@@ -1505,9 +1493,9 @@ function findElementByText(
 		return { before: '', openTag: whole[1]!, innerContent: whole[3]!, closeTag: whole[4]!, after: '' }
 	}
 
-	const candidates = findElements(snippet, 0, snippet.length)
-		.filter(span => plainTextOf(snippet.slice(span.openEnd, span.closeStart)) === text)
-	const match = candidates.find(span => span.tag === tag?.toLowerCase()) ?? candidates[0]
+	const exact = findElements(snippet, 0, snippet.length, tag)
+		.filter(span => !span.void && plainTextOf(snippet.slice(span.openEnd, span.closeStart)) === text)
+	const match = pickElement(snippet, exact, text)
 	if (!match) return null
 	return {
 		before: snippet.slice(0, match.start),
@@ -1590,8 +1578,8 @@ function decodeEntitiesWithOffsets(source: string): { text: string; offsets: num
 
 function decodeEntityMatch(match: RegExpExecArray): string | undefined {
 	const [, hex, dec, name] = match
-	if (hex) return String.fromCodePoint(parseInt(hex, 16))
-	if (dec) return String.fromCodePoint(parseInt(dec, 10))
+	const code = hex ? parseInt(hex, 16) : dec ? parseInt(dec, 10) : -1
+	if (code >= 0) return code <= 0x10FFFF ? String.fromCodePoint(code) : undefined
 	return name ? NAMED_ENTITIES[name.toLowerCase()] : undefined
 }
 
