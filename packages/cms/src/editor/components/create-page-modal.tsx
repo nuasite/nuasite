@@ -5,6 +5,7 @@ import { checkSlugExists, createPage, duplicatePage, getLayouts } from '../markd
 import {
 	config,
 	createPageMode,
+	createsEntriesInHost,
 	isCreatePageOpen,
 	manifest,
 	openMarkdownEditorForNewPage,
@@ -13,7 +14,7 @@ import {
 	setCreatingPage,
 	showToast,
 } from '../signals'
-import type { LayoutInfo } from '../types'
+import type { CollectionDefinition, LayoutInfo } from '../types'
 import { CancelButton, ModalBackdrop, ModalFooter, ModalHeader } from './modal-shell'
 import { Spinner } from './spinner'
 
@@ -34,8 +35,8 @@ export function CreatePageModal() {
 }
 
 function ModePicker() {
-	// Offered only when the picker behind it would list something: not when every collection is hidden.
-	const hasCollections = getCollectionNavList(manifest.value.collectionDefinitions ?? {}, config.value.locale).length > 0
+	// Offered only when the picker behind it would list something.
+	const hasCollections = creatableCollections(manifest.value.collectionDefinitions ?? {}, config.value.locale).length > 0
 
 	return (
 		<>
@@ -390,14 +391,18 @@ function DuplicatePageForm() {
 	)
 }
 
+/**
+ * Collections a new entry can be written in here, as the collection browser lists them: hidden
+ * collections left out, same order. Not those whose entries the host edits.
+ */
+function creatableCollections(definitions: Record<string, CollectionDefinition>, locale: string | undefined): CollectionDefinition[] {
+	return getCollectionNavList(definitions, locale).map(({ collection }) => collection).filter(collection => !createsEntriesInHost(collection))
+}
+
 function CollectionPicker() {
 	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}
 	const locale = config.value.locale
-	// Offered as the collection browser lists them: hidden collections left out, same order.
-	const collections = useMemo(
-		() => getCollectionNavList(collectionDefinitions, locale).map(({ collection }) => collection),
-		[collectionDefinitions, locale],
-	)
+	const collections = useMemo(() => creatableCollections(collectionDefinitions, locale), [collectionDefinitions, locale])
 
 	// Single collection — skip picker and go straight to editor
 	useEffect(() => {

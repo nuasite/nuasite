@@ -187,6 +187,13 @@ export function clearBgImageEditsFromStorage(): void {
 	removeKey(sessionStorage, STORAGE_KEYS.PENDING_BG_IMAGE_EDITS, 'Failed to clear bg image edits from storage')
 }
 
+/** Forget the stored text and image edits of these elements, keeping the rest. */
+export function removeStoredEdits(cmsIds: ReadonlySet<string>): void {
+	const without = <E>(edits: Record<string, E>): Record<string, E> => Object.fromEntries(Object.entries(edits).filter(([cmsId]) => !cmsIds.has(cmsId)))
+	writeJson(sessionStorage, STORAGE_KEYS.PENDING_EDITS, without(loadEditsFromStorage()), 'Failed to save edits to storage')
+	writeJson(sessionStorage, STORAGE_KEYS.PENDING_IMAGE_EDITS, without(loadImageEditsFromStorage()), 'Failed to save image edits to storage')
+}
+
 // ============================================================================
 // Settings
 // ============================================================================

@@ -49,7 +49,7 @@ import {
 } from './post-message'
 import {
 	openCollectionsBrowser,
-	openMarkdownEditorForCurrentPage,
+	openCurrentPageEntry,
 	openSeoEditor,
 	selectBrowserCollection,
 	setMediaLibraryOpen,
@@ -120,21 +120,47 @@ const CmsUI = () => {
 
 	// Auto-restore edit mode if it was active before a page refresh (e.g. after save triggers HMR)
 	useEffect(() => {
-		if (loadEditingState() && !signals.isEditing.value) {
+		if (loadEditingState() && !signals.isEditing.value && signals.isInlineEditingEnabled.value) {
 			startEditMode(config, updateUI)
 		}
 	}, [config, updateUI])
+
+	// A host can switch inline editing off, or take over entry editing, after the widget started —
+	// the features arrive by postMessage once `cms-ready` is out, by which time an edit mode or a
+	// markdown draft may already have been restored. Hand over or close what the widget may no
+	// longer show.
+	const inlineEditingEnabled = signals.isInlineEditingEnabled.value
+	const entriesInParent = signals.opensEntriesInParent.value
+	useEffect(() => {
+		if (entriesInParent) signals.handOverMarkdownEditor()
+		if (!inlineEditingEnabled) {
+			if (signals.isEditing.value) stopEditMode(updateUI)
+			signals.resetMarkdownEditorState()
+			signals.resetCreatePageState()
+			signals.resetDeletePageState()
+			signals.resetMediaLibraryState()
+			signals.closeSeoEditor()
+			signals.closeRedirectsManager()
+			signals.closeCollectionsBrowser()
+		} else if (entriesInParent && signals.isEditing.value) {
+			// An edit mode restored before the features arrived wired entry fields for inline
+			// editing; set it up again so they are handed to the host.
+			stopEditMode(updateUI)
+			startEditMode(signals.config.value, updateUI)
+		}
+	}, [inlineEditingEnabled, entriesInParent, updateUI])
 
 	// Waits for the manifest before opening — currentPageCollection depends on it.
 	const draftAutoOpenedRef = useRef(false)
 	const manifestState = signals.manifest.value
 	useEffect(() => {
 		if (draftAutoOpenedRef.current) return
+		if (!signals.isInlineEditingEnabled.value && !signals.opensEntriesInParent.value) return
 		if (!hasPendingEntryNavigation() && !hasAnyMarkdownDraft()) return
 		const hasCollections = manifestState.collections && Object.keys(manifestState.collections).length > 0
 		if (!hasCollections) return
 		draftAutoOpenedRef.current = true
-		openMarkdownEditorForCurrentPage()
+		signals.restoreCurrentPageEntry()
 	}, [manifestState])
 
 	// Send select-mode click selection to parent window via postMessage
@@ -292,9 +318,11 @@ const CmsUI = () => {
 		if (signals.isEditing.value) {
 			hideTooltip()
 			stopEditMode(updateUI)
-		} else if (signals.currentPageCollection.value) {
-			await openMarkdownEditorForCurrentPage()
-		} else {
+		} else if (signals.currentPageCollection.value && !signals.opensEntriesInParent.value) {
+			// An entry's page opens the markdown editor — unless the host edits entries: then the
+			// page is edited inline like any other, and its entry's fields are handed to the host.
+			await openCurrentPageEntry()
+		} else if (signals.isInlineEditingEnabled.value) {
 			signals.isSelectMode.value = false
 			await startEditMode(config, updateUI)
 		}
@@ -334,7 +362,7 @@ const CmsUI = () => {
 	}, [])
 
 	const handleEditContent = useCallback(async () => {
-		if (!await openMarkdownEditorForCurrentPage()) {
+		if (!await openCurrentPageEntry()) {
 			signals.showToast(STRINGS.save.noCollectionContent, 'error')
 		}
 	}, [])
@@ -510,9 +538,9 @@ const CmsUI = () => {
 					element={outlineState.element}
 					cmsId={outlineState.cmsId}
 					textStyleClasses={outlineTextStyleClasses}
-					onColorClick={handleOutlineColorClick}
-					onAttributeClick={handleOutlineAttributeClick}
-					onTextStyleChange={handleOutlineTextStyleChange}
+					onColorClick={inlineEditingEnabled ? handleOutlineColorClick : undefined}
+					onAttributeClick={inlineEditingEnabled ? handleOutlineAttributeClick : undefined}
+					onTextStyleChange={inlineEditingEnabled ? handleOutlineTextStyleChange : undefined}
 				/>
 			</ErrorBoundary>
 

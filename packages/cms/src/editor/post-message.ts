@@ -1,11 +1,15 @@
 import type {
 	CmsEditorState,
 	CmsManifest,
+	CmsOpenEntryMessage,
 	CmsPageNavigatedMessage,
 	CmsPostMessage,
 	CmsReadyMessage,
 	CmsSelectedElement,
 	CmsStateChangedMessage,
+	CollectionDefinition,
+	CollectionEntry,
+	CollectionEntryInfo,
 	ManifestEntry,
 	PageSeoData,
 } from '../types'
@@ -128,4 +132,58 @@ export function buildStateChangedMessage(state: CmsEditorState): CmsStateChanged
 		type: 'cms-state-changed',
 		state,
 	}
+}
+
+/** Compare paths as the scan and the markers may spell them: with either separator, with or without a leading `./` */
+const normalizeSourcePath = (sourcePath: string): string => sourcePath.replace(/\\/g, '/').replace(/^\.\//, '')
+
+/** Entries the host edits under `openEntriesInParent`: content collections. Data and hidden collections stay in the page. */
+export function isEditedInHost(definition: CollectionDefinition): boolean {
+	return definition.type !== 'data' && !definition.hidden
+}
+
+/**
+ * The collection entry whose file this is, as the collection scan lists it. A directory can hold
+ * more than one collection (a nested collection shares its parent's base), so the file is matched,
+ * not its directory.
+ */
+function findScannedEntry(manifest: CmsManifest, file: string): { definition: CollectionDefinition; entry: CollectionEntryInfo } | undefined {
+	const sourcePath = normalizeSourcePath(file)
+	for (const definition of Object.values(manifest.collectionDefinitions ?? {})) {
+		const entry = definition.entries?.find(e => normalizeSourcePath(e.sourcePath) === sourcePath)
+		if (entry) return { definition, entry }
+	}
+	return undefined
+}
+
+function toOpenEntryMessage(definition: CollectionDefinition, entry: CollectionEntryInfo, pathname: string): CmsOpenEntryMessage {
+	return { type: 'cms-open-entry', entry: { collection: definition.name, slug: entry.slug, sourcePath: entry.sourcePath, pathname } }
+}
+
+/**
+ * Build a CmsOpenEntryMessage for the collection entry whose file this is — the file a field on
+ * the page was read from, or a markdown body's content file. Undefined when the file is no entry
+ * the host edits (an .astro component, a JSON/YAML file, an entry of a data or hidden collection):
+ * its fields stay editable in the page.
+ *
+ * The collection scan names the collection and slug the way the host's collection API (the
+ * sidecar, which runs the same scan) does.
+ */
+export function buildOpenEntryMessageForFile(manifest: CmsManifest, file: string, pathname: string): CmsOpenEntryMessage | undefined {
+	const scanned = findScannedEntry(manifest, file)
+	return scanned && isEditedInHost(scanned.definition) ? toOpenEntryMessage(scanned.definition, scanned.entry, pathname) : undefined
+}
+
+/**
+ * Build a CmsOpenEntryMessage for the collection entry a page renders, or undefined when the scan
+ * lists it in a collection the host does not edit.
+ *
+ * The page's entry is matched to its file by URL: its collection is the content directory and its
+ * slug the URL's tail. The scan's entry for the same file is sent when there is one (see
+ * {@link buildOpenEntryMessageForFile}), the page entry's own names otherwise.
+ */
+export function buildOpenEntryMessage(entry: CollectionEntry, manifest: CmsManifest, pathname: string): CmsOpenEntryMessage | undefined {
+	const scanned = findScannedEntry(manifest, entry.sourcePath)
+	if (scanned) return isEditedInHost(scanned.definition) ? toOpenEntryMessage(scanned.definition, scanned.entry, pathname) : undefined
+	return { type: 'cms-open-entry', entry: { collection: entry.collectionName, slug: entry.collectionSlug, sourcePath: entry.sourcePath, pathname } }
 }

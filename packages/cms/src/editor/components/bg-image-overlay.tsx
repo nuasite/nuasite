@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
+import { entryHandoverFor } from '../entry-handover'
 import { isApplyingUndoRedo, recordChange } from '../history'
 import { cn } from '../lib/cn'
+import { postToParent } from '../post-message'
 import * as signals from '../signals'
 import { saveBgImageEditsToStorage } from '../storage'
 import { FieldLabel, ImageField, SelectField } from './fields'
@@ -120,6 +122,12 @@ export function BgImageOverlay({ visible, rect, element, cmsId }: BgImageOverlay
 			signals.isBgImageOverlayOpen.value = false
 			panelTargetRef.current = null
 		} else if (cmsId && element) {
+			// An entry's background image is changed where the host edits the entry.
+			const handover = entryHandoverFor(element)
+			if (handover) {
+				postToParent(handover)
+				return
+			}
 			signals.isBgImageOverlayOpen.value = true
 			panelTargetRef.current = { cmsId, element }
 		}

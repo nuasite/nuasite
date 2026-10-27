@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'preact/hooks'
 import { Z_INDEX } from '../constants'
 import { getCaretRangeFromPoint } from '../dom'
+import { entryHandoverFor } from '../entry-handover'
 import { getAstroUploadContextForCmsId } from '../manifest'
+import { postToParent } from '../post-message'
 import * as signals from '../signals'
 
 export interface ImageOverlayProps {
@@ -139,6 +141,13 @@ export function ImageOverlay({ visible, rect, element, cmsId }: ImageOverlayProp
 
 			e.preventDefault()
 			e.stopPropagation()
+
+			// An entry's image is changed where the host edits the entry.
+			const handover = entryHandoverFor(element)
+			if (handover) {
+				postToParent(handover)
+				return
+			}
 
 			// If this image came from a collection's astroImage field, route the upload
 			// to the entry's directory so Astro's asset pipeline can resize it.

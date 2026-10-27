@@ -418,6 +418,8 @@ window.addEventListener('message', (event) => {
 			break
 		case 'cms-element-deselected': /* ... */
 			break
+		case 'cms-open-entry': /* ... */
+			break
 	}
 })
 ```
@@ -485,6 +487,17 @@ Sent when the user hovers or clicks a CMS element. Contains full element metadat
 
 Sent when no element is hovered. No additional data.
 
+### `cms-open-entry`
+
+Sent when the parent set `openEntriesInParent` (see [`cms-set-features`](#cms-set-features)) and the user does something that edits an entry of a content collection: Edit Content, or in edit mode a click on the markdown body or on a field read from an entry's file (frontmatter text, image). The entry is the one whose file the field was read from; for a reference, the entry whose field holds it. Entries of data (JSON/YAML) and hidden collections stay editable in the page:
+
+| Field              | Type     | Description                                                    |
+| ------------------ | -------- | -------------------------------------------------------------- |
+| `entry.collection` | `string` | Collection name, as the collection scan (and sidecar) names it |
+| `entry.slug`       | `string` | Entry slug, as the collection scan (and sidecar) knows it      |
+| `entry.sourcePath` | `string` | Entry file, relative to the project root                       |
+| `entry.pathname`   | `string` | The page the entry was opened from                             |
+
 ### Inbound Messages (Parent → Iframe)
 
 The parent window can send commands to the editor iframe using `postMessage`:
@@ -499,12 +512,38 @@ iframe.contentWindow.postMessage({ type: 'cms-deselect-element' }, '*')
 All inbound message types are exported as TypeScript interfaces:
 
 ```typescript
-import type { CmsDeselectElementMessage, CmsInboundMessage } from '@nuasite/cms'
+import type {
+	CmsDeselectElementMessage,
+	CmsInboundMessage,
+	CmsSetFeaturesMessage,
+} from '@nuasite/cms'
 ```
 
 #### `cms-deselect-element`
 
 Deselects the currently selected component and closes the block editor. No additional data required.
+
+#### `cms-set-features`
+
+Switches widget features on or off; `features` is merged into what was set before (`cmsConfig.features` in the integration options sets the same flags statically). Every flag is optional, and leaving one out keeps the widget's default behavior. The features last for the page: send them again after every `cms-ready`, which a full navigation inside the iframe sends anew.
+
+```typescript
+iframe.contentWindow.postMessage({
+	type: 'cms-set-features',
+	features: {
+		selectElement: true,
+		collectionManagement: false,
+		openEntriesInParent: true,
+	},
+}, '*')
+```
+
+| Feature                | Default | Description                                                                                                                                                                                                                                                                                                          |
+| ---------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `selectElement`        | `false` | Offers Select Element, which reports the clicked element with `cms-element-selected`                                                                                                                                                                                                                                 |
+| `collectionManagement` | `true`  | The in-page collection browser. `false` hides it when collections are managed by the parent                                                                                                                                                                                                                          |
+| `openEntriesInParent`  | `false` | Whatever edits an entry of a content collection posts `cms-open-entry` instead: Edit Content, the markdown body and entry fields in edit mode. Edit Page still edits the rest of an entry's page inline. New Page and the collection browser offer no new entry of such a collection, an entry's page no Delete Page |
+| `inlineEditing`        | `true`  | `false` removes everything that edits: Edit Page, the markdown editor, New/Delete Page, SEO, redirects. `cms-ready`, `cms-page-navigated`, `cms-state-changed`, Select Element and (with `openEntriesInParent`) Edit Content keep working                                                                            |
 
 ## Exports
 

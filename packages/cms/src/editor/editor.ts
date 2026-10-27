@@ -1,3 +1,4 @@
+import type { CmsOpenEntryMessage } from '../types'
 import { fetchManifest, getMarkdownContent, saveBatchChanges } from './api'
 import { CSS, TIMING } from './constants'
 import {
@@ -15,8 +16,10 @@ import {
 	makeElementEditable,
 	makeElementNonEditable,
 } from './dom'
-import { clearHistory, isApplyingUndoRedo, recordChange, recordTextChange } from './history'
+import { entryHandoverFor, findOwnerEntry } from './entry-handover'
+import { clearHistory, forgetHistory, isApplyingUndoRedo, recordChange, recordTextChange } from './history'
 import { getManifestEntryCount, hasManifestEntry } from './manifest'
+import { postToParent } from './post-message'
 import * as signals from './signals'
 import {
 	clearAllEditsFromStorage,
@@ -26,6 +29,7 @@ import {
 	loadEditsFromStorage,
 	loadImageEditsFromStorage,
 	loadPendingEntryNavigation,
+	removeStoredEdits,
 	saveAttributeEditsToStorage,
 	saveBgImageEditsToStorage,
 	saveColorEditsToStorage,
@@ -251,6 +255,8 @@ export async function startEditMode(
 	for (const [cmsId, edit] of Object.entries(savedEdits)) {
 		const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${cmsId}"]`) as HTMLElement | null
 		if (!el) continue
+		// An entry field the host edits is not painted; the wiring loop drops its edit.
+		if (entryHandoverFor(el)) continue
 		preEagerPaintDomState.set(cmsId, {
 			html: el.innerHTML,
 			text: getEditableTextFromElement(el),
@@ -271,6 +277,7 @@ export async function startEditMode(
 	}
 	const savedBgImageEdits = loadBgImageEditsFromStorage()
 	const currentManifest = signals.manifest.value
+	const handedOver = new Set<string>()
 
 	getAllCmsElements().forEach(el => {
 		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
@@ -290,13 +297,27 @@ export async function startEditMode(
 			return
 		}
 
+		const manifestEntry = currentManifest.entries[cmsId]
+
+		// When the host edits collection entries, whatever edits one is handed to it instead of being
+		// edited here (see entryHandoverFor). An edit made here before is dropped: saved, it would
+		// overwrite the entry the host edits.
+		const handover = entryHandoverFor(el)
+		if (handover) {
+			logDebug(config.debug, 'Collection entry field, handed to the host:', cmsId, handover.entry.collection, handover.entry.slug)
+			dropEntryFieldEdit(el, cmsId, preEagerPaintDomState.get(cmsId)?.html)
+			handedOver.add(cmsId)
+			makeElementNonEditable(el)
+			setupEntryHandoverClickHandler(el, handover, editModeSignal)
+			return
+		}
+
 		// Check if this is a reference field element (e.g., author name from a referenced collection)
 		// Reference elements open a picker to change the reference, not inline text editing
-		const manifestEntry = currentManifest.entries[cmsId]
 		if (manifestEntry?.referenceCollection && manifestEntry.referencedBy?.length) {
 			logDebug(config.debug, 'Reference element detected:', cmsId, manifestEntry.referenceCollection)
 			makeElementNonEditable(el)
-			setupReferenceClickHandler(config, el, cmsId, manifestEntry, currentManifest)
+			setupReferenceClickHandler(config, el, cmsId, manifestEntry, currentManifest, editModeSignal)
 			return
 		}
 
@@ -306,7 +327,7 @@ export async function startEditMode(
 			logDebug(config.debug, 'Markdown element detected:', cmsId)
 			makeElementNonEditable(el)
 			// Add click handler for markdown elements to open the editor
-			setupMarkdownClickHandler(config, el, cmsId, onStateChange)
+			setupMarkdownClickHandler(config, el, cmsId, editModeSignal)
 			return
 		}
 
@@ -315,7 +336,7 @@ export async function startEditMode(
 		if (el.hasAttribute(IMAGE_ATTRIBUTE)) {
 			logDebug(config.debug, 'Image element detected:', cmsId)
 			makeElementNonEditable(el)
-			setupImageClickHandler(config, el as HTMLImageElement, cmsId, savedImageEdits[cmsId], onStateChange)
+			setupImageClickHandler(config, el as HTMLImageElement, cmsId, savedImageEdits[cmsId], editModeSignal, onStateChange)
 			return
 		}
 
@@ -463,7 +484,7 @@ export async function startEditMode(
 			} else {
 				logDebug(config.debug, 'Skipping input - not current editing element, expected:', currentId)
 			}
-		})
+		}, { signal: editModeSignal })
 
 		el.addEventListener(
 			'click',
@@ -480,7 +501,7 @@ export async function startEditMode(
 					onStateChange?.()
 				}
 			},
-			true,
+			{ capture: true, signal: editModeSignal },
 		)
 
 		el.addEventListener(
@@ -492,7 +513,7 @@ export async function startEditMode(
 					onStateChange?.()
 				}
 			},
-			false,
+			{ signal: editModeSignal },
 		)
 
 		el.addEventListener('blur', (e) => {
@@ -524,8 +545,13 @@ export async function startEditMode(
 					onStateChange?.()
 				}
 			}, TIMING.BLUR_DELAY_MS)
-		})
+		}, { signal: editModeSignal })
 	})
+
+	if (handedOver.size > 0) {
+		removeStoredEdits(handedOver)
+		forgetHistory(handedOver)
+	}
 
 	// Check for pending entry navigation (from collections browser cross-page navigation)
 	const pendingEntry = loadPendingEntryNavigation()
@@ -539,6 +565,37 @@ export async function startEditMode(
 				collectionDef,
 			)
 		}
+	}
+}
+
+/** Clicking an element that edits a collection entry hands the entry to the host. */
+function setupEntryHandoverClickHandler(el: HTMLElement, message: CmsOpenEntryMessage, signal: AbortSignal): void {
+	el.style.cursor = 'pointer'
+	// Lets a click inside a disabled link reach this handler (see disableAllInteractiveElements)
+	el.setAttribute(CSS.ENTRY_HANDOVER_ATTRIBUTE, 'true')
+	el.addEventListener('click', (e) => {
+		e.preventDefault()
+		e.stopPropagation()
+		postToParent(message)
+	}, { signal })
+}
+
+/**
+ * Undo an edit made in the page to a field the host now edits, restoring what the page rendered.
+ * `prePaintHtml` is the element's content before a stored edit was painted over it.
+ */
+function dropEntryFieldEdit(el: HTMLElement, cmsId: string, prePaintHtml: string | undefined): void {
+	const textChange = signals.getPendingChange(cmsId)
+	const originalHtml = textChange?.originalHTML ?? prePaintHtml
+	if (originalHtml !== undefined && el.innerHTML !== originalHtml) el.innerHTML = originalHtml
+	if (textChange) signals.deletePendingChange(cmsId)
+
+	const imageChange = signals.getPendingImageChange(cmsId)
+	if (imageChange) {
+		el.setAttribute('src', imageChange.originalSrc)
+		el.setAttribute('alt', imageChange.originalAlt)
+		if (imageChange.originalSrcSet) el.setAttribute('srcset', imageChange.originalSrcSet)
+		signals.deletePendingImageChange(cmsId)
 	}
 }
 
@@ -569,6 +626,7 @@ export function stopEditMode(onStateChange?: () => void): void {
 	getAllCmsElements().forEach(el => {
 		makeElementNonEditable(el)
 		el.removeAttribute(CSS.LOCKED_ATTRIBUTE)
+		el.removeAttribute(CSS.ENTRY_HANDOVER_ATTRIBUTE)
 	})
 }
 
@@ -1125,6 +1183,7 @@ function setupReferenceClickHandler(
 	cmsId: string,
 	entry: ManifestEntry,
 	manifest: { entries: Record<string, ManifestEntry> },
+	signal: AbortSignal,
 ): void {
 	el.style.cursor = 'pointer'
 	// Remove the disabled guard so our click handler can fire
@@ -1169,52 +1228,7 @@ function setupReferenceClickHandler(
 			currentValues: [],
 			cursorPos: { x: rect.left, y: rect.bottom + 4 },
 		})
-	})
-}
-
-/**
- * Walk up the DOM from a reference element to find the owning collection entry.
- * At each parent level, only checks direct children (not nested descendants)
- * to avoid matching elements from adjacent cards on listing pages.
- */
-function findOwnerEntry(
-	element: HTMLElement,
-	manifest: { entries: Record<string, ManifestEntry> },
-	referencedBy: Array<{ collection: string; fieldName: string; isArray?: boolean }>,
-): { collection: string; slug: string; fieldName: string; isArray?: boolean } | undefined {
-	const refMap = new Map(referencedBy.map(r => [r.collection, r]))
-	let current: HTMLElement | null = element
-
-	while (current && current !== document.body) {
-		const parent: HTMLElement | null = current.parentElement
-		if (!parent) break
-
-		for (const sibling of parent.children) {
-			if (sibling === current || !(sibling instanceof HTMLElement)) continue
-
-			const candidates: Element[] = sibling.hasAttribute('data-cms-id') ? [sibling] : []
-			candidates.push(...sibling.querySelectorAll('[data-cms-id]'))
-
-			for (const el of candidates) {
-				const id = el.getAttribute('data-cms-id')
-				if (!id) continue
-				const entry = manifest.entries[id]
-				if (!entry?.collectionSlug || !entry.collectionName) continue
-
-				const ref = refMap.get(entry.collectionName)
-				if (!ref) continue
-
-				return {
-					collection: entry.collectionName,
-					slug: entry.collectionSlug,
-					fieldName: ref.fieldName,
-					isArray: ref.isArray,
-				}
-			}
-		}
-		current = parent
-	}
-	return undefined
+	}, { signal })
 }
 
 /**
@@ -1225,7 +1239,7 @@ function setupMarkdownClickHandler(
 	config: CmsConfig,
 	el: HTMLElement,
 	cmsId: string,
-	_onStateChange?: () => void,
+	signal: AbortSignal,
 ): void {
 	// Add visual indicator that this is a markdown-editable element
 	el.style.cursor = 'pointer'
@@ -1269,6 +1283,8 @@ function setupMarkdownClickHandler(
 				signals.showToast(STRINGS.editor.markdownContentMissing, 'error')
 				return
 			}
+			// Edit mode was set up again while this loaded (e.g. the host took over entry editing).
+			if (signal.aborted) return
 
 			// Set the markdown page data
 			signals.setMarkdownPage({
@@ -1287,7 +1303,7 @@ function setupMarkdownClickHandler(
 			signals.showToast(STRINGS.editor.markdownLoadFailed(message), 'error')
 			logDebug(config.debug, 'Failed to fetch markdown content:', error)
 		}
-	})
+	}, { signal })
 }
 
 /**
@@ -1299,6 +1315,7 @@ function setupImageClickHandler(
 	el: HTMLImageElement,
 	cmsId: string,
 	savedEdit: import('./types').SavedImageEdit | undefined,
+	signal: AbortSignal,
 	onStateChange?: () => void,
 ): void {
 	// Add visual indicator that this is a replaceable image
@@ -1388,7 +1405,7 @@ function setupImageClickHandler(
 			saveImageEditsToStorage(signals.pendingImageChanges.value)
 			onStateChange?.()
 		})
-	})
+	}, { signal })
 }
 
 /**

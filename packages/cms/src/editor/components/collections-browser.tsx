@@ -7,7 +7,9 @@ import { deleteMarkdownPage } from '../markdown-api'
 import {
 	closeCollectionsBrowser,
 	config,
+	createsEntriesInHost,
 	isCollectionsBrowserOpen,
+	isInlineEditingEnabled,
 	manifest,
 	openMarkdownEditorForEntry,
 	openMarkdownEditorForNewPage,
@@ -25,9 +27,10 @@ const EMPTY_ENTRIES: never[] = []
 
 export function CollectionsBrowser() {
 	// Collection management (browse/list/open entries) can be owned by the host
-	// app; when disabled, the in-preview browser is hidden entirely.
+	// app; when disabled, the in-preview browser is hidden entirely. So it is when
+	// the widget may not edit, as every entry it opens opens in the markdown editor.
 	const collectionManagementEnabled = config.value.features?.collectionManagement !== false
-	const visible = collectionManagementEnabled && isCollectionsBrowserOpen.value
+	const visible = collectionManagementEnabled && isInlineEditingEnabled.value && isCollectionsBrowserOpen.value
 	const selected = selectedBrowserCollection.value
 
 	const collectionDefinitions = manifest.value.collectionDefinitions ?? {}
@@ -118,9 +121,11 @@ export function CollectionsBrowser() {
 						<h2 class="text-lg font-semibold text-white">{def.label}</h2>
 					</div>
 					<div class="flex items-center gap-2">
-						<PrimaryButton onClick={handleAddNew} className="px-3 py-1.5">
-							+ Add New
-						</PrimaryButton>
+						{!createsEntriesInHost(def) && (
+							<PrimaryButton onClick={handleAddNew} className="px-3 py-1.5">
+								+ Add New
+							</PrimaryButton>
+						)}
 						<CloseButton onClick={handleClose} />
 					</div>
 				</div>

@@ -413,6 +413,19 @@ function applyBgImageState(
 // Clear History
 // ============================================================================
 
+/** Drop the undo and redo steps of these elements, so undo cannot bring their edits back. */
+export function forgetHistory(cmsIds: ReadonlySet<string>): void {
+	if (pendingTextAction && cmsIds.has(pendingTextAction.cmsId)) {
+		pendingTextAction = null
+		if (debounceTimer) {
+			clearTimeout(debounceTimer)
+			debounceTimer = null
+		}
+	}
+	undoStack.value = undoStack.value.filter(action => !cmsIds.has(action.cmsId))
+	redoStack.value = redoStack.value.filter(action => !cmsIds.has(action.cmsId))
+}
+
 export function clearHistory(): void {
 	undoStack.value = []
 	redoStack.value = []
