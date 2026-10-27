@@ -19,9 +19,10 @@ jobs:
           - job_name: format
             run_script: bun run format:check
 
+          # Bundles every package, not just the declarations, so a broken
+          # bundle shows up on the PR instead of at publish time.
           - job_name: build
-            run_script: |
-              bun run ts:build
+            run_script: bun run build
 
           - job_name: lint-deps
             run_script: bun run lint:deps
@@ -33,6 +34,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      # The playground build runs Astro under Node, and the runner's preinstalled
+      # Node can be older than the version Astro requires.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
 
       - uses: oven-sh/setup-bun@v2
         with:
