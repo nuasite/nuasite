@@ -933,28 +933,29 @@ export function applyTextChange(
 			return write(updatedWithEntity)
 		}
 		// Try inner content replacement for text spanning inline HTML elements
-		// (e.g., <h3>text part 1 <span class="...">text part 2</span></h3>)
-		const innerMatch = sourceSnippet.match(/^(\s*<(\w+)\b[^>]*>)([\s\S]*)(<\/\2>\s*)$/)
-		if (innerMatch) {
-			const [, openTag, , innerContent, closeTag] = innerMatch
-			const textOnly = innerContent!.replace(/<[^>]+>/g, '')
-			if (textOnly === resolvedOriginal) {
-				// The editor sends markup of its own only when the element allows styling.
-				// Swapping plain text in for inner content that has tags would delete them,
-				// so the edit is spliced into the text run it actually touched instead.
-				const isHtmlReplacement = /<[^>]+>/.test(resolvedNewText)
-				if (isHtmlReplacement || !/<[^>]+>/.test(innerContent!)) {
-					return write(openTag + resolvedNewText + closeTag)
-				}
-				const splicedInner = spliceTextAcrossInlineMarkup(innerContent!, resolvedOriginal, resolvedNewText)
-				if (splicedInner !== null) {
-					return write(openTag + splicedInner + closeTag)
-				}
-				return {
-					success: false,
-					error: 'Cannot apply this edit without dropping the inline markup inside the element '
-						+ '— edit the styled part separately',
-				}
+		// (e.g., <h3>text part 1 <span class="...">text part 2</span></h3>).
+		// The snippet holds whole lines, so the element may share them with sibling
+		// markup (`<ul><li>…</li>` or `<li>…</li></ul>`). The element is then looked
+		// up inside the snippet and only its span is rewritten.
+		const element = findElementByText(sourceSnippet, resolvedOriginal, entry?.tag)
+		if (element) {
+			const { before, openTag, innerContent, closeTag, after } = element
+			const writeElement = (updatedElement: string) => write(before + updatedElement + after)
+			// The editor sends markup of its own only when the element allows styling.
+			// Swapping plain text in for inner content that has tags would delete them,
+			// so the edit is spliced into the text run it actually touched instead.
+			const isHtmlReplacement = /<[^>]+>/.test(resolvedNewText)
+			if (isHtmlReplacement || !/<[^>]+>/.test(innerContent)) {
+				return writeElement(openTag + resolvedNewText + closeTag)
+			}
+			const splicedInner = spliceTextAcrossInlineMarkup(innerContent, resolvedOriginal, resolvedNewText)
+			if (splicedInner !== null) {
+				return writeElement(openTag + splicedInner + closeTag)
+			}
+			return {
+				success: false,
+				error: 'Cannot apply this edit without dropping the inline markup inside the element '
+					+ '— edit the styled part separately',
 			}
 		}
 
@@ -1323,6 +1324,62 @@ const ENTITY_ALTERNATIVES = new Map<string, string[]>([
 /**
  * Find the original text within a source snippet, accounting for HTML entities.
  */
+/**
+ * Find the element inside a snippet whose text content is exactly `text`.
+ *
+ * The whole snippet is tried first, then every element in it, preferring `tag`
+ * when the manifest knows it. Returns the element split into its open tag, inner
+ * content and close tag, plus the markup around it, or `null` when no element's
+ * text matches.
+ */
+function findElementByText(
+	snippet: string,
+	text: string,
+	tag?: string,
+): { before: string; openTag: string; innerContent: string; closeTag: string; after: string } | null {
+	const textOf = (inner: string) => inner.replace(/<[^>]+>/g, '')
+
+	const whole = snippet.match(/^(\s*<(\w+)\b[^>]*>)([\s\S]*)(<\/\2>\s*)$/)
+	if (whole && textOf(whole[3]!) === text) {
+		return { before: '', openTag: whole[1]!, innerContent: whole[3]!, closeTag: whole[4]!, after: '' }
+	}
+
+	const candidates: Array<{ before: string; openTag: string; innerContent: string; closeTag: string; after: string; tag: string }> = []
+	const openPattern = /<(\w+)\b[^>]*>/g
+	for (let open = openPattern.exec(snippet); open; open = openPattern.exec(snippet)) {
+		const name = open[1]!
+		if (open[0].endsWith('/>')) continue
+		const innerStart = open.index + open[0].length
+		// Walk same-named tags to find the close tag that balances this one.
+		const tagPattern = new RegExp(`<(/?)${name}\\b[^>]*>`, 'gi')
+		tagPattern.lastIndex = innerStart
+		let depth = 1
+		for (let t = tagPattern.exec(snippet); t; t = tagPattern.exec(snippet)) {
+			if (t[0].endsWith('/>')) continue
+			depth += t[1] ? -1 : 1
+			if (depth === 0) {
+				const innerContent = snippet.slice(innerStart, t.index)
+				if (textOf(innerContent) === text) {
+					candidates.push({
+						before: snippet.slice(0, open.index),
+						openTag: open[0],
+						innerContent,
+						closeTag: t[0],
+						after: snippet.slice(t.index + t[0].length),
+						tag: name.toLowerCase(),
+					})
+				}
+				break
+			}
+		}
+	}
+
+	const match = (tag && candidates.find(c => c.tag === tag.toLowerCase())) || candidates[0]
+	if (!match) return null
+	const { tag: _, ...element } = match
+	return element
+}
+
 function findTextInSnippet(snippet: string, decodedText: string): string | null {
 	if (snippet.includes(decodedText)) {
 		return decodedText

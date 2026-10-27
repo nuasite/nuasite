@@ -668,6 +668,68 @@ date: 2026-03-10
 		})
 	})
 
+	// Lists migrated from static HTML often open or close the parent on the same
+	// line as the first or last item. The snippet holds whole lines, so it carries
+	// that sibling markup, and only the item's own span may be rewritten.
+	describe('an item sharing its line with the parent list', () => {
+		const content = [
+			'<ul class="items"><li><strong>Gayan</strong> chrání želvy u Dikwelly.</li>',
+			'<li><strong>Mahesh</strong> chrání želvy u Matary.</li>',
+			'<li><strong>Sandun</strong> chrání želvy u Godaudy.</li></ul>',
+		].join('\n')
+		const manifest: CmsManifest = { ...emptyManifest, entries: { 'cms-0': { tag: 'li', allowStyling: false } as never } }
+		const lines = content.split('\n')
+
+		test('first item, after the opening <ul>', () => {
+			const result = applyTextChange(
+				content,
+				makeChange({
+					sourceSnippet: lines[0],
+					originalValue: 'Gayan chrání želvy u Dikwelly.',
+					newValue: 'Gayan chrání želvy u Dikwelly a Tangalle.',
+				}),
+				manifest,
+			)
+			expect(result).toEqual({
+				success: true,
+				content: content.replace('u Dikwelly.</li>', 'u Dikwelly a Tangalle.</li>'),
+			})
+		})
+
+		test('last item, before the closing </ul>', () => {
+			const result = applyTextChange(
+				content,
+				makeChange({
+					sourceSnippet: lines[2],
+					originalValue: 'Sandun chrání želvy u Godaudy.',
+					newValue: 'Sandun a Malitha chrání želvy u Godaudy.',
+				}),
+				manifest,
+			)
+			expect(result).toEqual({
+				success: true,
+				content: content.replace('<strong>Sandun</strong> chrání', '<strong>Sandun</strong> a Malitha chrání'),
+			})
+		})
+
+		test("html from the editor replaces only the item's inner content", () => {
+			const result = applyTextChange(
+				content,
+				makeChange({
+					sourceSnippet: lines[2],
+					originalValue: 'Sandun chrání želvy u Godaudy.',
+					newValue: 'Sandun hlídá želvy u Godaudy.',
+					htmlValue: '<strong>Sandun</strong> hlídá želvy u Godaudy.',
+				}),
+				{ ...emptyManifest, entries: { 'cms-0': { tag: 'li' } as never } },
+			)
+			expect(result).toEqual({
+				success: true,
+				content: content.replace('</strong> chrání želvy u Godaudy.', '</strong> hlídá želvy u Godaudy.'),
+			})
+		})
+	})
+
 	// Frontmatter constants are JavaScript: the rendered text is the *decoded*
 	// literal, and the rewrite has to go back through the same escaping.
 	describe('javascript string literals', () => {
