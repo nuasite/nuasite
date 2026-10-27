@@ -36,6 +36,7 @@
 	},
 	"dependencies": {
 		"@astrojs/check": "catalog:astro",
+		"@astrojs/markdown-remark": "catalog:astro",
 		"@astrojs/mdx": "catalog:astro",
 		"@astrojs/sitemap": "catalog:astro",
 		"@nuasite/checks": "workspace:*",

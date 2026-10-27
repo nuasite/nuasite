@@ -18,10 +18,13 @@ export interface MarkdownSyntax {
 /**
  * The syntax of the site's markdown pipeline, which `@astrojs/mdx` extends by default: directives when a
  * remark-directive plugin is in it (`@nuasite/nua` adds the CMS's). Plugins given to `mdx()` alone are not
- * visible here.
+ * visible here. Since Astro 7 the plugins sit on the `unified()` processor; the deprecated top-level
+ * `markdown.remarkPlugins` is read too.
  */
 export function markdownSyntaxOf(config: AstroConfig): MarkdownSyntax {
-	const plugins = config.markdown?.remarkPlugins ?? []
+	const processor = config.markdown?.processor
+	const processorPlugins = processor?.name === 'unified' ? (processor.options as { remarkPlugins?: unknown[] }).remarkPlugins : undefined
+	const plugins = [...(config.markdown?.remarkPlugins ?? []), ...(processorPlugins ?? [])]
 	const directives = plugins.some(entry => {
 		const plugin = Array.isArray(entry) ? entry[0] : entry
 		return plugin === 'remark-directive' || (typeof plugin === 'function' && plugin.name === 'remarkDirective')

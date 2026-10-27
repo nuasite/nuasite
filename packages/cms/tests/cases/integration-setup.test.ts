@@ -64,6 +64,7 @@ describe('nuaCms integration — dev setup wiring', () => {
 
 		// Only what the hooks read is stubbed; Astro passes far more.
 		const configSetup = {
+			config: { markdown: { processor: { name: 'unified', options: { remarkPlugins: [], rehypePlugins: [] } } } },
 			command: 'dev',
 			logger,
 			updateConfig: () => ({}),

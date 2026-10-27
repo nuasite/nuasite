@@ -9,15 +9,17 @@ export default defineConfig({
 			formats: ['es'],
 			fileName: () => 'editor.js',
 		},
-		rollupOptions: {
+		rolldownOptions: {
 			output: {
-				inlineDynamicImports: true,
+				codeSplitting: false,
 			},
 		},
 	},
-	esbuild: {
-		jsx: 'automatic',
-		jsxImportSource: 'preact',
+	oxc: {
+		jsx: {
+			runtime: 'automatic',
+			importSource: 'preact',
+		},
 	},
 	resolve: {
 		alias: {

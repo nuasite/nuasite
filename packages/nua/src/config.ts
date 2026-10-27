@@ -1,3 +1,4 @@
+import { unified } from '@astrojs/markdown-remark'
 import { defineConfig as astroDefineConfig } from 'astro/config'
 import nua from './integration'
 import type { NuaIntegrationOptions } from './types'
@@ -41,7 +42,7 @@ export interface NuaConfig extends AstroUserConfig {
  * ```
  */
 export function defineConfig(config: NuaConfig = {}) {
-	const { nua: nuaOptions, integrations = [], vite = {}, ...astroConfig } = config
+	const { nua: nuaOptions, integrations = [], vite = {}, markdown = {}, ...astroConfig } = config
 
 	const mergedVite = {
 		...vite,
@@ -54,6 +55,16 @@ export function defineConfig(config: NuaConfig = {}) {
 	const defaults = {
 		site: 'http://localhost:4321',
 		vite: mergedVite,
+		// Astro 7 strips whitespace between elements by JSX rules by default (`'jsx'`), so
+		// `<span>a</span> <em>b</em>` renders as "ab". Sites built on nua keep Astro 6's output.
+		compressHTML: true,
+		// Astro 7 renders markdown with Sätteri by default, which does not run remark or rehype
+		// plugins. The CMS's directives and markers are remark/rehype plugins, so nua keeps the
+		// `unified()` pipeline unless the site chose a processor itself.
+		markdown: {
+			...markdown,
+			processor: markdown.processor ?? unified(),
+		},
 		legacy: {
 			collectionsBackwardsCompat: true,
 		},

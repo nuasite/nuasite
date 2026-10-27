@@ -98,7 +98,7 @@ export default function nuaNotes(options: NuaNotesOptions = {}): AstroIntegratio
 				//     needed and the consumer doesn't need preact installed.
 				//   - In source mode (monorepo dev): resolve the virtual path to
 				//     the real .tsx file AND prepend the @jsxImportSource pragma
-				//     so Vite's esbuild compiles JSX with Preact's `h` instead
+				//     so Vite's Oxc compiles JSX with Preact's `h` instead
 				//     of React (which the host project may use).
 				const vitePlugins: any[] = []
 
