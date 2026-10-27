@@ -57,6 +57,9 @@
 				"@astrojs/sitemap": "3.7.4",
 				"astro": "7.4.2"
 			},
+			"astro-peer": {
+				"astro": "^7.4.2"
+			},
 			"parsers": {
 				"@babel/parser": "^7.29.2",
 				"node-html-parser": "^7.1.0",

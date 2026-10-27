@@ -38,7 +38,7 @@
 		"astro": "catalog:astro"
 	},
 	"peerDependencies": {
-		"astro": "^7.0.0",
+		"astro": "catalog:astro-peer",
 		"typescript": "catalog:build",
 		"vite": "catalog:build",
 		"@nuasite/cms": "workspace:*"

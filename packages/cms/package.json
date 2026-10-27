@@ -104,7 +104,7 @@
 		"rehype-stringify": "^10.0.1"
 	},
 	"peerDependencies": {
-		"astro": "catalog:astro",
+		"astro": "catalog:astro-peer",
 		"typescript": "catalog:build",
 		"vite": "catalog:build",
 		"@aws-sdk/client-s3": "^3.0.0",

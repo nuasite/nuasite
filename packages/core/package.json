@@ -15,7 +15,7 @@
 		"directory": "packages/core"
 	},
 	"scripts": {
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts --allow-pinned-peers"
 	},
 	"devDependencies": {
 		"@astrojs/check": "catalog:astro",

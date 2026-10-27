@@ -113,7 +113,9 @@ const rewriteManifest = (pkgFile: string, versions: Map<string, string>, catalog
 		for (const [name, range] of Object.entries(deps)) {
 			const r = String(range)
 
-			// Handle workspace: dependencies
+			// Handle workspace: dependencies. `workspace:*` becomes the exact version on
+			// purpose: every @nuasite package is released in lockstep, so the exact
+			// version is the set that was tested together. Do not widen it to a range.
 			if (r.startsWith('workspace:')) {
 				const v = versions.get(name)
 				if (!v) {
@@ -141,6 +143,16 @@ const rewriteManifest = (pkgFile: string, versions: Map<string, string>, catalog
 				}
 				;(deps as any)[name] = v
 			}
+		}
+	}
+	// A peer on a package released apart from nuasite (astro) has to be a range.
+	// An exact pin would put every site on any other patch release into a peer
+	// conflict; such peers come from a range catalog (`catalog:astro-peer`), while
+	// devDependencies keep the exact version the tests run against. @nuasite/core
+	// exists to pin its peers and opts out with --allow-pinned-peers.
+	for (const [name, range] of Object.entries(process.argv.includes('--allow-pinned-peers') ? {} : json.peerDependencies ?? {})) {
+		if (!name.startsWith('@nuasite/') && /^\d+\.\d+\.\d+(-[\w.]+)?$/.test(String(range))) {
+			unresolved.push(`peerDependencies:${name} is pinned to ${range}; publish a range`)
 		}
 	}
 	fs.writeFileSync(pkgFile, JSON.stringify(json, null, 2) + '\n')

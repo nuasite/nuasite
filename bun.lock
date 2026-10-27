@@ -26,7 +26,7 @@
         "astro": "catalog:astro",
       },
       "peerDependencies": {
-        "astro": "^7.0.0",
+        "astro": "catalog:astro-peer",
         "typescript": "catalog:build",
       },
     },
@@ -41,7 +41,7 @@
         "astro": "catalog:astro",
       },
       "peerDependencies": {
-        "astro": "^7.0.0",
+        "astro": "catalog:astro-peer",
         "typescript": "catalog:build",
       },
     },
@@ -120,7 +120,7 @@
         "@aws-sdk/client-s3": "^3.0.0",
         "@nuasite/cms-sidecar": "workspace:*",
         "@nuasite/collections-admin": "workspace:*",
-        "astro": "catalog:astro",
+        "astro": "catalog:astro-peer",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "typescript": "catalog:build",
@@ -313,7 +313,7 @@
       },
       "peerDependencies": {
         "@nuasite/cms": "workspace:*",
-        "astro": "^7.0.0",
+        "astro": "catalog:astro-peer",
         "typescript": "catalog:build",
         "vite": "catalog:build",
       },
@@ -332,7 +332,7 @@
         "astro": "catalog:astro",
       },
       "peerDependencies": {
-        "astro": "catalog:astro",
+        "astro": "catalog:astro-peer",
         "typescript": "^6.0.2",
       },
     },
@@ -381,6 +381,9 @@
       "@astrojs/mdx": "8.1.1",
       "@astrojs/sitemap": "3.7.4",
       "astro": "7.4.2",
+    },
+    "astro-peer": {
+      "astro": "^7.4.2",
     },
     "build": {
       "@actions/core": "^3.0.0",
