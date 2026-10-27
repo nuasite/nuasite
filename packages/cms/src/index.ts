@@ -21,6 +21,7 @@ import { mergeCmsRedirectsInto } from './redirects'
 import { scanCollections } from './scan-cache'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types'
 import { createVitePlugin } from './vite-plugin'
+import { inlineNuasitePackages } from './vite-plugin-inline-nuasite'
 
 export { addMarkdownPlugins, unifiedOptionsOf } from './markdown/processor'
 export { cmsRemarkPlugins } from './markdown/remark'
@@ -257,7 +258,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 					command,
 				}
 
-				const vitePlugins: any[] = [...(createVitePlugin(pluginContext) as any)]
+				const vitePlugins: any[] = [...(createVitePlugin(pluginContext) as any), inlineNuasitePackages()]
 				const cmsDir = dirname(fileURLToPath(import.meta.url))
 
 				// Local-mode (cms-headless F7): resolve the /_nua/admin SPA entry virtual
