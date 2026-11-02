@@ -28,6 +28,7 @@ Supporting files:
 
 - `src/form/types.ts` — Props union type ensuring `formId` XOR `action`
 - `src/form/utils.ts` — Honeypot field names and regex validators
+- `src/form/tracking.ts`: what a submission reports to `window.analytics.form`. Field names and fixed error codes only, never what the visitor typed or the server's error text
 
 #### Image (`src/image/index.astro`)
 

@@ -118,6 +118,8 @@ const tokenId = `${tokenFieldName}_${formId}`
 </astro-form>
 
 <script>
+	import { networkErrorReason, responseErrorReason, trackedFields } from './tracking'
+
 	class AstroForm extends HTMLElement {
 		private fieldInteractions = new Set<string>();
 		private hasPointerActivity = false;
@@ -258,10 +260,10 @@ const tokenId = `${tokenFieldName}_${formId}`
 			form.addEventListener('submit', async (e) => {
 				e.preventDefault()
 
-				const formDataForTracking = Object.fromEntries(
-					Array.from(new FormData(form).entries())
-						.filter(([k]) => !this.honeypotFieldNames.includes(k) && !/^token_/.test(k) && !form.querySelector(`[name="${k}"][aria-hidden="true"]`))
-						.map(([k, v]) => [k, typeof v === 'string' ? v.slice(0, 100) : '[File]']),
+				// Field names only, see tracking.ts
+				const formDataForTracking = trackedFields(
+					new FormData(form).entries(),
+					name => this.honeypotFieldNames.includes(name) || /^token_/.test(name) || !!form.querySelector(`[name="${name}"][aria-hidden="true"]`),
 				)
 
 				trackForm('attempt', { formData: formDataForTracking })
@@ -330,12 +332,12 @@ const tokenId = `${tokenFieldName}_${formId}`
 						refreshSubmissionGuards()
 					} else {
 						const message = hasCustomError ? errorMessage : (result.error || result.message || errorMessage)
-						trackForm('error', { reason: result.error || `http_${response.status}`, formData: formDataForTracking })
+						trackForm('error', { reason: responseErrorReason(response.status), formData: formDataForTracking })
 						showError(message)
 					}
 				} catch (err) {
 					console.error('Form submission error:', err);
-					trackForm('error', { reason: err instanceof Error ? err.message : 'network_error', formData: formDataForTracking })
+					trackForm('error', { reason: networkErrorReason, formData: formDataForTracking })
 					showError(networkErrorMessage)
 				}
 			})
