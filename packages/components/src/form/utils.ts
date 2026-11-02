@@ -9,8 +9,10 @@ export const honeypotFields = [
 ] as const
 
 /**
- * Inline style of the CSS honeypot. Its name is random per render and is not written anywhere else
- * on the page, so the script finds the field by this style instead.
+ * Name prefix of the CSS honeypot, which gets a random suffix per render. The script finds the trap by
+ * this prefix: its name is on the page anyway (`name`, `id`, the label's `for`), and unlike the inline
+ * style it survives an HTML minifier. A site field may not start with it (checked at render).
  */
-export const cssTrapStyle = 'position: absolute; left: -9999px; opacity: 0;'
-export const cssTrapSelector = 'input[style*="position: absolute; left: -9999px"]'
+export const cssTrapPrefix = 'css_trap_'
+export const cssTrapSelector = `[name^="${cssTrapPrefix}"]`
+export const cssTrapConflictRegex = new RegExp(`<(?:input|select|textarea)[^>]*\\sname\\s*=\\s*["']${cssTrapPrefix}`, 'i')

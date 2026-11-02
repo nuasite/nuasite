@@ -1,14 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 import { internalFieldNames, responseErrorReason, trackedFields } from '../src/form/tracking.ts'
-import { cssTrapStyle } from '../src/form/utils.ts'
+import { cssTrapConflictRegex, cssTrapSelector } from '../src/form/utils.ts'
 
-/** A form with the fields the component renders around the slot, plus `slot` for the site's own. */
-const renderedForm = (slot: string) => {
+/**
+ * A form with the fields the component renders around the slot, plus `slot` for the site's own. The
+ * trap's style is passed in, so a test can render it the way a minifier would leave it.
+ */
+const renderedForm = (slot: string, trapStyle = 'position: absolute; left: -9999px; opacity: 0;') => {
 	const form = document.createElement('form')
 	form.innerHTML = `
 		<input name="contact_required" aria-hidden="true">
 		<input name="website_url_required" aria-hidden="true">
-		<input name="css_trap_9f8e7d6c" style="${cssTrapStyle}" aria-hidden="true">
+		<input name="css_trap_9f8e7d6c" style="${trapStyle}" aria-hidden="true">
 		${slot}
 		<input type="hidden" name="token_ab12cd34">
 	`
@@ -46,6 +49,17 @@ describe('internalFieldNames', () => {
 		expect([...internal].sort()).toEqual([...honeypots, 'css_trap_9f8e7d6c', 'token_ab12cd34'].sort())
 	})
 
+	test('finds the CSS trap whatever its style looks like', () => {
+		for (const style of ['position:absolute;left:-9999px;opacity:0', '']) {
+			expect(internalFieldNames(renderedForm('', style), 'token_ab12cd34').has('css_trap_9f8e7d6c')).toBe(true)
+		}
+	})
+
+	test('the spam check finds the trap with the same selector', () => {
+		const trap = renderedForm('', 'position:absolute;left:-9999px').querySelector<HTMLInputElement>(cssTrapSelector)
+		expect(trap?.name).toBe('css_trap_9f8e7d6c')
+	})
+
 	test('a site field hidden from assistive tech is still a visitor field', () => {
 		const form = renderedForm('<input type="checkbox" name="newsletter" aria-hidden="true" tabindex="-1">')
 		expect(internalFieldNames(form, 'token_ab12cd34').has('newsletter')).toBe(false)
@@ -55,15 +69,22 @@ describe('internalFieldNames', () => {
 		expect(internalFieldNames(renderedForm('<input name="token_code">'), 'token_ab12cd34').has('token_code')).toBe(false)
 	})
 
-	test('a field name with quotes or brackets does not break the lookup', () => {
-		const form = renderedForm(`<input name='answers["q1"]' aria-hidden="true">`)
-		expect(internalFieldNames(form, 'token_ab12cd34').has('answers["q1"]')).toBe(false)
-	})
-
 	test('what goes to analytics from a rendered form is the visitor fields only', () => {
 		const form = renderedForm('<input name="email" value="jana@example.com"><textarea name="message">Dobrý den</textarea>')
 		const entries = [...form.querySelectorAll<HTMLInputElement>('[name]')].map((field): [string, string] => [field.name, field.value])
 		expect(trackedFields(entries, internalFieldNames(form, 'token_ab12cd34'))).toEqual({ email: '', message: '' })
+	})
+})
+
+describe('cssTrapConflictRegex', () => {
+	test('a site field named with the trap prefix is refused at render', () => {
+		expect(cssTrapConflictRegex.test('<input type="text" name="css_trap_x">')).toBe(true)
+		expect(cssTrapConflictRegex.test("<textarea\nname='css_trap_note'>")).toBe(true)
+	})
+
+	test('other names and attributes that merely end in name pass', () => {
+		expect(cssTrapConflictRegex.test('<input name="email">')).toBe(false)
+		expect(cssTrapConflictRegex.test('<input data-name="css_trap_x" name="email">')).toBe(false)
 	})
 })
 

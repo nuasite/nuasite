@@ -13,19 +13,17 @@ export type TrackedFields = Record<string, ''>
 
 /**
  * The fields the component renders itself and the visitor never fills in: the named honeypots (a
- * fixed list), the token (by its name) and the CSS honeypot (by its style, since its random name is
- * not on the page). Read from the component's own code and markup, not from attributes a site's
- * props could set, and not from `aria-hidden`, which UI libraries put on real fields too.
+ * fixed list), the token (by its name) and the CSS honeypot (by its name prefix, see `cssTrapPrefix`).
+ * Not from `aria-hidden`, which UI libraries put on real fields too.
  */
 export function internalFieldNames(form: HTMLFormElement, tokenFieldName: string | undefined): Set<string> {
 	const names = new Set<string>(honeypotFields.map(field => field.name))
 	if (tokenFieldName) names.add(tokenFieldName)
-	const cssTrap = form.querySelector<HTMLInputElement>(cssTrapSelector)
-	if (cssTrap?.name) names.add(cssTrap.name)
+	for (const trap of form.querySelectorAll<HTMLInputElement>(cssTrapSelector)) names.add(trap.name)
 	return names
 }
 
-/** The names of the submitted fields, without the internal ones (honeypots, token). */
+/** The names of the submitted fields, without the internal ones. */
 export function trackedFields(entries: Iterable<[string, unknown]>, internal: ReadonlySet<string>): TrackedFields {
 	const fields: TrackedFields = {}
 	for (const [name] of entries) {

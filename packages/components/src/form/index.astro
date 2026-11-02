@@ -1,6 +1,6 @@
 ---
 import type { FormProps } from './types'
-import { cssTrapStyle, submitButtonRegex, honeypotConflictRegex, honeypotFields } from './utils'
+import { cssTrapConflictRegex, cssTrapPrefix, submitButtonRegex, honeypotConflictRegex, honeypotFields } from './utils'
 
 export type Props = FormProps
 
@@ -34,7 +34,12 @@ if (honeypotConflictRegex.test(slotContent)) {
 	throw new Error(`Form "${formId}" has conflicting field names. Avoid using field names ending with "_required" as they are reserved for honeypot fields.`)
 }
 
-const cssHoneypotField = `css_trap_${crypto.randomUUID().substring(0, 8)}`
+if (cssTrapConflictRegex.test(slotContent)) {
+	console.error(`❌ Form "${formId}" contains a field name starting with "${cssTrapPrefix}", which is reserved for the CSS honeypot.`)
+	throw new Error(`Form "${formId}" has conflicting field names. Avoid field names starting with "${cssTrapPrefix}" as they are reserved for the CSS honeypot.`)
+}
+
+const cssHoneypotField = `${cssTrapPrefix}${crypto.randomUUID().substring(0, 8)}`
 const tokenFieldName = `token_${crypto.randomUUID().substring(0, 8)}`
 const tokenId = `${tokenFieldName}_${formId}`
 ---
@@ -77,7 +82,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				type="text"
 				id={cssHoneypotField}
 				name={cssHoneypotField}
-				style={cssTrapStyle}
+				style="position: absolute; left: -9999px; opacity: 0;"
 				tabindex="-1"
 				autocomplete="nope"
 				aria-hidden="true"
@@ -434,7 +439,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				if (field && field.value.trim()) return `honeypot:${fieldName}`
 			}
 
-			const cssHoneypot = form.querySelector(cssTrapSelector) as HTMLInputElement
+			const cssHoneypot = form.querySelector(cssTrapSelector) as HTMLInputElement | null
 			if (cssHoneypot && cssHoneypot.value.trim()) return 'css_honeypot'
 
 			const suspicious = this.detectSuspiciousBrowser()
