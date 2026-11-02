@@ -9,18 +9,7 @@
  */
 export type TrackedFields = Record<string, ''>
 
-/**
- * Fields the component adds itself and the visitor never sees: the honeypots, the token, and any
- * `aria-hidden` input (the CSS honeypot, whose name is random).
- */
-export function internalFieldNames(form: HTMLFormElement, honeypotNames: readonly string[], tokenFieldName: string | undefined): Set<string> {
-	const names = new Set(honeypotNames)
-	if (tokenFieldName) names.add(tokenFieldName)
-	for (const field of form.querySelectorAll<HTMLInputElement>('[name][aria-hidden="true"]')) names.add(field.name)
-	return names
-}
-
-/** The names of the submitted fields, without the internal ones. */
+/** The names of the submitted fields, without the internal ones (honeypots, token). */
 export function trackedFields(entries: Iterable<[string, unknown]>, internal: ReadonlySet<string>): TrackedFields {
 	const fields: TrackedFields = {}
 	for (const [name] of entries) {

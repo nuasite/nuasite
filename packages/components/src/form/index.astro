@@ -45,6 +45,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 		class:list={['astro-form', className]}
 		data-form-id={formId}
 		data-token-field={tokenFieldName}
+		data-css-trap-field={cssHoneypotField}
 		data-success-message={successMessage}
 		data-custom-success={hasCustomSuccess || undefined}
 		data-custom-error={hasCustomError || undefined}
@@ -118,7 +119,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 </astro-form>
 
 <script>
-	import { internalFieldNames, responseErrorReason, trackedFields } from './tracking.ts'
+	import { responseErrorReason, trackedFields } from './tracking.ts'
 
 	class AstroForm extends HTMLElement {
 		private fieldInteractions = new Set<string>();
@@ -154,6 +155,8 @@ const tokenId = `${tokenFieldName}_${formId}`
 			const hasCustomSuccess = form.dataset.customSuccess != null
 			const hasCustomError = form.dataset.customError != null
 			this.honeypotFieldNames = form.dataset.requiredFields?.split(',') || []
+			// The component's own fields, by the names it rendered them with: kept out of analytics
+			const internalFields = new Set([...this.honeypotFieldNames, form.dataset.cssTrapField, tokenFieldName].filter((name): name is string => !!name))
 
 			const statusContainer = document.getElementById(`${formId}-status`)
 			const successStatus = statusContainer?.querySelector('[data-status="success"]')
@@ -261,10 +264,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				e.preventDefault()
 
 				// Field names only, see tracking.ts
-				const formDataForTracking = trackedFields(
-					new FormData(form).entries(),
-					internalFieldNames(form, this.honeypotFieldNames, tokenFieldName),
-				)
+				const formDataForTracking = trackedFields(new FormData(form).entries(), internalFields)
 
 				trackForm('attempt', { formData: formDataForTracking })
 
