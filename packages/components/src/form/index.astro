@@ -1,6 +1,6 @@
 ---
 import type { FormProps } from './types'
-import { submitButtonRegex, honeypotConflictRegex, honeypotFields } from './utils'
+import { cssTrapStyle, submitButtonRegex, honeypotConflictRegex, honeypotFields } from './utils'
 
 export type Props = FormProps
 
@@ -45,7 +45,6 @@ const tokenId = `${tokenFieldName}_${formId}`
 		class:list={['astro-form', className]}
 		data-form-id={formId}
 		data-token-field={tokenFieldName}
-		data-css-trap-field={cssHoneypotField}
 		data-success-message={successMessage}
 		data-custom-success={hasCustomSuccess || undefined}
 		data-custom-error={hasCustomError || undefined}
@@ -78,7 +77,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				type="text"
 				id={cssHoneypotField}
 				name={cssHoneypotField}
-				style="position: absolute; left: -9999px; opacity: 0;"
+				style={cssTrapStyle}
 				tabindex="-1"
 				autocomplete="nope"
 				aria-hidden="true"
@@ -119,7 +118,8 @@ const tokenId = `${tokenFieldName}_${formId}`
 </astro-form>
 
 <script>
-	import { responseErrorReason, trackedFields } from './tracking.ts'
+	import { internalFieldNames, responseErrorReason, trackedFields } from './tracking.ts'
+	import { cssTrapSelector } from './utils.ts'
 
 	class AstroForm extends HTMLElement {
 		private fieldInteractions = new Set<string>();
@@ -155,8 +155,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 			const hasCustomSuccess = form.dataset.customSuccess != null
 			const hasCustomError = form.dataset.customError != null
 			this.honeypotFieldNames = form.dataset.requiredFields?.split(',') || []
-			// The component's own fields, by the names it rendered them with: kept out of analytics
-			const internalFields = new Set([...this.honeypotFieldNames, form.dataset.cssTrapField, tokenFieldName].filter((name): name is string => !!name))
+			const internalFields = internalFieldNames(form, tokenFieldName)
 
 			const statusContainer = document.getElementById(`${formId}-status`)
 			const successStatus = statusContainer?.querySelector('[data-status="success"]')
@@ -419,7 +418,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				const field = form.querySelector(`[name="${fieldName}"]`) as HTMLInputElement | null
 				if (field) field.value = ''
 			}
-			const cssHoneypot = form.querySelector('input[style*="position: absolute; left: -9999px"]') as HTMLInputElement | null
+			const cssHoneypot = form.querySelector(cssTrapSelector) as HTMLInputElement | null
 			if (cssHoneypot) cssHoneypot.value = ''
 		}
 
@@ -435,7 +434,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				if (field && field.value.trim()) return `honeypot:${fieldName}`
 			}
 
-			const cssHoneypot = form.querySelector('input[style*="position: absolute; left: -9999px"]') as HTMLInputElement
+			const cssHoneypot = form.querySelector(cssTrapSelector) as HTMLInputElement
 			if (cssHoneypot && cssHoneypot.value.trim()) return 'css_honeypot'
 
 			const suspicious = this.detectSuspiciousBrowser()

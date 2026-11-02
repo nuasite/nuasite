@@ -7,7 +7,23 @@
  * Every value here is empty, so a tracker that still sends values (a cached script, a site's own
  * `window.analytics`) has nothing to send either.
  */
+import { cssTrapSelector, honeypotFields } from './utils.ts'
+
 export type TrackedFields = Record<string, ''>
+
+/**
+ * The fields the component renders itself and the visitor never fills in: the named honeypots (a
+ * fixed list), the token (by its name) and the CSS honeypot (by its style, since its random name is
+ * not on the page). Read from the component's own code and markup, not from attributes a site's
+ * props could set, and not from `aria-hidden`, which UI libraries put on real fields too.
+ */
+export function internalFieldNames(form: HTMLFormElement, tokenFieldName: string | undefined): Set<string> {
+	const names = new Set<string>(honeypotFields.map(field => field.name))
+	if (tokenFieldName) names.add(tokenFieldName)
+	const cssTrap = form.querySelector<HTMLInputElement>(cssTrapSelector)
+	if (cssTrap?.name) names.add(cssTrap.name)
+	return names
+}
 
 /** The names of the submitted fields, without the internal ones (honeypots, token). */
 export function trackedFields(entries: Iterable<[string, unknown]>, internal: ReadonlySet<string>): TrackedFields {
