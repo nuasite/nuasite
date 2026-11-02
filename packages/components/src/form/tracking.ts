@@ -9,22 +9,31 @@
  */
 export type TrackedFields = Record<string, ''>
 
-/** The submitted field names, without the honeypot and token fields that `isInternal` picks out. */
-export function trackedFields(entries: Iterable<[string, unknown]>, isInternal: (name: string) => boolean): TrackedFields {
+/**
+ * Fields the component adds itself and the visitor never sees: the honeypots, the token, and any
+ * `aria-hidden` input (the CSS honeypot, whose name is random).
+ */
+export function internalFieldNames(form: HTMLFormElement, honeypotNames: readonly string[], tokenFieldName: string | undefined): Set<string> {
+	const names = new Set(honeypotNames)
+	if (tokenFieldName) names.add(tokenFieldName)
+	for (const field of form.querySelectorAll<HTMLInputElement>('[name][aria-hidden="true"]')) names.add(field.name)
+	return names
+}
+
+/** The names of the submitted fields, without the internal ones. */
+export function trackedFields(entries: Iterable<[string, unknown]>, internal: ReadonlySet<string>): TrackedFields {
 	const fields: TrackedFields = {}
 	for (const [name] of entries) {
-		if (!isInternal(name)) fields[name] = ''
+		if (!internal.has(name)) fields[name] = ''
 	}
 	return fields
 }
 
 /**
- * The reason recorded for a response the server did not accept. Built from the status alone: the
+ * The reason recorded for a response the form did not accept. Built from the status alone: the
  * server's error text can quote what was submitted, such as the name of a file that was too large.
+ * A 2xx answer without `success` gets its own code, so it does not read as a successful status.
  */
-export function responseErrorReason(status: number): string {
-	return `http_${status}`
+export function responseErrorReason(response: Pick<Response, 'ok' | 'status'>): string {
+	return response.ok ? 'not_accepted' : `http_${response.status}`
 }
-
-/** The reason recorded when the request never got a response. The error's message is not sent. */
-export const networkErrorReason = 'network_error'

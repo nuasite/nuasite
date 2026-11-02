@@ -118,7 +118,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 </astro-form>
 
 <script>
-	import { networkErrorReason, responseErrorReason, trackedFields } from './tracking'
+	import { internalFieldNames, responseErrorReason, trackedFields } from './tracking.ts'
 
 	class AstroForm extends HTMLElement {
 		private fieldInteractions = new Set<string>();
@@ -263,7 +263,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				// Field names only, see tracking.ts
 				const formDataForTracking = trackedFields(
 					new FormData(form).entries(),
-					name => this.honeypotFieldNames.includes(name) || /^token_/.test(name) || !!form.querySelector(`[name="${name}"][aria-hidden="true"]`),
+					internalFieldNames(form, this.honeypotFieldNames, tokenFieldName),
 				)
 
 				trackForm('attempt', { formData: formDataForTracking })
@@ -332,12 +332,13 @@ const tokenId = `${tokenFieldName}_${formId}`
 						refreshSubmissionGuards()
 					} else {
 						const message = hasCustomError ? errorMessage : (result.error || result.message || errorMessage)
-						trackForm('error', { reason: responseErrorReason(response.status), formData: formDataForTracking })
+						trackForm('error', { reason: responseErrorReason(response), formData: formDataForTracking })
 						showError(message)
 					}
 				} catch (err) {
 					console.error('Form submission error:', err);
-					trackForm('error', { reason: networkErrorReason, formData: formDataForTracking })
+					// Not the error's message: a fixed code is all analytics needs
+					trackForm('error', { reason: 'network_error', formData: formDataForTracking })
 					showError(networkErrorMessage)
 				}
 			})
