@@ -32,12 +32,13 @@
     },
     "packages/astro-fragments": {
       "name": "@nuasite/astro-fragments",
-      "version": "0.22.4",
+      "version": "0.65.2",
       "dependencies": {
         "node-html-parser": "catalog:parsers",
       },
       "devDependencies": {
         "@types/bun": "catalog:build",
+        "astro": "catalog:astro",
       },
       "peerDependencies": {
         "astro": "catalog:astro",

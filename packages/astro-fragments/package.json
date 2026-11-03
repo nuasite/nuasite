@@ -15,7 +15,7 @@
 		"directory": "packages/astro-fragments"
 	},
 	"license": "Apache-2.0",
-	"version": "0.22.4",
+	"version": "0.65.2",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
 	"type": "module",
@@ -31,14 +31,15 @@
 		"node-html-parser": "catalog:parsers"
 	},
 	"devDependencies": {
-		"@types/bun": "catalog:build"
+		"@types/bun": "catalog:build",
+		"astro": "catalog:astro"
 	},
 	"peerDependencies": {
 		"astro": "catalog:astro",
 		"typescript": "catalog:build"
 	},
 	"scripts": {
-		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts"
+		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts --compiled-exports"
 	},
 	"keywords": [
 		"astro",
