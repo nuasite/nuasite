@@ -36,7 +36,7 @@ bun workspace @nuasite/cms run build
 
 ## Architecture
 
-Bun monorepo with 16 publishable packages under `packages/`, all revolving around the Astro framework.
+Bun monorepo with 17 publishable packages under `packages/`, all revolving around the Astro framework.
 
 ### Astro integrations
 
@@ -48,6 +48,7 @@ Bun monorepo with 16 publishable packages under `packages/`, all revolving aroun
 - **`@nuasite/agent-summary`** — Generates `AGENTS.md`, a machine-readable catalog of site pages.
 - **`@nuasite/llm-enhancements`** — Exposes pages as `.md` endpoints for LLM consumption.
 - **`@nuasite/checks`** — SEO, GEO, performance, accessibility, and AI validation for Astro sites.
+- **`@nuasite/astro-fragments`** — Extracts marked components into `dist/_fragments/<hash>.html` at build time, leaving `<x-fragment>` placeholders for an edge layer to stitch back.
 
 ### Headless CMS stack
 
@@ -84,7 +85,7 @@ Media storage uses a pluggable adapter pattern (`MediaStorageAdapter`, defined i
 - **TypeScript**: strict mode, ESNext target, bundler module resolution, `jsx: "react-jsx"` (CMS uses `jsxImportSource: "preact"`)
 - In the monorepo, every package's `exports` name its TypeScript source (`./src/*.ts`), which Bun and Vite load directly, so tests, the playground and `tsc` need no build step
 - Relative imports spell out their extension (`./foo.ts`, `./bar/index.ts`). Node only loads TypeScript that way, and `tsc` rewrites the extensions to `.js` when it emits
-- Packages that run under Node on an installed site (agent-summary, checks, cms-types, cms-core, cms-client, cms, llm-enhancements, nua, notes, cms-sidecar) emit JS into `dist/` with the same layout as `src/`. Their `prepack` runs `resolve-deps.ts --compiled-exports`, which points every condition of the published `exports`/`imports`/`module` at `dist/`, `workerd` included (`scripts/workspace-deps/compiled-exports.ts`). The other packages (components, collections-admin, cms-mdx-editor, cli, cms-studio) are only loaded by Vite, a bundler or Bun, and publish their source
+- Packages that run under Node on an installed site (agent-summary, astro-fragments, checks, cms-types, cms-core, cms-client, cms, llm-enhancements, nua, notes, cms-sidecar) emit JS into `dist/` with the same layout as `src/`. Their `prepack` runs `resolve-deps.ts --compiled-exports`, which points every condition of the published `exports`/`imports`/`module` at `dist/`, `workerd` included (`scripts/workspace-deps/compiled-exports.ts`). The other packages (components, collections-admin, cms-mdx-editor, cli, cms-studio) are only loaded by Vite, a bundler or Bun, and publish their source
 - Code that locates its own files has to resolve the same from `src/` and from `dist/`: go through `packageRoot(import.meta.url)` (`src/package-root.ts` in cms and notes)
 - Versions at publish: `workspace:*` becomes the exact `@nuasite/*` version (released in lockstep, so exact means tested together). Catalogs hold the exact versions the tests run on. A peer on a package released apart from nuasite (`astro`) is published as a caret range with the catalog version as the floor (`catalog:astro` 7.4.2 becomes `^7.4.2`, `scripts/workspace-deps/peer-ranges.ts`), and `resolve-deps.ts` refuses a hand-written exact third-party peer. `@nuasite/core` opts out with `--allow-pinned-peers`: its job is pinning the `@astrojs/*` versions
 - `bun run verify:pack` packs every package, installs the tarballs into a throwaway project and loads every compiled entry point with plain Node (the CI `build` job runs it). Run it after `bun run build` when touching `exports`, `tsconfig` or the build
