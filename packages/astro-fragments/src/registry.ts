@@ -77,7 +77,8 @@ export function computeFragmentHash(moduleId: string, props: Record<string, unkn
 /** JSON with object keys sorted at every depth, so equal props always produce the same string. */
 function canonicalJson(value: unknown): string {
 	if (Array.isArray(value)) {
-		return `[${value.map(item => canonicalJson(item ?? null)).join(',')}]`
+		// Array.from visits holes too, which JSON writes as null.
+		return `[${Array.from(value, item => canonicalJson(item ?? null)).join(',')}]`
 	}
 	if (value !== null && typeof value === 'object') {
 		const fields = Object.entries(value)
@@ -133,6 +134,42 @@ function assertSerializable(value: unknown, path: string, ancestors: Set<object>
 	}
 	// Only ancestors make a cycle; the same object under two siblings is fine.
 	ancestors.delete(value)
+}
+
+export interface FragmentTarget {
+	component: AstroComponentFactory
+	moduleId: string
+	props: Record<string, unknown>
+}
+
+/** Checks the `of` and `props` the component received; `astro check` is the only thing that types them. */
+export function parseFragmentTarget(of: unknown, props: unknown): FragmentTarget {
+	if (!isComponentFactory(of)) {
+		throw new FragmentPropsError('The @nuasite/astro-fragments component requires an `of` prop pointing to an Astro component.')
+	}
+	const moduleId = of.moduleId
+	if (!moduleId) {
+		throw new FragmentPropsError(
+			'The @nuasite/astro-fragments component received an `of` without a moduleId. Make sure you imported an .astro component (not a JSX/TSX one or a runtime factory).',
+		)
+	}
+	const label = moduleId.split('/').pop() ?? moduleId
+	const plainProps = props ?? {}
+	if (!isPlainObject(plainProps)) {
+		throw new FragmentPropsError(`The \`props\` of ${label} must be a plain object.`)
+	}
+	validateProps(plainProps, label)
+	return { component: of, moduleId, props: plainProps }
+}
+
+export function isComponentFactory(value: unknown): value is AstroComponentFactory {
+	return typeof value === 'function'
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+	const proto = Reflect.getPrototypeOf(value)
+	return proto === Object.prototype || proto === null
 }
 
 export class FragmentPropsError extends Error {

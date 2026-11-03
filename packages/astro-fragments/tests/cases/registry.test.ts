@@ -7,6 +7,7 @@ import {
 	FragmentPropsError,
 	FragmentRegistrationError,
 	getFragments,
+	parseFragmentTarget,
 	registerFragment,
 	validateProps,
 } from '../../src/registry.ts'
@@ -57,6 +58,14 @@ describe('computeFragmentHash', () => {
 		const c = computeFragmentHash('src/foo.astro', { items: [{ id: 1 }] }, PROJECT_ROOT)
 		const d = computeFragmentHash('src/foo.astro', { items: [{ id: 2 }] }, PROJECT_ROOT)
 		expect(c).not.toBe(d)
+	})
+
+	it('hashes props the same after a JSON round trip, sparse arrays included', () => {
+		const items: unknown[] = []
+		items[1] = 1 // leaves a hole at index 0
+		const props = { items, note: undefined, nested: { b: [undefined], a: -0 } }
+		const roundTripped: Record<string, unknown> = JSON.parse(JSON.stringify(props))
+		expect(computeFragmentHash('src/foo.astro', roundTripped, PROJECT_ROOT)).toBe(computeFragmentHash('src/foo.astro', props, PROJECT_ROOT))
 	})
 
 	it('is order-independent in nested props', () => {
@@ -115,6 +124,39 @@ describe('validateProps', () => {
 	it('rejects NaN and Infinity, which JSON turns into null', () => {
 		expect(() => validateProps({ a: Number.NaN }, 'C')).toThrow(/C\.a is NaN/)
 		expect(() => validateProps({ a: [Number.POSITIVE_INFINITY] }, 'C')).toThrow(/C\.a\[0\] is Infinity/)
+	})
+})
+
+describe('parseFragmentTarget', () => {
+	const component = Object.assign(fakeComponent(), { moduleId: '/var/project/src/fragments/Card.astro' })
+
+	it('returns the component, its module id and the props', () => {
+		expect(parseFragmentTarget(component, { slug: 'a' })).toEqual({
+			component,
+			moduleId: '/var/project/src/fragments/Card.astro',
+			props: { slug: 'a' },
+		})
+	})
+
+	it('defaults missing props to an empty object', () => {
+		expect(parseFragmentTarget(component, undefined).props).toEqual({})
+	})
+
+	it('rejects an `of` that is not a component', () => {
+		expect(() => parseFragmentTarget('Card', {})).toThrow(/requires an `of` prop/)
+	})
+
+	it('rejects a component without a moduleId', () => {
+		expect(() => parseFragmentTarget(fakeComponent(), {})).toThrow(/without a moduleId/)
+	})
+
+	it('rejects props that are not a plain object', () => {
+		expect(() => parseFragmentTarget(component, [1, 2])).toThrow(/`props` of Card.astro must be a plain object/)
+		expect(() => parseFragmentTarget(component, 'x')).toThrow(FragmentPropsError)
+	})
+
+	it('validates the props', () => {
+		expect(() => parseFragmentTarget(component, { when: new Date() })).toThrow(/Card\.astro\.when is a Date/)
 	})
 })
 

@@ -5,7 +5,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { mapWithConcurrency } from './concurrency.ts'
 import { buildManifest, type BuildManifestParams, type FragmentManifest, readExistingManifest } from './manifest.ts'
-import { type AstroComponentFactory, disableRegistry, enableRegistry, type FragmentEntry, getFragments, getProjectRoot } from './registry.ts'
+import {
+	type AstroComponentFactory,
+	disableRegistry,
+	enableRegistry,
+	type FragmentEntry,
+	getFragments,
+	getProjectRoot,
+	isComponentFactory,
+} from './registry.ts'
 import { scanDistForPlaceholders } from './scan.ts'
 
 export interface AstroFragmentsOptions {
@@ -27,7 +35,7 @@ export interface AstroFragmentsOptions {
 }
 
 export default function astroFragments(options: AstroFragmentsOptions = {}): AstroIntegration {
-	const outputDir = options.outputDir ?? '_fragments'
+	const outputDir = parseOutputDir(options.outputDir ?? '_fragments')
 	const manifestName = options.manifestName ?? 'manifest.json'
 	const concurrency = options.concurrency ?? 8
 
@@ -63,17 +71,26 @@ export default function astroFragments(options: AstroFragmentsOptions = {}): Ast
 	}
 }
 
-interface RenderParams {
+/** `outputDir` has to be a subdirectory of the build output: the scan skips it and stale fragment files are deleted from it. */
+function parseOutputDir(outputDir: string): string {
+	const normalized = path.posix.normalize(outputDir.split(path.sep).join('/')).replace(/\/+$/, '')
+	if (normalized === '.' || normalized === '' || normalized === '..' || normalized.startsWith('../') || path.posix.isAbsolute(normalized)) {
+		throw new Error(`@nuasite/astro-fragments: outputDir must be a subdirectory of the build output, got "${outputDir}".`)
+	}
+	return normalized
+}
+
+export interface RenderParams {
 	distDir: string
 	outputDir: string
 	manifestName: string
 	concurrency: number
-	logger: AstroIntegrationLogger
+	logger: Pick<AstroIntegrationLogger, 'info'>
 }
 
 type ResultEntry = BuildManifestParams['entries'][number]
 
-async function renderFragments({ distDir, outputDir, manifestName, concurrency, logger }: RenderParams): Promise<void> {
+export async function renderFragments({ distDir, outputDir, manifestName, concurrency, logger }: RenderParams): Promise<void> {
 	const fragments = getFragments()
 	const placeholders = await scanDistForPlaceholders(distDir, outputDir, concurrency)
 	const fragmentsOutDir = path.resolve(distDir, outputDir)
@@ -194,10 +211,6 @@ async function importComponent(moduleId: string, projectRoot: string | null): Pr
 		throw new Error(`Default export of "${moduleId}" is not a component factory (got ${typeof mod.default}).`)
 	}
 	return mod.default
-}
-
-function isComponentFactory(value: unknown): value is AstroComponentFactory {
-	return typeof value === 'function'
 }
 
 const FRAGMENT_FILE = /^[a-f0-9]{12}\.html$/

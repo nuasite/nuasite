@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { FragmentManifest } from '../../src/manifest.ts'
+import { type FragmentManifest, parseManifest } from '../../src/manifest.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const fixtureRoot = path.resolve(here, '../fixtures/basic')
@@ -12,7 +12,9 @@ const fragmentsDir = path.join(distDir, '_fragments')
 
 async function readManifest(): Promise<FragmentManifest> {
 	const raw = await fs.readFile(path.join(fragmentsDir, 'manifest.json'), 'utf8')
-	return JSON.parse(raw) as FragmentManifest
+	const manifest = parseManifest(JSON.parse(raw))
+	if (!manifest) throw new Error(`invalid fragment manifest: ${raw}`)
+	return manifest
 }
 
 async function readFile(p: string): Promise<string> {
@@ -75,7 +77,7 @@ describe('e2e: basic fixture build', () => {
 		const manifest = await readManifest()
 		const related = Object.values(manifest.fragments).filter(f => f.moduleId.endsWith('RelatedPosts.astro'))
 		expect(related.length).toBe(3)
-		const slugs = related.map(f => f.props.slug as string).sort()
+		const slugs = related.map(f => String(f.props.slug)).sort()
 		expect(slugs).toEqual(['hello-world', 'second-post', 'third-post'])
 		for (const r of related) {
 			expect(r.usedBy.length).toBe(1)

@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { FragmentManifest } from '../../src/manifest.ts'
+import { type FragmentManifest, parseManifest } from '../../src/manifest.ts'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const fixtureRoot = path.resolve(here, '../fixtures/basic')
@@ -15,7 +15,9 @@ const pletivoCli = path.join(path.dirname(fileURLToPath(import.meta.resolve('ple
 
 async function readManifest(): Promise<FragmentManifest> {
 	const raw = await fs.readFile(path.join(fragmentsDir, 'manifest.json'), 'utf8')
-	return JSON.parse(raw) as FragmentManifest
+	const manifest = parseManifest(JSON.parse(raw))
+	if (!manifest) throw new Error(`invalid fragment manifest: ${raw}`)
+	return manifest
 }
 
 async function readFile(p: string): Promise<string> {
