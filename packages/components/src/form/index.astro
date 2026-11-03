@@ -1,6 +1,6 @@
 ---
 import type { FormProps } from './types'
-import { submitButtonRegex, honeypotConflictRegex, honeypotFields } from './utils'
+import { cssTrapConflictRegex, cssTrapPrefix, submitButtonRegex, honeypotConflictRegex, honeypotFields } from './utils'
 
 export type Props = FormProps
 
@@ -34,7 +34,12 @@ if (honeypotConflictRegex.test(slotContent)) {
 	throw new Error(`Form "${formId}" has conflicting field names. Avoid using field names ending with "_required" as they are reserved for honeypot fields.`)
 }
 
-const cssHoneypotField = `css_trap_${crypto.randomUUID().substring(0, 8)}`
+if (cssTrapConflictRegex.test(slotContent)) {
+	console.error(`❌ Form "${formId}" contains a field name starting with "${cssTrapPrefix}", which is reserved for the CSS honeypot.`)
+	throw new Error(`Form "${formId}" has conflicting field names. Avoid field names starting with "${cssTrapPrefix}" as they are reserved for the CSS honeypot.`)
+}
+
+const cssHoneypotField = `${cssTrapPrefix}${crypto.randomUUID().substring(0, 8)}`
 const tokenFieldName = `token_${crypto.randomUUID().substring(0, 8)}`
 const tokenId = `${tokenFieldName}_${formId}`
 ---
@@ -118,6 +123,9 @@ const tokenId = `${tokenFieldName}_${formId}`
 </astro-form>
 
 <script>
+	import { internalFieldNames, responseErrorReason, trackedFields } from './tracking.ts'
+	import { cssTrapSelector } from './utils.ts'
+
 	class AstroForm extends HTMLElement {
 		private fieldInteractions = new Set<string>();
 		private hasPointerActivity = false;
@@ -152,6 +160,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 			const hasCustomSuccess = form.dataset.customSuccess != null
 			const hasCustomError = form.dataset.customError != null
 			this.honeypotFieldNames = form.dataset.requiredFields?.split(',') || []
+			const internalFields = internalFieldNames(form, tokenFieldName)
 
 			const statusContainer = document.getElementById(`${formId}-status`)
 			const successStatus = statusContainer?.querySelector('[data-status="success"]')
@@ -258,11 +267,8 @@ const tokenId = `${tokenFieldName}_${formId}`
 			form.addEventListener('submit', async (e) => {
 				e.preventDefault()
 
-				const formDataForTracking = Object.fromEntries(
-					Array.from(new FormData(form).entries())
-						.filter(([k]) => !this.honeypotFieldNames.includes(k) && !/^token_/.test(k) && !form.querySelector(`[name="${k}"][aria-hidden="true"]`))
-						.map(([k, v]) => [k, typeof v === 'string' ? v.slice(0, 100) : '[File]']),
-				)
+				// Field names only, see tracking.ts
+				const formDataForTracking = trackedFields(new FormData(form).entries(), internalFields)
 
 				trackForm('attempt', { formData: formDataForTracking })
 
@@ -330,12 +336,13 @@ const tokenId = `${tokenFieldName}_${formId}`
 						refreshSubmissionGuards()
 					} else {
 						const message = hasCustomError ? errorMessage : (result.error || result.message || errorMessage)
-						trackForm('error', { reason: result.error || `http_${response.status}`, formData: formDataForTracking })
+						trackForm('error', { reason: responseErrorReason(response), formData: formDataForTracking })
 						showError(message)
 					}
 				} catch (err) {
 					console.error('Form submission error:', err);
-					trackForm('error', { reason: err instanceof Error ? err.message : 'network_error', formData: formDataForTracking })
+					// Not the error's message: a fixed code is all analytics needs
+					trackForm('error', { reason: 'network_error', formData: formDataForTracking })
 					showError(networkErrorMessage)
 				}
 			})
@@ -416,7 +423,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				const field = form.querySelector(`[name="${fieldName}"]`) as HTMLInputElement | null
 				if (field) field.value = ''
 			}
-			const cssHoneypot = form.querySelector('input[style*="position: absolute; left: -9999px"]') as HTMLInputElement | null
+			const cssHoneypot = form.querySelector(cssTrapSelector) as HTMLInputElement | null
 			if (cssHoneypot) cssHoneypot.value = ''
 		}
 
@@ -432,7 +439,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 				if (field && field.value.trim()) return `honeypot:${fieldName}`
 			}
 
-			const cssHoneypot = form.querySelector('input[style*="position: absolute; left: -9999px"]') as HTMLInputElement
+			const cssHoneypot = form.querySelector(cssTrapSelector) as HTMLInputElement | null
 			if (cssHoneypot && cssHoneypot.value.trim()) return 'css_honeypot'
 
 			const suspicious = this.detectSuspiciousBrowser()
