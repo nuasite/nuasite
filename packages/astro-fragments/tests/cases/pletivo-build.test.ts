@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { existsSync, promises as fs } from 'node:fs'
+import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { FragmentManifest } from '../../src/manifest.ts'
@@ -10,11 +10,8 @@ const fixtureRoot = path.resolve(here, '../fixtures/basic')
 const distDir = path.join(fixtureRoot, 'dist')
 const fragmentsDir = path.join(distDir, '_fragments')
 
-// Pletivo lives in a sibling repo at ~/projects/oss/pletivo. Skip the
-// suite if we can't find the binary — keeps CI green on machines that
-// don't clone the pletivo source tree.
-const pletivoBin = path.resolve(process.env.HOME ?? '', 'projects/oss/pletivo/node_modules/.bin/pletivo')
-const pletivoAvailable = existsSync(pletivoBin)
+// The pletivo CLI ships as TypeScript next to its entry point and runs on Bun.
+const pletivoCli = path.join(path.dirname(fileURLToPath(import.meta.resolve('pletivo'))), 'cli.ts')
 
 async function readManifest(): Promise<FragmentManifest> {
 	const raw = await fs.readFile(path.join(fragmentsDir, 'manifest.json'), 'utf8')
@@ -27,7 +24,7 @@ async function readFile(p: string): Promise<string> {
 
 async function runPletivoBuild(): Promise<void> {
 	await fs.rm(distDir, { recursive: true, force: true })
-	const result = spawnSync(pletivoBin, ['build'], {
+	const result = spawnSync(process.execPath, [pletivoCli, 'build'], {
 		cwd: fixtureRoot,
 		encoding: 'utf8',
 		env: { ...process.env, NODE_ENV: 'production' },
@@ -39,7 +36,7 @@ async function runPletivoBuild(): Promise<void> {
 
 const BUILD_TIMEOUT = 30_000
 
-describe.skipIf(!pletivoAvailable)('e2e: pletivo build of the same astro fixture', () => {
+describe('e2e: pletivo build of the same astro fixture', () => {
 	beforeAll(async () => {
 		await runPletivoBuild()
 	}, BUILD_TIMEOUT)
