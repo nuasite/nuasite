@@ -23,7 +23,7 @@ async function readManifest(): Promise<FragmentManifest> {
 }
 
 function runPletivoBuild(args: string[] = []): { stdout: string; stderr: string; status: number } {
-	const result = spawnSync(pletivoBin, ['build', ...args], {
+	const result = spawnSync(pletivoBin, ['build', '--incremental', ...args], {
 		cwd: fixtureRoot,
 		encoding: 'utf8',
 		env: { ...process.env, NODE_ENV: 'production' },

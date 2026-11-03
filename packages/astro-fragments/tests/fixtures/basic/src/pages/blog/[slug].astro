@@ -1,5 +1,5 @@
 ---
-import Fragment from '@nuasite/astro-fragments/Fragment.astro'
+import NuaFragment from '@nuasite/astro-fragments/Fragment.astro'
 import LatestPosts from '../../fragments/LatestPosts.astro'
 import RelatedPosts from '../../fragments/RelatedPosts.astro'
 
@@ -23,9 +23,9 @@ const { title } = Astro.props as Props
 		<h1>{title}</h1>
 		<p>This is the post {slug}.</p>
 	</article>
-	<Fragment of={RelatedPosts} props={{ slug }} />
+	<NuaFragment of={RelatedPosts} props={{ slug }} />
 	<footer>
-		<Fragment of={LatestPosts} props={{}} />
+		<NuaFragment of={LatestPosts} props={{}} />
 	</footer>
 </body>
 </html>
