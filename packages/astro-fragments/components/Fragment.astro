@@ -9,12 +9,12 @@ interface Props<C> {
 const { of: Component, props: rawProps } = Astro.props as { of: (...args: any[]) => any; props: Record<string, unknown> }
 
 if (!Component) {
-	throw new Error('<Fragment> requires an `of` prop pointing to an Astro component.')
+	throw new Error('The @nuasite/astro-fragments component requires an `of` prop pointing to an Astro component.')
 }
 
 const moduleId: string | undefined = (Component as { moduleId?: string }).moduleId
 if (!moduleId) {
-	throw new Error('<Fragment of={...}> received a component without a moduleId. Make sure you imported an .astro component (not a JSX/TSX one or a runtime factory).')
+	throw new Error('The @nuasite/astro-fragments component received an `of` without a moduleId. Make sure you imported an .astro component (not a JSX/TSX one or a runtime factory).')
 }
 
 const props = (rawProps ?? {}) as Record<string, unknown>
@@ -29,7 +29,6 @@ if (shouldExtract) {
 		component: Component,
 		moduleId,
 		props,
-		pageUrl: Astro.url?.pathname,
 	})
 }
 ---

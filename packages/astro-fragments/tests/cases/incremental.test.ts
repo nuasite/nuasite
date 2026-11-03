@@ -1,7 +1,19 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { disableRegistry, enableRegistry, FragmentRegistrationError, getFragments, registerFragment, runInRenderPass } from '../../src/registry.ts'
+import { fileURLToPath } from 'node:url'
+import {
+	type AstroComponentFactory,
+	disableRegistry,
+	enableRegistry,
+	FragmentRegistrationError,
+	getFragments,
+	registerFragment,
+	runInRenderPass,
+} from '../../src/registry.ts'
 
 const PROJECT_ROOT = '/var/project/'
+
+/** A distinct component factory per call; registry tests only compare identities. */
+const fakeComponent = (): AstroComponentFactory => () => new Response()
 
 afterEach(() => {
 	disableRegistry()
@@ -20,7 +32,7 @@ describe('registerFragment with lazy component', () => {
 	it('upgrades a lazy entry when a real component shows up later', () => {
 		enableRegistry(PROJECT_ROOT)
 		const lazyHash = registerFragment({ moduleId: 'src/foo.astro', props: { a: 1 } })
-		const component = (() => {}) as any
+		const component = fakeComponent()
 		const realHash = registerFragment({ component, moduleId: 'src/foo.astro', props: { a: 1 } })
 		expect(lazyHash).toBe(realHash)
 		const [entry] = getFragments()
@@ -29,7 +41,7 @@ describe('registerFragment with lazy component', () => {
 
 	it('does not enforce collision check when one side has no component', () => {
 		enableRegistry(PROJECT_ROOT)
-		const componentA = (() => {}) as any
+		const componentA = fakeComponent()
 		registerFragment({ component: componentA, moduleId: 'src/foo.astro', props: { a: 1 } })
 		// Replaying with no component fn must not throw even though the
 		// hash already exists — moduleId+props identity is what matters.
@@ -38,8 +50,8 @@ describe('registerFragment with lazy component', () => {
 
 	it('still enforces collision when two real components disagree', () => {
 		enableRegistry(PROJECT_ROOT)
-		const componentA = (() => {}) as any
-		const componentB = (() => {}) as any
+		const componentA = fakeComponent()
+		const componentB = fakeComponent()
 		registerFragment({ component: componentA, moduleId: 'src/foo.astro', props: { a: 1 } })
 		expect(() => registerFragment({ component: componentB, moduleId: 'src/foo.astro', props: { a: 1 } })).toThrow(/collision/)
 	})
@@ -104,5 +116,21 @@ describe('runInRenderPass', () => {
 			registerFragment({ moduleId: 'src/A.astro', props: {} })
 		})
 		expect(fragmentIds).toEqual([hash])
+	})
+})
+
+describe('separate module instances', () => {
+	it('share registrations and render passes', async () => {
+		// The published integration and the .astro component can load different copies of the registry module.
+		const copyUrl = `${fileURLToPath(new URL('../../src/registry.ts', import.meta.url))}?second-instance`
+		const copy: typeof import('../../src/registry.ts') = await import(copyUrl)
+		expect(copy.registerFragment).not.toBe(registerFragment)
+
+		enableRegistry(PROJECT_ROOT)
+		const { fragmentIds } = await runInRenderPass('page-1', async () => {
+			copy.registerFragment({ moduleId: 'src/A.astro', props: {} })
+		})
+		expect(fragmentIds).toHaveLength(1)
+		expect(getFragments().map(f => f.hash)).toEqual(fragmentIds)
 	})
 })

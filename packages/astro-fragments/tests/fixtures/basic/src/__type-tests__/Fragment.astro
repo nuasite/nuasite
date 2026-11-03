@@ -1,8 +1,6 @@
 ---
-// This file is checked by `astro check` but never routed (lives outside src/pages/).
-// It guards <Fragment of={...} props={...}> type-safety: each `@ts-expect-error`
-// must fire — if Astro stops catching one of these mistakes, astro check will
-// fail with "Unused @ts-expect-error".
+// Run `astro check` in this fixture by hand; nothing runs it automatically. Never routed (outside src/pages/).
+// Each `@ts-expect-error` must fire, or astro check fails with "Unused @ts-expect-error".
 import NuaFragment from '@nuasite/astro-fragments/Fragment.astro'
 import LatestPosts from '../fragments/LatestPosts.astro'
 import RelatedPosts from '../fragments/RelatedPosts.astro'

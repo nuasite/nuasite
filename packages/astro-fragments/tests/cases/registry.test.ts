@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import {
+	type AstroComponentFactory,
 	computeFragmentHash,
 	disableRegistry,
 	enableRegistry,
@@ -11,6 +12,9 @@ import {
 } from '../../src/registry.ts'
 
 const PROJECT_ROOT = '/var/project/'
+
+/** A distinct component factory per call; registry tests only compare identities. */
+const fakeComponent = (): AstroComponentFactory => () => new Response()
 
 afterEach(() => {
 	disableRegistry()
@@ -44,6 +48,21 @@ describe('computeFragmentHash', () => {
 		const a = computeFragmentHash('src/foo.astro', { a: 1 }, PROJECT_ROOT)
 		const b = computeFragmentHash('src/bar.astro', { a: 1 }, PROJECT_ROOT)
 		expect(a).not.toBe(b)
+	})
+
+	it('is sensitive to nested prop values', () => {
+		const a = computeFragmentHash('src/foo.astro', { filter: { tag: 'a' } }, PROJECT_ROOT)
+		const b = computeFragmentHash('src/foo.astro', { filter: { tag: 'b' } }, PROJECT_ROOT)
+		expect(a).not.toBe(b)
+		const c = computeFragmentHash('src/foo.astro', { items: [{ id: 1 }] }, PROJECT_ROOT)
+		const d = computeFragmentHash('src/foo.astro', { items: [{ id: 2 }] }, PROJECT_ROOT)
+		expect(c).not.toBe(d)
+	})
+
+	it('is order-independent in nested props', () => {
+		const a = computeFragmentHash('src/foo.astro', { filter: { tag: 'a', limit: 3 } }, PROJECT_ROOT)
+		const b = computeFragmentHash('src/foo.astro', { filter: { limit: 3, tag: 'a' } }, PROJECT_ROOT)
+		expect(a).toBe(b)
 	})
 
 	it('normalizes module id by stripping the project root prefix', () => {
@@ -83,15 +102,25 @@ describe('validateProps', () => {
 	})
 
 	it('rejects circular references', () => {
-		const a: any = { x: 1 }
+		const a: Record<string, unknown> = { x: 1 }
 		a.self = a
 		expect(() => validateProps({ a }, 'C')).toThrow(/circular/)
+	})
+
+	it('accepts the same object under two siblings', () => {
+		const author = { name: 'Ada' }
+		expect(() => validateProps({ posts: [{ author }, { author }] }, 'C')).not.toThrow()
+	})
+
+	it('rejects NaN and Infinity, which JSON turns into null', () => {
+		expect(() => validateProps({ a: Number.NaN }, 'C')).toThrow(/C\.a is NaN/)
+		expect(() => validateProps({ a: [Number.POSITIVE_INFINITY] }, 'C')).toThrow(/C\.a\[0\] is Infinity/)
 	})
 })
 
 describe('registerFragment', () => {
 	it('throws when registry is not enabled', () => {
-		const component = {} as any
+		const component = fakeComponent()
 		expect(() =>
 			registerFragment({
 				component,
@@ -103,7 +132,7 @@ describe('registerFragment', () => {
 
 	it('registers and dedupes by hash', () => {
 		enableRegistry(PROJECT_ROOT)
-		const component = {} as any
+		const component = fakeComponent()
 		const h1 = registerFragment({ component, moduleId: 'src/foo.astro', props: { a: 1 } })
 		const h2 = registerFragment({ component, moduleId: 'src/foo.astro', props: { a: 1 } })
 		expect(h1).toBe(h2)
@@ -112,7 +141,7 @@ describe('registerFragment', () => {
 
 	it('records distinct entries for different props', () => {
 		enableRegistry(PROJECT_ROOT)
-		const component = {} as any
+		const component = fakeComponent()
 		registerFragment({ component, moduleId: 'src/foo.astro', props: { a: 1 } })
 		registerFragment({ component, moduleId: 'src/foo.astro', props: { a: 2 } })
 		expect(getFragments().length).toBe(2)
@@ -120,8 +149,8 @@ describe('registerFragment', () => {
 
 	it('throws on hash collision with different components', () => {
 		enableRegistry(PROJECT_ROOT)
-		const componentA = {} as any
-		const componentB = {} as any
+		const componentA = fakeComponent()
+		const componentB = fakeComponent()
 		// Force collision by feeding same identity inputs but different components
 		const props = { a: 1 }
 		registerFragment({ component: componentA, moduleId: 'src/foo.astro', props })
@@ -129,12 +158,19 @@ describe('registerFragment', () => {
 			.toThrow(/collision/)
 	})
 
-	it('aggregates usedBy', () => {
-		enableRegistry(PROJECT_ROOT)
-		const component = {} as any
-		registerFragment({ component, moduleId: 'src/foo.astro', props: { a: 1 }, pageUrl: '/page-1' })
-		registerFragment({ component, moduleId: 'src/foo.astro', props: { a: 1 }, pageUrl: '/page-2' })
+	it('stores the module id relative to the project root', () => {
+		enableRegistry('/var/project')
+		const absolute = registerFragment({ component: fakeComponent(), moduleId: '/var/project/src/foo.astro', props: {} })
 		const [entry] = getFragments()
-		expect([...(entry?.usedBy ?? [])].sort()).toEqual(['/page-1', '/page-2'])
+		expect(entry?.moduleId).toBe('src/foo.astro')
+		expect(registerFragment({ moduleId: 'src/foo.astro', props: {} })).toBe(absolute)
+	})
+
+	it('keeps components outside the project root relative, independent of the checkout path', () => {
+		enableRegistry('/home/a/site')
+		const first = registerFragment({ moduleId: '/home/a/shared/Card.astro', props: {} })
+		expect(getFragments()[0]?.moduleId).toBe('../shared/Card.astro')
+		enableRegistry('/srv/b/site')
+		expect(registerFragment({ moduleId: '/srv/b/shared/Card.astro', props: {} })).toBe(first)
 	})
 })

@@ -1,58 +1,55 @@
+import type { AstroComponentFactory } from 'astro/runtime/server/index.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash } from 'node:crypto'
+import path from 'node:path'
 
-export type AstroComponentFactory = (...args: any[]) => any
+export type { AstroComponentFactory }
 
 export interface FragmentEntry {
 	hash: string
 	/**
-	 * The component factory itself. Optional because hosts that implement
-	 * incremental rebuilds (e.g. pletivo) replay registrations from a cache
-	 * without re-importing the page module; in that case the integration
-	 * resolves the factory lazily from `moduleId` only if it actually needs
-	 * to re-render the fragment.
+	 * Missing when an incremental host replays a cached registration without
+	 * importing the page; the integration then imports `moduleId` itself.
 	 */
 	component?: AstroComponentFactory
 	props: Record<string, unknown>
+	/** Project-relative, POSIX separators. */
 	moduleId: string
-	/**
-	 * Pages that contain a `<Fragment>` referencing this entry. Populated
-	 * from the `pageUrl` field of `registerFragment` calls. Replayed
-	 * registrations from an incremental host typically don't carry
-	 * `pageUrl` — for those, the integration recovers `usedBy` by
-	 * scanning `<x-fragment id>` placeholders in dist/, so the final
-	 * manifest is correct even though this in-memory Set may be empty.
-	 */
-	usedBy: Set<string>
 }
 
-const REGISTRY_KEY = '__nuasite_astro_fragments_registry__'
+interface RenderPassState {
+	pageId: string
+	fragmentIds: Set<string>
+}
 
 interface RegistryState {
 	entries: Map<string, FragmentEntry>
 	enabled: boolean
 	projectRoot: string | null
+	renderPass: AsyncLocalStorage<RenderPassState>
+}
+
+declare global {
+	// The integration (loaded by the host from the package root) and Fragment.astro
+	// (compiled by Vite or the host's renderer) can get separate copies of this
+	// module, so everything they share lives on one global.
+	var __nuasite_astro_fragments_registry__: RegistryState | undefined
 }
 
 function getState(): RegistryState {
-	const g = globalThis as any
-	if (!g[REGISTRY_KEY]) {
-		g[REGISTRY_KEY] = {
-			entries: new Map(),
-			enabled: false,
-			projectRoot: null,
-		} satisfies RegistryState
+	globalThis.__nuasite_astro_fragments_registry__ ??= {
+		entries: new Map(),
+		enabled: false,
+		projectRoot: null,
+		renderPass: new AsyncLocalStorage(),
 	}
-	return g[REGISTRY_KEY]
+	return globalThis.__nuasite_astro_fragments_registry__
 }
 
 export function enableRegistry(projectRoot: string): void {
 	const state = getState()
 	state.enabled = true
-	// Force a trailing `/` so prefix checks (`moduleId.startsWith(projectRoot)`)
-	// can't false-match a sibling project whose root happens to share a
-	// prefix — e.g. `/home/me/site` vs `/home/me/site-old/foo.astro`.
-	state.projectRoot = projectRoot.endsWith('/') ? projectRoot : projectRoot + '/'
+	state.projectRoot = projectRoot
 	state.entries.clear()
 }
 
@@ -66,62 +63,76 @@ export function isRegistryEnabled(): boolean {
 	return getState().enabled
 }
 
+/** Makes an absolute module id project-relative with POSIX separators, so ids and caches don't depend on the checkout path. */
+export function normalizeModuleId(moduleId: string, projectRoot: string | null): string {
+	if (!projectRoot || !path.isAbsolute(moduleId)) return moduleId
+	return path.relative(projectRoot, moduleId).split(path.sep).join('/')
+}
+
 export function computeFragmentHash(moduleId: string, props: Record<string, unknown>, projectRoot: string | null): string {
-	const normalizedModuleId = projectRoot && moduleId.startsWith(projectRoot)
-		? moduleId.slice(projectRoot.length).replace(/^\/+/, '')
-		: moduleId
-	const sortedKeys = Object.keys(props).sort()
-	const propsJson = JSON.stringify(props, sortedKeys)
-	return createHash('sha1').update(`${normalizedModuleId}::${propsJson}`).digest('hex').slice(0, 12)
+	const normalizedModuleId = normalizeModuleId(moduleId, projectRoot)
+	return createHash('sha1').update(`${normalizedModuleId}::${canonicalJson(props)}`).digest('hex').slice(0, 12)
+}
+
+/** JSON with object keys sorted at every depth, so equal props always produce the same string. */
+function canonicalJson(value: unknown): string {
+	if (Array.isArray(value)) {
+		return `[${value.map(item => canonicalJson(item ?? null)).join(',')}]`
+	}
+	if (value !== null && typeof value === 'object') {
+		const fields = Object.entries(value)
+			.filter(([, inner]) => inner !== undefined)
+			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+			.map(([key, inner]) => `${JSON.stringify(key)}:${canonicalJson(inner)}`)
+		return `{${fields.join(',')}}`
+	}
+	return JSON.stringify(value)
 }
 
 export function validateProps(props: Record<string, unknown>, componentLabel: string): void {
 	for (const [key, value] of Object.entries(props)) {
-		assertSerializable(value, `${componentLabel}.${key}`)
+		assertSerializable(value, `${componentLabel}.${key}`, new Set())
 	}
 }
 
-function assertSerializable(value: unknown, path: string, seen: WeakSet<object> = new WeakSet()): void {
-	if (value === null || value === undefined) return
-	const t = typeof value
-	if (t === 'string' || t === 'number' || t === 'boolean') return
-	if (t === 'bigint') {
+function assertSerializable(value: unknown, path: string, ancestors: Set<object>): void {
+	if (value === null || value === undefined || typeof value === 'string' || typeof value === 'boolean') return
+	if (typeof value === 'number') {
+		if (!Number.isFinite(value)) {
+			throw new FragmentPropsError(`Fragment prop ${path} is ${value}, which JSON cannot represent.`)
+		}
+		return
+	}
+	if (typeof value === 'bigint') {
 		throw new FragmentPropsError(`Fragment prop ${path} is a bigint, which is not JSON-serializable. Convert to a string before passing.`)
 	}
-	if (t === 'function') {
-		throw new FragmentPropsError(`Fragment prop ${path} is a function. Fragment props must be plain serializable values.`)
+	if (typeof value === 'function' || typeof value === 'symbol') {
+		throw new FragmentPropsError(`Fragment prop ${path} is a ${typeof value}. Fragment props must be plain serializable values.`)
 	}
-	if (t === 'symbol') {
-		throw new FragmentPropsError(`Fragment prop ${path} is a symbol. Fragment props must be plain serializable values.`)
-	}
-	if (t !== 'object') {
-		throw new FragmentPropsError(`Fragment prop ${path} has unsupported type ${t}.`)
-	}
-	if (seen.has(value as object)) {
+	if (ancestors.has(value)) {
 		throw new FragmentPropsError(`Fragment prop ${path} contains a circular reference.`)
 	}
-	seen.add(value as object)
 	if (value instanceof Date) {
 		throw new FragmentPropsError(`Fragment prop ${path} is a Date instance. Convert to ISO string before passing.`)
 	}
 	if (value instanceof Map || value instanceof Set) {
 		throw new FragmentPropsError(`Fragment prop ${path} is a ${value.constructor.name}. Convert to a plain array/object before passing.`)
 	}
+	ancestors.add(value)
 	if (Array.isArray(value)) {
-		for (let i = 0; i < value.length; i++) {
-			assertSerializable(value[i], `${path}[${i}]`, seen)
+		value.forEach((item, index) => assertSerializable(item, `${path}[${index}]`, ancestors))
+	} else {
+		const proto = Reflect.getPrototypeOf(value)
+		if (proto !== Object.prototype && proto !== null) {
+			const className = typeof value.constructor === 'function' && value.constructor.name ? value.constructor.name : 'unknown class'
+			throw new FragmentPropsError(`Fragment prop ${path} is an instance of ${className}. Only plain objects are supported.`)
 		}
-		return
+		for (const [key, inner] of Object.entries(value)) {
+			assertSerializable(inner, `${path}.${key}`, ancestors)
+		}
 	}
-	const proto = Object.getPrototypeOf(value)
-	if (proto !== Object.prototype && proto !== null) {
-		throw new FragmentPropsError(
-			`Fragment prop ${path} is an instance of ${proto?.constructor?.name ?? 'unknown class'}. Only plain objects are supported.`,
-		)
-	}
-	for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-		assertSerializable(v, `${path}.${k}`, seen)
-	}
+	// Only ancestors make a cycle; the same object under two siblings is fine.
+	ancestors.delete(value)
 }
 
 export class FragmentPropsError extends Error {
@@ -133,16 +144,11 @@ export class FragmentRegistrationError extends Error {
 }
 
 export interface RegisterParams {
-	/**
-	 * The component factory. Optional — when omitted (e.g. a host replaying
-	 * cached registrations on an incremental rebuild), the integration will
-	 * lazy-import the factory from `moduleId` if and only if the fragment
-	 * actually needs to be rendered.
-	 */
+	/** Omit when replaying a cached registration; the integration imports `moduleId` when it renders the fragment. */
 	component?: AstroComponentFactory
+	/** Absolute, or relative to the project root. */
 	moduleId: string
 	props: Record<string, unknown>
-	pageUrl?: string
 }
 
 export function registerFragment(params: RegisterParams): string {
@@ -152,36 +158,21 @@ export function registerFragment(params: RegisterParams): string {
 			'Fragment registry is not enabled. Make sure the @nuasite/astro-fragments integration is added to astro.config integrations[].',
 		)
 	}
-	const hash = computeFragmentHash(params.moduleId, params.props, state.projectRoot)
+	const moduleId = normalizeModuleId(params.moduleId, state.projectRoot)
+	const hash = computeFragmentHash(moduleId, params.props, null)
 	const existing = state.entries.get(hash)
 	if (existing) {
-		// Hash-collision sanity check — only enforceable when both sides
-		// carry a concrete component fn. Replayed registrations (no fn)
-		// rely on `moduleId`+`props` identity which the hash already covers.
+		// Only two concrete factories can be compared; a replayed entry is identified by moduleId + props, which the hash covers.
 		if (existing.component && params.component && existing.component !== params.component) {
 			throw new FragmentRegistrationError(
-				`Hash collision: two different components produced the same fragment id "${hash}". Existing: ${existing.moduleId}, new: ${params.moduleId}.`,
+				`Hash collision: two different components produced the same fragment id "${hash}". Existing: ${existing.moduleId}, new: ${moduleId}.`,
 			)
 		}
-		// Upgrade a previously-lazy entry once a real component shows up,
-		// so renderFragments can use it without doing an import().
-		if (!existing.component && params.component) {
-			existing.component = params.component
-		}
-		if (params.pageUrl) existing.usedBy.add(params.pageUrl)
-		recordInRenderPass(hash)
-		return hash
+		existing.component ??= params.component
+	} else {
+		state.entries.set(hash, { hash, component: params.component, props: params.props, moduleId })
 	}
-	const entry: FragmentEntry = {
-		hash,
-		component: params.component,
-		props: params.props,
-		moduleId: params.moduleId,
-		usedBy: new Set(),
-	}
-	if (params.pageUrl) entry.usedBy.add(params.pageUrl)
-	state.entries.set(hash, entry)
-	recordInRenderPass(hash)
+	state.renderPass.getStore()?.fragmentIds.add(hash)
 	return hash
 }
 
@@ -193,48 +184,19 @@ export function getProjectRoot(): string | null {
 	return getState().projectRoot
 }
 
-// ── Render-pass scope ───────────────────────────────────────────────
-//
-// Hosts that want per-page fragment lists (so they can persist them
-// for incremental replay) wrap their page-render call in
-// `runInRenderPass(pageId, fn)`. Every `registerFragment` invocation
-// inside the async scope tags the resulting hash with the pass; the
-// caller receives the deduplicated list of fragment ids alongside the
-// render result.
-//
-// Load-bearing assumption: fragment components must call
-// `registerFragment` on **every** render, even when the entry already
-// exists in the registry (the call is cheap — it just bumps `usedBy`
-// and re-records the pass). If a component short-circuits a re-render,
-// its fragment will drop out of the per-page list and break replay on
-// the next incremental build. The bundled `<Fragment>` Astro component
-// follows this contract; custom hosts must match it.
-
-interface RenderPassState {
-	pageId: string
-	fragmentIds: Set<string>
-}
-
-const renderPassStorage = new AsyncLocalStorage<RenderPassState>()
-
 export interface RenderPassResult<T> {
 	value: T
 	fragmentIds: string[]
 }
 
-export async function runInRenderPass<T>(
-	pageId: string,
-	fn: () => T | Promise<T>,
-): Promise<RenderPassResult<T>> {
+/**
+ * Runs a page render and returns the ids of the fragments it registered, so an
+ * incremental host can cache them and replay them with `registerFragment` when it
+ * skips the page next time. The bundled component registers on every render, so
+ * the list is complete.
+ */
+export async function runInRenderPass<T>(pageId: string, fn: () => T | Promise<T>): Promise<RenderPassResult<T>> {
 	const fragmentIds = new Set<string>()
-	const value = await renderPassStorage.run(
-		{ pageId, fragmentIds },
-		async () => fn(),
-	)
+	const value = await getState().renderPass.run({ pageId, fragmentIds }, fn)
 	return { value, fragmentIds: [...fragmentIds] }
-}
-
-function recordInRenderPass(hash: string): void {
-	const pass = renderPassStorage.getStore()
-	if (pass) pass.fragmentIds.add(hash)
 }

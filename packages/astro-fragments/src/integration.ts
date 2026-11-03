@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { mapWithConcurrency } from './concurrency.ts'
-import { buildManifest, type FragmentManifest, type FragmentManifestEntry } from './manifest.ts'
+import { buildManifest, type BuildManifestParams, type FragmentManifest, readExistingManifest } from './manifest.ts'
 import { type AstroComponentFactory, disableRegistry, enableRegistry, type FragmentEntry, getFragments, getProjectRoot } from './registry.ts'
 import { scanDistForPlaceholders } from './scan.ts'
 
@@ -20,7 +20,7 @@ export interface AstroFragmentsOptions {
 	 */
 	manifestName?: string
 	/**
-	 * Concurrency for fragment rendering.
+	 * Concurrency for fragment rendering and for scanning the built pages.
 	 * Default: 8
 	 */
 	concurrency?: number
@@ -71,31 +71,25 @@ interface RenderParams {
 	logger: AstroIntegrationLogger
 }
 
+type ResultEntry = BuildManifestParams['entries'][number]
+
 async function renderFragments({ distDir, outputDir, manifestName, concurrency, logger }: RenderParams): Promise<void> {
 	const fragments = getFragments()
-	const placeholders = await scanDistForPlaceholders(distDir, outputDir)
+	const placeholders = await scanDistForPlaceholders(distDir, outputDir, concurrency)
 	const fragmentsOutDir = path.resolve(distDir, outputDir)
 	const manifestPath = path.join(fragmentsOutDir, manifestName)
 
-	// A prior manifest persists across incremental rebuilds (the host —
-	// e.g. pletivo — is expected to restore both manifest.json and the
-	// referenced fragment files into dist/ before this hook runs). Under a
-	// stock Astro build that wipes dist/, there is no prior manifest and
-	// behavior collapses to the strict "registry is the source of truth"
-	// path.
-	//
-	// If the user changed `outputDir` between builds the prior manifest's
-	// `file` pointers reference the old directory; treat it as absent so
-	// we don't emit a new manifest whose entries point at non-existent
-	// files. The host should clean dist/ in that case anyway.
+	// An incremental host keeps dist/ between builds, so a previous manifest can
+	// describe fragments of pages the host did not render this time. A clean
+	// `astro build` has none. A manifest written for another outputDir points at
+	// files that are not there, so it is ignored.
 	const rawExistingManifest = await readExistingManifest(manifestPath)
-	const existingManifest = rawExistingManifest && rawExistingManifest.outputDir === outputDir
-		? rawExistingManifest
-		: null
+	const existingManifest = rawExistingManifest && rawExistingManifest.outputDir === outputDir ? rawExistingManifest : null
 	if (rawExistingManifest && !existingManifest) {
 		logger.info(`prior manifest's outputDir (${rawExistingManifest.outputDir}) differs from configured "${outputDir}"; ignoring it`)
 	}
 
+	// The scan covers every page in dist/, so it alone decides which pages use a fragment.
 	const usedByMap = new Map<string, Set<string>>()
 	for (const ph of placeholders) {
 		let set = usedByMap.get(ph.id)
@@ -105,33 +99,15 @@ async function renderFragments({ distDir, outputDir, manifestName, concurrency, 
 		}
 		set.add(ph.pageFile)
 	}
+	const usedBy = (id: string): string[] => [...(usedByMap.get(id) ?? [])]
 
 	const registeredIds = new Set(fragments.map(f => f.hash))
-
-	// Split registered fragments into ones we have to render this build
-	// vs ones a host replayed without a factory whose previously-rendered
-	// HTML is still on disk — those we reuse byte-for-byte rather than
-	// paying for a lazy import + render.
-	const toRender: FragmentEntry[] = []
-	const lazyReuseFragments: FragmentEntry[] = []
-	for (const fragment of fragments) {
-		if (fragment.component) {
-			toRender.push(fragment)
-			continue
-		}
-		const filePath = path.join(fragmentsOutDir, `${fragment.hash}.html`)
-		try {
-			await fs.access(filePath)
-			lazyReuseFragments.push(fragment)
-		} catch {
-			toRender.push(fragment)
-		}
-	}
-
-	const reusedIds = await pickReusableManifestIds(existingManifest, registeredIds, distDir)
+	const reusedIds = await pickReusableManifestIds(existingManifest, registeredIds, new Set(usedByMap.keys()), distDir)
 	validateAcceptable(placeholders, registeredIds, reusedIds)
 
 	if (registeredIds.size === 0 && reusedIds.size === 0) {
+		await removeOrphanFiles(fragmentsOutDir, new Set())
+		await fs.rm(manifestPath, { force: true })
 		logger.info('no fragments registered, skipping output')
 		return
 	}
@@ -140,186 +116,128 @@ async function renderFragments({ distDir, outputDir, manifestName, concurrency, 
 
 	const projectRoot = getProjectRoot()
 
-	let containerPromise:
-		| Promise<{ renderToString: (c: AstroComponentFactory, opts: { props: Record<string, unknown> }) => Promise<string> }>
-		| undefined
-	function getContainer() {
-		if (!containerPromise) {
-			containerPromise = (async () => {
-				const { experimental_AstroContainer: AstroContainer } = await import('astro/container')
-				return await AstroContainer.create()
-			})()
-		}
-		return containerPromise
-	}
-
+	let containerPromise: ReturnType<typeof createContainer> | undefined
 	const componentCache = new Map<string, Promise<AstroComponentFactory>>()
-	async function resolveComponent(fragment: FragmentEntry): Promise<AstroComponentFactory> {
-		if (fragment.component) return fragment.component
-		const moduleId = fragment.moduleId
-		let cached = componentCache.get(moduleId)
+	function resolveComponent(fragment: FragmentEntry): Promise<AstroComponentFactory> {
+		if (fragment.component) return Promise.resolve(fragment.component)
+		let cached = componentCache.get(fragment.moduleId)
 		if (!cached) {
-			cached = (async () => {
-				const absPath = projectRoot && !path.isAbsolute(moduleId)
-					? path.resolve(projectRoot, moduleId)
-					: moduleId
-				let mod: Record<string, unknown>
-				try {
-					mod = await import(pathToFileURL(absPath).href)
-				} catch (e) {
-					throw new Error(
-						`Failed to lazy-import fragment component "${moduleId}" from ${absPath}. `
-							+ `The integration tried to resolve the component on demand because no factory was registered for fragment `
-							+ `(this happens when a host like pletivo replays cached fragment registrations on an incremental rebuild). `
-							+ `Make sure the host runtime supports importing .astro modules. Original error: ${(e as Error).message}`,
-						{ cause: e },
-					)
-				}
-				const comp = mod.default
-				if (typeof comp !== 'function') {
-					throw new Error(
-						`Default export of "${moduleId}" is not a component factory (got ${typeof comp}).`,
-					)
-				}
-				return comp as AstroComponentFactory
-			})()
-			componentCache.set(moduleId, cached)
+			cached = importComponent(fragment.moduleId, projectRoot)
+			componentCache.set(fragment.moduleId, cached)
 		}
 		return cached
 	}
 
-	function relativizeModuleId(moduleId: string): string {
-		return projectRoot && moduleId.startsWith(projectRoot)
-			? moduleId.slice(projectRoot.length).replace(/^\/+/, '')
-			: moduleId
-	}
-
 	const start = Date.now()
-	const renderResults = await mapWithConcurrency(toRender, concurrency, async fragment => {
+	// Every registered fragment is rendered, including ones a host replayed from
+	// its cache: the fragment's data reads happen here, outside the page render the
+	// host tracked, so a file left from an earlier build may be out of date.
+	const renderResults = await mapWithConcurrency(fragments, concurrency, async (fragment): Promise<ResultEntry> => {
 		const comp = await resolveComponent(fragment)
 		let html: string
 		try {
-			const container = await getContainer()
+			containerPromise ??= createContainer()
+			const container = await containerPromise
 			html = await container.renderToString(comp, { props: fragment.props })
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e)
 			throw new Error(`Failed to render fragment ${fragment.hash} (${fragment.moduleId}): ${msg}`, { cause: e })
 		}
-		const filePath = path.join(fragmentsOutDir, `${fragment.hash}.html`)
-		await fs.writeFile(filePath, html, 'utf8')
+		await fs.writeFile(path.join(fragmentsOutDir, `${fragment.hash}.html`), html, 'utf8')
 		return {
 			hash: fragment.hash,
-			moduleId: relativizeModuleId(fragment.moduleId),
+			moduleId: fragment.moduleId,
 			props: fragment.props,
-			usedBy: [...(usedByMap.get(fragment.hash) ?? fragment.usedBy)],
+			usedBy: usedBy(fragment.hash),
 			size: Buffer.byteLength(html, 'utf8'),
 		}
 	})
 
-	type ResultEntry = {
-		hash: string
-		moduleId: string
-		props: Record<string, unknown>
-		usedBy: string[]
-		size: number
-	}
-
-	// Lazy replayed fragments whose HTML is on disk: keep the bytes,
-	// recover `size` by stat (prior manifest may not exist if the user
-	// only restored fragment files, not the manifest itself).
-	const lazyReuseResults: ResultEntry[] = []
-	for (const fragment of lazyReuseFragments) {
-		const filePath = path.join(fragmentsOutDir, `${fragment.hash}.html`)
-		const stat = await fs.stat(filePath)
-		lazyReuseResults.push({
-			hash: fragment.hash,
-			moduleId: relativizeModuleId(fragment.moduleId),
-			props: fragment.props,
-			usedBy: [...(usedByMap.get(fragment.hash) ?? fragment.usedBy)],
-			size: stat.size,
-		})
-	}
-
-	// Manifest-only reuse: fragments the registry doesn't know about
-	// this build (host skipped the page entirely) but whose entries +
-	// files survived from the prior manifest.
+	// Fragments no page registered this build, kept because a page the host did
+	// not render still references them and their file is still on disk.
 	const manifestReuseResults: ResultEntry[] = []
-	if (existingManifest) {
-		for (const id of reusedIds) {
-			const prior = existingManifest.fragments[id]
-			if (!prior) continue
-			const usedBy = usedByMap.get(id)
-			manifestReuseResults.push({
-				hash: id,
-				moduleId: prior.moduleId,
-				props: prior.props,
-				usedBy: usedBy ? [...usedBy] : [...prior.usedBy],
-				size: prior.size,
-			})
-		}
+	for (const id of reusedIds) {
+		const prior = existingManifest?.fragments[id]
+		if (!prior) continue
+		manifestReuseResults.push({ hash: id, moduleId: prior.moduleId, props: prior.props, usedBy: usedBy(id), size: prior.size })
 	}
 
-	const allResults = [...renderResults, ...lazyReuseResults, ...manifestReuseResults]
+	const allResults = [...renderResults, ...manifestReuseResults]
+	await removeOrphanFiles(fragmentsOutDir, new Set(allResults.map(r => r.hash)))
 	const manifest = buildManifest({ outputDir, entries: allResults })
 	await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8')
 
 	const elapsed = Date.now() - start
-	const reusedCount = lazyReuseResults.length + manifestReuseResults.length
-	const reusedMsg = reusedCount > 0 ? `, reused ${reusedCount}` : ''
+	const reusedMsg = manifestReuseResults.length > 0 ? `, reused ${manifestReuseResults.length}` : ''
 	logger.info(`rendered ${renderResults.length} fragment(s)${reusedMsg} into ${outputDir}/ in ${elapsed}ms`)
 }
 
-export async function readExistingManifest(manifestPath: string): Promise<FragmentManifest | null> {
+async function createContainer() {
+	const { experimental_AstroContainer: AstroContainer } = await import('astro/container')
+	return await AstroContainer.create()
+}
+
+async function importComponent(moduleId: string, projectRoot: string | null): Promise<AstroComponentFactory> {
+	const absPath = projectRoot ? path.resolve(projectRoot, moduleId) : moduleId
+	let mod: { default?: unknown }
 	try {
-		const raw = await fs.readFile(manifestPath, 'utf8')
-		const parsed = JSON.parse(raw) as unknown
-		if (typeof parsed !== 'object' || parsed === null) return null
-		const obj = parsed as Record<string, unknown>
-		if (obj.version !== 1) return null
-		if (typeof obj.outputDir !== 'string') return null
-		const fragments = obj.fragments
-		if (typeof fragments !== 'object' || fragments === null) return null
-		for (const [id, entry] of Object.entries(fragments as Record<string, unknown>)) {
-			if (typeof entry !== 'object' || entry === null) return null
-			const e = entry as Record<string, unknown>
-			if (typeof e.id !== 'string' || e.id !== id) return null
-			if (typeof e.file !== 'string') return null
-			if (typeof e.moduleId !== 'string') return null
-			if (typeof e.props !== 'object' || e.props === null) return null
-			if (!Array.isArray(e.usedBy)) return null
-			if (typeof e.size !== 'number') return null
-		}
-		return parsed as FragmentManifest
-	} catch {
-		return null
+		mod = await import(pathToFileURL(absPath).href)
+	} catch (e) {
+		throw new Error(
+			`Failed to import fragment component "${moduleId}" from ${absPath}. `
+				+ `It was registered without a component factory (an incremental host replaying a cached page), `
+				+ `so the host runtime has to be able to import .astro modules. Original error: ${e instanceof Error ? e.message : String(e)}`,
+			{ cause: e },
+		)
 	}
+	if (!isComponentFactory(mod.default)) {
+		throw new Error(`Default export of "${moduleId}" is not a component factory (got ${typeof mod.default}).`)
+	}
+	return mod.default
+}
+
+function isComponentFactory(value: unknown): value is AstroComponentFactory {
+	return typeof value === 'function'
+}
+
+const FRAGMENT_FILE = /^[a-f0-9]{12}\.html$/
+
+/** Deletes fragment files from earlier builds that no page references any more. */
+async function removeOrphanFiles(fragmentsOutDir: string, keep: Set<string>): Promise<void> {
+	let names: string[]
+	try {
+		names = await fs.readdir(fragmentsOutDir)
+	} catch (error) {
+		if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return
+		throw error
+	}
+	await Promise.all(
+		names
+			.filter(name => FRAGMENT_FILE.test(name) && !keep.has(name.slice(0, -'.html'.length)))
+			.map(name => fs.rm(path.join(fragmentsOutDir, name), { force: true })),
+	)
 }
 
 /**
- * For each fragment entry in `existingManifest` that is NOT being
- * re-rendered this build (i.e. not in `registeredIds`), keep it only if
- * its file is still on disk under `distDir`. Returns the set of reusable
- * ids — the host's cached HTML may reference these via `<x-fragment id>`
- * placeholders even though the registry doesn't know about them this
- * pass.
+ * Picks the entries of the previous manifest that this build keeps without
+ * rendering them: not registered again, still referenced by a placeholder in
+ * dist/, and with their file still on disk.
  */
 export async function pickReusableManifestIds(
 	existingManifest: FragmentManifest | null,
 	registeredIds: Set<string>,
+	referencedIds: Set<string>,
 	distDir: string,
 ): Promise<Set<string>> {
 	const reusable = new Set<string>()
 	if (!existingManifest) return reusable
 	for (const [id, entry] of Object.entries(existingManifest.fragments)) {
-		if (registeredIds.has(id)) continue
-		const filePath = path.join(distDir, entry.file)
+		if (registeredIds.has(id) || !referencedIds.has(id)) continue
 		try {
-			await fs.access(filePath)
+			await fs.access(path.join(distDir, entry.file))
 			reusable.add(id)
 		} catch {
-			// Manifest pointer is stale (file evicted) — fall through;
-			// the strict check below will surface it if anything still
-			// references it.
+			// The file is gone; validateAcceptable reports any placeholder still pointing at it.
 		}
 	}
 	return reusable
@@ -347,6 +265,3 @@ export function validateAcceptable(
 		}
 	}
 }
-
-// Re-export so callers can dispatch on the entry shape if they need to.
-export type { FragmentManifestEntry }

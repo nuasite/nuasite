@@ -2,42 +2,31 @@ import { parse as parseHtml } from 'node-html-parser'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+import { mapWithConcurrency } from './concurrency.ts'
+
 export interface ScannedPlaceholder {
 	pageFile: string
 	id: string
 }
 
-export async function scanDistForPlaceholders(distDir: string, outputDir: string): Promise<ScannedPlaceholder[]> {
-	const placeholders: ScannedPlaceholder[] = []
+export async function scanDistForPlaceholders(distDir: string, outputDir: string, concurrency: number): Promise<ScannedPlaceholder[]> {
 	const skip = path.resolve(distDir, outputDir)
+	const pages = (await fs.readdir(distDir, { recursive: true, withFileTypes: true }))
+		.filter(entry => entry.isFile() && entry.name.endsWith('.html'))
+		.map(entry => path.join(entry.parentPath, entry.name))
+		.filter(filePath => !filePath.startsWith(skip + path.sep))
 
-	await walk(distDir, async filePath => {
-		if (filePath.startsWith(skip + path.sep) || filePath === skip) return
-		if (!filePath.endsWith('.html')) return
+	const perPage = await mapWithConcurrency(pages, concurrency, async filePath => {
 		const html = await fs.readFile(filePath, 'utf8')
-		const doc = parseHtml(html, { lowerCaseTagName: false, comment: false })
-		const found = doc.querySelectorAll('x-fragment')
+		if (!html.includes('<x-fragment')) return []
 		const relPath = path.relative(distDir, filePath).split(path.sep).join('/')
-		for (const node of found) {
+		return parseHtml(html, { lowerCaseTagName: false, comment: false }).querySelectorAll('x-fragment').map(node => {
 			const id = node.getAttribute('id')
 			if (!id) {
 				throw new Error(`<x-fragment> in ${relPath} has no id attribute.`)
 			}
-			placeholders.push({ pageFile: relPath, id })
-		}
+			return { pageFile: relPath, id }
+		})
 	})
-
-	return placeholders
-}
-
-async function walk(dir: string, visit: (filePath: string) => Promise<void>): Promise<void> {
-	const entries = await fs.readdir(dir, { withFileTypes: true })
-	await Promise.all(entries.map(async entry => {
-		const full = path.join(dir, entry.name)
-		if (entry.isDirectory()) {
-			await walk(full, visit)
-		} else if (entry.isFile()) {
-			await visit(full)
-		}
-	}))
+	return perPage.flat()
 }

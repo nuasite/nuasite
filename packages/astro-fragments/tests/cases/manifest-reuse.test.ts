@@ -3,8 +3,8 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { pickReusableManifestIds, readExistingManifest, validateAcceptable } from '../../src/integration.ts'
-import { buildManifest, type FragmentManifest } from '../../src/manifest.ts'
+import { pickReusableManifestIds, validateAcceptable } from '../../src/integration.ts'
+import { buildManifest, type FragmentManifest, readExistingManifest } from '../../src/manifest.ts'
 
 let tmpDir = ''
 
@@ -63,6 +63,10 @@ describe('readExistingManifest', () => {
 		expect(await readExistingManifest(p)).toBeNull()
 	})
 
+	it('throws when the manifest cannot be read for a reason other than absence', async () => {
+		await expect(readExistingManifest(tmpDir)).rejects.toThrow(/EISDIR/)
+	})
+
 	it('round-trips a valid manifest', async () => {
 		const manifest = fakeManifest([{ hash: 'abc123', moduleId: 'src/A.astro' }])
 		const p = await writeManifest(tmpDir, manifest)
@@ -106,7 +110,7 @@ describe('readExistingManifest', () => {
 
 describe('pickReusableManifestIds', () => {
 	it('returns empty when no prior manifest exists', async () => {
-		const result = await pickReusableManifestIds(null, new Set(), tmpDir)
+		const result = await pickReusableManifestIds(null, new Set(), new Set(['aaa']), tmpDir)
 		expect(result.size).toBe(0)
 	})
 
@@ -118,8 +122,20 @@ describe('pickReusableManifestIds', () => {
 		await writeManifest(tmpDir, manifest)
 		await writeFragment(tmpDir, manifest, 'aaa')
 		await writeFragment(tmpDir, manifest, 'bbb')
-		const result = await pickReusableManifestIds(manifest, new Set(), tmpDir)
+		const result = await pickReusableManifestIds(manifest, new Set(), new Set(['aaa', 'bbb']), tmpDir)
 		expect([...result].sort()).toEqual(['aaa', 'bbb'])
+	})
+
+	it('drops entries no placeholder references any more (removed page)', async () => {
+		const manifest = fakeManifest([
+			{ hash: 'aaa', moduleId: 'src/A.astro' },
+			{ hash: 'bbb', moduleId: 'src/B.astro' },
+		])
+		await writeManifest(tmpDir, manifest)
+		await writeFragment(tmpDir, manifest, 'aaa')
+		await writeFragment(tmpDir, manifest, 'bbb')
+		const result = await pickReusableManifestIds(manifest, new Set(), new Set(['aaa']), tmpDir)
+		expect([...result]).toEqual(['aaa'])
 	})
 
 	it('skips entries that are also being freshly re-registered', async () => {
@@ -131,7 +147,7 @@ describe('pickReusableManifestIds', () => {
 		await writeFragment(tmpDir, manifest, 'aaa')
 		await writeFragment(tmpDir, manifest, 'bbb')
 		// bbb will be re-rendered fresh → must NOT show up in the reuse set.
-		const result = await pickReusableManifestIds(manifest, new Set(['bbb']), tmpDir)
+		const result = await pickReusableManifestIds(manifest, new Set(['bbb']), new Set(['aaa', 'bbb']), tmpDir)
 		expect([...result]).toEqual(['aaa'])
 	})
 
@@ -143,7 +159,7 @@ describe('pickReusableManifestIds', () => {
 		await writeManifest(tmpDir, manifest)
 		await writeFragment(tmpDir, manifest, 'aaa')
 		// bbb file is missing — must not be reusable.
-		const result = await pickReusableManifestIds(manifest, new Set(), tmpDir)
+		const result = await pickReusableManifestIds(manifest, new Set(), new Set(['aaa', 'bbb']), tmpDir)
 		expect([...result]).toEqual(['aaa'])
 	})
 })

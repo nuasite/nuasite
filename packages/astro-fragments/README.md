@@ -43,17 +43,27 @@ import RelatedPosts from '../fragments/RelatedPosts.astro'
 Import the component under any name except `Fragment`: Astro's compiler already declares `Fragment` in every component, so a local import with that
 name does not parse. `props` is typed from the target component's `Props`, so `astro check` reports missing or mistyped props.
 
+The type guards for this live in `tests/fixtures/basic/src/__type-tests__/Fragment.astro`. No automated check runs them yet; run `astro check` in
+that fixture after changing the component's `Props`.
+
 ## Behaviour
 
 - **Dev (`astro dev`)**: `<NuaFragment of={X} props={p} />` renders `<X {...p} />` inline. No placeholder, no extra request.
 - **Build (`astro build`)**: the page gets `<x-fragment id="<hash>"></x-fragment>`, the component is rendered once per distinct `(component, props)` pair
   into `_fragments/<hash>.html`, and `_fragments/manifest.json` describes every fragment.
-- **Identity**: the id is the first 12 hex characters of `sha1(projectRelativeModuleId + "::" + JSON of the props with sorted keys)`. The same
-  component with the same props on any number of pages gives one id and one file.
-- **Props** must be plain JSON values. `Date`, `Map`, `Set`, class instances, functions, symbols, bigints and circular references are rejected with
-  the offending key path.
+- **Identity**: the id is the first 12 hex characters of `sha1(moduleId + "::" + props as JSON with keys sorted at every depth)`, where `moduleId`
+  is relative to the project root with `/` separators. The same component with the same props on any number of pages gives one id and one file.
+- **Props** must be plain JSON values. `Date`, `Map`, `Set`, class instances, functions, symbols, bigints, `NaN`, `Infinity` and circular
+  references are rejected with the offending key path.
 - **Placeholders without a fragment** (a stale `dist/`, a hand-written `<x-fragment>`) fail the build.
 - SSR and hybrid output are rejected in `astro:config:setup`.
+- Fragment files left in `outputDir` by an earlier build that are not in the new manifest are deleted.
+
+## Limitations
+
+Fragments are rendered after the build, in `astro:build:done`, with Astro's container API. The container has no framework renderers and no image
+service, so a fragment can't contain framework islands (React, Preact and so on) or `astro:assets` components such as `<Image>`. Such a fragment
+fails the build.
 
 ## Manifest
 
@@ -92,13 +102,14 @@ A build host that skips unchanged pages (such as `pletivo build --incremental`) 
 exported from the package root:
 
 - `runInRenderPass(pageId, render)` runs a page render and returns the fragment ids it registered, so the host can cache them per page.
-- `registerFragment({ moduleId, props, pageUrl })` replays a cached registration for a page the host did not render. The integration reuses the
-  fragment file already in `dist/`, or imports `moduleId` and renders it when the file is missing.
-- Fragments listed in the previous `manifest.json` whose files are still on disk are kept even when no page registered them in this build.
+- `registerFragment({ moduleId, props })` replays a cached registration for a page the host did not render. The integration imports `moduleId`
+  and renders the fragment again, because its data may have changed even though the page did not.
+- An entry of the previous `manifest.json` that nothing registered in this build is kept, without rendering it, only while a page in `dist/`
+  still has its placeholder and its file is still on disk. A host that replays its registrations never relies on this.
 
 The host is expected to keep `dist/` (including `_fragments/`) between builds. A stock `astro build` cleans `dist/`, so none of this applies there.
 
 ## Out of scope
 
 - The edge composition layer that replaces `<x-fragment>` placeholders.
-- Tracking which data a fragment depends on; every build renders every registered fragment.
+- Tracking which data a fragment depends on: every build renders every registered fragment.
