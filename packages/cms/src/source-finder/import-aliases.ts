@@ -52,41 +52,21 @@ function projectImportAliases(): Promise<ImportAliases> {
 	return state.importAliases
 }
 
-/**
- * Read `paths` and `baseUrl` from a tsconfig and the configs it `extends` by relative path. A
- * package config (`astro/tsconfigs/strict`) is not followed: those declare no aliases.
- */
-async function readImportAliases(configPath: string, depth = 0): Promise<ImportAliases> {
-	const none: ImportAliases = { aliases: [], baseUrl: undefined }
-	let config: unknown
-	try {
-		config = parseJsonc(await projectFiles().readFile(configPath))
-	} catch {
-		return none
-	}
-	if (!isRecord(config)) return none
+/** The `paths` and `baseUrl` a config ends up with, before `paths` targets are resolved. */
+interface AliasOptions {
+	/** The `paths` of the nearest config declaring them, with that config's directory. */
+	paths: { patterns: Record<string, unknown>; dir: string } | undefined
+	/** Absolute: resolved against the config declaring it. */
+	baseUrl: string | undefined
+}
 
-	let inherited = none
-	const extendsList = typeof config.extends === 'string' ? [config.extends] : Array.isArray(config.extends) ? config.extends : []
-	for (const parent of extendsList) {
-		if (depth >= MAX_EXTENDS_DEPTH || typeof parent !== 'string' || !parent.startsWith('.')) continue
-		const parentPath = path.resolve(path.dirname(configPath), parent.endsWith('.json') ? parent : `${parent}.json`)
-		const parentAliases = await readImportAliases(parentPath, depth + 1)
-		inherited = {
-			aliases: parentAliases.aliases.length > 0 ? parentAliases.aliases : inherited.aliases,
-			baseUrl: parentAliases.baseUrl ?? inherited.baseUrl,
-		}
-	}
-
-	const options = isRecord(config.compilerOptions) ? config.compilerOptions : {}
-	const configDir = path.dirname(configPath)
-	const baseUrl = typeof options.baseUrl === 'string' ? path.resolve(configDir, options.baseUrl) : inherited.baseUrl
-	if (!isRecord(options.paths)) return { aliases: inherited.aliases, baseUrl }
-
-	// Targets resolve against baseUrl when there is one, else against the config declaring them.
-	const targetBase = baseUrl ?? configDir
+async function readImportAliases(configPath: string): Promise<ImportAliases> {
+	const { paths, baseUrl } = await readAliasOptions(configPath, 0)
+	if (!paths) return { aliases: [], baseUrl }
+	// TypeScript resolves targets against the effective baseUrl, else against the config declaring `paths`.
+	const targetBase = baseUrl ?? paths.dir
 	const aliases: PathAlias[] = []
-	for (const [pattern, targets] of Object.entries(options.paths)) {
+	for (const [pattern, targets] of Object.entries(paths.patterns)) {
 		if (!Array.isArray(targets)) continue
 		const star = pattern.indexOf('*')
 		aliases.push({
@@ -96,6 +76,37 @@ async function readImportAliases(configPath: string, depth = 0): Promise<ImportA
 		})
 	}
 	return { aliases, baseUrl }
+}
+
+/**
+ * Read `paths` and `baseUrl` from a tsconfig and the configs it `extends` by relative path, later
+ * ones overriding earlier ones and the config itself overriding all. Package configs
+ * (`astro/tsconfigs/strict`) are not followed: those declare no aliases.
+ */
+async function readAliasOptions(configPath: string, depth: number): Promise<AliasOptions> {
+	const none: AliasOptions = { paths: undefined, baseUrl: undefined }
+	let config: unknown
+	try {
+		config = parseJsonc(await projectFiles().readFile(configPath))
+	} catch {
+		return none
+	}
+	if (!isRecord(config)) return none
+
+	const configDir = path.dirname(configPath)
+	let inherited = none
+	const extendsList = typeof config.extends === 'string' ? [config.extends] : Array.isArray(config.extends) ? config.extends : []
+	for (const parent of extendsList) {
+		if (depth >= MAX_EXTENDS_DEPTH || typeof parent !== 'string' || !parent.startsWith('.')) continue
+		const parentOptions = await readAliasOptions(path.resolve(configDir, parent.endsWith('.json') ? parent : `${parent}.json`), depth + 1)
+		inherited = { paths: parentOptions.paths ?? inherited.paths, baseUrl: parentOptions.baseUrl ?? inherited.baseUrl }
+	}
+
+	const options = isRecord(config.compilerOptions) ? config.compilerOptions : {}
+	return {
+		paths: isRecord(options.paths) ? { patterns: options.paths, dir: configDir } : inherited.paths,
+		baseUrl: typeof options.baseUrl === 'string' ? path.resolve(configDir, options.baseUrl) : inherited.baseUrl,
+	}
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

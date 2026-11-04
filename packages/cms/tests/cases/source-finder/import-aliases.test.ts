@@ -41,6 +41,28 @@ describe('resolveImportPath through tsconfig aliases', () => {
 		expect(await resolveImportPath('astro:content', importer())).toBeNull()
 	})
 
+	test('inherited paths resolve against the baseUrl the extending config sets', async () => {
+		await ctx.writeFile('config/tsconfig.base.json', '{ "compilerOptions": { "paths": { "@/*": ["components/*"] } } }')
+		await ctx.writeFile('tsconfig.json', '{ "extends": "./config/tsconfig.base.json", "compilerOptions": { "baseUrl": "./src" } }')
+
+		expect(await resolveImportPath('@/Card.astro', importer())).toBe(path.join(ctx.tempDir, 'src/components/Card.astro'))
+	})
+
+	test('inherited paths without a baseUrl resolve against the config declaring them', async () => {
+		await ctx.writeFile('src/tsconfig.base.json', '{ "compilerOptions": { "paths": { "@/*": ["./components/*"] } } }')
+		await ctx.writeFile('tsconfig.json', '{ "extends": "./src/tsconfig.base.json" }')
+
+		expect(await resolveImportPath('@/Card.astro', importer())).toBe(path.join(ctx.tempDir, 'src/components/Card.astro'))
+	})
+
+	test('a later extends declaring empty paths drops the earlier ones', async () => {
+		await ctx.writeFile('tsconfig.a.json', '{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }')
+		await ctx.writeFile('tsconfig.b.json', '{ "compilerOptions": { "paths": {} } }')
+		await ctx.writeFile('tsconfig.json', '{ "extends": ["./tsconfig.a.json", "./tsconfig.b.json"] }')
+
+		expect(await resolveImportPath('@/components/Card.astro', importer())).toBeNull()
+	})
+
 	test('the longest matching pattern wins, and a pattern without * matches only itself', async () => {
 		await ctx.writeFile(
 			'tsconfig.json',
