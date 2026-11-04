@@ -135,7 +135,8 @@ export async function check(options: CheckOptions): Promise<number> {
 
 	const errors = report.findings.filter(finding => finding.severity === 'error').length
 	const warnings = report.findings.length - errors
-	const failOn = options.failOn === null ? null : new Set(options.failOn)
+	// An agent may list a file by its absolute path; findings are relative to the cwd.
+	const failOn = options.failOn === null ? null : new Set(options.failOn.map(file => path.relative(options.cwd, path.resolve(options.cwd, file))))
 	const failing = failOn === null
 		? errors
 		: report.findings.filter(finding => finding.severity === 'error' && failOn.has(path.normalize(finding.file))).length

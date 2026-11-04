@@ -253,4 +253,8 @@ describe('check --fail-on', () => {
 	test('an error in a listed file fails', async () => {
 		expect(await quiet(() => check({ ...options(['src/styles/new.css', 'src/styles/old.css']), contentOnly: false }))).toBe(1)
 	})
+
+	test('a file listed by its absolute path counts as listed', async () => {
+		expect(await quiet(() => check({ ...options([path.join(workspace, 'src/styles/old.css')]), contentOnly: false }))).toBe(1)
+	})
 })
