@@ -7,7 +7,7 @@ import { createLocalStorageAdapter, createNodeFs, createPublicStaticFileChecker,
 import { processBuildOutput } from './build-processor.ts'
 import type { CollectionOverrides } from './collection-overrides.ts'
 import { ComponentRegistry } from './component-registry.ts'
-import { getProjectRoot, resetProjectRoot } from './config.ts'
+import { getProjectRoot, setProjectRoot } from './config.ts'
 import { createDevMiddleware } from './dev-middleware.ts'
 import { getErrorCollector, resetErrorCollector } from './error-collector.ts'
 import { ADMIN_ROUTE, createLocalAdminMiddleware } from './local-admin.ts'
@@ -185,7 +185,8 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 	// When no proxy, enable local CMS API with default media adapter
 	const enableCmsApi = !proxy
-	const mediaAdapter = media ?? (enableCmsApi ? createLocalStorageAdapter() : undefined)
+	// Uploads go under the project's root, which is known once `astro:config:setup` has run.
+	const defaultMedia = () => createLocalStorageAdapter({ dir: join(getProjectRoot(), 'public/uploads') })
 
 	// Default apiBase to local dev server when no proxy; thread maxUploadSize through
 	// to the editor so the client can pre-check before sending the upload.
@@ -225,7 +226,8 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 				idCounter.value = 0
 				manifestWriter.reset()
 				resetErrorCollector()
-				resetProjectRoot()
+				// The editor reads and writes sources at Astro's root, which need not be the working directory.
+				setProjectRoot(fileURLToPath(config.root))
 
 				await manifestWriter.loadAvailableColors()
 
@@ -433,6 +435,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 			},
 
 			'astro:server:setup': ({ server, logger }) => {
+				const mediaAdapter = media ?? (enableCmsApi ? defaultMedia() : undefined)
 				createDevMiddleware(
 					server,
 					markerConfig,
@@ -456,7 +459,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 						contentDir,
 						componentDirs,
 						collectionOverrides: options.collections,
-						mediaAdapter: media ?? createLocalStorageAdapter(),
+						mediaAdapter: media ?? defaultMedia(),
 						maxUploadSize,
 						entryModuleId: VIRTUAL_ADMIN_ENTRY,
 					})
