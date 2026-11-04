@@ -224,6 +224,41 @@ describe('createEditorHost', () => {
 		expect(after.entries[partner.id]?.sourcePath).toBeUndefined()
 	})
 
+	test('on a page of a dynamic route, text two entries hold stays unplaced after another entry was placed', async () => {
+		const fs = createMemoryFileSystem({
+			'src/content/partners/acme.json': '{\n  "name": "ACME Corp"\n}\n',
+			'src/content/news/launch.json': '{\n  "title": "Launch day"\n}\n',
+			'src/content/news/launch-eu.json': '{\n  "title": "Launch day"\n}\n',
+			'src/components/Footer.astro': '<footer>\n<p>Launch day</p>\n</footer>\n',
+			'src/pages/partners/[...page].astro': [
+				'---',
+				'import { getCollection } from "astro:content"',
+				'import Footer from "../../components/Footer.astro"',
+				'const partners = await getCollection("partners")',
+				'const news = await getCollection("news")',
+				'---',
+				'<html><body>',
+				'{partners.map(p => <h2>{p.data.name}</h2>)}',
+				'{news.map(n => <p>{n.data.title}</p>)}',
+				'<Footer />',
+				'</body></html>',
+			].join('\n'),
+		})
+		const host = await hostOver(fs)
+		await host.processPage(
+			'/partners/2',
+			'<html><body><h2>ACME Corp</h2><p>Launch day</p><p>Launch day</p><footer><p>Launch day</p></footer></body></html>',
+		)
+
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/partners/2.json')
+		expect(entryWithText(loaded, 'ACME Corp').sourcePath).toBe('src/content/partners/acme.json')
+		const launch = entryWithText(loaded, 'Launch day')
+		expect(launch.sourcePath).toBeUndefined()
+
+		const { body: after } = await fetchJson<PageManifest>(host, `/partners/2.json?locate=${launch.id}`)
+		expect(after.entries[launch.id]?.sourcePath).toBeUndefined()
+	})
+
 	test('serves the global manifest with the components and pages of its own project', async () => {
 		const host = await hostOver(project())
 		const { body } = await fetchJson<{ componentDefinitions: Record<string, unknown>; pages: Array<{ pathname: string }> }>(

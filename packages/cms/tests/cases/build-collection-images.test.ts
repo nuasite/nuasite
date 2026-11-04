@@ -72,6 +72,21 @@ describe('collection images in a build', () => {
 		})
 	})
 
+	test('an image a markdown page renders through its layout resolves to its entry', async () => {
+		await ctx.writeFile('src/pages/about.md', '---\nlayout: ../layouts/Base.astro\ntitle: About\n---\n\nAbout us.\n')
+		await ctx.writeFile(
+			'src/layouts/Base.astro',
+			'---\nimport { getCollection } from "astro:content"\nconst news = await getCollection("news")\n---\n<div>\n{news.map(item => <img src={item.data.image} alt="" />)}\n</div>\n<slot />\n',
+		)
+
+		const entries = await build('/about', '<html><body><div><img src="/images/launch.jpg" alt=""></div><p>About us.</p></body></html>')
+
+		expect(entries.find(entry => entry.imageMetadata?.src === '/images/launch.jpg')).toMatchObject({
+			sourcePath: 'src/content/news/launch.json',
+			sourceLine: 3,
+		})
+	})
+
 	test('an image on a page that reads no collection stays with its template', async () => {
 		await ctx.writeFile('src/pages/about.astro', '---\n---\n<div>\n<img src="/images/launch.jpg" alt="" />\n</div>\n')
 

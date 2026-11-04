@@ -1,4 +1,4 @@
-import { analyzeAstroScript, type AstroSourceAnalysis } from '@nuasite/cms-core'
+import { analyzeAstroScript, type AstroSourceAnalysis, parseFrontmatter as parseMarkdownFrontmatter } from '@nuasite/cms-core'
 import path from 'node:path'
 
 import { projectFiles } from '../project/context.ts'
@@ -11,6 +11,8 @@ import { resolveImportPath } from './variable-extraction.ts'
 
 /** Files whose imports and `astro:content` calls the walk reads. */
 const MODULE_FILE = /\.(astro|[cm]?[jt]sx?)$/
+/** Markdown pages: the walk follows their frontmatter `layout` and, in MDX, their ESM. */
+const MARKDOWN_FILE = /\.mdx?$/
 
 const NO_ANALYSIS: AstroSourceAnalysis = { imports: [], collectionCalls: [], collectionBindings: [] }
 
@@ -29,8 +31,8 @@ function analysisOf(filePath: string, parsed: CachedParsedFile): AstroSourceAnal
 
 /**
  * The collections read through `astro:content` in the static module graph of `files`, plus the
- * `seeds` and every collection they reference. All of them when no file of `files` exists (a
- * dynamic route's page found by URL) or a `getCollection` name is not a literal.
+ * `seeds` and every collection they reference. All of them when no file of `files` is a module or
+ * markdown page that exists (a dynamic route's page found by URL) or a `getCollection` name is not a literal.
  */
 export async function collectionsReadBy(
 	files: readonly string[],
@@ -41,29 +43,54 @@ export async function collectionsReadBy(
 	const visited = new Set<string>()
 	let readsAny = false
 
-	/** Whether the file is a module that was read. */
-	async function visit(filePath: string): Promise<boolean> {
-		if (visited.has(filePath) || !MODULE_FILE.test(filePath)) return false
-		visited.add(filePath)
-		const parsed = await getCachedParsedFile(filePath)
-		if (!parsed) return false
-
-		const analysis = analysisOf(filePath, parsed)
+	function record(analysis: AstroSourceAnalysis): void {
 		for (const call of analysis.collectionCalls) {
 			if (call.collectionName !== null) read.add(call.collectionName)
 			else if (call.accessor === 'getCollection') readsAny = true
 		}
-		await Promise.all(analysis.imports.map(async ({ source }) => {
-			const imported = await resolveImportPath(source, filePath)
-			if (imported) await visit(path.normalize(imported))
-		}))
-		return true
 	}
 
-	const roots = await Promise.all(files.map(async file => {
-		const filePath = resolveSourcePath(file)
-		return MODULE_FILE.test(filePath) ? visit(filePath) : fileExists(filePath)
-	}))
+	async function follow(sources: readonly string[], importer: string): Promise<void> {
+		await Promise.all(sources.map(async source => {
+			const imported = await resolveImportPath(source, importer)
+			if (imported) await visit(path.normalize(imported))
+		}))
+	}
+
+	/** Whether the file is a module or markdown page that was read. */
+	async function visit(filePath: string): Promise<boolean> {
+		if (visited.has(filePath)) return false
+		if (MODULE_FILE.test(filePath)) {
+			visited.add(filePath)
+			const parsed = await getCachedParsedFile(filePath)
+			if (!parsed) return false
+			const analysis = analysisOf(filePath, parsed)
+			record(analysis)
+			await follow(analysis.imports.map(({ source }) => source), filePath)
+			return true
+		}
+		if (MARKDOWN_FILE.test(filePath)) {
+			visited.add(filePath)
+			let content: string
+			try {
+				content = await projectFiles().readFile(filePath)
+			} catch {
+				return false
+			}
+			const { frontmatter, content: body } = parseMarkdownFrontmatter(content)
+			const sources = typeof frontmatter.layout === 'string' ? [frontmatter.layout] : []
+			if (filePath.endsWith('.mdx')) {
+				const analysis = analyzeAstroScript(mdxEsm(body))
+				record(analysis)
+				sources.push(...analysis.imports.map(({ source }) => source))
+			}
+			await follow(sources, filePath)
+			return true
+		}
+		return false
+	}
+
+	const roots = await Promise.all(files.map(file => visit(resolveSourcePath(file))))
 	if (readsAny || !roots.some(Boolean)) return new Set(Object.keys(collections))
 
 	for (const seed of seeds) read.add(seed)
@@ -93,19 +120,31 @@ export function collectionsReadByPage(
 	const rendered = new Set(files.map(projectRelativeSource))
 	const shown = new Set<string>()
 	for (const entry of Object.values(entries)) {
-		if (entry.sourcePath) rendered.add(projectRelativeSource(entry.sourcePath))
+		// Annotations name templates; a collection data file an entry was attributed to is no root.
+		if (entry.sourcePath && MODULE_FILE.test(entry.sourcePath)) rendered.add(projectRelativeSource(entry.sourcePath))
 		if (entry.collectionName) shown.add(entry.collectionName)
 	}
 	return collectionsReadBy([...rendered], collections, shown)
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
-	try {
-		await projectFiles().access(filePath)
-		return true
-	} catch {
-		return false
+/**
+ * The ESM of an MDX body: blocks whose first line starts with `import` or `export`, up to a blank
+ * line, as MDX reads them. Fenced code is skipped.
+ */
+function mdxEsm(body: string): string {
+	const blocks: string[] = []
+	let inFence = false
+	let block: string[] | undefined
+	for (const line of body.split('\n')) {
+		if (/^(```|~~~)/.test(line)) inFence = !inFence
+		if (inFence || line.trim() === '') {
+			if (block) blocks.push(block.join('\n'))
+			block = undefined
+		} else if (block) block.push(line)
+		else if (/^(import|export)\b/.test(line)) block = [line]
 	}
+	if (block) blocks.push(block.join('\n'))
+	return blocks.join('\n')
 }
 
 /** The data files of the entries of `names`, as the indexes spell them (project-relative). */

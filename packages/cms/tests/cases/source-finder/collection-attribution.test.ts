@@ -190,6 +190,21 @@ describe('collection values are attributed only to collections the page reads', 
 		expect(entries['cms-0']!.collectionName).toBeUndefined()
 	})
 
+	test('an MDX page reads the collections of the components it imports', async () => {
+		await ctx.writeFile(
+			'src/components/Partners.astro',
+			'---\nimport { getCollection } from "astro:content"\nconst partners = await getCollection("partners")\n---\n{partners.map(p => <p>{p.data.name}</p>)}\n',
+		)
+		await ctx.writeFile('src/pages/about.mdx', 'import Partners from "../components/Partners.astro"\n\n# About\n\n<Partners />\n')
+		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({ name: 'ACME Corp', logo: '/logos/acme.png' }, null, 2))
+
+		const entries = await enhance('/about', {
+			'cms-0': { id: 'cms-0', tag: 'p', text: 'ACME Corp' },
+		}, { partners: partners(['acme']) })
+
+		expect(entries['cms-0']).toMatchObject({ sourcePath: 'src/content/partners/acme.json', collectionName: 'partners' })
+	})
+
 	test('text without source coordinates from strings kept as a collection resolves to them', async () => {
 		await ctx.writeFile(
 			'src/pages/index.astro',
