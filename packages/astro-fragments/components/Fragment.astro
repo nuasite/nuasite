@@ -1,0 +1,16 @@
+---
+import { isRegistryEnabled, parseFragmentTarget, registerFragment } from '../src/registry.ts'
+
+interface Props<C> {
+	of: C
+	props: C extends (...args: any[]) => any ? Parameters<C>[0] : never
+}
+
+const { component: Component, moduleId, props } = parseFragmentTarget(Astro.props.of, Astro.props.props)
+const hash = isRegistryEnabled() ? registerFragment({ component: Component, moduleId, props }) : null
+---
+{hash ? (
+	<x-fragment id={hash}></x-fragment>
+) : (
+	<Component {...props} />
+)}
