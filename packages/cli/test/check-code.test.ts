@@ -55,6 +55,50 @@ describe('checkCode', () => {
 		expect(findings.map(finding => finding.code)).toEqual(['code/syntax'])
 	})
 
+	// A rule appended twice, the first copy cut off before its closing brace: a browser repairs it, the
+	// build's Tailwind parser does not, and the whole site stopped building.
+	test('a stylesheet the build cannot parse is reported at the rule left open', async () => {
+		await write(
+			'src/styles/content.css',
+			'.hero { color: red; }\n\n.media .hero-img {\n    object-position: 50\n.media .hero-img {\n    object-position: 50% 64%;\n}\n',
+		)
+
+		const { findings } = await checkCode(root)
+		expect(findings).toEqual([{
+			severity: 'error',
+			code: 'code/css-syntax',
+			file: path.join('src', 'styles', 'content.css'),
+			line: 3,
+			column: 1,
+			message: 'Missing closing } at .media .hero-img',
+		}])
+	})
+
+	test('the other syntax errors of the build parser are reported too', async () => {
+		await write('src/styles/a.css', '.a { color: red; }\n}\n')
+		await write('src/styles/b.css', '.b { content: "x; }\n')
+		await write('src/styles/c.css', '.c { color red; }\n')
+
+		const { findings } = await checkCode(root)
+		expect(findings.map(finding => [finding.file, finding.message.split(':')[0]])).toEqual([
+			[path.join('src', 'styles', 'a.css'), 'Missing opening {'],
+			[path.join('src', 'styles', 'b.css'), 'Unterminated string'],
+			[path.join('src', 'styles', 'c.css'), 'Invalid declaration'],
+		])
+	})
+
+	test('valid stylesheets pass, Tailwind or not, and what only the whole project can settle is left to the build', async () => {
+		await write(
+			'src/styles/global.css',
+			'@import "tailwindcss";\n@plugin "@tailwindcss/typography";\n@theme { --color-brand: #123; }\n.a { @apply bg-brand; }\n',
+		)
+		await write('src/styles/plain.css', '.a { object-position: 50% 64%; }\n@media (max-width: 767px) { .b { text-align: center } }\n')
+		await write('public/vendor.css', '.not-parsed {\n')
+
+		const { findings } = await checkCode(root)
+		expect(findings).toEqual([])
+	})
+
 	test('a clean project reports nothing', async () => {
 		await write('src/pages/index.astro', '---\nconst title = "Ahoj"\n---\n<h1>{title}</h1>\n')
 		await write('src/lib/util.ts', 'export const two = 1 + 1\n')

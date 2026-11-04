@@ -8,6 +8,11 @@
  * This is a *syntax* check, not a type check. A wrong prop type or a missing export still needs
  * `astro check` or a build. What it does catch is the error that stops a build dead before a single
  * page renders — an unescaped quote inside a Czech string being the one that prompted it.
+ *
+ * Stylesheets are parsed the way the build parses them. A Nua site builds with Tailwind's Vite
+ * plugin, which runs every stylesheet through Tailwind's CSS parser, Tailwind or not, and that
+ * parser refuses what a browser quietly repairs: a rule cut off before its closing brace failed a
+ * whole site's build while the editor preview, which concatenates the files, only lost its styles.
  */
 
 import { transform } from '@astrojs/compiler'
@@ -15,9 +20,13 @@ import { originalPositionFor, TraceMap } from '@jridgewell/trace-mapping'
 import type { CheckFinding } from '@nuasite/cms-core'
 import { Glob } from 'bun'
 import path from 'node:path'
+import { compile } from 'tailwindcss'
 
 /** Directories that are never the project's own source. */
 const IGNORED = ['node_modules', 'dist', '.astro', '.git', '.output', '.vercel', '.netlify']
+
+/** Copied to the output as they are: nothing parses them, so nothing in them can fail a build. */
+const UNPROCESSED_STYLESHEETS = ['public']
 
 const isIgnored = (relative: string): boolean =>
 	// Declaration files are types only — nothing compiles them, and the TS loader rejects them.
@@ -103,19 +112,69 @@ function checkScriptFile(relative: string, source: string, loader: 'ts' | 'tsx')
 	}
 }
 
+/**
+ * The parser's own syntax errors. Compiling a stylesheet alone also reports what only the whole
+ * project could settle (`@apply` of a utility its theme defines, a `@reference` it needs), and those
+ * are left to the build.
+ */
+const CSS_SYNTAX_ERROR = /^(Missing closing|Missing opening|Unterminated string|Invalid declaration)/
+
+/** A Tailwind `CssSyntaxError`: its message is `<from>:<line>:<column>: <what>`, its `loc` the offsets into the source. */
+function cssSyntaxError(error: unknown): { message: string; offset: number | null } | null {
+	if (!(error instanceof Error)) return null
+	const message = error.message.replace(/^.*?:\d+:\d+: /, '')
+	if (!CSS_SYNTAX_ERROR.test(message)) return null
+	const loc = 'loc' in error && Array.isArray(error.loc) ? error.loc : null
+	const offset = loc && typeof loc[1] === 'number' ? loc[1] : null
+	return { message, offset }
+}
+
+/** 1-based line and column of an offset, the way editors and build output count them. */
+function lineAndColumn(source: string, offset: number): { line: number; column: number } {
+	const before = source.slice(0, offset)
+	const line = before.split('\n').length
+	return { line, column: offset - before.lastIndexOf('\n') }
+}
+
+async function checkCssFile(absolute: string, relative: string, source: string): Promise<CheckFinding | null> {
+	try {
+		// Imports and plugins resolve to nothing: each stylesheet is parsed on its own, and loading the
+		// project's would only add errors that are not syntax.
+		await compile(source, {
+			base: path.dirname(absolute),
+			from: relative,
+			loadStylesheet: async (id, base) => ({ path: id, base, content: '' }),
+			loadModule: async (id, base) => ({ path: id, base, module: () => {} }),
+		})
+		return null
+	} catch (error) {
+		const syntax = cssSyntaxError(error)
+		if (!syntax) return null
+		return {
+			severity: 'error',
+			code: 'code/css-syntax',
+			file: relative,
+			...(syntax.offset === null ? {} : lineAndColumn(source, syntax.offset)),
+			message: syntax.message,
+		}
+	}
+}
+
 export interface CodeCheckResult {
 	findings: CheckFinding[]
 	files: number
 }
 
-/** Parse every `.astro`/`.ts`/`.tsx` under `root`, newest failure first is not meaningful here — order is by path. */
+/** Parse every `.astro`/`.ts`/`.tsx`/`.css` under `root`; order is by path. */
 export async function checkCode(root: string): Promise<CodeCheckResult> {
 	const findings: CheckFinding[] = []
 	let files = 0
 
 	const paths: string[] = []
-	for await (const relative of new Glob('**/*.{astro,ts,tsx,mts,cts}').scan({ cwd: root })) {
-		if (!isIgnored(relative)) paths.push(relative)
+	for await (const relative of new Glob('**/*.{astro,ts,tsx,mts,cts,css}').scan({ cwd: root })) {
+		if (isIgnored(relative)) continue
+		if (relative.endsWith('.css') && UNPROCESSED_STYLESHEETS.includes(relative.split(path.sep)[0]!)) continue
+		paths.push(relative)
 	}
 	paths.sort()
 
@@ -125,6 +184,8 @@ export async function checkCode(root: string): Promise<CodeCheckResult> {
 		const source = await Bun.file(absolute).text()
 		const finding = relative.endsWith('.astro')
 			? await checkAstroFile(absolute, relative, source)
+			: relative.endsWith('.css')
+			? await checkCssFile(absolute, relative, source)
 			: checkScriptFile(relative, source, relative.endsWith('.tsx') ? 'tsx' : 'ts')
 		if (finding) findings.push(finding)
 	}

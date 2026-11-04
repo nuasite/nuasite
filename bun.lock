@@ -72,6 +72,7 @@
         "@jridgewell/trace-mapping": "^0.3.31",
         "@nuasite/cms": "workspace:*",
         "@nuasite/cms-core": "workspace:*",
+        "tailwindcss": "catalog:ui",
       },
       "devDependencies": {
         "@types/bun": "catalog:build",
