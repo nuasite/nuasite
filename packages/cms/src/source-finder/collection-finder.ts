@@ -8,7 +8,7 @@ import { scanCollections } from '../scan-cache.ts'
 import type { CollectionDefinition } from '../types.ts'
 import { getCollectionTextIndex, getDeclaredUrlIndexCache, getMarkdownFileCache, setCollectionTextIndex } from './cache.ts'
 import { normalizeText } from './snippet-utils.ts'
-import type { CollectionInfo, MarkdownContent, SourceLocation } from './types.ts'
+import type { CollectionInfo, CollectionReferenceIndex, MarkdownContent, SourceLocation } from './types.ts'
 
 // ============================================================================
 // Collection Text Index — pre-built reverse index for fast text→source lookups
@@ -151,28 +151,30 @@ function collectFromYamlNode(
 }
 
 /**
- * O(1) lookup in the pre-built collection text index.
- * Returns all matching source locations, preferring referenced collections.
+ * The one entry of a `readable` collection (see `collectionsReadBy`) that holds a value. A value
+ * held by several entries belongs to none; entries of a referenced collection are preferred.
  */
 export function lookupCollectionText(
 	textContent: string,
-	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
+	referenceIndex: CollectionReferenceIndex,
+	readable: ReadonlySet<string>,
 ): SourceLocation | undefined {
-	const index = getCollectionTextIndex()
-	if (!index) return undefined
-	const normalized = normalizeText(textContent)
-	const locations = index.get(normalized)
-	if (!locations || locations.length === 0) return undefined
+	const locations = readableTextLocations(textContent, readable)
+	const referenced = locations.filter(location => location.collectionName !== undefined && referenceIndex.has(location.collectionName))
+	const candidates = referenced.length > 0 ? referenced : locations
+	const first = candidates[0]
+	if (!first || candidates.some(location => location.file !== first.file)) return undefined
+	return first
+}
 
-	// Prefer locations from referenced collections
-	if (referenceIndex) {
-		for (const loc of locations) {
-			if (loc.collectionName && referenceIndex.has(loc.collectionName)) {
-				return loc
-			}
-		}
-	}
-	return locations[0]
+/** Whether an entry of a `readable` collection holds the value, whether or not one entry can be told apart. */
+export function readableCollectionsHoldText(textContent: string, readable: ReadonlySet<string>): boolean {
+	return readableTextLocations(textContent, readable).length > 0
+}
+
+function readableTextLocations(textContent: string, readable: ReadonlySet<string>): SourceLocation[] {
+	const locations = getCollectionTextIndex()?.get(normalizeText(textContent)) ?? []
+	return locations.filter(location => location.collectionName !== undefined && readable.has(location.collectionName))
 }
 
 // ============================================================================
@@ -716,54 +718,6 @@ export async function findMarkdownSourceLocation(
 		// Error reading file
 	}
 
-	return undefined
-}
-
-/**
- * Search all collection entries for a text value across all formats
- * (markdown frontmatter, JSON, YAML data files).
- */
-export async function findTextInAnyCollectionFrontmatter(
-	textContent: string,
-	collections: Record<string, CollectionDefinition>,
-): Promise<SourceLocation | undefined> {
-	const normalizedSearch = normalizeText(textContent)
-
-	for (const def of Object.values(collections)) {
-		if (!def.entries || def.entries.length === 0) continue
-
-		for (const entry of def.entries) {
-			const info: CollectionInfo = { name: def.name, slug: entry.slug, file: entry.sourcePath }
-
-			if (def.type === 'data') {
-				const result = await findTextInDataFile(normalizedSearch, info)
-				if (result) return result
-			} else {
-				const result = await findMarkdownSourceLocation(textContent, info)
-				if (result) return result
-			}
-		}
-	}
-	return undefined
-}
-
-/**
- * Search a data file (JSON, YAML, YML) for a scalar value using AST parsing.
- * JSON is valid YAML, so parseDocument handles all formats uniformly.
- */
-async function findTextInDataFile(
-	normalizedSearch: string,
-	collectionInfo: CollectionInfo,
-): Promise<SourceLocation | undefined> {
-	try {
-		const filePath = path.join(getProjectRoot(), collectionInfo.file)
-		const cached = await getCachedMarkdownFile(filePath)
-		if (!cached) return undefined
-
-		return findScalarInYamlAst(cached.content, 0, normalizedSearch, cached.lines, collectionInfo)
-	} catch {
-		// Error reading file
-	}
 	return undefined
 }
 

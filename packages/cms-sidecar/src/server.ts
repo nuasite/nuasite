@@ -12,9 +12,12 @@ import {
 	mediaErrorStatus,
 	parseMediaTypeFilter,
 	parseProjectCmsConfig,
+	readRouteMap,
 	resolveByteRange,
 	resolvePathnameFromSpec,
+	type RouteMap,
 	scanRouteCollections,
+	sitePathname,
 } from '@nuasite/cms-core'
 import { filterMediaItems } from '@nuasite/cms-types'
 import type {
@@ -398,6 +401,7 @@ const PAGE_EXTENSIONS = ['.astro', '.md', '.mdx']
  */
 async function listPages(fs: CmsFileSystem): Promise<PageEntry[]> {
 	const pathnames: string[] = []
+	const site = siteUrls(await readRouteMap(fs))
 
 	async function walk(dir: string, urlPrefix: string): Promise<void> {
 		const entries = await fs.list(dir)
@@ -422,7 +426,12 @@ async function listPages(fs: CmsFileSystem): Promise<PageEntry[]> {
 
 	await walk('src/pages', '/')
 	pathnames.sort((a, b) => a.localeCompare(b))
-	return pathnames.map(pathname => ({ pathname }))
+	return pathnames.map(pathname => ({ pathname: sitePathname(pathname, site) }))
+}
+
+/** How the site turns a route path into a URL. Without Astro's route map: at the root, as written. */
+function siteUrls(map: RouteMap | null): Pick<RouteMap, 'base' | 'trailingSlash'> {
+	return map ?? { base: '', trailingSlash: 'ignore' }
 }
 
 // ============================================================================
@@ -435,17 +444,57 @@ async function listPages(fs: CmsFileSystem): Promise<PageEntry[]> {
  *   `<base>/<slug>` (base is the route's directory, e.g. `/products`).
  * - shared page (`perItem: false`): a static page that lists the collection →
  *   every entry maps to that one page's URL (`base`, e.g. `/faq`), no slug.
+ * `base` is a route path; {@link entryPathname} puts it under the site's config `base`.
  */
 interface CollectionRoute {
 	base: string
 	perItem: boolean
 }
 
+interface CollectionRoutes {
+	routes: Map<string, CollectionRoute>
+	site: Pick<RouteMap, 'base' | 'trailingSlash'>
+}
+
+/** A page file and its route pattern (`/blog/[slug]`, `/blog/` for `blog/index.astro`). */
+interface PageRoute {
+	file: string
+	pattern: string
+}
+
 /**
- * Map each collection to the route that renders it, by parsing the Astro pages under
- * `src/pages` with {@link scanRouteCollections}. This is the only reliable source for an
- * entry's URL: it comes from the route, not the collection name (a `product` collection
- * can live at `/products`, an `faq` collection on a single `/faq` page).
+ * The `.astro` page routes: those in Astro's route map (injected routes included), then any page
+ * under `src/pages` the map does not list (added since the dev server last wrote it), with the
+ * pattern its path spells.
+ */
+async function pageRoutes(fs: CmsFileSystem, map: RouteMap | null): Promise<PageRoute[]> {
+	const mapped = (map?.routes ?? []).filter(route => route.entrypoint.endsWith('.astro'))
+	const listed = new Set(mapped.map(route => route.entrypoint))
+	const pages: PageRoute[] = mapped.map(route => ({ file: route.entrypoint, pattern: route.pattern }))
+
+	async function walk(dir: string, urlPrefix: string): Promise<void> {
+		for (const entry of await fs.list(dir)) {
+			if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue
+			const full = `${dir}/${entry.name}`
+			if (entry.isDirectory) {
+				await walk(full, `${urlPrefix}${entry.name}/`)
+			} else if (entry.name.endsWith('.astro') && !listed.has(full)) {
+				// Astro drops `index` from the path.
+				const baseName = entry.name.slice(0, -'.astro'.length)
+				pages.push({ file: full, pattern: baseName === 'index' ? urlPrefix : `${urlPrefix}${baseName}` })
+			}
+		}
+	}
+
+	await walk('src/pages', '/')
+	return pages
+}
+
+/**
+ * Map each collection to the route that renders it, by parsing each page route's source with
+ * {@link scanRouteCollections}. This is the only reliable source for an entry's URL: it comes from
+ * the route, not the collection name (a `product` collection can live at `/products`, an `faq`
+ * collection on a single `/faq` page). The link is read from the current source, never the route map.
  *
  * - A *dynamic* route (`[...slug].astro`, or a `[slug]/index.astro` directory) renders one
  *   page per entry; the URL base is the path up to its dynamic segment. Every collection
@@ -459,7 +508,8 @@ interface CollectionRoute {
  * Collections rendered nowhere are absent: their entries get no `pathname`, so a
  * consumer knows there is no page to open.
  */
-async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<Map<string, CollectionRoute>> {
+async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<CollectionRoutes> {
+	const map = await readRouteMap(fs)
 	const routes = new Map<string, CollectionRoute>()
 	const consider = (name: string, route: CollectionRoute): void => {
 		const existing = routes.get(name)
@@ -467,59 +517,44 @@ async function resolveCollectionRoutes(fs: CmsFileSystem): Promise<Map<string, C
 		if (!existing || (route.perItem && !existing.perItem)) routes.set(name, route)
 	}
 
-	async function walk(dir: string, urlPrefix: string): Promise<void> {
-		const entries = await fs.list(dir)
-		for (const entry of entries) {
-			if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue
-			const full = `${dir}/${entry.name}`
-			if (entry.isDirectory) {
-				await walk(full, `${urlPrefix}${entry.name}/`)
-				continue
-			}
-			// `getCollection` lives in Astro page frontmatter.
-			if (!entry.name.endsWith('.astro')) continue
+	for (const { file, pattern } of await pageRoutes(fs, map)) {
+		let content: string
+		try {
+			content = await fs.readFile(file)
+		} catch {
+			// A route the map lists whose file is gone.
+			continue
+		}
+		const { staticPaths, all } = scanRouteCollections(content)
+		if (all.length === 0) continue
 
-			let content: string
-			try {
-				content = await fs.readFile(full)
-			} catch {
-				continue
-			}
-			const { staticPaths, all } = scanRouteCollections(content)
-			if (all.length === 0) continue
-
-			// Full route path: directory prefix + file segment (Astro drops `index`).
-			const baseName = entry.name.slice(0, -'.astro'.length)
-			const routePath = baseName === 'index' ? urlPrefix : `${urlPrefix}${baseName}`
-			// A dynamic segment (`[slug]`, `[...slug]`) anywhere in the path makes this a
-			// page-per-item route — whether it comes from the filename (`[...slug].astro`) or
-			// a parent directory (`[slug]/index.astro`). Its base is the path up to the first
-			// dynamic segment (Astro segments are always whole, so `/[` is the marker).
-			const dynamicIdx = routePath.indexOf('/[')
-			if (dynamicIdx !== -1) {
-				const base = routePath.slice(0, dynamicIdx) || '/'
-				// Every collection the route's getStaticPaths enumerates is page-per-item; a single
-				// [slug] detail may drive several. Fall back to the first getCollection when there
-				// is no getStaticPaths block to read (e.g. an SSR route).
-				const drivers = staticPaths.length > 0 ? staticPaths : all.slice(0, 1)
-				for (const name of drivers) consider(name, { base, perItem: true })
-			} else {
-				// Static page: every collection it lists shares this page's URL.
-				const pathname = routePath.replace(/\/$/, '') || '/'
-				for (const name of all) consider(name, { base: pathname, perItem: false })
-			}
+		// A dynamic segment (`[slug]`, `[...slug]`) anywhere in the path makes this a
+		// page-per-item route — whether it comes from the filename (`[...slug].astro`) or
+		// a parent directory (`[slug]/index.astro`). Its base is the path up to the first
+		// dynamic segment (Astro segments are always whole, so `/[` is the marker).
+		const dynamicIdx = pattern.indexOf('/[')
+		if (dynamicIdx !== -1) {
+			const base = pattern.slice(0, dynamicIdx) || '/'
+			// Every collection the route's getStaticPaths enumerates is page-per-item; a single
+			// [slug] detail may drive several. Fall back to the first getCollection when there
+			// is no getStaticPaths block to read (e.g. an SSR route).
+			const drivers = staticPaths.length > 0 ? staticPaths : all.slice(0, 1)
+			for (const name of drivers) consider(name, { base, perItem: true })
+		} else {
+			// Static page: every collection it lists shares this page's URL.
+			const pathname = pattern.replace(/\/$/, '') || '/'
+			for (const name of all) consider(name, { base: pathname, perItem: false })
 		}
 	}
 
-	await walk('src/pages', '/')
-	return routes
+	return { routes, site: siteUrls(map) }
 }
 
 /** Build an entry's page URL from its collection route (see {@link CollectionRoute}). */
-function entryPathname(route: CollectionRoute, slug: string): string {
-	if (!route.perItem) return route.base || '/'
+function entryPathname(route: CollectionRoute, slug: string, site: CollectionRoutes['site']): string {
+	if (!route.perItem) return sitePathname(route.base || '/', site)
 	// A root-level `[slug]` route has base `/`; joining naively would double the slash.
-	return `${route.base === '/' ? '' : route.base}/${slug}`
+	return sitePathname(`${route.base === '/' ? '' : route.base}/${slug}`, site)
 }
 
 /**
@@ -541,7 +576,12 @@ function entryPathname(route: CollectionRoute, slug: string): string {
  * Entries are copied rather than mutated, and only when something actually changes, so the
  * cached scan keeps its own identity.
  */
-function entryWithPageUrl(def: CollectionDefinition, entry: CollectionEntryInfo, route: CollectionRoute | undefined): CollectionEntryInfo {
+function entryWithPageUrl(
+	def: CollectionDefinition,
+	entry: CollectionEntryInfo,
+	route: CollectionRoute | undefined,
+	site: CollectionRoutes['site'],
+): CollectionEntryInfo {
 	// The fragment short-circuit sits above every pathname source, so a source added below
 	// can never fabricate a URL for a collection that has no page.
 	if (def.fragment) {
@@ -554,7 +594,7 @@ function entryWithPageUrl(def: CollectionDefinition, entry: CollectionEntryInfo,
 	if (entry.pathname !== undefined) return entry
 	const fromSpec = resolvePathnameFromSpec(def, entry.data)
 	if (fromSpec !== undefined) return { ...entry, pathname: fromSpec }
-	if (route !== undefined) return { ...entry, pathname: entryPathname(route, entry.slug) }
+	if (route !== undefined) return { ...entry, pathname: entryPathname(route, entry.slug, site) }
 	return entry
 }
 
@@ -822,9 +862,9 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		// Tag entries with the URL of their rendered page (when the collection has a route),
 		// so a consumer can sync a preview to the entry being edited. Falls back to no
 		// pathname on any fs error — better absent than wrong.
-		const routes = await collectionRoutes.get().catch(() => new Map<string, CollectionRoute>())
+		const { routes, site } = await collectionRoutes.get().catch((): CollectionRoutes => ({ routes: new Map(), site: siteUrls(null) }))
 		const route = routes.get(collection)
-		const all = (def.entries ?? []).map(e => entryWithPageUrl(def, e, route))
+		const all = (def.entries ?? []).map(e => entryWithPageUrl(def, e, route, site))
 		const filtered = filterByDraft(all, query.draft)
 
 		const offset = decodeCursor(query.cursor)

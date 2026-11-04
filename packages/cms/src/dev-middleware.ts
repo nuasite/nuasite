@@ -158,14 +158,14 @@ export function createDevMiddleware(
 
 	// Serve per-page manifest endpoints (e.g., /about.json for /about page)
 	server.middlewares.use(async (req, res, next) => {
-		const url = (req.url || '').split('?')[0]!
+		const url = new URL(req.url || '/', 'http://localhost')
 
 		// Match /*.json pattern (but not files that actually exist)
-		const match = url.match(/^\/(.*)\.json$/)
+		const match = url.pathname.match(/^\/(.*)\.json$/)
 		if (match) {
 			// /about.json -> /about, /index.json -> /, /blog/post.json -> /blog/post
 			const pagePath = match[1] === 'index' ? '/' : '/' + match[1]
-			const manifest = await editor.pageManifest(pagePath)
+			const manifest = await editor.pageManifest(pagePath, { locateEntry: url.searchParams.get('locate') ?? undefined })
 			if (manifest) {
 				res.setHeader('Content-Type', 'application/json')
 				res.setHeader('Access-Control-Allow-Origin', '*')

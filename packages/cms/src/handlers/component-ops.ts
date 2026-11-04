@@ -316,7 +316,7 @@ export function getPageFileCandidates(pageUrl: string): string[] {
 	}
 
 	if (pathname === '/' || pathname === '') {
-		return ['src/pages/index.astro', 'src/pages/index.mdx']
+		return ['src/pages/index.astro', 'src/pages/index.mdx', 'src/pages/index.md']
 	}
 
 	const p = pathname.slice(1)
@@ -325,6 +325,8 @@ export function getPageFileCandidates(pageUrl: string): string[] {
 		`src/pages/${p}/index.astro`,
 		`src/pages/${p}.mdx`,
 		`src/pages/${p}/index.mdx`,
+		`src/pages/${p}.md`,
+		`src/pages/${p}/index.md`,
 	]
 }
 

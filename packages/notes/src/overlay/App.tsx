@@ -7,7 +7,7 @@ import { Sidebar } from './components/Sidebar.tsx'
 import { SuggestPopover } from './components/SuggestPopover.tsx'
 import { Toolbar } from './components/Toolbar.tsx'
 import { isSidebarCollapsed, setSidebarCollapsed } from './lib/cms-bridge.ts'
-import { fetchPageManifest } from './lib/manifest-fetch.ts'
+import { fetchPageManifest, noteTargetEntry } from './lib/manifest-fetch.ts'
 import { applyNote, createNote, deleteNote, listNotes, purgeNote, setNoteStatus } from './lib/notes-fetch.ts'
 import { findAnchorRange, selectionInsideElement } from './lib/range-anchor.ts'
 import { exitReviewMode, getCurrentPagePath, resolveRole } from './lib/url-mode.ts'
@@ -283,8 +283,10 @@ export function App({ urlFlag, agencyFlag }: AppProps) {
 			if (!pendingPick) return
 			saveAuthor(authorName)
 			setAuthor(authorName)
-			const entry = manifest?.entries?.[pendingPick.cmsId]
 			try {
+				const target = await noteTargetEntry(manifest, page, pendingPick.cmsId)
+				if (target.manifest !== manifest) setManifest(target.manifest)
+				const entry = target.entry
 				const item = await createNote({
 					page,
 					type: 'comment',
@@ -311,8 +313,10 @@ export function App({ urlFlag, agencyFlag }: AppProps) {
 			if (!pendingSuggest) return
 			saveAuthor(input.author)
 			setAuthor(input.author)
-			const entry = manifest?.entries?.[pendingSuggest.cmsId]
 			try {
+				const target = await noteTargetEntry(manifest, page, pendingSuggest.cmsId)
+				if (target.manifest !== manifest) setManifest(target.manifest)
+				const entry = target.entry
 				const item = await createNote({
 					page,
 					type: 'suggestion',

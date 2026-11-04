@@ -1,4 +1,5 @@
 import type { Node as AstroNode } from '@astrojs/compiler/types'
+import type { AstroSourceAnalysis } from '@nuasite/cms-core'
 import type { ComponentInstance } from '@nuasite/cms-types'
 
 /** What a page renders, to choose between source candidates that contain the same text. */
@@ -42,6 +43,8 @@ export interface CachedParsedFile {
 	lines: string[]
 	ast: AstroNode
 	frontmatterContent: string | null
+	/** Imports and `astro:content` calls of the frontmatter, null when there is none or it does not parse. */
+	frontmatterAnalysis: AstroSourceAnalysis | null
 	frontmatterStartLine: number
 	variableDefinitions: VariableDefinition[]
 	/** Mapping of local variable names to prop names from Astro.props destructuring
@@ -109,6 +112,9 @@ export interface CollectionInfo {
 	slug: string
 	file: string
 }
+
+/** Collection name → the fields of other collections that reference it. */
+export type CollectionReferenceIndex = Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>
 
 export interface MarkdownContent {
 	/** Frontmatter fields as key-value pairs with line numbers */

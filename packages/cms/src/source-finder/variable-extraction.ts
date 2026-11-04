@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import { projectFiles } from '../project/context.ts'
 import { extractArrayElements, extractObjectProperties, extractPossibleStringValues, getStringValue } from './ast-extractors.ts'
+import { aliasedImportCandidates } from './import-aliases.ts'
 import type { BabelFile, BabelNode, ImportInfo, VariableDefinition } from './types.ts'
 import { createFrontmatterLineTransformer, identityLine } from './types.ts'
 
@@ -293,22 +294,25 @@ export function extractImports(ast: BabelFile): ImportInfo[] {
 // Import Resolution
 // ============================================================================
 
+/** Extensions a module import may leave out, in the order they are tried. */
+const MODULE_EXTENSIONS = ['.ts', '.js', '.astro', '.tsx', '.jsx', '.mts', '.mjs', '.cts', '.cjs']
+const INDEX_EXTENSIONS = ['.ts', '.js', '.tsx', '.jsx', '.mts', '.mjs', '.cts', '.cjs']
+
 /**
- * Resolve an import source path to an absolute file path.
- * Handles relative paths and tries common extensions.
+ * Resolve an import specifier to an absolute file path: a relative one, or one the project's
+ * tsconfig maps into the project (`paths` aliases, `baseUrl`). A package import resolves to null.
  */
 export async function resolveImportPath(source: string, fromFile: string): Promise<string | null> {
-	// Only handle relative imports
-	if (!source.startsWith('.')) {
-		return null
+	const candidates = source.startsWith('.') ? [path.resolve(path.dirname(fromFile), source)] : await aliasedImportCandidates(source)
+	for (const basePath of candidates) {
+		const resolved = await resolveModuleFile(basePath)
+		if (resolved) return resolved
 	}
+	return null
+}
 
-	const fromDir = path.dirname(fromFile)
-	const basePath = path.resolve(fromDir, source)
-
-	// Try different extensions
-	const extensions = ['.ts', '.js', '.astro', '.tsx', '.jsx', '']
-	for (const ext of extensions) {
+async function resolveModuleFile(basePath: string): Promise<string | null> {
+	for (const ext of [...MODULE_EXTENSIONS, '']) {
 		const fullPath = basePath + ext
 		try {
 			const stat = await projectFiles().stat(fullPath)
@@ -318,8 +322,7 @@ export async function resolveImportPath(source: string, fromFile: string): Promi
 		}
 	}
 
-	// Try index files
-	for (const ext of ['.ts', '.js', '.tsx', '.jsx']) {
+	for (const ext of INDEX_EXTENSIONS) {
 		const indexPath = path.join(basePath, `index${ext}`)
 		try {
 			await projectFiles().access(indexPath)

@@ -9,6 +9,9 @@ import { expect, test } from 'bun:test'
 import { findImageSourceLocation } from '../../../src/source-finder'
 import { setupAstroProjectStructure, withTempDir } from '../../utils'
 
+/** No collection entries are readable: collection hits are ignored. */
+const NO_ENTRIES: ReadonlySet<string> = new Set()
+
 withTempDir('findImageSourceLocation', (getCtx) => {
 	test('should find src in single-line img tag with src first', async () => {
 		const ctx = getCtx()
@@ -21,7 +24,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/hero.jpg')
+		const result = await findImageSourceLocation('/images/hero.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Image.astro')
@@ -40,7 +43,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/hero.jpg')
+		const result = await findImageSourceLocation('/images/hero.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Image.astro')
@@ -62,7 +65,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/photo.webp')
+		const result = await findImageSourceLocation('/images/photo.webp', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Image.astro')
@@ -85,7 +88,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/assets/product-image.png')
+		const result = await findImageSourceLocation('/assets/product-image.png', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Image.astro')
@@ -110,7 +113,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/assets/case-study.webp')
+		const result = await findImageSourceLocation('/assets/case-study.webp', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/CaseStudies.astro')
@@ -133,7 +136,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/gallery/item-1.jpg')
+		const result = await findImageSourceLocation('/gallery/item-1.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Image.astro')
@@ -151,7 +154,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/single-quote.jpg')
+		const result = await findImageSourceLocation('/images/single-quote.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Image.astro')
@@ -169,7 +172,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/old-style.jpg')
+		const result = await findImageSourceLocation('/images/old-style.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Image.astro')
@@ -195,7 +198,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/tsx-image.png')
+		const result = await findImageSourceLocation('/images/tsx-image.png', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Gallery.tsx')
@@ -215,7 +218,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/banner.jpg')
+		const result = await findImageSourceLocation('/images/banner.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Banner.jsx')
@@ -237,9 +240,9 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const resultFirst = await findImageSourceLocation('/images/first.jpg')
-		const resultSecond = await findImageSourceLocation('/images/second.jpg')
-		const resultThird = await findImageSourceLocation('/images/third.jpg')
+		const resultFirst = await findImageSourceLocation('/images/first.jpg', undefined, undefined, undefined, NO_ENTRIES)
+		const resultSecond = await findImageSourceLocation('/images/second.jpg', undefined, undefined, undefined, NO_ENTRIES)
+		const resultThird = await findImageSourceLocation('/images/third.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(resultFirst?.line).toBe(4)
 		expect(resultSecond?.line).toBe(5)
@@ -257,7 +260,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/does-not-exist.jpg')
+		const result = await findImageSourceLocation('/images/does-not-exist.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeUndefined()
 	})
@@ -273,7 +276,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/hero-image.webp')
+		const result = await findImageSourceLocation('/hero-image.webp', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/pages/index.astro')
@@ -290,7 +293,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/logo.svg')
+		const result = await findImageSourceLocation('/logo.svg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/layouts/Base.astro')
@@ -307,7 +310,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/sections/hero-bg.jpg')
+		const result = await findImageSourceLocation('/sections/hero-bg.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/sections/homepage/Hero.astro')
@@ -324,7 +327,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/test.jpg')
+		const result = await findImageSourceLocation('/images/test.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.snippet).toContain('<img')
@@ -346,7 +349,7 @@ withTempDir('findImageSourceLocation', (getCtx) => {
 `,
 		)
 
-		const result = await findImageSourceLocation('/images/multiline.jpg')
+		const result = await findImageSourceLocation('/images/multiline.jpg', undefined, undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.snippet).toContain('src="/images/multiline.jpg"')
@@ -373,18 +376,18 @@ import hero from '../assets/images/hero.png'
 
 		const absPath = `${ctx.tempDir}/src/assets/images/hero.png`
 
-		const directResult = findInImageIndex(absPath)
+		const directResult = findInImageIndex(absPath, undefined, undefined, NO_ENTRIES)
 		expect(directResult?.file).toBe('src/components/HeroSection.astro')
 		expect(directResult?.snippet).toContain('<Image')
 
 		// astro-imagetools-style URL — should decode `f=` and find the same entry
 		const devUrl = `/@image/abc123.png?f=${absPath}&w=800`
-		const devResult = findInImageIndex(devUrl)
+		const devResult = findInImageIndex(devUrl, undefined, undefined, NO_ENTRIES)
 		expect(devResult?.file).toBe('src/components/HeroSection.astro')
 
 		// Astro `<Image>`-style URL — should decode `href=` (encoded) and find the same entry
 		const astroUrl = `/_image?href=${encodeURIComponent(absPath)}&w=800`
-		const astroResult = findInImageIndex(astroUrl)
+		const astroResult = findInImageIndex(astroUrl, undefined, undefined, NO_ENTRIES)
 		expect(astroResult?.file).toBe('src/components/HeroSection.astro')
 	})
 }, { setupAstro: false })

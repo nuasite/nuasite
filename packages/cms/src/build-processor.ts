@@ -11,6 +11,8 @@ import type { ManifestWriter } from './manifest-writer.ts'
 import { generateComponentPreviews } from './preview-generator.ts'
 import {
 	clearSourceFinderCache,
+	collectionsReadBy,
+	entryFilesOf,
 	extractOpeningTagWithLine,
 	findCollectionSource,
 	findImageSourceLocation,
@@ -375,6 +377,11 @@ async function processFile(
 	}
 
 	const pageFiles = getPageFileCandidates(pagePath)
+	const collectionDefinitions = manifestWriter.getCollectionDefinitions()
+	const readableEntryFiles = entryFilesOf(
+		await collectionsReadBy(pageFiles, collectionDefinitions, collectionInfo ? [collectionInfo.name] : []),
+		collectionDefinitions,
+	)
 
 	// Process entries in parallel for better performance
 	const entryLookups = Object.values(result.entries).map(async (entry) => {
@@ -394,6 +401,7 @@ async function processFile(
 				entry.imageMetadata.srcSet,
 				pageFiles,
 				preferredLocation,
+				readableEntryFiles,
 			)
 			if (imageSource) {
 				entry.sourcePath = imageSource.file

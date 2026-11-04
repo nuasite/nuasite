@@ -347,6 +347,79 @@ describe('cms-sidecar HTTP server (/cms/v1)', () => {
 		})
 	})
 
+	describe("with Astro's route map written by the dev server", () => {
+		const MAP_PATH = '.astro/integrations/_nuasite_cms/routes.json'
+
+		async function writeRouteMap(root: string, map: { base: string; trailingSlash: string; routes: Array<{ entrypoint: string; pattern: string }> }) {
+			await fs.mkdir(path.dirname(path.join(root, MAP_PATH)), { recursive: true })
+			await fs.writeFile(path.join(root, MAP_PATH), JSON.stringify({ version: 1, ...map }))
+		}
+
+		async function pathnameOf(server: CmsSidecarServer, collection: string, slug: string): Promise<string | undefined> {
+			const list = await jsonOf<EntriesListResult>(await call(server, 'GET', `/collections/${collection}/entries?draft=all`))
+			return list.entries.find(e => e.slug === slug)?.pathname
+		}
+
+		test('puts entry and page URLs under the config base, with the trailing slash the site uses', async () => {
+			const { server, root } = await freshServer()
+			await writeRouteMap(root, {
+				base: '/docs/',
+				trailingSlash: 'always',
+				routes: [
+					{ entrypoint: 'src/pages/blog/[...slug].astro', pattern: '/blog/[...slug]' },
+					{ entrypoint: 'src/pages/team.astro', pattern: '/team' },
+				],
+			})
+
+			expect(await pathnameOf(server, 'blog', 'hello-world')).toBe('/docs/blog/hello-world/')
+			expect(await pathnameOf(server, 'team', 'alice')).toBe('/docs/team/')
+			const { pages } = await jsonOf<{ pages: PageEntry[] }>(await call(server, 'GET', '/pages'))
+			expect(pages.some(p => p.pathname === '/docs/about/')).toBe(true)
+		})
+
+		test('routes a collection through a route injected from outside src/pages', async () => {
+			const { server, root } = await freshServer()
+			await fs.mkdir(path.join(root, 'src/routes'), { recursive: true })
+			await fs.writeFile(
+				path.join(root, 'src/routes/author.astro'),
+				"---\nimport { getCollection } from 'astro:content'\nexport async function getStaticPaths() {\n\treturn (await getCollection('authors')).map(a => ({ params: { id: a.id } }))\n}\n---\n",
+			)
+			await writeRouteMap(root, { base: '', trailingSlash: 'ignore', routes: [{ entrypoint: 'src/routes/author.astro', pattern: '/people/[id]' }] })
+
+			expect(await pathnameOf(server, 'authors', 'jane-doe')).toBe('/people/jane-doe')
+		})
+
+		test('reads which collections a route renders from the current source, not from the map', async () => {
+			const { server, root } = await freshServer()
+			await writeRouteMap(root, {
+				base: '',
+				trailingSlash: 'ignore',
+				routes: [
+					// Gone since the map was written.
+					{ entrypoint: 'src/pages/old-authors/[id].astro', pattern: '/old-authors/[id]' },
+					{ entrypoint: 'src/pages/blog/[...slug].astro', pattern: '/blog/[...slug]' },
+				],
+			})
+			// Added since the map was written.
+			await fs.mkdir(path.join(root, 'src/pages/crew'), { recursive: true })
+			await fs.writeFile(
+				path.join(root, 'src/pages/crew/[id].astro'),
+				"---\nimport { getCollection } from 'astro:content'\nexport async function getStaticPaths() {\n\treturn (await getCollection('authors')).map(a => ({ params: { id: a.id } }))\n}\n---\n",
+			)
+
+			expect(await pathnameOf(server, 'authors', 'jane-doe')).toBe('/crew/jane-doe')
+			expect(await pathnameOf(server, 'blog', 'hello-world')).toBe('/blog/hello-world')
+		})
+
+		test('ignores a map of another version', async () => {
+			const { server, root } = await freshServer()
+			await fs.mkdir(path.dirname(path.join(root, MAP_PATH)), { recursive: true })
+			await fs.writeFile(path.join(root, MAP_PATH), JSON.stringify({ version: 0, base: '/docs', trailingSlash: 'always', routes: [] }))
+
+			expect(await pathnameOf(server, 'blog', 'hello-world')).toBe('/blog/hello-world')
+		})
+	})
+
 	test('GET …/entries derives pathname from a `cms.pathname` rule, overriding the route guess', async () => {
 		const { server } = await freshServer()
 		// `people` declares `cms: { pathname: [{ field: 'urlFamily' }, { field: 'slug' }] }`.

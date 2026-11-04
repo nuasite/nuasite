@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { _resetToastThrottles, startEditMode, stopEditMode } from '../../../src/editor/editor'
 import * as signals from '../../../src/editor/signals'
 import type { CmsConfig, CmsManifest } from '../../../src/editor/types'
@@ -369,4 +369,111 @@ test('an entry whose text was never located is not typeable, but stays selectabl
 	expect(unresolved.hasAttribute('data-cms-locked')).toBe(false)
 	expect(noSource.getAttribute('data-cms-locked')).toBe('true')
 	expect(editable.hasAttribute('data-cms-locked')).toBe(false)
+})
+
+/** Answer manifest requests with `entries`, and a `locate=<id>` request with `located` merged in. */
+function serveManifest(located: Record<string, CmsManifest['entries'][string]>): string[] {
+	const requests: string[] = []
+	const entries: CmsManifest['entries'] = {
+		'test-id-1': { id: 'test-id-1', tag: 'p', text: 'Editable content', sourcePath: '/test/path1.md', sourceLine: 1 },
+		'no-source-id': { id: 'no-source-id', tag: 'p', text: 'Text with no source path' },
+	}
+	const respond = async (input: RequestInfo | URL): Promise<Response> => {
+		const urlStr = input instanceof Request ? input.url : input.toString()
+		requests.push(urlStr)
+		const locate = new URL(urlStr, 'http://localhost').searchParams.get('locate')
+		return Response.json({ entries: locate ? { ...entries, ...located } : entries, components: {}, componentDefinitions: {} })
+	}
+	spyOn(globalThis, 'fetch').mockImplementation(Object.assign(respond, { preconnect: fetch.preconnect }))
+	return requests
+}
+
+function lockedElement(): HTMLElement {
+	const el = document.querySelector('[data-cms-id="no-source-id"]')
+	if (!(el instanceof HTMLElement)) throw new Error('No locked element')
+	return el
+}
+
+async function settle(): Promise<void> {
+	for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0))
+}
+
+test('clicking a locked element has the server locate it, then makes it editable without restarting edit mode', async () => {
+	const requests = serveManifest({
+		'no-source-id': { id: 'no-source-id', tag: 'p', text: 'Text with no source path', sourcePath: 'src/data/site.ts', sourceLine: 1 },
+	})
+	document.body.innerHTML = `
+    <p data-cms-id="test-id-1">Editable content</p>
+    <p data-cms-id="no-source-id">Text with no source path</p>
+  `
+	await startEditMode(mockConfig, () => {})
+	signals.openAttributeEditor('test-id-1', new DOMRect())
+
+	const locked = lockedElement()
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	await settle()
+
+	// One search for both clicks, asked for this entry.
+	expect(requests.filter(url => url.includes('locate=no-source-id'))).toHaveLength(1)
+	expect(locked.hasAttribute('data-cms-locked')).toBe(false)
+	expect(locked.contentEditable).toBe('true')
+	expect(signals.pendingChanges.value.has('no-source-id')).toBe(true)
+	// Only that element was wired: the session and its open dialog are as they were.
+	expect(signals.isEditing.value).toBe(true)
+	expect(signals.isAttributeEditorOpen.value).toBe(true)
+
+	// The click listener of the lock outlives it, and does nothing once the element is editable.
+	signals.toasts.value = []
+	_resetToastThrottles()
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	expect(signals.toasts.value).toHaveLength(0)
+})
+
+test('a locked element the server cannot locate stays locked', async () => {
+	serveManifest({})
+	document.body.innerHTML = `<p data-cms-id="no-source-id">Text with no source path</p>`
+	await startEditMode(mockConfig, () => {})
+
+	const locked = lockedElement()
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	await settle()
+
+	expect(locked.getAttribute('data-cms-locked')).toBe('true')
+	expect(locked.contentEditable).toBe('false')
+})
+
+test('a search that ends after edit mode stopped leaves the element alone', async () => {
+	serveManifest({
+		'no-source-id': { id: 'no-source-id', tag: 'p', text: 'Text with no source path', sourcePath: 'src/data/site.ts', sourceLine: 1 },
+	})
+	document.body.innerHTML = `<p data-cms-id="no-source-id">Text with no source path</p>`
+	await startEditMode(mockConfig, () => {})
+
+	const locked = lockedElement()
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	stopEditMode(() => {})
+	await settle()
+
+	expect(signals.isEditing.value).toBe(false)
+	expect(locked.contentEditable).not.toBe('true')
+})
+
+test('a click after edit mode restarted searches again, though the previous session left its search unfinished', async () => {
+	const requests = serveManifest({
+		'no-source-id': { id: 'no-source-id', tag: 'p', text: 'Text with no source path', sourcePath: 'src/data/site.ts', sourceLine: 1 },
+	})
+	document.body.innerHTML = `<p data-cms-id="no-source-id">Text with no source path</p>`
+	await startEditMode(mockConfig, () => {})
+	lockedElement().dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	stopEditMode(() => {})
+
+	await startEditMode(mockConfig, () => {})
+	const locked = lockedElement()
+	locked.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	await settle()
+
+	expect(requests.filter(url => url.includes('locate=no-source-id'))).toHaveLength(2)
+	expect(locked.hasAttribute('data-cms-locked')).toBe(false)
+	expect(locked.contentEditable).toBe('true')
 })
