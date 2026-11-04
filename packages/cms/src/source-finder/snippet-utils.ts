@@ -8,13 +8,8 @@ import type { Attribute, CollectionDefinition, ManifestEntry } from '../types.ts
 import { escapeRegex, generateSourceHash, resolveSourcePath } from '../utils.ts'
 import { buildDefinitionPath } from './ast-extractors.ts'
 import { getCachedParsedFile } from './ast-parser.ts'
-import {
-	buildCollectionTextIndex,
-	findFieldInCollectionEntry,
-	findFieldsInCollectionEntry,
-	findTextInAnyCollectionFrontmatter,
-	lookupCollectionText,
-} from './collection-finder.ts'
+import { buildCollectionTextIndex, findFieldInCollectionEntry, findFieldsInCollectionEntry, lookupCollectionText } from './collection-finder.ts'
+import { collectionsReadBy, entryFilesOf } from './collection-reach.ts'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker.ts'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder.ts'
 import {
@@ -28,7 +23,7 @@ import {
 	toProjectRelativePath,
 } from './search-index.ts'
 import { projectRelativeSource } from './source-files.ts'
-import type { CachedParsedFile, ImageMatch, PageSources, SourceLocation } from './types.ts'
+import type { CachedParsedFile, CollectionReferenceIndex, ImageMatch, PageSources, SourceLocation } from './types.ts'
 
 // ============================================================================
 // Text Normalization
@@ -711,7 +706,7 @@ export async function enhanceManifestWithSourceSnippets(
 	const enhanced: Record<string, ManifestEntry> = {}
 
 	// Build a reverse-reference index once so we don't recompute per entry
-	const referenceIndex = new Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>()
+	const referenceIndex: CollectionReferenceIndex = new Map()
 	if (collectionDefinitions) {
 		for (const [colName, colDef] of Object.entries(collectionDefinitions)) {
 			for (const field of colDef.fields) {
@@ -764,6 +759,23 @@ export async function enhanceManifestWithSourceSnippets(
 		if (entry.collectionName && entry.collectionSlug) {
 			propagateCollection(entry.id, entry.collectionName, entry.collectionSlug)
 		}
+	}
+
+	// The collections a value found in collection data may be attributed to, computed on first need.
+	// The page is rendered from its own files, its components and every file an element is annotated with.
+	let readable: Promise<ReadonlySet<string>> | undefined
+	const readableCollections = (): Promise<ReadonlySet<string>> => {
+		if (!collectionDefinitions) return Promise.resolve(new Set())
+		if (!readable) {
+			const rendered = new Set([...(pageFiles ?? []), ...(page?.renderedFiles ?? [])].map(projectRelativeSource))
+			const shown = new Set<string>()
+			for (const entry of Object.values(entries)) {
+				if (entry.sourcePath) rendered.add(projectRelativeSource(entry.sourcePath))
+				if (entry.collectionName) shown.add(entry.collectionName)
+			}
+			readable = collectionsReadBy([...rendered], collectionDefinitions, shown)
+		}
+		return readable
 	}
 
 	// Shared file read cache — avoids redundant fs.readFile calls
@@ -839,6 +851,7 @@ export async function enhanceManifestWithSourceSnippets(
 				entry.imageMetadata.srcSet,
 				pageFiles,
 				preferredLocation,
+				entryFilesOf(await readableCollections(), collectionDefinitions ?? {}),
 			)
 			if (imageLocation) {
 				const sourceHash = generateSourceHash(imageLocation.snippet || entry.imageMetadata.src)
@@ -899,6 +912,7 @@ export async function enhanceManifestWithSourceSnippets(
 								filePath,
 								collectionDefinitions,
 								referenceIndex,
+								readableCollections,
 							)
 							if (resolvedEntry) {
 								return [id, resolvedEntry] as const
@@ -918,8 +932,8 @@ export async function enhanceManifestWithSourceSnippets(
 				}
 			}
 
-			// Final fallback: search collection frontmatter directly for the image URL
-			const collectionResult = await searchCollectionWithDecodedFallback(entry.imageMetadata.src, collectionDefinitions)
+			// Final fallback: the one entry of a collection the page reads that holds the image URL
+			const collectionResult = lookupCollectionImage(entry.imageMetadata.src, referenceIndex, await readableCollections())
 			if (collectionResult) {
 				return [id, applyCollectionSource(entry, collectionResult, referenceIndex)] as const
 			}
@@ -1127,7 +1141,7 @@ export async function enhanceManifestWithSourceSnippets(
 					// from collection entries (e.g. {post.data.title}) won't be found
 					// through AST or prop lookups since the value lives in a .md file
 					if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
-						const mdSource = lookupCollectionText(trimmedText, referenceIndex)
+						const mdSource = lookupCollectionText(trimmedText, referenceIndex, await readableCollections())
 						if (mdSource) {
 							return [
 								id,
@@ -1177,29 +1191,36 @@ export async function enhanceManifestWithSourceSnippets(
 	for (const [id, entry] of results) {
 		enhanced[id] = entry
 	}
-	// Post-processing: augment entries with collection and reference metadata.
-	// Uses the pre-built collection text index for O(1) lookups instead of
-	// re-parsing YAML/frontmatter for every entry.
+	// Post-processing: tag entries whose text comes from collection data with that collection entry
+	// and, for a referenced collection, the reference. The pre-built text index makes each lookup O(1).
+	// An entry is tagged only where its own source already is that data: on an entry's page, when the
+	// text is held by an entry its collection references; elsewhere, when the match is its source file.
 	if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
 		await buildCollectionTextIndex(collectionDefinitions)
 
 		for (const [id, entry] of Object.entries(enhanced)) {
-			if (!entry.text?.trim()) continue
-			// Skip if already fully resolved (has collection identity + reference metadata or no references exist)
-			if (entry.collectionName && (entry.referenceCollection || referenceIndex.size === 0)) continue
+			const text = entry.text?.trim()
+			if (!text || entry.referenceCollection) continue
 
-			const source = lookupCollectionText(entry.text.trim(), referenceIndex)
-			if (!source) continue
+			let source: SourceLocation | undefined
+			if (entry.collectionName) {
+				const owner = entry.collectionName
+				const referenced = new Set([...referenceIndex].filter(([, owners]) => owners.some(o => o.collection === owner)).map(([name]) => name))
+				source = referenced.size > 0 ? lookupCollectionText(text, referenceIndex, referenced) : undefined
+			} else {
+				source = lookupCollectionText(text, referenceIndex, await readableCollections())
+				if (source && (!entry.sourcePath || source.file !== toProjectRelativePath(entry.sourcePath))) source = undefined
+			}
+			if (!source?.collectionName) continue
 
-			const referencedBy = source.collectionName ? referenceIndex.get(source.collectionName) : undefined
-			const refMeta = referencedBy
-				? { referenceCollection: source.collectionName, referencedBy }
-				: {}
+			const owners = referenceIndex.get(source.collectionName)
+			// On an entry's page, the reference is a field of that entry's collection.
+			const referencedBy = entry.collectionName ? owners?.filter(owner => owner.collection === entry.collectionName) : owners
 			enhanced[id] = {
 				...entry,
 				collectionName: entry.collectionName ?? source.collectionName,
 				collectionSlug: entry.collectionSlug ?? source.collectionSlug,
-				...refMeta,
+				...(referencedBy?.length ? { referenceCollection: source.collectionName, referencedBy } : {}),
 			}
 		}
 	}
@@ -1211,21 +1232,14 @@ export async function enhanceManifestWithSourceSnippets(
 // Collection Source Helpers
 // ============================================================================
 
-/** Search collection frontmatter for a value, falling back to the decoded Astro Image URL */
-async function searchCollectionWithDecodedFallback(
+/** The one entry of a readable collection holding an image URL, or the original of an Astro image URL. */
+function lookupCollectionImage(
 	src: string,
-	collectionDefinitions?: Record<string, CollectionDefinition>,
-): Promise<SourceLocation | undefined> {
-	if (!collectionDefinitions || Object.keys(collectionDefinitions).length === 0) return undefined
-
-	const mdSource = await findTextInAnyCollectionFrontmatter(src, collectionDefinitions)
-	if (mdSource) return mdSource
-
-	const decodedSrc = extractAstroImageOriginalUrl(src)
-	if (decodedSrc) {
-		return await findTextInAnyCollectionFrontmatter(decodedSrc, collectionDefinitions)
-	}
-	return undefined
+	referenceIndex: CollectionReferenceIndex,
+	readable: ReadonlySet<string>,
+): SourceLocation | undefined {
+	const decoded = extractAstroImageOriginalUrl(src)
+	return lookupCollectionText(src, referenceIndex, readable) ?? (decoded ? lookupCollectionText(decoded, referenceIndex, readable) : undefined)
 }
 
 /** Build a ManifestEntry from a collection frontmatter match */
@@ -1450,8 +1464,9 @@ async function resolveImageExpression(
 	nearbyImg: ImageMatch,
 	cached: CachedParsedFile,
 	filePath: string,
-	collectionDefinitions?: Record<string, CollectionDefinition>,
-	referenceIndex?: Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>,
+	collectionDefinitions: Record<string, CollectionDefinition> | undefined,
+	referenceIndex: CollectionReferenceIndex,
+	readableCollections: () => Promise<ReadonlySet<string>>,
 ): Promise<ManifestEntry | undefined> {
 	const imgSrc = entry.imageMetadata?.src
 	if (!imgSrc) return undefined
@@ -1504,9 +1519,9 @@ async function resolveImageExpression(
 		}
 	}
 
-	// Step 3: Search collection frontmatter — handles {article.data.image} patterns
-	// where the image URL lives in a markdown/data file's frontmatter
-	const collectionResult = await searchCollectionWithDecodedFallback(imgSrc, collectionDefinitions)
+	// Step 3: Collection data — handles {article.data.image} patterns, also over a sorted or filtered
+	// list, where the image URL lives in the frontmatter of one entry of a collection the page reads
+	const collectionResult = lookupCollectionImage(imgSrc, referenceIndex, await readableCollections())
 	if (collectionResult) {
 		return applyCollectionSource(entry, collectionResult, referenceIndex)
 	}

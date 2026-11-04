@@ -1431,14 +1431,17 @@ function extractPathname(src: string): string {
  *      collides for multiple imgs sharing the same src.
  *   2. `preferredLocation` (file, line) exact match — used when occurrence
  *      isn't provided (Astro's stamping happens to be precise enough).
- *   3. Collection data files (always authoritative).
+ *   3. Collection data files (always authoritative), but only entries in `readableEntryFiles` (the
+ *      collections the page reads), and only when one entry holds the URL: an equal URL elsewhere is
+ *      no evidence of which entry was rendered.
  *   4. Entries in `pageFiles` — disambiguates same image across multiple pages.
  *   5. Any other match.
  */
 export function findInImageIndex(
 	imageSrc: string,
-	pageFiles?: readonly string[],
-	preferredLocation?: { file?: string; line?: number; srcOccurrence?: number },
+	pageFiles: readonly string[] | undefined,
+	preferredLocation: { file?: string; line?: number; srcOccurrence?: number } | undefined,
+	readableEntryFiles: ReadonlySet<string>,
 ): SourceLocation | undefined {
 	const index = getImageSearchIndex()
 
@@ -1453,6 +1456,7 @@ export function findInImageIndex(
 	const preferredOccurrence = preferredLocation?.srcOccurrence
 
 	const matches: RankedMatches = {}
+	const collectionHits = new CollectionHits(readableEntryFiles)
 	let occurrenceCounter = 0
 	let occurrenceMatch: SourceLocation | undefined
 	let lineMatch: SourceLocation | undefined
@@ -1466,6 +1470,7 @@ export function findInImageIndex(
 	}
 	for (const entry of index) {
 		if (!candidates.includes(entry.src)) continue
+		if (collectionHits.take(entry)) continue
 		if (occurrenceScope(entry.file)) {
 			if (preferredOccurrence !== undefined && occurrenceCounter++ === preferredOccurrence) {
 				occurrenceMatch ??= imageEntryToLocation(entry)
@@ -1474,9 +1479,10 @@ export function findInImageIndex(
 				lineMatch ??= imageEntryToLocation(entry)
 			}
 		}
-		const collectionHit = rankAndStash(entry.file, imageEntryToLocation(entry), pageFiles, matches)
-		if (collectionHit) return collectionHit
+		rankAndStash(entry.file, imageEntryToLocation(entry), pageFiles, matches)
 	}
+	const collectionMatch = collectionHits.unique()
+	if (collectionMatch) return collectionMatch
 	if (occurrenceMatch) return occurrenceMatch
 	if (lineMatch) return lineMatch
 	const exact = matches.page ?? matches.other
@@ -1486,13 +1492,36 @@ export function findInImageIndex(
 	// e.g., rendered src "/cdn-cgi/image/.../assets/photo.webp" should match
 	// authored src "https://cdn.nuasite.com/assets/photo.webp"
 	const targetPath = extractPathname(imageSrc)
+	const suffixCollectionHits = new CollectionHits(readableEntryFiles)
 	for (const entry of index) {
 		const entryPath = extractPathname(entry.src)
 		if (entryPath.length <= 5) continue
 		if (!targetPath.endsWith(entryPath) && !entryPath.endsWith(targetPath)) continue
-		const collectionHit = rankAndStash(entry.file, imageEntryToLocation(entry), pageFiles, matches)
-		if (collectionHit) return collectionHit
+		if (suffixCollectionHits.take(entry)) continue
+		rankAndStash(entry.file, imageEntryToLocation(entry), pageFiles, matches)
 	}
 
-	return bestMatch(matches)
+	return suffixCollectionHits.unique() ?? bestMatch(matches)
+}
+
+/** Image index matches in collection data files, kept apart from template matches. */
+class CollectionHits {
+	private first: ImageIndexEntry | undefined
+	private ambiguous = false
+
+	constructor(private readonly readableEntryFiles: ReadonlySet<string>) {}
+
+	/** Whether `entry` is in collection data; it counts only when it is in a readable entry. */
+	take(entry: ImageIndexEntry): boolean {
+		if (!isCollectionFile(entry.file)) return false
+		if (!this.readableEntryFiles.has(entry.file)) return true
+		if (this.first && this.first.file !== entry.file) this.ambiguous = true
+		this.first ??= entry
+		return true
+	}
+
+	/** The match when exactly one readable entry holds the URL. */
+	unique(): SourceLocation | undefined {
+		return this.first && !this.ambiguous ? imageEntryToLocation(this.first) : undefined
+	}
 }

@@ -20,7 +20,6 @@ import {
 	declaredSitePathFromData,
 	enhanceManifestWithSourceSnippets,
 	findCollectionSource,
-	findImageSourceLocation,
 	findSourceLocation,
 	parseMarkdownContent,
 	reindexDirtyFiles,
@@ -416,23 +415,9 @@ export async function enhanceManifestInBackground(
 		const page = pageSources(pageFiles, components)
 		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions, pageFiles, page)
 
-		// Images the snippet pass left without a source still get the image index. Text it left without
-		// one is searched for only when the editor asks (locateTextOnDemand): that search walks every
-		// source file, which a page with many such entries cannot pay on each load.
-		for (const entry of Object.values(enhanced)) {
-			if (entry.sourceSnippet || entry.sourcePath || !entry.imageMetadata?.src) continue
-			const preferredLocation = entry.imageMetadata.srcOccurrence !== undefined
-				? { file: entry.sourcePath, line: entry.sourceLine, srcOccurrence: entry.imageMetadata.srcOccurrence }
-				: undefined
-			const loc = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet, pageFiles, preferredLocation)
-			if (loc) {
-				entry.sourcePath = loc.file
-				entry.sourceLine = loc.line
-				entry.sourceSnippet = loc.snippet
-			}
-		}
-
-		// Update the manifest with fully-resolved entries and component props
+		// Text the snippet pass left without a source is searched for only when the editor asks
+		// (locateTextOnDemand): that search walks every source file, which a page with many such
+		// entries cannot pay on each load.
 		manifestWriter.addPage(pagePath, enhanced, components, collection, seo)
 	} catch (error) {
 		console.error('[cms] Background enhancement failed:', error)

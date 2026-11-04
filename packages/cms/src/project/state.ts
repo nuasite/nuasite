@@ -1,5 +1,6 @@
 import type { ParseCache } from '@nuasite/cms-core'
 import path from 'node:path'
+import type { ImportAliases } from '../source-finder/import-aliases.ts'
 import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from '../source-finder/types.ts'
 
 /**
@@ -39,6 +40,8 @@ export class ProjectState {
 	translationKeyIndex: Map<string, SearchIndexEntry[]> | null = null
 	/** Files changed since they were last indexed. */
 	readonly dirtyFiles = new Set<string>()
+	/** Import aliases from the project's tsconfig, read on first use. */
+	importAliases: Promise<ImportAliases> | null = null
 	/** Collections rendered by dynamic page routes. */
 	collectionRoutes: Map<string, CollectionRouteInfo> | null = null
 	/** Content-config parse cache for standalone collection scans. */
@@ -55,6 +58,7 @@ export class ProjectState {
 	markFileDirty(absPath: string): void {
 		this.dirtyFiles.add(absPath)
 		this.parsedFiles.delete(absPath)
+		if (/^tsconfig.*\.json$/.test(path.basename(absPath))) this.importAliases = null
 		const fileDir = path.dirname(absPath)
 		this.declaredUrlIndex.delete(fileDir)
 		this.declaredUrlIndex.delete(path.dirname(fileDir))
@@ -72,5 +76,6 @@ export class ProjectState {
 		this.collectionTextIndex = null
 		this.translationKeyIndex = null
 		this.declaredUrlIndex.clear()
+		this.importAliases = null
 	}
 }

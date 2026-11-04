@@ -146,23 +146,25 @@ function parseSrcsetUrls(srcSet: string): string[] {
  * `preferredLocation` disambiguates the same image URL within one page —
  * pass the manifest entry's Astro attribution and the lookup will return the
  * matching per-occurrence index entry when one exists.
+ * `readableEntryFiles` are the collection entries the page may show (see `findInImageIndex`).
  */
 export async function findImageSourceLocation(
 	imageSrc: string,
-	imageSrcSet?: string,
-	pageFiles?: readonly string[],
-	preferredLocation?: { file?: string; line?: number; srcOccurrence?: number },
+	imageSrcSet: string | undefined,
+	pageFiles: readonly string[] | undefined,
+	preferredLocation: { file?: string; line?: number; srcOccurrence?: number } | undefined,
+	readableEntryFiles: ReadonlySet<string>,
 ): Promise<SourceLocation | undefined> {
 	// Use index if available (much faster)
 	if (isSearchIndexInitialized()) {
-		const result = findInImageIndex(imageSrc, pageFiles, preferredLocation)
+		const result = findInImageIndex(imageSrc, pageFiles, preferredLocation, readableEntryFiles)
 		if (result) return result
 
 		// Fallback: try URLs extracted from srcset
 		if (imageSrcSet) {
 			const srcsetUrls = parseSrcsetUrls(imageSrcSet)
 			for (const url of srcsetUrls) {
-				const srcsetResult = findInImageIndex(url, pageFiles, preferredLocation)
+				const srcsetResult = findInImageIndex(url, pageFiles, preferredLocation, readableEntryFiles)
 				if (srcsetResult) return srcsetResult
 			}
 		}

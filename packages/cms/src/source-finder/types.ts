@@ -110,6 +110,9 @@ export interface CollectionInfo {
 	file: string
 }
 
+/** Collection name → the fields of other collections that reference it. */
+export type CollectionReferenceIndex = Map<string, Array<{ collection: string; fieldName: string; isArray?: boolean }>>
+
 export interface MarkdownContent {
 	/** Frontmatter fields as key-value pairs with line numbers */
 	frontmatter: Record<string, { value: string; line: number }>

@@ -34,6 +34,9 @@ import {
 import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry } from '../../../src/source-finder/types'
 import { setupAstroProjectStructure, withTempDir } from '../../utils'
 
+/** No collection entries are readable: collection hits are ignored. */
+const NO_ENTRIES: ReadonlySet<string> = new Set()
+
 // ============================================================================
 // collectAstroFiles Tests
 // ============================================================================
@@ -739,7 +742,7 @@ withTempDir('findInImageIndex', (getCtx) => {
 			src: '/images/hero.png',
 		})
 
-		const result = findInImageIndex('/images/hero.png')
+		const result = findInImageIndex('/images/hero.png', undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/Hero.astro')
@@ -751,7 +754,7 @@ withTempDir('findInImageIndex', (getCtx) => {
 		const ctx = getCtx()
 		await setupAstroProjectStructure(ctx)
 
-		const result = findInImageIndex('/images/nonexistent.png')
+		const result = findInImageIndex('/images/nonexistent.png', undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeUndefined()
 	})
@@ -773,7 +776,7 @@ withTempDir('findInImageIndex', (getCtx) => {
 			src: '/logo.png',
 		})
 
-		const result = findInImageIndex('/logo.png')
+		const result = findInImageIndex('/logo.png', undefined, undefined, NO_ENTRIES)
 
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/components/First.astro')
@@ -793,7 +796,7 @@ withTempDir('findInImageIndex', (getCtx) => {
 			src: '/shared.png',
 		})
 
-		const result = findInImageIndex('/shared.png', ['src/pages/page-b.astro'])
+		const result = findInImageIndex('/shared.png', ['src/pages/page-b.astro'], undefined, NO_ENTRIES)
 
 		expect(result?.file).toBe('src/pages/page-b.astro')
 		expect(result?.line).toBe(7)
@@ -807,7 +810,7 @@ withTempDir('findInImageIndex', (getCtx) => {
 			src: '/only.png',
 		})
 
-		const result = findInImageIndex('/only.png', ['src/pages/page-a.astro'])
+		const result = findInImageIndex('/only.png', ['src/pages/page-a.astro'], undefined, NO_ENTRIES)
 
 		expect(result?.file).toBe('src/components/Card.astro')
 	})
@@ -826,7 +829,7 @@ withTempDir('findInImageIndex', (getCtx) => {
 			src: '/x.jpg',
 		})
 
-		const result = findInImageIndex('/x.jpg', undefined, { file: 'src/pages/index.astro', line: 7 })
+		const result = findInImageIndex('/x.jpg', undefined, { file: 'src/pages/index.astro', line: 7 }, NO_ENTRIES)
 
 		expect(result?.line).toBe(7)
 	})
@@ -846,7 +849,7 @@ withTempDir('findInImageIndex', (getCtx) => {
 		})
 
 		const absolutePath = path.join(getProjectRoot(), 'src/pages/index.astro')
-		const result = findInImageIndex('/x.jpg', undefined, { file: absolutePath, line: 7 })
+		const result = findInImageIndex('/x.jpg', undefined, { file: absolutePath, line: 7 }, NO_ENTRIES)
 
 		expect(result?.line).toBe(7)
 	})
@@ -860,7 +863,7 @@ withTempDir('findInImageIndex', (getCtx) => {
 		})
 
 		// Astro attributed to the page, but the actual index entry lives in the component
-		const result = findInImageIndex('/y.jpg', undefined, { file: 'src/pages/index.astro', line: 99 })
+		const result = findInImageIndex('/y.jpg', undefined, { file: 'src/pages/index.astro', line: 99 }, NO_ENTRIES)
 
 		expect(result?.file).toBe('src/components/Card.astro')
 		expect(result?.line).toBe(3)
@@ -888,12 +891,12 @@ withTempDir('findInImageIndex', (getCtx) => {
 			file: 'src/pages/index.astro',
 			line: 2, // wrapper line — doesn't match any index entry
 			srcOccurrence: 0,
-		})
+		}, NO_ENTRIES)
 		const second = findInImageIndex('/x.jpg', undefined, {
 			file: 'src/pages/index.astro',
 			line: 2,
 			srcOccurrence: 1,
-		})
+		}, NO_ENTRIES)
 
 		expect(first?.line).toBe(5)
 		expect(second?.line).toBe(7)
@@ -916,8 +919,8 @@ withTempDir('findInImageIndex', (getCtx) => {
 			src: '/x.jpg',
 		})
 
-		const first = findInImageIndex('/x.jpg', ['src/pages/index.astro'], { srcOccurrence: 0 })
-		const second = findInImageIndex('/x.jpg', ['src/pages/index.astro'], { srcOccurrence: 1 })
+		const first = findInImageIndex('/x.jpg', ['src/pages/index.astro'], { srcOccurrence: 0 }, NO_ENTRIES)
+		const second = findInImageIndex('/x.jpg', ['src/pages/index.astro'], { srcOccurrence: 1 }, NO_ENTRIES)
 
 		expect(first?.line).toBe(14)
 		expect(second?.line).toBe(23)
@@ -946,12 +949,12 @@ withTempDir('findInImageIndex', (getCtx) => {
 			file: 'src/pages/podpora.astro',
 			line: 14, // matches an entry, but occurrence is the source of truth
 			srcOccurrence: 0,
-		})
+		}, NO_ENTRIES)
 		const second = findInImageIndex('/uploads/x.jpg', undefined, {
 			file: 'src/pages/podpora.astro',
 			line: 14, // would coincidentally match the first entry
 			srcOccurrence: 1,
-		})
+		}, NO_ENTRIES)
 
 		expect(first?.line).toBe(14)
 		expect(second?.line).toBe(23)
@@ -989,8 +992,8 @@ withTempDir('findInImageIndex e2e: same image twice on a page', (getCtx) => {
 
 		// Astro stamps absolute paths — pass one to verify normalization works end-to-end
 		const absolutePath = path.join(getProjectRoot(), 'src/pages/index.astro')
-		const hitFirst = findInImageIndex('/x.jpg', undefined, { file: absolutePath, line: first!.line })
-		const hitSecond = findInImageIndex('/x.jpg', undefined, { file: absolutePath, line: second!.line })
+		const hitFirst = findInImageIndex('/x.jpg', undefined, { file: absolutePath, line: first!.line }, NO_ENTRIES)
+		const hitSecond = findInImageIndex('/x.jpg', undefined, { file: absolutePath, line: second!.line }, NO_ENTRIES)
 
 		expect(hitFirst?.line).toBe(first!.line)
 		expect(hitSecond?.line).toBe(second!.line)
@@ -1141,12 +1144,12 @@ withTempDir('indexFileImages expression src', (getCtx) => {
 
 		indexFileImages(cached, 'src/components/Gallery.astro')
 
-		const resultA = findInImageIndex('/assets/a.png')
+		const resultA = findInImageIndex('/assets/a.png', undefined, undefined, NO_ENTRIES)
 		expect(resultA).toBeDefined()
 		expect(resultA?.file).toBe('src/components/Gallery.astro')
 		expect(resultA?.line).toBe(2)
 
-		const resultB = findInImageIndex('/assets/b.png')
+		const resultB = findInImageIndex('/assets/b.png', undefined, undefined, NO_ENTRIES)
 		expect(resultB).toBeDefined()
 	})
 })
@@ -1256,7 +1259,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/assets/alice.webp')
+		const result = findInImageIndex('/assets/alice.webp', undefined, undefined, new Set(['src/content/people/alice.json']))
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/content/people/alice.json')
 	})
@@ -1272,11 +1275,11 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const logoResult = findInImageIndex('/images/logo.png')
+		const logoResult = findInImageIndex('/images/logo.png', undefined, undefined, new Set(['src/content/config/settings.yaml']))
 		expect(logoResult).toBeDefined()
 		expect(logoResult?.file).toBe('src/content/config/settings.yaml')
 
-		const faviconResult = findInImageIndex('/images/favicon.ico')
+		const faviconResult = findInImageIndex('/images/favicon.ico', undefined, undefined, new Set(['src/content/config/settings.yaml']))
 		expect(faviconResult).toBeDefined()
 		expect(faviconResult?.file).toBe('src/content/config/settings.yaml')
 	})
@@ -1292,7 +1295,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/photos/hero.jpg')
+		const result = findInImageIndex('/photos/hero.jpg', undefined, undefined, new Set(['src/content/blog/post.md']))
 		expect(result).toBeDefined()
 		expect(result?.file).toBe('src/content/blog/post.md')
 	})
@@ -1308,7 +1311,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('alice@test.com')
+		const result = findInImageIndex('alice@test.com', undefined, undefined, new Set(['src/content/people/alice.json']))
 		expect(result).toBeUndefined()
 	})
 
@@ -1337,7 +1340,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/assets/abc123-photo.webp')
+		const result = findInImageIndex('/assets/abc123-photo.webp', undefined, undefined, new Set(['src/content/news/my-post.md']))
 		expect(result).not.toBeUndefined()
 		expect(result!.file).toContain('src/content/news/my-post.md')
 	})
@@ -1368,7 +1371,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/uploads/logo.png')
+		const result = findInImageIndex('/uploads/logo.png', undefined, undefined, new Set(['src/content/partners/acme.json']))
 		expect(result).not.toBeUndefined()
 		expect(result!.file).toContain('src/content/partners/acme.json')
 	})
@@ -1387,7 +1390,7 @@ withTempDir('content collection image indexing', (getCtx) => {
 
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/images/static-hero.jpg')
+		const result = findInImageIndex('/images/static-hero.jpg', undefined, undefined, NO_ENTRIES)
 		expect(result).not.toBeUndefined()
 		expect(result!.file).toContain('src/pages/index.astro')
 	})

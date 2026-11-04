@@ -503,7 +503,7 @@ describe('findInImageIndex — collection data file preference', () => {
 		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/assets/c65c265604c3-8047-jpg.webp')
+		const result = findInImageIndex('/assets/c65c265604c3-8047-jpg.webp', undefined, undefined, new Set(['src/content/news/my-post.mdx']))
 		expect(result).not.toBeUndefined()
 		expect(result!.file).toContain('src/content/')
 		expect(result!.file).toContain('my-post.mdx')
@@ -534,9 +534,31 @@ describe('findInImageIndex — collection data file preference', () => {
 		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/uploads/acme-logo.png')
+		const result = findInImageIndex('/uploads/acme-logo.png', undefined, undefined, new Set(['src/content/partners/acme.json']))
 		expect(result).not.toBeUndefined()
 		expect(result!.file).toContain('src/content/partners/acme.json')
+	})
+
+	test('takes the template over collection data the page does not read', async () => {
+		await ctx.writeFile('src/pages/partners.astro', '---\n---\n<img src="/uploads/acme-logo.png" alt="ACME" />')
+		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({ name: 'ACME', logo: '/uploads/acme-logo.png' }, null, 2))
+
+		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		expect(findInImageIndex('/uploads/acme-logo.png', undefined, undefined, new Set())?.file).toBe('src/pages/partners.astro')
+	})
+
+	test('takes the template when two entries the page reads hold the URL', async () => {
+		await ctx.writeFile('src/pages/partners.astro', '---\n---\n<img src="/uploads/acme-logo.png" alt="ACME" />')
+		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({ name: 'ACME', logo: '/uploads/acme-logo.png' }, null, 2))
+		await ctx.writeFile('src/content/partners/acme-eu.json', JSON.stringify({ name: 'ACME EU', logo: '/uploads/acme-logo.png' }, null, 2))
+
+		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
+		await initializeSearchIndex()
+
+		const readable = new Set(['src/content/partners/acme.json', 'src/content/partners/acme-eu.json'])
+		expect(findInImageIndex('/uploads/acme-logo.png', undefined, undefined, readable)?.file).toBe('src/pages/partners.astro')
 	})
 
 	test('returns template match when URL only exists in template', async () => {
@@ -552,7 +574,7 @@ describe('findInImageIndex — collection data file preference', () => {
 		const { initializeSearchIndex, findInImageIndex } = await import('../../../src/source-finder/search-index')
 		await initializeSearchIndex()
 
-		const result = findInImageIndex('/images/hero.jpg')
+		const result = findInImageIndex('/images/hero.jpg', undefined, undefined, new Set())
 		expect(result).not.toBeUndefined()
 		expect(result!.file).toContain('src/pages/about.astro')
 	})
@@ -579,7 +601,7 @@ describe('findInImageIndex — collection data file preference', () => {
 		await initializeSearchIndex()
 
 		// Suffix match: /uploads/photo.webp
-		const result = findInImageIndex('/uploads/photo.webp')
+		const result = findInImageIndex('/uploads/photo.webp', undefined, undefined, new Set(['src/content/team/alice.yaml']))
 		// Should prefer the collection data file
 		if (result) {
 			expect(result.file).toContain('src/content/')
@@ -623,7 +645,13 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 		const { findImageSourceLocation, initializeSearchIndex } = await import('../../../src/source-finder')
 
 		// Before index is built: falls back to slow directory search (only scans pages/components/layouts)
-		const beforeResult = await findImageSourceLocation('/assets/hash123-photo.webp')
+		const beforeResult = await findImageSourceLocation(
+			'/assets/hash123-photo.webp',
+			undefined,
+			undefined,
+			undefined,
+			new Set(['src/content/news/post.md']),
+		)
 		// May find in template or return undefined — either way NOT the collection file
 		if (beforeResult) {
 			expect(beforeResult.file).not.toContain('src/content/')
@@ -631,7 +659,13 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 
 		// After index is built: should prefer the collection data file
 		await initializeSearchIndex()
-		const afterResult = await findImageSourceLocation('/assets/hash123-photo.webp')
+		const afterResult = await findImageSourceLocation(
+			'/assets/hash123-photo.webp',
+			undefined,
+			undefined,
+			undefined,
+			new Set(['src/content/news/post.md']),
+		)
 		expect(afterResult).not.toBeUndefined()
 		expect(afterResult!.file).toContain('src/content/news/post.md')
 	})
@@ -691,7 +725,7 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 
 		// Build index — should find collection file
 		await initializeSearchIndex()
-		const result1 = await findImageSourceLocation('/assets/test-image.jpg')
+		const result1 = await findImageSourceLocation('/assets/test-image.jpg', undefined, undefined, undefined, new Set(['src/content/team/bob.json']))
 		expect(result1).not.toBeUndefined()
 		expect(result1!.file).toContain('src/content/')
 
@@ -699,7 +733,7 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 		clearCache()
 
 		// Without re-initialization, fallback search won't find collection files
-		const result2 = await findImageSourceLocation('/assets/test-image.jpg')
+		const result2 = await findImageSourceLocation('/assets/test-image.jpg', undefined, undefined, undefined, new Set(['src/content/team/bob.json']))
 		// Falls to slow search which only checks pages/components/layouts
 		if (result2) {
 			expect(result2.file).not.toContain('src/content/')
@@ -707,7 +741,7 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 
 		// Re-initialize — collection file should be preferred again
 		await initializeSearchIndex()
-		const result3 = await findImageSourceLocation('/assets/test-image.jpg')
+		const result3 = await findImageSourceLocation('/assets/test-image.jpg', undefined, undefined, undefined, new Set(['src/content/team/bob.json']))
 		expect(result3).not.toBeUndefined()
 		expect(result3!.file).toContain('src/content/')
 	})
@@ -731,7 +765,7 @@ describe('race condition: clearSourceFinderCache + re-resolution', () => {
 		])
 
 		// Both should succeed, index should be valid
-		const result = await findImageSourceLocation('/assets/concurrent.jpg')
+		const result = await findImageSourceLocation('/assets/concurrent.jpg', undefined, undefined, undefined, new Set())
 		expect(result).not.toBeUndefined()
 	})
 })

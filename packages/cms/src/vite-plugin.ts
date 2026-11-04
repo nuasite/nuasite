@@ -46,8 +46,9 @@ export function createVitePlugin(context: VitePluginContext): Plugin[] {
 		},
 	}
 
-	// File extensions that are indexed by the CMS search index
-	const INDEXED_EXTENSIONS = /\.(astro|tsx|jsx|json|ya?ml|mdx?)$/
+	// File extensions the CMS indexes or parses: templates, data, and the script modules whose
+	// `astro:content` reads decide which collections a page can show
+	const INDEXED_EXTENSIONS = /\.(astro|[cm]?[jt]sx?|json|ya?ml|mdx?)$/
 
 	// Stable handler reference so configureServer re-entry doesn't leak listeners
 	const onFileChange = (filePath: string) => {
