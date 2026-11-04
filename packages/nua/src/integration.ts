@@ -72,9 +72,11 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 					)
 				}
 
-				// Captured for `_redirects`. The `redirects: {}` passed to `updateConfig` below does not clear
-				// them: Astro deep-merges config updates, so it still renders its own meta-refresh pages.
+				// A build ships them as `_redirects` rules only. `updateConfig` deep-merges, so it cannot clear
+				// them; the config Astro reads them from is the one passed here. Dev has no `_redirects`, so
+				// Astro keeps serving them there.
 				capturedRedirects = config.redirects ?? {}
+				if (command === 'build') config.redirects = {}
 
 				// CMS list-style directives (`:::list{.class}`) need `remark-directive`
 				// in the markdown pipeline, both to render `<ul class="class">` and to
@@ -92,7 +94,6 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 
 				// Inject Vite plugins and integrations.
 				updateConfig({
-					redirects: {},
 					vite: {
 						plugins: vitePlugins,
 						ssr: {
