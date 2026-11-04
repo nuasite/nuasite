@@ -2,7 +2,6 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { PageMeta, RedirectMeta } from './types.ts'
 
-export const AGENTS_PATH = path.resolve('AGENTS.md')
 export const SUMMARY_START = '<page_summary>'
 export const SUMMARY_END = '</page_summary>'
 
@@ -143,20 +142,20 @@ const createJsonlRecords = (pages: PageMeta[], redirects: RedirectMeta[]): strin
 	return records
 }
 
-export const updateAgentsSummary = async (pages: PageMeta[], redirects: RedirectMeta[]): Promise<void> => {
+export const updateAgentsSummary = async (agentsPath: string, pages: PageMeta[], redirects: RedirectMeta[]): Promise<void> => {
 	const jsonlRecords = createJsonlRecords(pages, redirects)
 	const summaryBody = jsonlRecords.join('\n')
 	const summaryBlock = summaryBody
 		? `${SUMMARY_START}\n${summaryBody}\n${SUMMARY_END}\n`
 		: `${SUMMARY_START}\n${SUMMARY_END}\n`
-	const agentsContent = await fs.readFile(AGENTS_PATH, 'utf8').catch(() => '')
+	const agentsContent = await fs.readFile(agentsPath, 'utf8').catch(() => '')
 
 	if (agentsContent.includes(SUMMARY_START) && agentsContent.includes(SUMMARY_END)) {
 		const startIndex = agentsContent.indexOf(SUMMARY_START)
 		const summaryEndIndex = agentsContent.indexOf(SUMMARY_END, startIndex)
 		if (summaryEndIndex === -1) {
 			const recovered = `${agentsContent.slice(0, startIndex)}${summaryBlock}`
-			await fs.writeFile(AGENTS_PATH, recovered, 'utf8')
+			await fs.writeFile(agentsPath, recovered, 'utf8')
 			return
 		}
 
@@ -166,11 +165,11 @@ export const updateAgentsSummary = async (pages: PageMeta[], redirects: Redirect
 		}
 
 		const updated = `${agentsContent.slice(0, startIndex)}${summaryBlock}${agentsContent.slice(endIndex)}`
-		await fs.writeFile(AGENTS_PATH, updated, 'utf8')
+		await fs.writeFile(agentsPath, updated, 'utf8')
 		return
 	}
 
 	const prefix = agentsContent.trimEnd()
 	const separator = prefix.length === 0 ? '' : '\n'
-	await fs.writeFile(AGENTS_PATH, `${prefix}${separator}${summaryBlock}`, 'utf8')
+	await fs.writeFile(agentsPath, `${prefix}${separator}${summaryBlock}`, 'utf8')
 }

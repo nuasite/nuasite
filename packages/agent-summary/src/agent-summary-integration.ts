@@ -7,10 +7,15 @@ import { extractMetaFromHtml, formatDestination, normalizeRoute, resolveHtmlPath
 export const agentsSummary = (): AstroIntegration => {
 	const redirectPathnames = new Set<string>()
 	const redirects: RedirectMeta[] = []
+	// Next to the site's sources, which need not be the working directory (`astro build --root site`).
+	let agentsPath: string | undefined
 
 	return {
 		name: 'agents-summary',
 		hooks: {
+			'astro:config:done': ({ config }) => {
+				agentsPath = fileURLToPath(new URL('AGENTS.md', config.root))
+			},
 			'astro:routes:resolved': ({ routes }) => {
 				redirectPathnames.clear()
 				redirects.length = 0
@@ -74,7 +79,8 @@ export const agentsSummary = (): AstroIntegration => {
 					return
 				}
 
-				await updateAgentsSummary(summaries, redirects)
+				if (agentsPath === undefined) throw new Error('agents-summary: astro:build:done ran before astro:config:done')
+				await updateAgentsSummary(agentsPath, summaries, redirects)
 				logger.info(`Updated AGENTS.md with ${summaries.length} page entries${redirects.length > 0 ? ` and ${redirects.length} redirects` : ''}.`)
 			},
 		},
