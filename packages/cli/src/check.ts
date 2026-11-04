@@ -48,6 +48,10 @@ function parseFailOn(args: string[]): string[] | null {
 	return value.split(',').map(file => file.trim()).filter(Boolean).map(file => path.normalize(file))
 }
 
+/** The files the syntax pass parses, as `checkCode` globs them. */
+const CODE_FILE = /\.(astro|ts|tsx|mts|cts|css)$/
+const DECLARATION_FILE = /\.d\.[mc]?ts$/
+
 const ASTRO_CONFIG_NAMES = ['astro.config.ts', 'astro.config.mts', 'astro.config.mjs', 'astro.config.js']
 
 const hasAstroConfig = (dir: string): boolean => ASTRO_CONFIG_NAMES.some(name => existsSync(path.join(dir, name)))
@@ -117,12 +121,13 @@ export async function check(options: CheckOptions): Promise<number> {
 	const reports = await Promise.all(roots.map(async root => {
 		const absolute = path.join(options.cwd, root)
 		const content = prefixed(await checkContent(createNodeFs(absolute), schemas ? { schemas } : {}), root)
-		if (options.contentOnly) return { ...content, files: 0 }
+		if (options.contentOnly) return { ...content, files: 0, paths: [] }
 		const code = await checkCode(absolute)
 		return {
 			...content,
 			findings: [...content.findings, ...code.findings.map(finding => ({ ...finding, file: path.join(root, finding.file) }))],
 			files: code.files,
+			paths: code.paths.map(file => path.join(root, file)),
 		}
 	}))
 
@@ -137,13 +142,18 @@ export async function check(options: CheckOptions): Promise<number> {
 	const warnings = report.findings.length - errors
 	// An agent may list a file by its absolute path; findings are relative to the cwd.
 	const failOn = options.failOn === null ? null : new Set(options.failOn.map(file => path.relative(options.cwd, path.resolve(options.cwd, file))))
+	// Under --strict a warning in a listed file fails as well, as it would without --fail-on.
 	const failing = failOn === null
 		? errors
-		: report.findings.filter(finding => finding.severity === 'error' && failOn.has(path.normalize(finding.file))).length
+		: report.findings.filter(finding => (finding.severity === 'error' || options.strict) && failOn.has(path.normalize(finding.file))).length
+	// A listed source file no root parsed, e.g. one outside every Astro project: nothing vouches for it, so say so
+	// rather than let the summary read as a pass. Content files are left out: the content check reads them by collection.
+	const parsed = new Set(reports.flatMap(one => one.paths))
+	const unchecked = failOn === null ? [] : [...failOn].filter(file => CODE_FILE.test(file) && !DECLARATION_FILE.test(file) && !parsed.has(file))
 
 	if (options.json) {
 		// The reason belongs inside the payload: a stray line would break anything parsing this.
-		const failOnErrors = failOn === null ? {} : { failOnErrors: failing }
+		const failOnErrors = failOn === null ? {} : { failOnErrors: failing, failOnUnchecked: unchecked }
 		console.log(JSON.stringify({ ...report, roots, liveSchemas: 'schemas' in live ? 'ran' : live.skipped, ...failOnErrors }, null, 2))
 	} else {
 		const formatted = formatCheckReport(report)
@@ -155,11 +165,15 @@ export async function check(options: CheckOptions): Promise<number> {
 		// A check that did not run must not read as a pass.
 		if ('skipped' in live) console.log(`Live schema rules did not run: ${live.skipped}`)
 		if (failOn !== null) {
+			const covered = failOn.size - unchecked.length
 			console.log(
 				failing === 0
-					? `No errors in the ${failOn.size} file(s) given to --fail-on.`
-					: `${failing} error(s) in the files given to --fail-on. Fix them before going on.`,
+					? `No errors in the ${covered} file(s) given to --fail-on that were checked.`
+					: `${failing} problem(s) in the files given to --fail-on. Fix them before going on.`,
 			)
+			if (unchecked.length > 0) {
+				console.log(`Not checked by this run (outside every Astro project here, in public/, or missing): ${unchecked.join(', ')}`)
+			}
 		}
 	}
 

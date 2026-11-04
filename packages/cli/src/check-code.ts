@@ -19,8 +19,11 @@ import { transform } from '@astrojs/compiler'
 import { originalPositionFor, TraceMap } from '@jridgewell/trace-mapping'
 import type { CheckFinding } from '@nuasite/cms-core'
 import { Glob } from 'bun'
+import { createRequire } from 'node:module'
 import path from 'node:path'
-import { compile } from 'tailwindcss'
+import { compile as bundledCompile } from 'tailwindcss'
+
+type Compile = typeof bundledCompile
 
 /** Directories that are never the project's own source. */
 const IGNORED = ['node_modules', 'dist', '.astro', '.git', '.output', '.vercel', '.netlify']
@@ -136,7 +139,23 @@ function lineAndColumn(source: string, offset: number): { line: number; column: 
 	return { line, column: offset - before.lastIndexOf('\n') }
 }
 
-async function checkCssFile(absolute: string, relative: string, source: string): Promise<CheckFinding | null> {
+/**
+ * The site's own Tailwind when it has one, else the copy this CLI ships. Its parser's strictness moved between
+ * versions (4.0 accepts `color red;`, 4.1 refuses it), and the check has to refuse what the site's build refuses.
+ */
+async function compileFor(root: string): Promise<Compile> {
+	try {
+		const module: unknown = await import(createRequire(path.join(root, 'package.json')).resolve('tailwindcss'))
+		if (typeof module === 'object' && module !== null && 'compile' in module && typeof module.compile === 'function') {
+			return module.compile as Compile
+		}
+	} catch {
+		// Not installed in the site, or not loadable from here: the bundled parser is the next best judge.
+	}
+	return bundledCompile
+}
+
+async function checkCssFile(compile: Compile, absolute: string, relative: string, source: string): Promise<CheckFinding | null> {
 	try {
 		// Imports and plugins resolve to nothing: each stylesheet is parsed on its own, and loading the
 		// project's would only add errors that are not syntax.
@@ -163,6 +182,8 @@ async function checkCssFile(absolute: string, relative: string, source: string):
 export interface CodeCheckResult {
 	findings: CheckFinding[]
 	files: number
+	/** The files parsed, relative to the root: what `--fail-on` can vouch for. */
+	paths: string[]
 }
 
 /** Parse every `.astro`/`.ts`/`.tsx`/`.css` under `root`; order is by path. */
@@ -178,6 +199,7 @@ export async function checkCode(root: string): Promise<CodeCheckResult> {
 	}
 	paths.sort()
 
+	const compile = paths.some(relative => relative.endsWith('.css')) ? await compileFor(root) : bundledCompile
 	for (const relative of paths) {
 		files++
 		const absolute = path.join(root, relative)
@@ -185,10 +207,10 @@ export async function checkCode(root: string): Promise<CodeCheckResult> {
 		const finding = relative.endsWith('.astro')
 			? await checkAstroFile(absolute, relative, source)
 			: relative.endsWith('.css')
-			? await checkCssFile(absolute, relative, source)
+			? await checkCssFile(compile, absolute, relative, source)
 			: checkScriptFile(relative, source, relative.endsWith('.tsx') ? 'tsx' : 'ts')
 		if (finding) findings.push(finding)
 	}
 
-	return { findings, files }
+	return { findings, files, paths }
 }

@@ -99,6 +99,19 @@ describe('checkCode', () => {
 		expect(findings).toEqual([])
 	})
 
+	// Tailwind's parser grew stricter between versions, so a site is judged by the Tailwind it builds with.
+	test("stylesheets are parsed with the site's own tailwindcss when it has one", async () => {
+		await write('node_modules/tailwindcss/package.json', JSON.stringify({ name: 'tailwindcss', main: 'index.js' }))
+		await write(
+			'node_modules/tailwindcss/index.js',
+			'exports.compile = async () => { throw new Error("x.css:1:1: Missing closing } at the-site-parser") }\n',
+		)
+		await write('src/styles/ok.css', '.a { color: red; }\n')
+
+		const { findings } = await checkCode(root)
+		expect(findings.map(finding => finding.message)).toEqual(['Missing closing } at the-site-parser'])
+	})
+
 	test('a clean project reports nothing', async () => {
 		await write('src/pages/index.astro', '---\nconst title = "Ahoj"\n---\n<h1>{title}</h1>\n')
 		await write('src/lib/util.ts', 'export const two = 1 + 1\n')

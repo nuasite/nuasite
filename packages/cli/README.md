@@ -93,11 +93,16 @@ Tailwind's CSS parser, because the build runs every stylesheet through it, Tailw
 not. It refuses what a browser quietly repairs: a rule left without its closing `}`,
 a stray `}`, an unterminated string, a declaration without its colon. Only those syntax
 errors are reported. What only the whole project can settle, such as `@apply` of a
-utility its theme defines, is left to the build.
+utility its theme defines, is left to the build. The parser is the site's own
+`tailwindcss` when it has one installed, since its strictness changed between
+versions, and the copy this CLI ships otherwise.
 
 `--fail-on` is for a commit: it still reports every problem, but fails only on errors
 in the files it lists (comma-separated, relative to where the command runs), so a
 change cannot add a broken file while an error it did not touch does not block it.
+With `--strict`, warnings in the listed files fail too. A listed source file the run
+did not parse (outside every Astro project, in `public/`, or missing) is named in the
+output, so a gate on it does not read as a pass.
 
 Use it instead of a full build when you only need to know whether the content is
 still valid: `astro build` validates the same things but costs the whole render

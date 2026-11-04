@@ -254,6 +254,22 @@ describe('check --fail-on', () => {
 		expect(await quiet(() => check({ ...options(['src/styles/new.css', 'src/styles/old.css']), contentOnly: false }))).toBe(1)
 	})
 
+	test('a listed source file the run did not parse is named, not passed over in silence', async () => {
+		const lines: string[] = []
+		const original = console.log
+		console.log = (...args: unknown[]) => lines.push(args.join(' '))
+		try {
+			const code = await check({ ...options(['src/styles/new.css', 'packages/shared/x.css', 'public/vendor.css']), contentOnly: false })
+			expect(code).toBe(0)
+		} finally {
+			console.log = original
+		}
+		expect(lines.join('\n')).toContain('No errors in the 1 file(s) given to --fail-on that were checked.')
+		expect(lines.join('\n')).toContain(
+			'Not checked by this run (outside every Astro project here, in public/, or missing): packages/shared/x.css, public/vendor.css',
+		)
+	})
+
 	test('a file listed by its absolute path counts as listed', async () => {
 		expect(await quiet(() => check({ ...options([path.join(workspace, 'src/styles/old.css')]), contentOnly: false }))).toBe(1)
 	})
