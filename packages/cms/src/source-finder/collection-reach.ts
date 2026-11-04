@@ -1,9 +1,10 @@
 import { analyzeAstroScript, type AstroSourceAnalysis } from '@nuasite/cms-core'
 import path from 'node:path'
 
-import type { CollectionDefinition } from '../types.ts'
+import type { CollectionDefinition, ManifestEntry } from '../types.ts'
 import { resolveSourcePath } from '../utils.ts'
 import { getCachedParsedFile } from './ast-parser.ts'
+import { projectRelativeSource } from './source-files.ts'
 import type { CachedParsedFile } from './types.ts'
 import { resolveImportPath } from './variable-extraction.ts'
 
@@ -23,14 +24,9 @@ function analysisOf(filePath: string, parsed: CachedParsedFile): AstroSourceAnal
 }
 
 /**
- * The collections a page can render content from: those read through `astro:content` anywhere in
- * the static module graph of `files` (the page and the components it renders), the `seeds`
- * (collections the page is known to show), and every collection one of them references.
- *
- * A value found in a collection is attributed to it only when the collection is in this set:
- * equal text in a collection the page never reads (a nav label matching some article's title) is
- * not that article. The set over-approximates: a module that reads a collection may not render it.
- * A `getCollection` whose name is not a string literal can read any collection.
+ * The collections read through `astro:content` in the static module graph of `files`, plus the
+ * `seeds` and every collection they reference; a non-literal `getCollection` name reads them all.
+ * A value is attributed to a collection only within this set, which over-approximates what renders.
  */
 export async function collectionsReadBy(
 	files: readonly string[],
@@ -74,6 +70,24 @@ export async function collectionsReadBy(
 		}
 	}
 	return new Set([...read].filter(name => collections[name]))
+}
+
+/**
+ * The collections a page reads, walked from its own files, the files it is rendered from and every
+ * file one of its elements is annotated with. The collections its entries are tagged with are seeds.
+ */
+export function collectionsReadByPage(
+	entries: Record<string, ManifestEntry>,
+	files: readonly string[],
+	collections: Record<string, CollectionDefinition>,
+): Promise<Set<string>> {
+	const rendered = new Set(files.map(projectRelativeSource))
+	const shown = new Set<string>()
+	for (const entry of Object.values(entries)) {
+		if (entry.sourcePath) rendered.add(projectRelativeSource(entry.sourcePath))
+		if (entry.collectionName) shown.add(entry.collectionName)
+	}
+	return collectionsReadBy([...rendered], collections, shown)
 }
 
 /** The data files of the entries of `names`, as the indexes spell them (project-relative). */

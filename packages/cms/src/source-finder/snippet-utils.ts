@@ -8,8 +8,14 @@ import type { Attribute, CollectionDefinition, ManifestEntry } from '../types.ts
 import { escapeRegex, generateSourceHash, resolveSourcePath } from '../utils.ts'
 import { buildDefinitionPath } from './ast-extractors.ts'
 import { getCachedParsedFile } from './ast-parser.ts'
-import { buildCollectionTextIndex, findFieldInCollectionEntry, findFieldsInCollectionEntry, lookupCollectionText } from './collection-finder.ts'
-import { collectionsReadBy, entryFilesOf } from './collection-reach.ts'
+import {
+	buildCollectionTextIndex,
+	findFieldInCollectionEntry,
+	findFieldsInCollectionEntry,
+	lookupCollectionText,
+	readableCollectionsHoldText,
+} from './collection-finder.ts'
+import { collectionsReadByPage, entryFilesOf } from './collection-reach.ts'
 import { findAttributeSourceLocation, searchForExpressionProp, searchForPropInParents } from './cross-file-tracker.ts'
 import { findImageElementNearLine, findImageSourceLocation } from './image-finder.ts'
 import {
@@ -762,19 +768,10 @@ export async function enhanceManifestWithSourceSnippets(
 	}
 
 	// The collections a value found in collection data may be attributed to, computed on first need.
-	// The page is rendered from its own files, its components and every file an element is annotated with.
 	let readable: Promise<ReadonlySet<string>> | undefined
 	const readableCollections = (): Promise<ReadonlySet<string>> => {
 		if (!collectionDefinitions) return Promise.resolve(new Set())
-		if (!readable) {
-			const rendered = new Set([...(pageFiles ?? []), ...(page?.renderedFiles ?? [])].map(projectRelativeSource))
-			const shown = new Set<string>()
-			for (const entry of Object.values(entries)) {
-				if (entry.sourcePath) rendered.add(projectRelativeSource(entry.sourcePath))
-				if (entry.collectionName) shown.add(entry.collectionName)
-			}
-			readable = collectionsReadBy([...rendered], collectionDefinitions, shown)
-		}
+		readable ??= collectionsReadByPage(entries, [...(pageFiles ?? []), ...(page?.renderedFiles ?? [])], collectionDefinitions)
 		return readable
 	}
 
@@ -965,6 +962,13 @@ export async function enhanceManifestWithSourceSnippets(
 				? findVariableHitInFile(trimmedEntryText, entry.tag, entry.sourcePath)
 				: undefined
 			const noCoords = !entry.sourcePath || !entry.sourceLine
+			if (!sameFileHit && noCoords) {
+				const readable = await readableCollections()
+				const collectionSource = lookupCollectionText(trimmedEntryText, referenceIndex, readable)
+				if (collectionSource) return [id, applyCollectionSource(entry, collectionSource, referenceIndex, { allowStyling: false })] as const
+				// Collection content no one entry holds is not equal text in some template either.
+				if (readableCollectionsHoldText(trimmedEntryText, readable)) return [id, entry] as const
+			}
 			const winner = sameFileHit ?? (noCoords ? findInTextIndex(trimmedEntryText, entry.tag, pageFiles, page?.renderedFiles) : undefined)
 
 			if (winner) {
@@ -1140,8 +1144,9 @@ export async function enhanceManifestWithSourceSnippets(
 					// Search collection frontmatter — text rendered on listing pages
 					// from collection entries (e.g. {post.data.title}) won't be found
 					// through AST or prop lookups since the value lives in a .md file
+					const readable = await readableCollections()
 					if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
-						const mdSource = lookupCollectionText(trimmedText, referenceIndex, await readableCollections())
+						const mdSource = lookupCollectionText(trimmedText, referenceIndex, readable)
 						if (mdSource) {
 							return [
 								id,
@@ -1160,7 +1165,11 @@ export async function enhanceManifestWithSourceSnippets(
 					// index stores relative ones, so both sides are normalized before the
 					// comparison — otherwise a same-file hit always looks like a new location
 					// and overwrites the coordinates Astro already gave us.
-					const indexHit = findInTextIndex(trimmedText, entry.tag, pageFiles, page?.renderedFiles)
+					// A value several entries of a read collection hold is still collection content: equal
+					// text in another template is not where it was rendered from.
+					const indexHit = readableCollectionsHoldText(trimmedText, readable)
+						? undefined
+						: findInTextIndex(trimmedText, entry.tag, pageFiles, page?.renderedFiles)
 					if (indexHit && indexHit.file !== toProjectRelativePath(entry.sourcePath)) {
 						const resolved = await applyTranslationSource(entry, indexHit, attributes, colorClasses)
 						return [id, resolved] as const
@@ -1191,10 +1200,8 @@ export async function enhanceManifestWithSourceSnippets(
 	for (const [id, entry] of results) {
 		enhanced[id] = entry
 	}
-	// Post-processing: tag entries whose text comes from collection data with that collection entry
-	// and, for a referenced collection, the reference. The pre-built text index makes each lookup O(1).
-	// An entry is tagged only where its own source already is that data: on an entry's page, when the
-	// text is held by an entry its collection references; elsewhere, when the match is its source file.
+	// Tag entries whose text comes from collection data with that entry and any reference: on an
+	// entry's page, from collections its collection references; elsewhere, only when the match is its own source.
 	if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
 		await buildCollectionTextIndex(collectionDefinitions)
 

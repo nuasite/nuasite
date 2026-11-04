@@ -23,7 +23,7 @@ export { findAttributeSourceLocation } from './cross-file-tracker.ts'
 export { findImageSourceLocation } from './image-finder.ts'
 
 // Collections a page reads
-export { collectionsReadBy, entryFilesOf } from './collection-reach.ts'
+export { collectionsReadBy, collectionsReadByPage, entryFilesOf } from './collection-reach.ts'
 
 // Collection/markdown finding
 export {
@@ -34,6 +34,7 @@ export {
 	findMarkdownSourceLocation,
 	lookupCollectionText,
 	parseMarkdownContent,
+	readableCollectionsHoldText,
 } from './collection-finder.ts'
 
 // Snippet utilities (used by html-processor)

@@ -151,27 +151,30 @@ function collectFromYamlNode(
 }
 
 /**
- * The one collection entry holding a value, found in the pre-built collection text index.
- *
- * Only collections in `readable` count (see `collectionsReadBy`), and among them a value held by
- * more than one entry belongs to none: an equal value is no evidence of which entry was rendered.
- * Entries of a referenced collection are preferred, so a reference shown on an entry's page
- * resolves to the referenced entry. Within the one entry, the value's first occurrence is taken.
+ * The one entry of a `readable` collection (see `collectionsReadBy`) that holds a value. A value
+ * held by several entries belongs to none; entries of a referenced collection are preferred.
  */
 export function lookupCollectionText(
 	textContent: string,
 	referenceIndex: CollectionReferenceIndex,
 	readable: ReadonlySet<string>,
 ): SourceLocation | undefined {
-	const index = getCollectionTextIndex()
-	if (!index) return undefined
-	const locations = (index.get(normalizeText(textContent)) ?? [])
-		.filter(location => location.collectionName !== undefined && readable.has(location.collectionName))
+	const locations = readableTextLocations(textContent, readable)
 	const referenced = locations.filter(location => location.collectionName !== undefined && referenceIndex.has(location.collectionName))
 	const candidates = referenced.length > 0 ? referenced : locations
 	const first = candidates[0]
 	if (!first || candidates.some(location => location.file !== first.file)) return undefined
 	return first
+}
+
+/** Whether an entry of a `readable` collection holds the value, whether or not one entry can be told apart. */
+export function readableCollectionsHoldText(textContent: string, readable: ReadonlySet<string>): boolean {
+	return readableTextLocations(textContent, readable).length > 0
+}
+
+function readableTextLocations(textContent: string, readable: ReadonlySet<string>): SourceLocation[] {
+	const locations = getCollectionTextIndex()?.get(normalizeText(textContent)) ?? []
+	return locations.filter(location => location.collectionName !== undefined && readable.has(location.collectionName))
 }
 
 // ============================================================================
