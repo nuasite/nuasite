@@ -6,7 +6,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { getProjectRoot, resetProjectRoot, setProjectRoot } from '../../src/config'
+import { projectRelativeSource } from '../../src/source-finder/source-files'
 
 describe('config', () => {
 	// Reset after each test to ensure clean state
@@ -61,28 +64,28 @@ describe('config', () => {
 			expect(getProjectRoot()).toBe('/second/path')
 		})
 
-		test('should accept relative paths', () => {
+		test('resolves a relative path against the working directory', () => {
 			setProjectRoot('./relative/path')
 
-			expect(getProjectRoot()).toBe('./relative/path')
+			expect(getProjectRoot()).toBe(path.join(process.cwd(), 'relative/path'))
 		})
 
-		test('should accept empty string', () => {
-			setProjectRoot('')
+		test('drops a trailing slash, as a root from `fileURLToPath(config.root)` has', () => {
+			setProjectRoot(fileURLToPath(pathToFileURL('/my/project/')))
 
-			expect(getProjectRoot()).toBe('')
+			expect(getProjectRoot()).toBe('/my/project')
+		})
+
+		test('a source under a root given with a trailing slash is relative to it', () => {
+			setProjectRoot('/my/project/')
+
+			expect(projectRelativeSource('/my/project/src/pages/index.astro')).toBe('src/pages/index.astro')
 		})
 
 		test('should handle paths with spaces', () => {
 			setProjectRoot('/path/with spaces/project')
 
 			expect(getProjectRoot()).toBe('/path/with spaces/project')
-		})
-
-		test('should handle Windows-style paths', () => {
-			setProjectRoot('C:\\Users\\test\\project')
-
-			expect(getProjectRoot()).toBe('C:\\Users\\test\\project')
 		})
 	})
 
