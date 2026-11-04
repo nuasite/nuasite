@@ -82,6 +82,8 @@ export class EditorService {
 	 * never receives entries without `sourcePath`, which it would treat as locked.
 	 */
 	private readonly pendingPhase2 = new Map<string, Promise<void>>()
+	/** On-demand source searches in flight, by page and entry, so repeated clicks share one search. */
+	private readonly pendingEntrySearch = new Map<string, Promise<void>>()
 
 	constructor(options: EditorServiceOptions) {
 		this.context = options.context
@@ -122,8 +124,12 @@ export class EditorService {
 		})
 	}
 
-	/** The manifest of a page {@link processPage} has seen, once its sources are resolved. */
-	async pageManifest(pagePath: string): Promise<PageManifestResponse | undefined> {
+	/**
+	 * The manifest of a page {@link processPage} has seen, once its sources are resolved.
+	 * `locateEntry` names an entry whose text the page load left without a source: it is searched
+	 * for across the project before the manifest is returned.
+	 */
+	async pageManifest(pagePath: string, options: { locateEntry?: string } = {}): Promise<PageManifestResponse | undefined> {
 		const inFlight = this.pendingPhase2.get(pagePath)
 		if (inFlight) {
 			try {
@@ -132,6 +138,7 @@ export class EditorService {
 				// Serve whatever partial manifest there is.
 			}
 		}
+		if (options.locateEntry !== undefined) await this.locateEntry(pagePath, options.locateEntry)
 		const pageData = this.manifestWriter.getPageManifest(pagePath)
 		if (!pageData) return undefined
 		const response: PageManifestResponse = {
@@ -143,6 +150,25 @@ export class EditorService {
 		if (pageData.collection) response.collection = pageData.collection
 		if (pageData.seo) response.seo = pageData.seo
 		return response
+	}
+
+	private async locateEntry(pagePath: string, entryId: string): Promise<void> {
+		const key = `${pagePath}\0${entryId}`
+		let search = this.pendingEntrySearch.get(key)
+		if (!search) {
+			const started = runInProjectContext(this.context, () => locateTextOnDemand(pagePath, entryId, this.manifestWriter))
+			search = started
+			this.pendingEntrySearch.set(key, started)
+			const forget = () => {
+				if (this.pendingEntrySearch.get(key) === started) this.pendingEntrySearch.delete(key)
+			}
+			started.then(forget, forget)
+		}
+		try {
+			await search
+		} catch (error) {
+			console.error('[cms] On-demand source search failed:', error)
+		}
 	}
 
 	/** The body of `/cms-manifest.json`: definitions, colors and every page the editor can link to. */
@@ -390,36 +416,19 @@ export async function enhanceManifestInBackground(
 		const page = pageSources(pageFiles, components)
 		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions, pageFiles, page)
 
-		// Fallback for entries without sourcePath — search index can still find them
+		// Images the snippet pass left without a source still get the image index. Text it left without
+		// one is searched for only when the editor asks (locateTextOnDemand): that search walks every
+		// source file, which a page with many such entries cannot pay on each load.
 		for (const entry of Object.values(enhanced)) {
-			if (entry.sourceSnippet || entry.sourcePath) continue
-			if (entry.imageMetadata?.src) {
-				const preferredLocation = entry.sourcePath || entry.imageMetadata.srcOccurrence !== undefined
-					? {
-						file: entry.sourcePath,
-						line: entry.sourceLine,
-						srcOccurrence: entry.imageMetadata.srcOccurrence,
-					}
-					: undefined
-				const loc = await findImageSourceLocation(
-					entry.imageMetadata.src,
-					entry.imageMetadata.srcSet,
-					pageFiles,
-					preferredLocation,
-				)
-				if (loc) {
-					entry.sourcePath = loc.file
-					entry.sourceLine = loc.line
-					entry.sourceSnippet = loc.snippet
-				}
-			} else if (entry.text && entry.tag) {
-				const loc = await findSourceLocation(entry.text, entry.tag, pageFiles, page.renderedFiles)
-				if (loc) {
-					entry.sourcePath = loc.file
-					entry.sourceLine = loc.line
-					entry.sourceSnippet = loc.snippet
-					if (loc.variableName) entry.variableName = loc.variableName
-				}
+			if (entry.sourceSnippet || entry.sourcePath || !entry.imageMetadata?.src) continue
+			const preferredLocation = entry.imageMetadata.srcOccurrence !== undefined
+				? { file: entry.sourcePath, line: entry.sourceLine, srcOccurrence: entry.imageMetadata.srcOccurrence }
+				: undefined
+			const loc = await findImageSourceLocation(entry.imageMetadata.src, entry.imageMetadata.srcSet, pageFiles, preferredLocation)
+			if (loc) {
+				entry.sourcePath = loc.file
+				entry.sourceLine = loc.line
+				entry.sourceSnippet = loc.snippet
 			}
 		}
 
@@ -428,6 +437,24 @@ export async function enhanceManifestInBackground(
 	} catch (error) {
 		console.error('[cms] Background enhancement failed:', error)
 	}
+}
+
+/**
+ * Search the whole project for the source of one text entry the page load left without one, and
+ * record what is found in the page's manifest. A page re-rendered meanwhile keeps its new manifest.
+ */
+async function locateTextOnDemand(pagePath: string, entryId: string, manifestWriter: ManifestWriter): Promise<void> {
+	const pageData = manifestWriter.getPageManifest(pagePath)
+	const entry = pageData?.entries[entryId]
+	if (!pageData || !entry || entry.sourcePath || entry.imageMetadata?.src || !entry.text || !entry.tag) return
+
+	const pageFiles = getPageFileCandidates(pagePath)
+	const location = await findSourceLocation(entry.text, entry.tag, pageFiles, pageSources(pageFiles, pageData.components).renderedFiles)
+	if (!location || manifestWriter.getPageManifest(pagePath) !== pageData) return
+
+	const located: ManifestEntry = { ...entry, sourcePath: location.file, sourceLine: location.line, sourceSnippet: location.snippet }
+	if (location.variableName) located.variableName = location.variableName
+	manifestWriter.addPage(pagePath, { ...pageData.entries, [entryId]: located }, pageData.components, pageData.collection, pageData.seo)
 }
 
 /** The files `components` say the page is rendered from: each component's own file and the file invoking it. */

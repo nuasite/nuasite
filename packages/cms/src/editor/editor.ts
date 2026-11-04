@@ -39,7 +39,19 @@ import {
 } from './storage.ts'
 import { STRINGS } from './strings.ts'
 import type { Attribute } from './types.ts'
-import type { AttributeChangePayload, ChangePayload, CmsConfig, ManifestEntry, SavedAttributeEdit } from './types.ts'
+import type {
+	AttributeChangePayload,
+	ChangePayload,
+	CmsConfig,
+	CmsManifest,
+	ManifestEntry,
+	SavedAttributeEdit,
+	SavedAttributeEdits,
+	SavedBackgroundImageEdits,
+	SavedColorEdits,
+	SavedEdits,
+	SavedImageEdits,
+} from './types.ts'
 
 // CSS attribute for markdown content elements
 const MARKDOWN_ATTRIBUTE = 'data-cms-markdown'
@@ -115,49 +127,44 @@ export function notifyLockedElement(): void {
 	signals.showToast(STRINGS.editor.lockedElement, 'info')
 }
 
+/** Locked entries being located, by CMS ID, so repeated clicks share one search. */
+const locatingEntries = new Map<string, Promise<void>>()
+
 /**
- * Manifest is built in two phases (fast HTML marking, then background source
- * resolution). Entering edit mode before phase 2 completes can pre-lock elements
- * that later gain a valid sourcePath, leaving stale locks on the DOM.
- *
- * On click, re-check the local snapshot, then re-fetch from the server in case
- * phase 2 finished since the editor took its snapshot. Toggle edit mode once
- * afterwards to make the now-unlocked element editable.
+ * A locked element has no source location yet. Clicking it asks the server to search the project
+ * for one (the page load leaves that search out, see `EditorService.pageManifest`); once found, the
+ * element is wired for editing in place, so open dialogs and other edits stay as they are.
  */
-function isUnlockable(entry: ManifestEntry | undefined): boolean {
-	return !!entry?.sourcePath && entry.textResolved !== false
+function handleLockedClick(event: Event, session: EditSession): void {
+	const target = event.currentTarget
+	// Its listener outlives a rewire, which removes the lock.
+	if (target instanceof HTMLElement && !target.hasAttribute(CSS.LOCKED_ATTRIBUTE)) return
+	const id = target instanceof HTMLElement ? target.getAttribute(CSS.ID_ATTRIBUTE) : null
+	if (id && !locatingEntries.has(id)) {
+		const locating = locateLockedEntry(id, session)
+			.catch(() => {})
+			.finally(() => locatingEntries.delete(id))
+		locatingEntries.set(id, locating)
+	}
+	notifyLockedElement()
 }
 
-let inFlightLockedFetch: Promise<unknown> | null = null
-function handleLockedClick(event: Event): void {
-	const target = event.currentTarget as HTMLElement | null
-	const id = target?.getAttribute(CSS.ID_ATTRIBUTE)
-	if (!target || !id) {
-		notifyLockedElement()
-		return
+async function locateLockedEntry(id: string, session: EditSession): Promise<void> {
+	// Phase 2 may have placed it since the session fetched its manifest; search only when it has not.
+	if (!signals.manifest.value.entries[id]?.sourcePath) {
+		const fresh = await fetchManifest(id)
+		if (session.signal.aborted) return
+		signals.setManifest(fresh)
 	}
+	const manifest = signals.manifest.value
+	if (session.signal.aborted || !manifest.entries[id]?.sourcePath) return
 
-	if (isUnlockable(signals.manifest.value.entries[id])) {
-		target.removeAttribute(CSS.LOCKED_ATTRIBUTE)
-		return
-	}
-
-	// In-memory signal can lag phase-2 writes. Coalesce concurrent clicks into
-	// one fetch so the dev server doesn't get hammered.
-	if (!inFlightLockedFetch) {
-		inFlightLockedFetch = fetchManifest()
-			.then((fresh) => signals.setManifest(fresh))
-			.catch(() => {})
-			.finally(() => {
-				inFlightLockedFetch = null
-			})
-	}
-	inFlightLockedFetch.then(() => {
-		if (isUnlockable(signals.manifest.value.entries[id])) {
-			target.removeAttribute(CSS.LOCKED_ATTRIBUTE)
-		}
-	})
-	notifyLockedElement()
+	// Looked up again: an HMR update may have replaced the element while the search ran.
+	const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${id}"]`)
+	if (!(el instanceof HTMLElement) || !el.hasAttribute(CSS.LOCKED_ATTRIBUTE)) return
+	el.removeAttribute(CSS.LOCKED_ATTRIBUTE)
+	wireElement(el, { ...session, manifest })
+	el.focus()
 }
 
 /** Test-only: reset toast throttle state between test cases. */
@@ -275,278 +282,21 @@ export async function startEditMode(
 		console.error('[CMS] Failed to load manifest:', err)
 		return
 	}
-	const savedBgImageEdits = loadBgImageEditsFromStorage()
-	const currentManifest = signals.manifest.value
-	const handedOver = new Set<string>()
-
-	getAllCmsElements().forEach(el => {
-		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
-		if (!cmsId) return
-
-		// Skip component elements - they should not be contentEditable
-		// Components are marked with data-cms-component-id and are block-level editable
-		if (el.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)) {
-			logDebug(config.debug, 'Skipping component element:', cmsId)
-			makeElementNonEditable(el)
-			return
-		}
-
-		if (!hasManifestEntry(currentManifest, cmsId)) {
-			logDebug(config.debug, 'Skipping element not in manifest:', cmsId)
-			makeElementNonEditable(el)
-			return
-		}
-
-		const manifestEntry = currentManifest.entries[cmsId]
-
-		// When the host edits collection entries, whatever edits one is handed to it instead of being
-		// edited here (see entryHandoverFor). An edit made here before is dropped: saved, it would
-		// overwrite the entry the host edits.
-		const handover = entryHandoverFor(el)
-		if (handover) {
-			logDebug(config.debug, 'Collection entry field, handed to the host:', cmsId, handover.entry.collection, handover.entry.slug)
-			dropEntryFieldEdit(el, cmsId, preEagerPaintDomState.get(cmsId)?.html)
-			handedOver.add(cmsId)
-			makeElementNonEditable(el)
-			setupEntryHandoverClickHandler(el, handover, editModeSignal)
-			return
-		}
-
-		// Check if this is a reference field element (e.g., author name from a referenced collection)
-		// Reference elements open a picker to change the reference, not inline text editing
-		if (manifestEntry?.referenceCollection && manifestEntry.referencedBy?.length) {
-			logDebug(config.debug, 'Reference element detected:', cmsId, manifestEntry.referenceCollection)
-			makeElementNonEditable(el)
-			setupReferenceClickHandler(config, el, cmsId, manifestEntry, currentManifest, editModeSignal)
-			return
-		}
-
-		// Check if this is a markdown content element
-		// Markdown elements use WYSIWYG editing instead of contentEditable
-		if (el.hasAttribute(MARKDOWN_ATTRIBUTE)) {
-			logDebug(config.debug, 'Markdown element detected:', cmsId)
-			makeElementNonEditable(el)
-			// Add click handler for markdown elements to open the editor
-			setupMarkdownClickHandler(config, el, cmsId, editModeSignal)
-			return
-		}
-
-		// Check if this is an image element
-		// Image elements open the media library for replacement
-		if (el.hasAttribute(IMAGE_ATTRIBUTE)) {
-			logDebug(config.debug, 'Image element detected:', cmsId)
-			makeElementNonEditable(el)
-			setupImageClickHandler(config, el as HTMLImageElement, cmsId, savedImageEdits[cmsId], editModeSignal, onStateChange)
-			return
-		}
-
-		// Check if this is a background image element
-		// Background image elements are edited via the bg image overlay panel
-		if (el.hasAttribute(BG_IMAGE_ATTRIBUTE)) {
-			logDebug(config.debug, 'Background image element detected:', cmsId)
-			makeElementNonEditable(el)
-			setupBgImageTracking(config, el, cmsId, savedBgImageEdits[cmsId])
-			return
-		}
-
-		// Without a source path the writer has nowhere to persist anything — lock the
-		// element so it can't be typed into and the user gets told why on click.
-		if (!manifestEntry?.sourcePath) {
-			logDebug(config.debug, 'Skipping element without source path:', cmsId)
-			makeElementNonEditable(el)
-			el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
-			el.addEventListener('click', handleLockedClick, { signal: editModeSignal })
-			return
-		}
-
-		// The source finder located the element but not its text, so typing into it
-		// could only fail on save. It stays selectable — its href, other attributes
-		// and colour classes are written from the opening tag and still work — it
-		// just isn't contenteditable.
-		if (manifestEntry.textResolved === false) {
-			logDebug(config.debug, 'Text not resolved to source, attributes only:', cmsId)
-			makeElementNonEditable(el)
-			return
-		}
-
-		makeElementEditable(el)
-
-		const stylingAllowed = manifestEntry?.allowStyling !== false
-
-		el.addEventListener('beforeinput', (e) => {
-			if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
-				e.preventDefault()
-			}
-			if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak') {
-				e.preventDefault()
-			}
-			if (!stylingAllowed && e.inputType?.startsWith('format')) {
-				e.preventDefault()
-				notifyFormattingBlocked()
-			}
-		}, { signal: editModeSignal })
-
-		// Paste and drop are intercepted on every editable element, not just the non-styleable
-		// ones: native paste of multi-line content makes the browser insert <div>/<br>, which
-		// `getEditableTextFromElement` turns into literal <br> markup in the source — the exact
-		// line break the `beforeinput` guard above refuses to let anyone type.
-		el.addEventListener('paste', (e) => {
-			const clipboard = (e as ClipboardEvent).clipboardData
-			if (!clipboard) return
-			const html = clipboard.getData('text/html')
-			const text = clipboard.getData('text/plain')
-			// Stay prevented even with nothing to insert. Letting an image or file paste fall
-			// through to the browser would drop an <img> into the element, and the source
-			// writer would persist it. Say so rather than appearing to swallow the paste.
-			e.preventDefault()
-			if (!text && !html) {
-				notifyUnsupportedPaste()
-				return
-			}
-			const selection = window.getSelection()
-			const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
-			applyPlainTextInsert(el, text, html, range, !stylingAllowed)
-		}, { signal: editModeSignal })
-
-		el.addEventListener('drop', (e) => {
-			const transfer = (e as DragEvent).dataTransfer
-			if (!transfer) return
-			const html = transfer.getData('text/html')
-			const text = transfer.getData('text/plain')
-			if (!text && !html) return
-			e.preventDefault()
-			let range = getCaretRangeFromPoint((e as DragEvent).clientX, (e as DragEvent).clientY)
-			if (!range) {
-				const selection = window.getSelection()
-				range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
-			}
-			applyPlainTextInsert(el, text, html, range, !stylingAllowed)
-		}, { signal: editModeSignal })
-
-		// Setup color tracking for elements with colorClasses in manifest
-		setupColorTracking(config, el, cmsId, savedColorEdits[cmsId])
-
-		// Setup attribute tracking for elements with editable attributes in manifest
-		setupAttributeTracking(config, el, cmsId, savedAttributeEdits[cmsId])
-
-		if (!signals.pendingChanges.value.has(cmsId)) {
-			const preEagerPaint = preEagerPaintDomState.get(cmsId)
-			const originalHTML = preEagerPaint?.html ?? el.innerHTML
-			const originalText = preEagerPaint?.text ?? getEditableTextFromElement(el)
-
-			logDebug(config.debug, 'Setting up element:', cmsId, 'originalText:', originalText)
-
-			const childCmsElements = getChildCmsElements(el)
-			const savedEdit = savedEdits[cmsId]
-
-			let currentHTML = originalHTML
-			let newText = originalText
-			let isDirty = false
-
-			if (savedEdit) {
-				// Use currentHTML for visual display, newText for the placeholder representation
-				currentHTML = savedEdit.currentHTML
-				newText = savedEdit.newText
-				isDirty = true
-				el.innerHTML = currentHTML
-			}
-
-			// Check for styled content after restoring HTML
-			const hasStyled = hasStyledContent(el)
-
-			signals.setPendingChange(cmsId, {
-				element: el,
-				originalHTML,
-				originalText,
-				newText,
-				currentHTML,
-				isDirty,
-				childCmsElements,
-				hasStyledContent: hasStyled,
-			})
-		}
-
-		el.addEventListener('input', (e) => {
-			const currentId = signals.currentEditingId.value
-			logDebug(
-				config.debug,
-				'Input event on',
-				cmsId,
-				'currentEditingId:',
-				currentId,
-				'target:',
-				(e.target as HTMLElement).getAttribute('data-cms-id'),
-			)
-			if (currentId === cmsId) {
-				e.stopPropagation()
-				logDebug(config.debug, 'Handling input for', cmsId)
-				handleElementChange(config, cmsId, el, onStateChange)
-			} else {
-				logDebug(config.debug, 'Skipping input - not current editing element, expected:', currentId)
-			}
-		}, { signal: editModeSignal })
-
-		el.addEventListener(
-			'click',
-			(e) => {
-				if (e.detail !== 1) return
-
-				const innermostCms = findInnermostCmsElement(e.target)
-
-				if (innermostCms) {
-					const targetId = innermostCms.getAttribute('data-cms-id')
-					innermostCms.focus()
-					signals.setCurrentEditingId(targetId)
-					logDebug(config.debug, 'Click - focusing innermost CMS element:', targetId)
-					onStateChange?.()
-				}
-			},
-			{ capture: true, signal: editModeSignal },
-		)
-
-		el.addEventListener(
-			'focus',
-			(e) => {
-				if (e.target === el) {
-					signals.setCurrentEditingId(cmsId)
-					logDebug(config.debug, 'Focus on', cmsId)
-					onStateChange?.()
-				}
-			},
-			{ signal: editModeSignal },
-		)
-
-		el.addEventListener('blur', (e) => {
-			// Don't clear currentEditingId if clicking on CMS UI elements
-			const relatedTarget = (e as FocusEvent).relatedTarget as HTMLElement | null
-
-			// Check if we're focusing on another CMS element
-			if (relatedTarget?.hasAttribute(CSS.ID_ATTRIBUTE)) {
-				return // Let the new element's focus handler set the ID
-			}
-
-			// Check if we're clicking on CMS UI (toolbar, tooltip, chat) using data-cms-ui attribute
-			if (relatedTarget?.hasAttribute(CSS.UI_ATTRIBUTE) || relatedTarget?.closest(`[${CSS.UI_ATTRIBUTE}]`)) {
-				return // Keep current selection
-			}
-
-			// Allow a small delay to check if we're clicking inside CMS UI
-			setTimeout(() => {
-				const activeElement = document.activeElement as HTMLElement | null
-
-				// Check if active element is inside CMS UI
-				if (activeElement?.hasAttribute(CSS.UI_ATTRIBUTE) || activeElement?.closest(`[${CSS.UI_ATTRIBUTE}]`)) {
-					return // Keep current selection
-				}
-
-				// Only clear if we actually lost focus to something else
-				if (signals.currentEditingId.value === cmsId) {
-					signals.setCurrentEditingId(null)
-					onStateChange?.()
-				}
-			}, TIMING.BLUR_DELAY_MS)
-		}, { signal: editModeSignal })
-	})
+	const session: EditSession = {
+		config,
+		manifest: signals.manifest.value,
+		signal: editModeSignal,
+		onStateChange,
+		savedEdits,
+		savedImageEdits,
+		savedColorEdits,
+		savedAttributeEdits,
+		savedBgImageEdits: loadBgImageEditsFromStorage(),
+		preEagerPaintDomState,
+		handedOver: new Set<string>(),
+	}
+	const handedOver = session.handedOver
+	getAllCmsElements().forEach(el => wireElement(el, session))
 
 	if (handedOver.size > 0) {
 		removeStoredEdits(handedOver)
@@ -566,6 +316,307 @@ export async function startEditMode(
 			)
 		}
 	}
+}
+
+/** One edit mode session, as wiring an element for editing reads it. */
+interface EditSession {
+	config: CmsConfig
+	manifest: CmsManifest
+	/** Aborted when the session ends; every listener wired for it goes with it. */
+	signal: AbortSignal
+	onStateChange: (() => void) | undefined
+	savedEdits: SavedEdits
+	savedImageEdits: SavedImageEdits
+	savedColorEdits: SavedColorEdits
+	savedAttributeEdits: SavedAttributeEdits
+	savedBgImageEdits: SavedBackgroundImageEdits
+	/** Element content from before the stored edits were painted over it, by CMS ID. */
+	preEagerPaintDomState: Map<string, { html: string; text: string }>
+	/** Elements handed to the host, whose stored edits the session drops. */
+	handedOver: Set<string>
+}
+
+/** Make one CMS element editable the way its manifest entry allows, for the session. */
+function wireElement(el: HTMLElement, session: EditSession): void {
+	const {
+		config,
+		manifest: currentManifest,
+		signal: editModeSignal,
+		onStateChange,
+		savedEdits,
+		savedImageEdits,
+		savedColorEdits,
+		savedAttributeEdits,
+		savedBgImageEdits,
+		preEagerPaintDomState,
+		handedOver,
+	} = session
+	const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
+	if (!cmsId) return
+
+	// Skip component elements - they should not be contentEditable
+	// Components are marked with data-cms-component-id and are block-level editable
+	if (el.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)) {
+		logDebug(config.debug, 'Skipping component element:', cmsId)
+		makeElementNonEditable(el)
+		return
+	}
+
+	if (!hasManifestEntry(currentManifest, cmsId)) {
+		logDebug(config.debug, 'Skipping element not in manifest:', cmsId)
+		makeElementNonEditable(el)
+		return
+	}
+
+	const manifestEntry = currentManifest.entries[cmsId]
+
+	// When the host edits collection entries, whatever edits one is handed to it instead of being
+	// edited here (see entryHandoverFor). An edit made here before is dropped: saved, it would
+	// overwrite the entry the host edits.
+	const handover = entryHandoverFor(el)
+	if (handover) {
+		logDebug(config.debug, 'Collection entry field, handed to the host:', cmsId, handover.entry.collection, handover.entry.slug)
+		dropEntryFieldEdit(el, cmsId, preEagerPaintDomState.get(cmsId)?.html)
+		handedOver.add(cmsId)
+		makeElementNonEditable(el)
+		setupEntryHandoverClickHandler(el, handover, editModeSignal)
+		return
+	}
+
+	// Check if this is a reference field element (e.g., author name from a referenced collection)
+	// Reference elements open a picker to change the reference, not inline text editing
+	if (manifestEntry?.referenceCollection && manifestEntry.referencedBy?.length) {
+		logDebug(config.debug, 'Reference element detected:', cmsId, manifestEntry.referenceCollection)
+		makeElementNonEditable(el)
+		setupReferenceClickHandler(config, el, cmsId, manifestEntry, currentManifest, editModeSignal)
+		return
+	}
+
+	// Check if this is a markdown content element
+	// Markdown elements use WYSIWYG editing instead of contentEditable
+	if (el.hasAttribute(MARKDOWN_ATTRIBUTE)) {
+		logDebug(config.debug, 'Markdown element detected:', cmsId)
+		makeElementNonEditable(el)
+		// Add click handler for markdown elements to open the editor
+		setupMarkdownClickHandler(config, el, cmsId, editModeSignal)
+		return
+	}
+
+	// Check if this is an image element
+	// Image elements open the media library for replacement
+	if (el.hasAttribute(IMAGE_ATTRIBUTE)) {
+		logDebug(config.debug, 'Image element detected:', cmsId)
+		makeElementNonEditable(el)
+		setupImageClickHandler(config, el as HTMLImageElement, cmsId, savedImageEdits[cmsId], editModeSignal, onStateChange)
+		return
+	}
+
+	// Check if this is a background image element
+	// Background image elements are edited via the bg image overlay panel
+	if (el.hasAttribute(BG_IMAGE_ATTRIBUTE)) {
+		logDebug(config.debug, 'Background image element detected:', cmsId)
+		makeElementNonEditable(el)
+		setupBgImageTracking(config, el, cmsId, savedBgImageEdits[cmsId])
+		return
+	}
+
+	// Without a source path the writer has nowhere to persist anything — lock the
+	// element so it can't be typed into and the user gets told why on click.
+	if (!manifestEntry?.sourcePath) {
+		logDebug(config.debug, 'Skipping element without source path:', cmsId)
+		makeElementNonEditable(el)
+		el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
+		el.addEventListener('click', event => handleLockedClick(event, session), { signal: editModeSignal })
+		return
+	}
+
+	// The source finder located the element but not its text, so typing into it
+	// could only fail on save. It stays selectable — its href, other attributes
+	// and colour classes are written from the opening tag and still work — it
+	// just isn't contenteditable.
+	if (manifestEntry.textResolved === false) {
+		logDebug(config.debug, 'Text not resolved to source, attributes only:', cmsId)
+		makeElementNonEditable(el)
+		return
+	}
+
+	makeElementEditable(el)
+
+	const stylingAllowed = manifestEntry?.allowStyling !== false
+
+	el.addEventListener('beforeinput', (e) => {
+		if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
+			e.preventDefault()
+		}
+		if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak') {
+			e.preventDefault()
+		}
+		if (!stylingAllowed && e.inputType?.startsWith('format')) {
+			e.preventDefault()
+			notifyFormattingBlocked()
+		}
+	}, { signal: editModeSignal })
+
+	// Paste and drop are intercepted on every editable element, not just the non-styleable
+	// ones: native paste of multi-line content makes the browser insert <div>/<br>, which
+	// `getEditableTextFromElement` turns into literal <br> markup in the source — the exact
+	// line break the `beforeinput` guard above refuses to let anyone type.
+	el.addEventListener('paste', (e) => {
+		const clipboard = (e as ClipboardEvent).clipboardData
+		if (!clipboard) return
+		const html = clipboard.getData('text/html')
+		const text = clipboard.getData('text/plain')
+		// Stay prevented even with nothing to insert. Letting an image or file paste fall
+		// through to the browser would drop an <img> into the element, and the source
+		// writer would persist it. Say so rather than appearing to swallow the paste.
+		e.preventDefault()
+		if (!text && !html) {
+			notifyUnsupportedPaste()
+			return
+		}
+		const selection = window.getSelection()
+		const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+		applyPlainTextInsert(el, text, html, range, !stylingAllowed)
+	}, { signal: editModeSignal })
+
+	el.addEventListener('drop', (e) => {
+		const transfer = (e as DragEvent).dataTransfer
+		if (!transfer) return
+		const html = transfer.getData('text/html')
+		const text = transfer.getData('text/plain')
+		if (!text && !html) return
+		e.preventDefault()
+		let range = getCaretRangeFromPoint((e as DragEvent).clientX, (e as DragEvent).clientY)
+		if (!range) {
+			const selection = window.getSelection()
+			range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+		}
+		applyPlainTextInsert(el, text, html, range, !stylingAllowed)
+	}, { signal: editModeSignal })
+
+	// Setup color tracking for elements with colorClasses in manifest
+	setupColorTracking(config, el, cmsId, savedColorEdits[cmsId])
+
+	// Setup attribute tracking for elements with editable attributes in manifest
+	setupAttributeTracking(config, el, cmsId, savedAttributeEdits[cmsId])
+
+	if (!signals.pendingChanges.value.has(cmsId)) {
+		const preEagerPaint = preEagerPaintDomState.get(cmsId)
+		const originalHTML = preEagerPaint?.html ?? el.innerHTML
+		const originalText = preEagerPaint?.text ?? getEditableTextFromElement(el)
+
+		logDebug(config.debug, 'Setting up element:', cmsId, 'originalText:', originalText)
+
+		const childCmsElements = getChildCmsElements(el)
+		const savedEdit = savedEdits[cmsId]
+
+		let currentHTML = originalHTML
+		let newText = originalText
+		let isDirty = false
+
+		if (savedEdit) {
+			// Use currentHTML for visual display, newText for the placeholder representation
+			currentHTML = savedEdit.currentHTML
+			newText = savedEdit.newText
+			isDirty = true
+			el.innerHTML = currentHTML
+		}
+
+		// Check for styled content after restoring HTML
+		const hasStyled = hasStyledContent(el)
+
+		signals.setPendingChange(cmsId, {
+			element: el,
+			originalHTML,
+			originalText,
+			newText,
+			currentHTML,
+			isDirty,
+			childCmsElements,
+			hasStyledContent: hasStyled,
+		})
+	}
+
+	el.addEventListener('input', (e) => {
+		const currentId = signals.currentEditingId.value
+		logDebug(
+			config.debug,
+			'Input event on',
+			cmsId,
+			'currentEditingId:',
+			currentId,
+			'target:',
+			(e.target as HTMLElement).getAttribute('data-cms-id'),
+		)
+		if (currentId === cmsId) {
+			e.stopPropagation()
+			logDebug(config.debug, 'Handling input for', cmsId)
+			handleElementChange(config, cmsId, el, onStateChange)
+		} else {
+			logDebug(config.debug, 'Skipping input - not current editing element, expected:', currentId)
+		}
+	}, { signal: editModeSignal })
+
+	el.addEventListener(
+		'click',
+		(e) => {
+			if (e.detail !== 1) return
+
+			const innermostCms = findInnermostCmsElement(e.target)
+
+			if (innermostCms) {
+				const targetId = innermostCms.getAttribute('data-cms-id')
+				innermostCms.focus()
+				signals.setCurrentEditingId(targetId)
+				logDebug(config.debug, 'Click - focusing innermost CMS element:', targetId)
+				onStateChange?.()
+			}
+		},
+		{ capture: true, signal: editModeSignal },
+	)
+
+	el.addEventListener(
+		'focus',
+		(e) => {
+			if (e.target === el) {
+				signals.setCurrentEditingId(cmsId)
+				logDebug(config.debug, 'Focus on', cmsId)
+				onStateChange?.()
+			}
+		},
+		{ signal: editModeSignal },
+	)
+
+	el.addEventListener('blur', (e) => {
+		// Don't clear currentEditingId if clicking on CMS UI elements
+		const relatedTarget = (e as FocusEvent).relatedTarget as HTMLElement | null
+
+		// Check if we're focusing on another CMS element
+		if (relatedTarget?.hasAttribute(CSS.ID_ATTRIBUTE)) {
+			return // Let the new element's focus handler set the ID
+		}
+
+		// Check if we're clicking on CMS UI (toolbar, tooltip, chat) using data-cms-ui attribute
+		if (relatedTarget?.hasAttribute(CSS.UI_ATTRIBUTE) || relatedTarget?.closest(`[${CSS.UI_ATTRIBUTE}]`)) {
+			return // Keep current selection
+		}
+
+		// Allow a small delay to check if we're clicking inside CMS UI
+		setTimeout(() => {
+			const activeElement = document.activeElement as HTMLElement | null
+
+			// Check if active element is inside CMS UI
+			if (activeElement?.hasAttribute(CSS.UI_ATTRIBUTE) || activeElement?.closest(`[${CSS.UI_ATTRIBUTE}]`)) {
+				return // Keep current selection
+			}
+
+			// Only clear if we actually lost focus to something else
+			if (signals.currentEditingId.value === cmsId) {
+				signals.setCurrentEditingId(null)
+				onStateChange?.()
+			}
+		}, TIMING.BLUR_DELAY_MS)
+	}, { signal: editModeSignal })
 }
 
 /** Clicking an element that edits a collection entry hands the entry to the host. */

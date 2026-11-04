@@ -146,6 +146,33 @@ describe('createEditorHost', () => {
 		expect(await fs.readFile('src/components/BlocksBoardDark.astro')).toContain('<Button label="Details" />')
 	})
 
+	test('searches the project for text the page load left unlocated only when the editor asks for that entry', async () => {
+		const fs = createMemoryFileSystem({
+			'src/data/site.ts': "export const tagline = 'Built for people who ship'\n",
+			'src/components/Hero.astro': "---\nimport { tagline } from '../data/site'\n---\n<section>\n<p>{tagline}</p>\n</section>\n",
+			'src/pages/index.astro': "---\nimport Hero from '../components/Hero.astro'\n---\n<html><body>\n<Hero />\n</body></html>\n",
+		})
+		const host = await hostOver(fs)
+		// No source annotations, so only a search of the sources can place the text.
+		await host.processPage('/', '<html><body><section><p>Built for people who ship</p></section></body></html>')
+
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		const tagline = entryWithText(loaded, 'Built for people who ship')
+		expect(tagline.sourcePath).toBeUndefined()
+
+		const [first, second] = await Promise.all([
+			fetchJson<PageManifest>(host, `/index.json?locate=${tagline.id}`),
+			fetchJson<PageManifest>(host, `/index.json?locate=${tagline.id}`),
+		])
+		const located = entryWithText(first.body, 'Built for people who ship')
+		expect([located.sourcePath, located.sourceLine]).toEqual(['src/data/site.ts', 1])
+		expect(entryWithText(second.body, 'Built for people who ship').sourcePath).toBe('src/data/site.ts')
+
+		const { body } = await save(host, [textChange(located, 'Built for people who care')])
+		expect(body).toEqual({ updated: 1 })
+		expect(await fs.readFile('src/data/site.ts')).toContain("'Built for people who care'")
+	})
+
 	test('serves the global manifest with the components and pages of its own project', async () => {
 		const host = await hostOver(project())
 		const { body } = await fetchJson<{ componentDefinitions: Record<string, unknown>; pages: Array<{ pathname: string }> }>(

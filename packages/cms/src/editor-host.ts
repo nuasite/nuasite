@@ -148,7 +148,9 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 			}
 			const match = url.pathname.match(/^\/(.*)\.json$/)
 			if (!match) return undefined
-			const manifest = await service.pageManifest(match[1] === 'index' ? '/' : `/${match[1]}`)
+			const manifest = await service.pageManifest(match[1] === 'index' ? '/' : `/${match[1]}`, {
+				locateEntry: url.searchParams.get('locate') ?? undefined,
+			})
 			return manifest ? noStore(jsonResponse(manifest)) : undefined
 		},
 
