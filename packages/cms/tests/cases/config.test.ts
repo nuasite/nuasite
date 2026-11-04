@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { getProjectRoot, resetProjectRoot, setProjectRoot } from '../../src/config'
+import { projectAtRoot } from '../../src/project/at-root'
 import { projectRelativeSource } from '../../src/source-finder/source-files'
 
 describe('config', () => {
@@ -74,6 +75,13 @@ describe('config', () => {
 			setProjectRoot(fileURLToPath(pathToFileURL('/my/project/')))
 
 			expect(getProjectRoot()).toBe('/my/project')
+		})
+
+		test('a project at a root given with a trailing slash is at the resolved root', () => {
+			const project = projectAtRoot('/my/project/')
+
+			expect(project.root).toBe('/my/project')
+			expect(project.run(() => projectRelativeSource('/my/project/src/pages/index.astro'))).toBe('src/pages/index.astro')
 		})
 
 		test('a source under a root given with a trailing slash is relative to it', () => {
