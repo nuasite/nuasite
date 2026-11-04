@@ -186,8 +186,16 @@ export interface CodeCheckResult {
 	paths: string[]
 }
 
+export interface CodeCheckOptions {
+	/**
+	 * May the check load the project's own packages? Its `tailwindcss` is the site's real parser, but loading it runs
+	 * the project's installed code, which `--no-live` promises not to do; the bundled parser stands in then.
+	 */
+	projectCode: boolean
+}
+
 /** Parse every `.astro`/`.ts`/`.tsx`/`.css` under `root`; order is by path. */
-export async function checkCode(root: string): Promise<CodeCheckResult> {
+export async function checkCode(root: string, { projectCode }: CodeCheckOptions = { projectCode: false }): Promise<CodeCheckResult> {
 	const findings: CheckFinding[] = []
 	let files = 0
 
@@ -199,7 +207,7 @@ export async function checkCode(root: string): Promise<CodeCheckResult> {
 	}
 	paths.sort()
 
-	const compile = paths.some(relative => relative.endsWith('.css')) ? await compileFor(root) : bundledCompile
+	const compile = projectCode && paths.some(relative => relative.endsWith('.css')) ? await compileFor(root) : bundledCompile
 	for (const relative of paths) {
 		files++
 		const absolute = path.join(root, relative)

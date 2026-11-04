@@ -122,7 +122,7 @@ export async function check(options: CheckOptions): Promise<number> {
 		const absolute = path.join(options.cwd, root)
 		const content = prefixed(await checkContent(createNodeFs(absolute), schemas ? { schemas } : {}), root)
 		if (options.contentOnly) return { ...content, files: 0, paths: [] }
-		const code = await checkCode(absolute)
+		const code = await checkCode(absolute, { projectCode: options.live })
 		return {
 			...content,
 			findings: [...content.findings, ...code.findings.map(finding => ({ ...finding, file: path.join(root, finding.file) }))],

@@ -95,7 +95,8 @@ a stray `}`, an unterminated string, a declaration without its colon. Only those
 errors are reported. What only the whole project can settle, such as `@apply` of a
 utility its theme defines, is left to the build. The parser is the site's own
 `tailwindcss` when it has one installed, since its strictness changed between
-versions, and the copy this CLI ships otherwise.
+versions, and the copy this CLI ships otherwise. Loading the site's copy runs the
+project's installed code, so `--no-live` (and `--content-only`) keep to the bundled one.
 
 `--fail-on` is for a commit: it still reports every problem, but fails only on errors
 in the files it lists (comma-separated, relative to where the command runs), so a

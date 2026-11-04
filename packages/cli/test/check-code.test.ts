@@ -108,8 +108,21 @@ describe('checkCode', () => {
 		)
 		await write('src/styles/ok.css', '.a { color: red; }\n')
 
-		const { findings } = await checkCode(root)
+		const { findings } = await checkCode(root, { projectCode: true })
 		expect(findings.map(finding => finding.message)).toEqual(['Missing closing } at the-site-parser'])
+	})
+
+	// --no-live promises not to run the project's code, and loading its tailwindcss would.
+	test("without leave to run project code, the bundled parser is used instead of the site's", async () => {
+		await write('node_modules/tailwindcss/package.json', JSON.stringify({ name: 'tailwindcss', main: 'index.js' }))
+		await write(
+			'node_modules/tailwindcss/index.js',
+			'exports.compile = async () => { throw new Error("x.css:1:1: Missing closing } at the-site-parser") }\n',
+		)
+		await write('src/styles/ok.css', '.a { color: red; }\n')
+
+		expect((await checkCode(root)).findings).toEqual([])
+		expect((await checkCode(root, { projectCode: false })).findings).toEqual([])
 	})
 
 	test('a clean project reports nothing', async () => {
