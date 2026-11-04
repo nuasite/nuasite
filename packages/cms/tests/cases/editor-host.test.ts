@@ -173,6 +173,57 @@ describe('createEditorHost', () => {
 		expect(await fs.readFile('src/data/site.ts')).toContain("'Built for people who care'")
 	})
 
+	test('searches for two entries at once keep both results', async () => {
+		const fs = createMemoryFileSystem({
+			'src/data/site.ts': "export const tagline = 'Built for people who ship'\nexport const motto = 'Small tools, sharp edges'\n",
+			'src/components/Hero.astro':
+				"---\nimport { tagline, motto } from '../data/site'\n---\n<section>\n<p>{tagline}</p>\n<h2>{motto}</h2>\n</section>\n",
+			'src/pages/index.astro': "---\nimport Hero from '../components/Hero.astro'\n---\n<html><body>\n<Hero />\n</body></html>\n",
+		})
+		const host = await hostOver(fs)
+		await host.processPage('/', '<html><body><section><p>Built for people who ship</p><h2>Small tools, sharp edges</h2></section></body></html>')
+
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		const tagline = entryWithText(loaded, 'Built for people who ship')
+		const motto = entryWithText(loaded, 'Small tools, sharp edges')
+		await Promise.all([
+			fetchJson<PageManifest>(host, `/index.json?locate=${tagline.id}`),
+			fetchJson<PageManifest>(host, `/index.json?locate=${motto.id}`),
+		])
+
+		const { body: after } = await fetchJson<PageManifest>(host, '/index.json')
+		expect([entryWithText(after, 'Built for people who ship').sourcePath, entryWithText(after, 'Small tools, sharp edges').sourcePath])
+			.toEqual(['src/data/site.ts', 'src/data/site.ts'])
+	})
+
+	test('a search for text two entries of a collection the page reads hold does not settle on equal text in a component', async () => {
+		const fs = createMemoryFileSystem({
+			'src/content/partners/acme.json': '{\n  "name": "ACME Corp"\n}\n',
+			'src/content/partners/acme-eu.json': '{\n  "name": "ACME Corp"\n}\n',
+			'src/components/Footer.astro': '<footer>\n<p>ACME Corp</p>\n</footer>\n',
+			'src/pages/index.astro': [
+				'---',
+				'import { getCollection } from "astro:content"',
+				'import Footer from "../components/Footer.astro"',
+				'const partners = await getCollection("partners")',
+				'---',
+				'<html><body>',
+				'{partners.map(p => <p>{p.data.name}</p>)}',
+				'<Footer />',
+				'</body></html>',
+			].join('\n'),
+		})
+		const host = await hostOver(fs)
+		await host.processPage('/', '<html><body><p>ACME Corp</p><p>ACME Corp</p><footer><p>ACME Corp</p></footer></body></html>')
+
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		const partner = entryWithText(loaded, 'ACME Corp')
+		expect(partner.sourcePath).toBeUndefined()
+
+		const { body: after } = await fetchJson<PageManifest>(host, `/index.json?locate=${partner.id}`)
+		expect(after.entries[partner.id]?.sourcePath).toBeUndefined()
+	})
+
 	test('serves the global manifest with the components and pages of its own project', async () => {
 		const host = await hostOver(project())
 		const { body } = await fetchJson<{ componentDefinitions: Record<string, unknown>; pages: Array<{ pathname: string }> }>(

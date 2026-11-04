@@ -17,11 +17,13 @@ import type { MediaStorageAdapter } from './media/types.ts'
 import { currentProjectContext, type ProjectContext, projectFiles, runInProjectContext } from './project/context.ts'
 import type { CollectionRouteInfo } from './project/state.ts'
 import {
+	collectionsReadByPage,
 	declaredSitePathFromData,
 	enhanceManifestWithSourceSnippets,
 	findCollectionSource,
 	findSourceLocation,
 	parseMarkdownContent,
+	readableCollectionsHoldText,
 	reindexDirtyFiles,
 } from './source-finder/index.ts'
 import { projectRelativeSource } from './source-finder/source-files.ts'
@@ -83,6 +85,8 @@ export class EditorService {
 	private readonly pendingPhase2 = new Map<string, Promise<void>>()
 	/** On-demand source searches in flight, by page and entry, so repeated clicks share one search. */
 	private readonly pendingEntrySearch = new Map<string, Promise<void>>()
+	/** Entries a search found no source for; a new render of the page brings new entry objects. */
+	private readonly unlocatable = new WeakSet<ManifestEntry>()
 
 	constructor(options: EditorServiceOptions) {
 		this.context = options.context
@@ -155,7 +159,7 @@ export class EditorService {
 		const key = `${pagePath}\0${entryId}`
 		let search = this.pendingEntrySearch.get(key)
 		if (!search) {
-			const started = runInProjectContext(this.context, () => locateTextOnDemand(pagePath, entryId, this.manifestWriter))
+			const started = runInProjectContext(this.context, () => locateTextOnDemand(pagePath, entryId, this.manifestWriter, this.unlocatable))
 			search = started
 			this.pendingEntrySearch.set(key, started)
 			const forget = () => {
@@ -428,18 +432,34 @@ export async function enhanceManifestInBackground(
  * Search the whole project for the source of one text entry the page load left without one, and
  * record what is found in the page's manifest. A page re-rendered meanwhile keeps its new manifest.
  */
-async function locateTextOnDemand(pagePath: string, entryId: string, manifestWriter: ManifestWriter): Promise<void> {
+async function locateTextOnDemand(
+	pagePath: string,
+	entryId: string,
+	manifestWriter: ManifestWriter,
+	unlocatable: WeakSet<ManifestEntry>,
+): Promise<void> {
 	const pageData = manifestWriter.getPageManifest(pagePath)
 	const entry = pageData?.entries[entryId]
-	if (!pageData || !entry || entry.sourcePath || entry.imageMetadata?.src || !entry.text || !entry.tag) return
+	if (!pageData || !entry || unlocatable.has(entry) || entry.sourcePath || entry.imageMetadata?.src || !entry.text || !entry.tag) return
 
 	const pageFiles = getPageFileCandidates(pagePath)
-	const location = await findSourceLocation(entry.text, entry.tag, pageFiles, pageSources(pageFiles, pageData.components).renderedFiles)
-	if (!location || manifestWriter.getPageManifest(pagePath) !== pageData) return
+	const { renderedFiles } = pageSources(pageFiles, pageData.components)
+	const readable = await collectionsReadByPage(pageData.entries, [...pageFiles, ...renderedFiles], manifestWriter.getCollectionDefinitions())
+	// Collection content phase 2 could not pin to one entry: equal text in a template is not its source.
+	const location = readableCollectionsHoldText(entry.text, readable)
+		? undefined
+		: await findSourceLocation(entry.text, entry.tag, pageFiles, renderedFiles)
 
+	// Another entry's search may have rewritten the page manifest meanwhile; a new render replaces the entry.
+	const current = manifestWriter.getPageManifest(pagePath)
+	if (!current || current.entries[entryId] !== entry) return
+	if (!location) {
+		unlocatable.add(entry)
+		return
+	}
 	const located: ManifestEntry = { ...entry, sourcePath: location.file, sourceLine: location.line, sourceSnippet: location.snippet }
 	if (location.variableName) located.variableName = location.variableName
-	manifestWriter.addPage(pagePath, { ...pageData.entries, [entryId]: located }, pageData.components, pageData.collection, pageData.seo)
+	manifestWriter.addPage(pagePath, { ...current.entries, [entryId]: located }, current.components, current.collection, current.seo)
 }
 
 /** The files `components` say the page is rendered from: each component's own file and the file invoking it. */

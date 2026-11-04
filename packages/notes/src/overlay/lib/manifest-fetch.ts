@@ -7,7 +7,7 @@
  * per-page file already contains everything we need and is much smaller.
  */
 
-import type { CmsPageManifest } from '../types.ts'
+import type { CmsManifestEntry, CmsPageManifest } from '../types.ts'
 
 /**
  * Build the per-page manifest URL for a page path.
@@ -21,8 +21,10 @@ export function manifestUrlForPage(page: string): string {
 	return `/${trimmed}.json`
 }
 
-export async function fetchPageManifest(page: string): Promise<CmsPageManifest | null> {
-	const url = manifestUrlForPage(page)
+/** With `locateEntryId`, the CMS first searches the project for that entry's source. */
+export async function fetchPageManifest(page: string, locateEntryId?: string): Promise<CmsPageManifest | null> {
+	const pageUrl = manifestUrlForPage(page)
+	const url = locateEntryId === undefined ? pageUrl : `${pageUrl}?locate=${encodeURIComponent(locateEntryId)}`
 	try {
 		const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) })
 		if (!res.ok) return null
@@ -32,4 +34,20 @@ export async function fetchPageManifest(page: string): Promise<CmsPageManifest |
 		console.warn(`[nuasite-notes] Failed to fetch CMS manifest for "${page}":`, err instanceof Error ? err.message : err)
 		return null
 	}
+}
+
+/**
+ * The entry a note on `cmsId` targets. The page load leaves text whose source is not found yet
+ * without `sourcePath`; the CMS is then asked to locate it, so the note records the file to edit.
+ */
+export async function noteTargetEntry(
+	manifest: CmsPageManifest | null,
+	page: string,
+	cmsId: string,
+): Promise<{ entry: CmsManifestEntry | undefined; manifest: CmsPageManifest | null }> {
+	const entry = manifest?.entries?.[cmsId]
+	if (!entry || entry.sourcePath) return { entry, manifest }
+	const located = await fetchPageManifest(page, cmsId)
+	if (!located) return { entry, manifest }
+	return { entry: located.entries?.[cmsId] ?? entry, manifest: located }
 }

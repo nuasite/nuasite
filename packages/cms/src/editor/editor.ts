@@ -127,8 +127,8 @@ export function notifyLockedElement(): void {
 	signals.showToast(STRINGS.editor.lockedElement, 'info')
 }
 
-/** Locked entries being located, by CMS ID, so repeated clicks share one search. */
-const locatingEntries = new Map<string, Promise<void>>()
+/** CMS IDs being located, per edit session (its signal), so repeated clicks share one search. */
+const locatingEntries = new WeakMap<AbortSignal, Set<string>>()
 
 /**
  * A locked element has no source location yet. Clicking it asks the server to search the project
@@ -140,11 +140,13 @@ function handleLockedClick(event: Event, session: EditSession): void {
 	// Its listener outlives a rewire, which removes the lock.
 	if (target instanceof HTMLElement && !target.hasAttribute(CSS.LOCKED_ATTRIBUTE)) return
 	const id = target instanceof HTMLElement ? target.getAttribute(CSS.ID_ATTRIBUTE) : null
-	if (id && !locatingEntries.has(id)) {
-		const locating = locateLockedEntry(id, session)
+	const locating = locatingEntries.get(session.signal) ?? new Set<string>()
+	locatingEntries.set(session.signal, locating)
+	if (id && !locating.has(id)) {
+		locating.add(id)
+		void locateLockedEntry(id, session)
 			.catch(() => {})
-			.finally(() => locatingEntries.delete(id))
-		locatingEntries.set(id, locating)
+			.finally(() => locating.delete(id))
 	}
 	notifyLockedElement()
 }
