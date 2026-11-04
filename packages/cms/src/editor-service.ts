@@ -17,6 +17,7 @@ import type { MediaStorageAdapter } from './media/types.ts'
 import { currentProjectContext, type ProjectContext, projectFiles, runInProjectContext } from './project/context.ts'
 import type { CollectionRouteInfo } from './project/state.ts'
 import {
+	buildCollectionTextIndex,
 	collectionsReadByPage,
 	declaredSitePathFromData,
 	enhanceManifestWithSourceSnippets,
@@ -444,7 +445,10 @@ async function locateTextOnDemand(
 
 	const pageFiles = getPageFileCandidates(pagePath)
 	const { renderedFiles } = pageSources(pageFiles, pageData.components)
-	const readable = await collectionsReadByPage(pageData.entries, [...pageFiles, ...renderedFiles], manifestWriter.getCollectionDefinitions())
+	const collections = manifestWriter.getCollectionDefinitions()
+	// A page render drops the collection text index until its phase 2 rebuilds it.
+	await buildCollectionTextIndex(collections)
+	const readable = await collectionsReadByPage(pageData.entries, [...pageFiles, ...renderedFiles], collections)
 	// Collection content phase 2 could not pin to one entry: equal text in a template is not its source.
 	const location = readableCollectionsHoldText(entry.text, readable)
 		? undefined

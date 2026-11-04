@@ -28,8 +28,8 @@ function analysisOf(filePath: string, parsed: CachedParsedFile): AstroSourceAnal
 
 /**
  * The collections read through `astro:content` in the static module graph of `files`, plus the
- * `seeds` and every collection they reference; a non-literal `getCollection` name reads them all.
- * A value is attributed to a collection only within this set, which over-approximates what renders.
+ * `seeds` and every collection they reference. All of them when no file of `files` is a module
+ * (a dynamic route's page found by URL) or a `getCollection` name is not a literal.
  */
 export async function collectionsReadBy(
 	files: readonly string[],
@@ -40,11 +40,12 @@ export async function collectionsReadBy(
 	const visited = new Set<string>()
 	let readsAny = false
 
-	async function visit(filePath: string): Promise<void> {
-		if (visited.has(filePath) || !MODULE_FILE.test(filePath)) return
+	/** Whether the file is a module that was read. */
+	async function visit(filePath: string): Promise<boolean> {
+		if (visited.has(filePath) || !MODULE_FILE.test(filePath)) return false
 		visited.add(filePath)
 		const parsed = await getCachedParsedFile(filePath)
-		if (!parsed) return
+		if (!parsed) return false
 
 		const analysis = analysisOf(filePath, parsed)
 		for (const call of analysis.collectionCalls) {
@@ -55,10 +56,11 @@ export async function collectionsReadBy(
 			const imported = await resolveImportPath(source, filePath)
 			if (imported) await visit(path.normalize(imported))
 		}))
+		return true
 	}
 
-	await Promise.all(files.map(file => visit(resolveSourcePath(file))))
-	if (readsAny) return new Set(Object.keys(collections))
+	const roots = await Promise.all(files.map(file => visit(resolveSourcePath(file))))
+	if (readsAny || !roots.some(Boolean)) return new Set(Object.keys(collections))
 
 	for (const seed of seeds) read.add(seed)
 	// A rendered entry can show the entries its reference fields point to.

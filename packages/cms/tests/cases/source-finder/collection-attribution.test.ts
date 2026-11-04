@@ -126,9 +126,9 @@ describe('collection values are attributed only to collections the page reads', 
 		expect(entries['cms-0']).toMatchObject({ sourcePath: 'src/pages/index.astro', textResolved: false })
 	})
 
-	test('listing text without source coordinates resolves to its entry, not to equal static text elsewhere', async () => {
+	test('listing text without source coordinates resolves to the one entry holding it', async () => {
 		await ctx.writeFile('src/pages/index.astro', PARTNER_LISTING)
-		await ctx.writeFile('src/components/Footer.astro', '<footer>\n<span>ACME Corp</span>\n</footer>\n')
+		await ctx.writeFile('src/components/Footer.astro', '<footer></footer>\n')
 		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({ name: 'ACME Corp', logo: '/logos/acme.png' }, null, 2))
 
 		const entries = await enhance('/', {
@@ -136,6 +136,21 @@ describe('collection values are attributed only to collections the page reads', 
 		}, { partners: partners(['acme']) })
 
 		expect(entries['cms-0']).toMatchObject({ sourcePath: 'src/content/partners/acme.json', collectionName: 'partners', collectionSlug: 'acme' })
+	})
+
+	test('text without source coordinates that both a template and an entry hold stays unplaced', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			'---\nimport { getCollection } from "astro:content"\nconst all = await getCollection("articles")\n---\n<nav>\n<a href="/about">About</a>\n</nav>\n',
+		)
+		await ctx.writeFile('src/content/articles/about.json', JSON.stringify({ title: 'About' }, null, 2))
+
+		const entries = await enhance('/', {
+			'cms-0': { id: 'cms-0', tag: 'a', text: 'About' },
+		}, { articles: articles(['about']) })
+
+		expect(entries['cms-0']!.sourcePath).toBeUndefined()
+		expect(entries['cms-0']!.collectionName).toBeUndefined()
 	})
 
 	test('listing text without source coordinates that two entries hold stays unplaced', async () => {
@@ -149,6 +164,18 @@ describe('collection values are attributed only to collections the page reads', 
 		}, { partners: partners(['acme', 'acme-eu']) })
 
 		expect(entries['cms-0']!.sourcePath).toBeUndefined()
+	})
+
+	test('text on a page of a dynamic route, which no file is named after, may come from any collection', async () => {
+		await ctx.writeFile('src/pages/partners/[...page].astro', PARTNER_LISTING)
+		await ctx.writeFile('src/components/Footer.astro', '<footer></footer>\n')
+		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({ name: 'ACME Corp', logo: '/logos/acme.png' }, null, 2))
+
+		const entries = await enhance('/partners/2', {
+			'cms-0': { id: 'cms-0', tag: 'span', text: 'ACME Corp' },
+		}, { partners: partners(['acme']) })
+
+		expect(entries['cms-0']).toMatchObject({ sourcePath: 'src/content/partners/acme.json', collectionName: 'partners' })
 	})
 
 	test('an image rendered from a sorted and filtered list resolves to its entry', async () => {

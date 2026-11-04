@@ -378,13 +378,8 @@ async function processFile(
 
 	const pageFiles = getPageFileCandidates(pagePath)
 	const collectionDefinitions = manifestWriter.getCollectionDefinitions()
-	// A page of a dynamic route (`[slug].astro`) has no file of its own name, so the collections its
-	// module graph reads are unknown and every collection stays readable.
-	const pageFileFound = (await Promise.all(pageFiles.map(file => fileExists(resolveSourcePath(file))))).some(Boolean)
 	const readableEntryFiles = entryFilesOf(
-		pageFileFound
-			? await collectionsReadBy(pageFiles, collectionDefinitions, collectionInfo ? [collectionInfo.name] : [])
-			: new Set(Object.keys(collectionDefinitions)),
+		await collectionsReadBy(pageFiles, collectionDefinitions, collectionInfo ? [collectionInfo.name] : []),
 		collectionDefinitions,
 	)
 
@@ -877,13 +872,4 @@ async function findHtmlFiles(dir: string): Promise<string[]> {
 
 	await scan(dir)
 	return result
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-	try {
-		await fs.access(filePath)
-		return true
-	} catch {
-		return false
-	}
 }
