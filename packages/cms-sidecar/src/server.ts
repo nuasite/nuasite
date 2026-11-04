@@ -494,9 +494,7 @@ async function pageRoutes(fs: CmsFileSystem, map: RouteMap | null): Promise<Page
  * Map each collection to the route that renders it, by parsing each page route's source with
  * {@link scanRouteCollections}. This is the only reliable source for an entry's URL: it comes from
  * the route, not the collection name (a `product` collection can live at `/products`, an `faq`
- * collection on a single `/faq` page). Which collections a page renders is always read from its
- * current source; Astro's route map (see {@link pageRoutes}) only says which routes exist and how
- * the site serves them, so a map older than the sources cannot link a collection to a page.
+ * collection on a single `/faq` page). The link is read from the current source, never the route map.
  *
  * - A *dynamic* route (`[...slug].astro`, or a `[slug]/index.astro` directory) renders one
  *   page per entry; the URL base is the path up to its dynamic segment. Every collection
