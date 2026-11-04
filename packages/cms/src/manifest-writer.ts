@@ -193,7 +193,7 @@ export class ManifestWriter {
 			this.writeQueue = this.writeQueue.then(() =>
 				this.writePageManifest(pagePath, entries, components, collection, seo)
 					.catch((err) => {
-						console.error(`[astro-cms] Failed to write manifest for ${pagePath}:`, err)
+						console.error(`[@nuasite/cms] Failed to write manifest for ${pagePath}:`, err)
 					})
 			)
 		}

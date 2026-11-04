@@ -429,7 +429,7 @@ async function extractJsonLd(
 				...sourceInfo,
 			})
 		} catch (error) {
-			console.warn('[astro-cms] Skipping malformed JSON-LD:', error instanceof Error ? error.message : String(error))
+			console.warn('[@nuasite/cms] Skipping malformed JSON-LD:', error instanceof Error ? error.message : String(error))
 		}
 	}
 

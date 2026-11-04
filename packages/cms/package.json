@@ -7,11 +7,11 @@
 		"README.md",
 		"package.json"
 	],
-	"homepage": "https://github.com/nuasite/nuasite/blob/main/packages/astro-cms/README.md",
+	"homepage": "https://github.com/nuasite/nuasite/blob/main/packages/cms/README.md",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/nuasite/nuasite.git",
-		"directory": "packages/astro-cms"
+		"directory": "packages/cms"
 	},
 	"license": "Apache-2.0",
 	"version": "0.66.0",

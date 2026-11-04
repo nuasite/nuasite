@@ -137,7 +137,7 @@ export function createDevMiddleware(
 				collectionOverrides: options.collectionOverrides,
 			})
 				.catch((error) => {
-					console.error('[astro-cms] API error:', error)
+					console.error('[@nuasite/cms] API error:', error)
 					sendError(res, 'Internal server error', 500)
 				})
 		})
