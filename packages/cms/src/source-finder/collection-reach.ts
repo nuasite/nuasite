@@ -11,14 +11,17 @@ import { resolveImportPath } from './variable-extraction.ts'
 /** Files whose imports and `astro:content` calls the walk reads. */
 const MODULE_FILE = /\.(astro|[cm]?[jt]sx?)$/
 
-/** Analysis of a parsed file, dropped together with its parse when the file changes. */
-const analyses = new WeakMap<CachedParsedFile, AstroSourceAnalysis>()
+const NO_ANALYSIS: AstroSourceAnalysis = { imports: [], collectionCalls: [], collectionBindings: [] }
+
+/** Analysis of a parsed script module, dropped together with its parse when the file changes. */
+const scriptAnalyses = new WeakMap<CachedParsedFile, AstroSourceAnalysis>()
 
 function analysisOf(filePath: string, parsed: CachedParsedFile): AstroSourceAnalysis {
-	let analysis = analyses.get(parsed)
+	if (filePath.endsWith('.astro')) return parsed.frontmatterAnalysis ?? NO_ANALYSIS
+	let analysis = scriptAnalyses.get(parsed)
 	if (!analysis) {
-		analysis = analyzeAstroScript(filePath.endsWith('.astro') ? parsed.frontmatterFile ?? '' : parsed.content)
-		analyses.set(parsed, analysis)
+		analysis = analyzeAstroScript(parsed.content)
+		scriptAnalyses.set(parsed, analysis)
 	}
 	return analysis
 }

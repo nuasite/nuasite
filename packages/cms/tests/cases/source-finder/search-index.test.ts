@@ -1168,7 +1168,7 @@ function createMockCachedFile(options: {
 		lines: options.lines,
 		ast: options.ast,
 		frontmatterContent: null,
-		frontmatterFile: null,
+		frontmatterAnalysis: null,
 		frontmatterStartLine: 1,
 		variableDefinitions: options.variableDefinitions ?? [],
 		propAliases: new Map(),

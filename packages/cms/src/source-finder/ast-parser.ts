@@ -1,6 +1,7 @@
 import type { Node as AstroNode } from '@astrojs/compiler/types'
 import { parse as parseBabel } from '@babel/parser'
 import type { File } from '@babel/types'
+import { analyzeAstroScript } from '@nuasite/cms-core'
 
 import { getErrorCollector } from '../error-collector.ts'
 import { currentProjectContext, projectFiles } from '../project/context.ts'
@@ -116,7 +117,7 @@ async function parseAndCacheFile(
 				lines,
 				ast: { type: 'root', children: [] } as unknown as AstroNode,
 				frontmatterContent: null,
-				frontmatterFile: null,
+				frontmatterAnalysis: null,
 				frontmatterStartLine: 0,
 				variableDefinitions: [],
 				propAliases: new Map(),
@@ -144,7 +145,7 @@ async function parseAndCacheFile(
 			lines,
 			ast,
 			frontmatterContent,
-			frontmatterFile,
+			frontmatterAnalysis: frontmatterFile ? analyzeAstroScript(frontmatterFile) : null,
 			frontmatterStartLine,
 			variableDefinitions,
 			propAliases,
