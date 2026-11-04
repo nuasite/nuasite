@@ -178,6 +178,32 @@ describe('collection values are attributed only to collections the page reads', 
 		expect(entries['cms-0']).toMatchObject({ sourcePath: 'src/content/partners/acme.json', collectionName: 'partners' })
 	})
 
+	test('static text on a markdown page that reads no collection is not attributed to an entry holding it', async () => {
+		await ctx.writeFile('src/pages/about.mdx', '# About\n\nACME Corp\n')
+		await ctx.writeFile('src/content/partners/acme.json', JSON.stringify({ name: 'ACME Corp', logo: '/logos/acme.png' }, null, 2))
+
+		const entries = await enhance('/about', {
+			'cms-0': { id: 'cms-0', tag: 'p', text: 'ACME Corp' },
+		}, { partners: partners(['acme']) })
+
+		expect(entries['cms-0']!.sourcePath).toBeUndefined()
+		expect(entries['cms-0']!.collectionName).toBeUndefined()
+	})
+
+	test('text without source coordinates from strings kept as a collection resolves to them', async () => {
+		await ctx.writeFile(
+			'src/pages/index.astro',
+			'---\nimport { getEntry } from "astro:content"\nconst t = (await getEntry("i18n", "en")).data\n---\n<p>{t.greeting}</p>\n',
+		)
+		await ctx.writeFile('src/content/i18n/en.json', JSON.stringify({ greeting: 'Hello there' }, null, 2))
+
+		const entries = await enhance('/', {
+			'cms-0': { id: 'cms-0', tag: 'p', text: 'Hello there' },
+		}, { i18n: dataCollection('i18n', [{ name: 'greeting', type: 'text', required: true }], ['en']) })
+
+		expect(entries['cms-0']).toMatchObject({ sourcePath: 'src/content/i18n/en.json', sourceLine: 2 })
+	})
+
 	test('an image rendered from a sorted and filtered list resolves to its entry', async () => {
 		await ctx.writeFile(
 			'src/pages/index.astro',

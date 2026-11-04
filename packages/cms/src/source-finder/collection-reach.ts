@@ -1,6 +1,7 @@
 import { analyzeAstroScript, type AstroSourceAnalysis } from '@nuasite/cms-core'
 import path from 'node:path'
 
+import { projectFiles } from '../project/context.ts'
 import type { CollectionDefinition, ManifestEntry } from '../types.ts'
 import { resolveSourcePath } from '../utils.ts'
 import { getCachedParsedFile } from './ast-parser.ts'
@@ -28,8 +29,8 @@ function analysisOf(filePath: string, parsed: CachedParsedFile): AstroSourceAnal
 
 /**
  * The collections read through `astro:content` in the static module graph of `files`, plus the
- * `seeds` and every collection they reference. All of them when no file of `files` is a module
- * (a dynamic route's page found by URL) or a `getCollection` name is not a literal.
+ * `seeds` and every collection they reference. All of them when no file of `files` exists (a
+ * dynamic route's page found by URL) or a `getCollection` name is not a literal.
  */
 export async function collectionsReadBy(
 	files: readonly string[],
@@ -59,7 +60,10 @@ export async function collectionsReadBy(
 		return true
 	}
 
-	const roots = await Promise.all(files.map(file => visit(resolveSourcePath(file))))
+	const roots = await Promise.all(files.map(async file => {
+		const filePath = resolveSourcePath(file)
+		return MODULE_FILE.test(filePath) ? visit(filePath) : fileExists(filePath)
+	}))
 	if (readsAny || !roots.some(Boolean)) return new Set(Object.keys(collections))
 
 	for (const seed of seeds) read.add(seed)
@@ -93,6 +97,15 @@ export function collectionsReadByPage(
 		if (entry.collectionName) shown.add(entry.collectionName)
 	}
 	return collectionsReadBy([...rendered], collections, shown)
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+	try {
+		await projectFiles().access(filePath)
+		return true
+	} catch {
+		return false
+	}
 }
 
 /** The data files of the entries of `names`, as the indexes spell them (project-relative). */

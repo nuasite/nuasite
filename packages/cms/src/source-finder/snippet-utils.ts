@@ -964,11 +964,10 @@ export async function enhanceManifestWithSourceSnippets(
 			const noCoords = !entry.sourcePath || !entry.sourceLine
 			const readable = !sameFileHit && noCoords ? await readableCollections() : undefined
 			if (readable && readableCollectionsHoldText(trimmedEntryText, readable)) {
+				const collectionSource = lookupCollectionText(trimmedEntryText, referenceIndex, readable)
+				const indexHit = findInTextIndex(trimmedEntryText, entry.tag, pageFiles, page?.renderedFiles)
 				// Without coordinates, equal text in a template and in collection data cannot be told apart.
-				const collectionSource = findInTextIndex(trimmedEntryText, entry.tag, pageFiles, page?.renderedFiles)
-					? undefined
-					: lookupCollectionText(trimmedEntryText, referenceIndex, readable)
-				if (!collectionSource) return [id, entry] as const
+				if (!collectionSource || (indexHit && indexHit.file !== collectionSource.file)) return [id, entry] as const
 				return [id, applyCollectionSource(entry, collectionSource, referenceIndex, { allowStyling: false })] as const
 			}
 			const winner = sameFileHit ?? (noCoords ? findInTextIndex(trimmedEntryText, entry.tag, pageFiles, page?.renderedFiles) : undefined)
