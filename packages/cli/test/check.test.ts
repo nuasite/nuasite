@@ -259,14 +259,17 @@ describe('check --fail-on', () => {
 		const original = console.log
 		console.log = (...args: unknown[]) => lines.push(args.join(' '))
 		try {
-			const code = await check({ ...options(['src/styles/new.css', 'packages/shared/x.css', 'public/vendor.css']), contentOnly: false })
+			const code = await check({
+				...options(['src/styles/new.css', 'packages/shared/x.css', 'public/vendor.css', 'src/scripts/menu.js']),
+				contentOnly: false,
+			})
 			expect(code).toBe(0)
 		} finally {
 			console.log = original
 		}
 		expect(lines.join('\n')).toContain('No errors in the 1 file(s) given to --fail-on that were checked.')
 		expect(lines.join('\n')).toContain(
-			'Not checked by this run (outside every Astro project here, in public/, or missing): packages/shared/x.css, public/vendor.css',
+			'Not parsed by this run (a content entry is still checked with its collection): packages/shared/x.css, public/vendor.css, src/scripts/menu.js',
 		)
 	})
 

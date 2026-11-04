@@ -48,10 +48,6 @@ function parseFailOn(args: string[]): string[] | null {
 	return value.split(',').map(file => file.trim()).filter(Boolean).map(file => path.normalize(file))
 }
 
-/** The files the syntax pass parses, as `checkCode` globs them. */
-const CODE_FILE = /\.(astro|ts|tsx|mts|cts|css)$/
-const DECLARATION_FILE = /\.d\.[mc]?ts$/
-
 const ASTRO_CONFIG_NAMES = ['astro.config.ts', 'astro.config.mts', 'astro.config.mjs', 'astro.config.js']
 
 const hasAstroConfig = (dir: string): boolean => ASTRO_CONFIG_NAMES.some(name => existsSync(path.join(dir, name)))
@@ -146,10 +142,10 @@ export async function check(options: CheckOptions): Promise<number> {
 	const failing = failOn === null
 		? errors
 		: report.findings.filter(finding => (finding.severity === 'error' || options.strict) && failOn.has(path.normalize(finding.file))).length
-	// A listed source file no root parsed, e.g. one outside every Astro project: nothing vouches for it, so say so
-	// rather than let the summary read as a pass. Content files are left out: the content check reads them by collection.
+	// A listed file the syntax pass did not read, e.g. a `.js`, one in `public/` or outside every Astro project:
+	// nothing here parsed it, so it is named rather than counted, and the summary cannot read as a pass for it.
 	const parsed = new Set(reports.flatMap(one => one.paths))
-	const unchecked = failOn === null ? [] : [...failOn].filter(file => CODE_FILE.test(file) && !DECLARATION_FILE.test(file) && !parsed.has(file))
+	const unchecked = failOn === null ? [] : [...failOn].filter(file => !parsed.has(file))
 
 	if (options.json) {
 		// The reason belongs inside the payload: a stray line would break anything parsing this.
@@ -172,7 +168,7 @@ export async function check(options: CheckOptions): Promise<number> {
 					: `${failing} problem(s) in the files given to --fail-on. Fix them before going on.`,
 			)
 			if (unchecked.length > 0) {
-				console.log(`Not checked by this run (outside every Astro project here, in public/, or missing): ${unchecked.join(', ')}`)
+				console.log(`Not parsed by this run (a content entry is still checked with its collection): ${unchecked.join(', ')}`)
 			}
 		}
 	}

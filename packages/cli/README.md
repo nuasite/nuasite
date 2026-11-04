@@ -101,9 +101,10 @@ project's installed code, so `--no-live` (and `--content-only`) keep to the bund
 `--fail-on` is for a commit: it still reports every problem, but fails only on errors
 in the files it lists (comma-separated, relative to where the command runs), so a
 change cannot add a broken file while an error it did not touch does not block it.
-With `--strict`, warnings in the listed files fail too. A listed source file the run
-did not parse (outside every Astro project, in `public/`, or missing) is named in the
-output, so a gate on it does not read as a pass.
+With `--strict`, warnings in the listed files fail too. A listed file the syntax pass
+did not read (a `.js`, a file in `public/` or outside every Astro project, a missing
+one) is named in the output rather than counted, so a gate on it does not read as a
+pass; a content entry among them is still checked with its collection.
 
 Use it instead of a full build when you only need to know whether the content is
 still valid: `astro build` validates the same things but costs the whole render
