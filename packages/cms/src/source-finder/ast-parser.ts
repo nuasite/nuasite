@@ -1,5 +1,6 @@
 import type { Node as AstroNode } from '@astrojs/compiler/types'
 import { parse as parseBabel } from '@babel/parser'
+import type { File } from '@babel/types'
 
 import { getErrorCollector } from '../error-collector.ts'
 import { currentProjectContext, projectFiles } from '../project/context.ts'
@@ -42,12 +43,17 @@ export async function parseAstroFile(content: string): Promise<ParsedAstroFile> 
  * @param filePath - Optional file path for error reporting
  */
 export function parseFrontmatter(content: string, filePath?: string): BabelFile | null {
+	const file = parseFrontmatterFile(content, filePath)
+	return file ? toBabelFile(file) : null
+}
+
+function parseFrontmatterFile(content: string, filePath?: string): File | null {
 	try {
 		return parseBabel(content, {
 			sourceType: 'module',
 			plugins: ['typescript'],
 			errorRecovery: true,
-		}) as unknown as BabelFile
+		})
 	} catch (error) {
 		// Record parse errors for aggregated reporting
 		if (filePath) {
@@ -58,6 +64,11 @@ export function parseFrontmatter(content: string, filePath?: string): BabelFile 
 		}
 		return null
 	}
+}
+
+/** The extractors walk Babel's tree through the narrower local node types. */
+function toBabelFile(file: File): BabelFile {
+	return file as unknown as BabelFile
 }
 
 // ============================================================================
@@ -105,6 +116,7 @@ async function parseAndCacheFile(
 				lines,
 				ast: { type: 'root', children: [] } as unknown as AstroNode,
 				frontmatterContent: null,
+				frontmatterFile: null,
 				frontmatterStartLine: 0,
 				variableDefinitions: [],
 				propAliases: new Map(),
@@ -119,13 +131,12 @@ async function parseAndCacheFile(
 		let variableDefinitions: CachedParsedFile['variableDefinitions'] = []
 		let propAliases: Map<string, string> = new Map()
 		let imports: CachedParsedFile['imports'] = []
-		if (frontmatterContent) {
-			const frontmatterAst = parseFrontmatter(frontmatterContent, filePath)
-			if (frontmatterAst) {
-				variableDefinitions = extractVariableDefinitions(frontmatterAst, frontmatterStartLine)
-				propAliases = extractPropAliases(frontmatterAst)
-				imports = extractImports(frontmatterAst)
-			}
+		const frontmatterFile = frontmatterContent ? parseFrontmatterFile(frontmatterContent, filePath) : null
+		if (frontmatterFile) {
+			const frontmatterAst = toBabelFile(frontmatterFile)
+			variableDefinitions = extractVariableDefinitions(frontmatterAst, frontmatterStartLine)
+			propAliases = extractPropAliases(frontmatterAst)
+			imports = extractImports(frontmatterAst)
 		}
 
 		const entry: CachedParsedFile = {
@@ -133,6 +144,7 @@ async function parseAndCacheFile(
 			lines,
 			ast,
 			frontmatterContent,
+			frontmatterFile,
 			frontmatterStartLine,
 			variableDefinitions,
 			propAliases,

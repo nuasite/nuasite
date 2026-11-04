@@ -16,7 +16,7 @@ const analyses = new WeakMap<CachedParsedFile, AstroSourceAnalysis>()
 function analysisOf(filePath: string, parsed: CachedParsedFile): AstroSourceAnalysis {
 	let analysis = analyses.get(parsed)
 	if (!analysis) {
-		analysis = analyzeAstroScript(filePath.endsWith('.astro') ? parsed.frontmatterContent ?? '' : parsed.content)
+		analysis = analyzeAstroScript(filePath.endsWith('.astro') ? parsed.frontmatterFile ?? '' : parsed.content)
 		analyses.set(parsed, analysis)
 	}
 	return analysis
