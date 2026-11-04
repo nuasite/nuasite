@@ -68,6 +68,8 @@ nua check --json          # machine-readable report
 nua check --strict        # warnings fail too
 nua check --content-only  # skip the source parse (and the live schema rules)
 nua check --no-live       # skip the live schema rules only
+nua check --fail-on src/styles/site.css,src/pages/index.astro
+                          # report everything, fail only on errors in these files
 ```
 
 Run it anywhere in the project: with no `astro.config.*` in the current directory
@@ -85,6 +87,24 @@ build takes before it renders anything. That catches the syntax error that kills
 build in `Building static entrypoints`, and reports it at its line in the `.astro`
 source rather than in generated code. It is a syntax check, not a type check: a
 wrong prop type still needs `astro check` or a build.
+
+Stylesheets under the project (not in `public/`, which is copied as it is) go through
+Tailwind's CSS parser, because the build runs every stylesheet through it, Tailwind or
+not. It refuses what a browser quietly repairs: a rule left without its closing `}`,
+a stray `}`, an unterminated string, a declaration without its colon. Only those syntax
+errors are reported. What only the whole project can settle, such as `@apply` of a
+utility its theme defines, is left to the build. The parser is the site's own
+`tailwindcss` when it has one installed, since its strictness changed between
+versions, and the copy this CLI ships otherwise. Loading the site's copy runs the
+project's installed code, so `--no-live` (and `--content-only`) keep to the bundled one.
+
+`--fail-on` is for a commit: it still reports every problem, but fails only on errors
+in the files it lists (comma-separated, relative to where the command runs), so a
+change cannot add a broken file while an error it did not touch does not block it.
+With `--strict`, warnings in the listed files fail too. A listed file the syntax pass
+did not read (a `.js`, a file in `public/` or outside every Astro project, a missing
+one) is named in the output rather than counted, so a gate on it does not read as a
+pass; a content entry among them is still checked with its collection.
 
 Use it instead of a full build when you only need to know whether the content is
 still valid: `astro build` validates the same things but costs the whole render

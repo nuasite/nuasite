@@ -13,6 +13,11 @@ export interface CheckOptions {
 	contentOnly: boolean
 	/** Validate against the project's real schemas, which means importing and running its content config. */
 	live: boolean
+	/**
+	 * Fail only on errors in these files, relative to `cwd`; every finding is still reported. For a commit
+	 * that must not add a broken file but should not be blocked by one it did not touch.
+	 */
+	failOn: string[] | null
 }
 
 /**
@@ -24,6 +29,7 @@ export interface CheckOptions {
 export function parseCheckArgs(args: string[], cwd: string): CheckOptions {
 	const contentOnly = args.includes('--content-only')
 	return {
+		failOn: parseFailOn(args),
 		cwd,
 		json: args.includes('--json'),
 		strict: args.includes('--strict'),
@@ -31,6 +37,15 @@ export function parseCheckArgs(args: string[], cwd: string): CheckOptions {
 		// Loading the real schemas executes the project's content config — the least content-only thing this command does.
 		live: !contentOnly && !args.includes('--no-live'),
 	}
+}
+
+/** `--fail-on a.css,b.astro` or `--fail-on=a.css,b.astro`, as normalized relative paths; null without the flag. */
+function parseFailOn(args: string[]): string[] | null {
+	const index = args.findIndex(arg => arg === '--fail-on' || arg.startsWith('--fail-on='))
+	if (index === -1) return null
+	const flag = args[index]!
+	const value = flag === '--fail-on' ? args[index + 1] ?? '' : flag.slice('--fail-on='.length)
+	return value.split(',').map(file => file.trim()).filter(Boolean).map(file => path.normalize(file))
 }
 
 const ASTRO_CONFIG_NAMES = ['astro.config.ts', 'astro.config.mts', 'astro.config.mjs', 'astro.config.js']
@@ -102,12 +117,13 @@ export async function check(options: CheckOptions): Promise<number> {
 	const reports = await Promise.all(roots.map(async root => {
 		const absolute = path.join(options.cwd, root)
 		const content = prefixed(await checkContent(createNodeFs(absolute), schemas ? { schemas } : {}), root)
-		if (options.contentOnly) return { ...content, files: 0 }
-		const code = await checkCode(absolute)
+		if (options.contentOnly) return { ...content, files: 0, paths: [] }
+		const code = await checkCode(absolute, { projectCode: options.live })
 		return {
 			...content,
 			findings: [...content.findings, ...code.findings.map(finding => ({ ...finding, file: path.join(root, finding.file) }))],
 			files: code.files,
+			paths: code.paths.map(file => path.join(root, file)),
 		}
 	}))
 
@@ -120,10 +136,21 @@ export async function check(options: CheckOptions): Promise<number> {
 
 	const errors = report.findings.filter(finding => finding.severity === 'error').length
 	const warnings = report.findings.length - errors
+	// An agent may list a file by its absolute path; findings are relative to the cwd.
+	const failOn = options.failOn === null ? null : new Set(options.failOn.map(file => path.relative(options.cwd, path.resolve(options.cwd, file))))
+	// Under --strict a warning in a listed file fails as well, as it would without --fail-on.
+	const failing = failOn === null
+		? errors
+		: report.findings.filter(finding => (finding.severity === 'error' || options.strict) && failOn.has(path.normalize(finding.file))).length
+	// A listed file the syntax pass did not read, e.g. a `.js`, one in `public/` or outside every Astro project:
+	// nothing here parsed it, so it is named rather than counted, and the summary cannot read as a pass for it.
+	const parsed = new Set(reports.flatMap(one => one.paths))
+	const unchecked = failOn === null ? [] : [...failOn].filter(file => !parsed.has(file))
 
 	if (options.json) {
 		// The reason belongs inside the payload: a stray line would break anything parsing this.
-		console.log(JSON.stringify({ ...report, roots, liveSchemas: 'schemas' in live ? 'ran' : live.skipped }, null, 2))
+		const failOnErrors = failOn === null ? {} : { failOnErrors: failing, failOnUnchecked: unchecked }
+		console.log(JSON.stringify({ ...report, roots, liveSchemas: 'schemas' in live ? 'ran' : live.skipped, ...failOnErrors }, null, 2))
 	} else {
 		const formatted = formatCheckReport(report)
 		if (formatted) console.log(formatted + '\n')
@@ -133,7 +160,19 @@ export async function check(options: CheckOptions): Promise<number> {
 		console.log(errors === 0 && warnings === 0 ? `${counts} — no problems found` : `${counts} — ${errors} error(s), ${warnings} warning(s)`)
 		// A check that did not run must not read as a pass.
 		if ('skipped' in live) console.log(`Live schema rules did not run: ${live.skipped}`)
+		if (failOn !== null) {
+			const covered = failOn.size - unchecked.length
+			console.log(
+				failing === 0
+					? `No errors in the ${covered} file(s) given to --fail-on that were checked.`
+					: `${failing} problem(s) in the files given to --fail-on. Fix them before going on.`,
+			)
+			if (unchecked.length > 0) {
+				console.log(`Not parsed by this run (a content entry is still checked with its collection): ${unchecked.join(', ')}`)
+			}
+		}
 	}
 
+	if (failOn !== null) return failing > 0 ? 1 : 0
 	return errors > 0 || (options.strict && warnings > 0) ? 1 : 0
 }

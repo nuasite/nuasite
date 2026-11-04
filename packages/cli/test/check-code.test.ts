@@ -55,6 +55,76 @@ describe('checkCode', () => {
 		expect(findings.map(finding => finding.code)).toEqual(['code/syntax'])
 	})
 
+	// A rule appended twice, the first copy cut off before its closing brace: a browser repairs it, the
+	// build's Tailwind parser does not, and the whole site stopped building.
+	test('a stylesheet the build cannot parse is reported at the rule left open', async () => {
+		await write(
+			'src/styles/content.css',
+			'.hero { color: red; }\n\n.media .hero-img {\n    object-position: 50\n.media .hero-img {\n    object-position: 50% 64%;\n}\n',
+		)
+
+		const { findings } = await checkCode(root)
+		expect(findings).toEqual([{
+			severity: 'error',
+			code: 'code/css-syntax',
+			file: path.join('src', 'styles', 'content.css'),
+			line: 3,
+			column: 1,
+			message: 'Missing closing } at .media .hero-img',
+		}])
+	})
+
+	test('the other syntax errors of the build parser are reported too', async () => {
+		await write('src/styles/a.css', '.a { color: red; }\n}\n')
+		await write('src/styles/b.css', '.b { content: "x; }\n')
+		await write('src/styles/c.css', '.c { color red; }\n')
+
+		const { findings } = await checkCode(root)
+		expect(findings.map(finding => [finding.file, finding.message.split(':')[0]])).toEqual([
+			[path.join('src', 'styles', 'a.css'), 'Missing opening {'],
+			[path.join('src', 'styles', 'b.css'), 'Unterminated string'],
+			[path.join('src', 'styles', 'c.css'), 'Invalid declaration'],
+		])
+	})
+
+	test('valid stylesheets pass, Tailwind or not, and what only the whole project can settle is left to the build', async () => {
+		await write(
+			'src/styles/global.css',
+			'@import "tailwindcss";\n@plugin "@tailwindcss/typography";\n@theme { --color-brand: #123; }\n.a { @apply bg-brand; }\n',
+		)
+		await write('src/styles/plain.css', '.a { object-position: 50% 64%; }\n@media (max-width: 767px) { .b { text-align: center } }\n')
+		await write('public/vendor.css', '.not-parsed {\n')
+
+		const { findings } = await checkCode(root)
+		expect(findings).toEqual([])
+	})
+
+	// Tailwind's parser grew stricter between versions, so a site is judged by the Tailwind it builds with.
+	test("stylesheets are parsed with the site's own tailwindcss when it has one", async () => {
+		await write('node_modules/tailwindcss/package.json', JSON.stringify({ name: 'tailwindcss', main: 'index.js' }))
+		await write(
+			'node_modules/tailwindcss/index.js',
+			'exports.compile = async () => { throw new Error("x.css:1:1: Missing closing } at the-site-parser") }\n',
+		)
+		await write('src/styles/ok.css', '.a { color: red; }\n')
+
+		const { findings } = await checkCode(root, { projectCode: true })
+		expect(findings.map(finding => finding.message)).toEqual(['Missing closing } at the-site-parser'])
+	})
+
+	// --no-live promises not to run the project's code, and loading its tailwindcss would.
+	test("without leave to run project code, the bundled parser is used instead of the site's", async () => {
+		await write('node_modules/tailwindcss/package.json', JSON.stringify({ name: 'tailwindcss', main: 'index.js' }))
+		await write(
+			'node_modules/tailwindcss/index.js',
+			'exports.compile = async () => { throw new Error("x.css:1:1: Missing closing } at the-site-parser") }\n',
+		)
+		await write('src/styles/ok.css', '.a { color: red; }\n')
+
+		expect((await checkCode(root)).findings).toEqual([])
+		expect((await checkCode(root, { projectCode: false })).findings).toEqual([])
+	})
+
 	test('a clean project reports nothing', async () => {
 		await write('src/pages/index.astro', '---\nconst title = "Ahoj"\n---\n<h1>{title}</h1>\n')
 		await write('src/lib/util.ts', 'export const two = 1 + 1\n')

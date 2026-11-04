@@ -64,7 +64,7 @@ describe('astroRoots', () => {
 
 describe('parseCheckArgs', () => {
 	test('no flags: everything off, live rules on', () => {
-		expect(parseCheckArgs([], '/repo')).toEqual({ cwd: '/repo', json: false, strict: false, contentOnly: false, live: true })
+		expect(parseCheckArgs([], '/repo')).toEqual({ cwd: '/repo', json: false, strict: false, contentOnly: false, live: true, failOn: null })
 	})
 
 	test('each flag is read independently', () => {
@@ -82,6 +82,12 @@ describe('parseCheckArgs', () => {
 
 	test('both together stay consistent', () => {
 		expect(parseCheckArgs(['--content-only', '--no-live', '--json'], '/repo')).toMatchObject({ contentOnly: true, live: false, json: true })
+	})
+
+	test('--fail-on takes a comma-separated list, as the next argument or after =', () => {
+		expect(parseCheckArgs(['--fail-on', 'src/a.css,./src/pages/index.astro'], '/repo').failOn).toEqual(['src/a.css', 'src/pages/index.astro'])
+		expect(parseCheckArgs(['--fail-on=src/a.css', '--json'], '/repo')).toMatchObject({ failOn: ['src/a.css'], json: true })
+		expect(parseCheckArgs(['--fail-on'], '/repo').failOn).toEqual([])
 	})
 
 	test('an unknown flag changes nothing', () => {
@@ -142,7 +148,7 @@ describe('check reports whether the live rules ran', () => {
 	test('--json stays one document, with the skip reason inside it', async () => {
 		const cwd = await project('two-sites', twoSites)
 
-		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: true })
+		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: true, failOn: null })
 		const payload: unknown = JSON.parse(out)
 		expect(payload).toMatchObject({ liveSchemas: expect.stringContaining('exactly one Astro project') })
 		expect(out.trimEnd().endsWith('}')).toBe(true)
@@ -151,7 +157,7 @@ describe('check reports whether the live rules ran', () => {
 	test('a multi-root run says the live rules were skipped', async () => {
 		const cwd = await project('two-sites-human', twoSites)
 
-		const { out } = await run({ cwd, json: false, strict: false, contentOnly: false, live: true })
+		const { out } = await run({ cwd, json: false, strict: false, contentOnly: false, live: true, failOn: null })
 		expect(out).toContain('Live schema rules did not run:')
 		expect(out).toContain(path.join('packages', 'web'))
 	})
@@ -162,7 +168,7 @@ describe('check reports whether the live rules ran', () => {
 			'src/content.config.ts': CONFIG,
 		})
 
-		const { out } = await run({ cwd, json: true, strict: false, contentOnly: true, live: false })
+		const { out } = await run({ cwd, json: true, strict: false, contentOnly: true, live: false, failOn: null })
 		expect(JSON.parse(out)).toMatchObject({ liveSchemas: expect.stringContaining('--content-only') })
 	})
 
@@ -172,7 +178,7 @@ describe('check reports whether the live rules ran', () => {
 			'src/content.config.ts': CONFIG,
 		})
 
-		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: false })
+		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: false, failOn: null })
 		expect(JSON.parse(out)).toMatchObject({ liveSchemas: expect.stringContaining('--no-live') })
 	})
 
@@ -180,7 +186,7 @@ describe('check reports whether the live rules ran', () => {
 	test("the loader's skip reason reaches the payload", async () => {
 		const cwd = await project('no-content-config', { 'astro.config.mjs': 'export default {}' })
 
-		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: true })
+		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: true, failOn: null })
 		expect(JSON.parse(out)).toMatchObject({ liveSchemas: expect.stringContaining('src/content.config.ts') })
 	})
 })
@@ -205,4 +211,69 @@ describe('nua check on the playground', () => {
 		const payload: unknown = JSON.parse(stdout)
 		expect(payload).toMatchObject({ liveSchemas: 'ran', roots: ['.'] })
 	}, 60_000)
+})
+
+// A commit runs the check on the files it changes: an error there stops it, one it did not touch does not.
+describe('check --fail-on', () => {
+	let workspace: string
+
+	beforeAll(async () => {
+		workspace = path.join(import.meta.dir, `.fail-on-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+		await fs.mkdir(workspace, { recursive: true })
+		await fs.writeFile(path.join(workspace, 'astro.config.mjs'), 'export default {}')
+		await fs.mkdir(path.join(workspace, 'src/styles'), { recursive: true })
+		await fs.writeFile(path.join(workspace, 'src/styles/old.css'), '.a { color: red;\n')
+		await fs.writeFile(path.join(workspace, 'src/styles/new.css'), '.b { color: blue; }\n')
+	})
+
+	afterAll(async () => {
+		await fs.rm(workspace, { recursive: true, force: true })
+	})
+
+	const options = (failOn: string[] | null): CheckOptions => ({ cwd: workspace, json: false, strict: false, contentOnly: true, live: false, failOn })
+
+	async function quiet(run: () => Promise<number>): Promise<number> {
+		const original = console.log
+		console.log = () => {}
+		try {
+			return await run()
+		} finally {
+			console.log = original
+		}
+	}
+
+	test('without it, any error fails', async () => {
+		expect(await quiet(() => check({ ...options(null), contentOnly: false }))).toBe(1)
+	})
+
+	test('an error only in a file not listed is reported but does not fail', async () => {
+		expect(await quiet(() => check({ ...options(['src/styles/new.css']), contentOnly: false }))).toBe(0)
+	})
+
+	test('an error in a listed file fails', async () => {
+		expect(await quiet(() => check({ ...options(['src/styles/new.css', 'src/styles/old.css']), contentOnly: false }))).toBe(1)
+	})
+
+	test('a listed source file the run did not parse is named, not passed over in silence', async () => {
+		const lines: string[] = []
+		const original = console.log
+		console.log = (...args: unknown[]) => lines.push(args.join(' '))
+		try {
+			const code = await check({
+				...options(['src/styles/new.css', 'packages/shared/x.css', 'public/vendor.css', 'src/scripts/menu.js']),
+				contentOnly: false,
+			})
+			expect(code).toBe(0)
+		} finally {
+			console.log = original
+		}
+		expect(lines.join('\n')).toContain('No errors in the 1 file(s) given to --fail-on that were checked.')
+		expect(lines.join('\n')).toContain(
+			'Not parsed by this run (a content entry is still checked with its collection): packages/shared/x.css, public/vendor.css, src/scripts/menu.js',
+		)
+	})
+
+	test('a file listed by its absolute path counts as listed', async () => {
+		expect(await quiet(() => check({ ...options([path.join(workspace, 'src/styles/old.css')]), contentOnly: false }))).toBe(1)
+	})
 })
