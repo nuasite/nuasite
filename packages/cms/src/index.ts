@@ -19,6 +19,7 @@ import type { MediaStorageAdapter } from './media/types.ts'
 import { type CmsMode, resolveCmsMode } from './mode.ts'
 import { packageRoot } from './package-root.ts'
 import { mergeCmsRedirectsInto } from './redirects.ts'
+import { type RouteMapSite, writeRouteMap } from './route-map-writer.ts'
 import { scanCollections } from './scan-cache.ts'
 import type { CmsFeatures, CmsMarkerOptions, ComponentDefinition } from './types.ts'
 import { inlineNuasitePackages, userExternals } from './vite-plugin-inline-nuasite.ts'
@@ -196,6 +197,9 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 	let componentDefinitions: Record<string, ComponentDefinition> = {}
 	let isPublicStaticFile: ((urlPath: string) => boolean) | undefined
+	// The dev server writes Astro's routes for the sidecar; `routeMapSite` is set once the config is known.
+	let writesRouteMap = false
+	let routeMapSite: RouteMapSite | undefined
 
 	const idCounter = { value: 0 }
 	const manifestWriter = new ManifestWriter(manifestFile, componentDefinitions)
@@ -206,6 +210,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 			'astro:config:setup': async ({ config, updateConfig, command, injectScript, injectRoute, logger }) => {
 				// CMS is only needed during dev — skip all setup during build
 				if (command !== 'dev') return
+				writesRouteMap = true
 
 				// Inject dev-only component preview route (prerender:false → SSR with query param access)
 				injectRoute({
@@ -410,6 +415,18 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 			'astro:config:done': ({ config }) => {
 				isPublicStaticFile = createPublicStaticFileChecker(fileURLToPath(config.publicDir))
+				routeMapSite = { root: fileURLToPath(config.root), base: config.base, trailingSlash: config.trailingSlash }
+			},
+
+			// Astro's resolved routes give the sidecar the routes a source scan cannot see (injected
+			// ones) and how the site serves them (config `base`, trailing slash). Runs again on route changes.
+			'astro:routes:resolved': async ({ routes, logger }) => {
+				if (!writesRouteMap || !routeMapSite) return
+				try {
+					await writeRouteMap(routes, routeMapSite)
+				} catch (error) {
+					logger.warn(`CMS route map not written: ${error instanceof Error ? error.message : String(error)}`)
+				}
 			},
 
 			'astro:server:setup': ({ server, logger }) => {

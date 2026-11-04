@@ -127,6 +127,18 @@ export {
 	type RedirectLine,
 	type RedirectRuleLine,
 } from './redirects.ts'
+export {
+	type MappedRoute,
+	normalizeSiteBase,
+	parseRouteMap,
+	readRouteMap,
+	ROUTE_MAP_PATH,
+	ROUTE_MAP_VERSION,
+	type RouteMap,
+	serializeRouteMap,
+	sitePathname,
+	type TrailingSlash,
+} from './route-map.ts'
 export { type RouteCollectionScan, scanRouteCollections } from './route-scan.ts'
 export { describeIssue, type LiveIssue, type LiveParseResult, type LiveSchema, type LiveSchemas, schemaFor } from './schema-port.ts'
 export { acceptsMissing, firstAcceptedEntry, governsPath, pointAt, type ProbePoint, rejectsValueAt } from './schema-probe.ts'
