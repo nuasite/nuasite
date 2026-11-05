@@ -6,7 +6,7 @@ import path from 'node:path'
 // package's own directory (left over from a rename) is a dead link on npmjs.com.
 
 const packagesDir = path.join(import.meta.dir, '..', 'packages')
-const REPO_BLOB = 'https://github.com/nuasite/nuasite/blob/main'
+const REPO = 'https://github.com/nuasite/nuasite'
 
 interface PublishedMetadata {
 	name: string
@@ -35,8 +35,12 @@ const published = fs.readdirSync(packagesDir, { withFileTypes: true })
 	})
 
 describe('package metadata', () => {
-	test.each(published)('$name points at its own directory', ({ dir, homepage, directory }) => {
+	test.each(published)('$name links to its own directory and an existing README', ({ dir, homepage, directory }) => {
 		expect(directory).toBe(`packages/${dir}`)
-		if (homepage !== undefined) expect(homepage).toBe(`${REPO_BLOB}/packages/${dir}/README.md`)
+		// The package's README when it has one, else its directory.
+		const hasReadme = fs.existsSync(path.join(packagesDir, dir, 'README.md'))
+		if (homepage !== undefined) {
+			expect(homepage).toBe(hasReadme ? `${REPO}/blob/main/packages/${dir}/README.md` : `${REPO}/tree/main/packages/${dir}`)
+		}
 	})
 })
