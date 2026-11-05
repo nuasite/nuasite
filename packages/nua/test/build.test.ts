@@ -1,4 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { agentsSummary } from '@nuasite/agent-summary'
 import { type AstroIntegration, build, dev } from 'astro'
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -49,6 +50,23 @@ describe('Redirects', () => {
 		const rules = (await readFile(path.join(root, 'dist/_redirects'), 'utf-8')).split('\n').filter(l => l && !l.startsWith('#'))
 		expect(rules).toEqual(['/stare /nove 301', '/letaky/a.pdf /uploads/a.pdf 307'])
 		expect((await readdir(path.join(root, 'dist'))).sort()).toEqual(['_redirects', 'index.html'])
+	}, 30_000)
+
+	test('a config redirect reaches AGENTS.md of an agent summary listed in the site integrations', async () => {
+		root = await mkdtemp(path.join(import.meta.dir, '.project-'))
+		await mkdir(path.join(root, 'src/pages'), { recursive: true })
+		await writeFile(path.join(root, 'src/pages/index.astro'), '<title>Home page</title><h1>Welcome home</h1>\n')
+		await build(defineConfig({
+			root,
+			logLevel: 'error',
+			redirects: { '/stare': { destination: '/nove', status: 301 } },
+			integrations: [agentsSummary()],
+			nua: { cms: false, mdx: false, sitemap: false, checks: false, pageMarkdown: false },
+		}))
+
+		expect(await readFile(path.join(root, 'AGENTS.md'), 'utf-8')).toContain(
+			JSON.stringify({ kind: 'redirect', route: '/stare', to: '/nove', status: '301' }),
+		)
 	}, 30_000)
 
 	test('with an adapter, which may serve redirects as routes, Astro keeps them', async () => {

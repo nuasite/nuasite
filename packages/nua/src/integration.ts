@@ -74,8 +74,8 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				}
 
 				// A static build ships them as `_redirects` rules only. `updateConfig` deep-merges, so it cannot
-				// clear them; the config Astro reads them from is the one passed here. Dev has no `_redirects`,
-				// and an adapter may serve them as routes, so Astro keeps them there.
+				// clear them; the config Astro reads them from is the one passed here. An adapter may serve them
+				// as routes, so Astro keeps them; dev has no `_redirects`, so Astro keeps the ones it accepts.
 				capturedRedirects = config.redirects ?? {}
 				if (command === 'build' && config.adapter === undefined) config.redirects = {}
 				if (command === 'dev') config.redirects = redirectsAstroServes(capturedRedirects, message => logger.warn(message))
