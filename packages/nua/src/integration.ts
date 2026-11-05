@@ -5,6 +5,7 @@ import cms, { addMarkdownPlugins, cmsRemarkPlugins, inlineNuasitePackages, merge
 import pageMarkdown from '@nuasite/llm-enhancements'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroConfig, AstroIntegration } from 'astro'
+import { redirectsAstroServes } from './redirects.ts'
 import { type NuaIntegrationOptions, resolveOptions } from './types.ts'
 
 export default function nua(options: NuaIntegrationOptions = {}): AstroIntegration {
@@ -77,6 +78,7 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 				// and an adapter may serve them as routes, so Astro keeps them there.
 				capturedRedirects = config.redirects ?? {}
 				if (command === 'build' && config.adapter === undefined) config.redirects = {}
+				if (command === 'dev') config.redirects = redirectsAstroServes(capturedRedirects, message => logger.warn(message))
 
 				// CMS list-style directives (`:::list{.class}`) need `remark-directive`
 				// in the markdown pipeline, both to render `<ul class="class">` and to

@@ -85,7 +85,7 @@ describe('Redirects', () => {
 		expect(redirectRoutes).toEqual(['/stare'])
 	}, 30_000)
 
-	test('the dev server, which has no _redirects, still answers a config redirect itself', async () => {
+	test('the dev server, which has no _redirects, still answers a config redirect itself and skips one Astro rejects', async () => {
 		root = await mkdtemp(path.join(import.meta.dir, '.project-'))
 		await mkdir(path.join(root, 'src/pages'), { recursive: true })
 		await writeFile(path.join(root, 'src/pages/index.astro'), '<p>home</p>\n')
@@ -93,7 +93,7 @@ describe('Redirects', () => {
 			root,
 			logLevel: 'error',
 			server: { port: 0, host: '127.0.0.1' },
-			redirects: { '/stare': { destination: '/nove', status: 301 } },
+			redirects: { '/stare': { destination: '/nove', status: 301 }, '/blog-old/[post-id]': '/blog' },
 			nua: { cms: false, mdx: false, sitemap: false, checks: false, pageMarkdown: false },
 		}))
 		try {
