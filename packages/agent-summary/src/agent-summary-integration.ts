@@ -2,7 +2,15 @@ import type { AstroIntegration } from 'astro'
 import fs from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import type { PageMeta, RedirectMeta } from './types.ts'
-import { extractMetaFromHtml, formatDestination, normalizeRoute, resolveHtmlPath, updateAgentsSummary } from './utils.ts'
+import {
+	extractMetaFromHtml,
+	formatDestination,
+	normalizeRoute,
+	parseRedirectsFile,
+	readRedirectsFile,
+	resolveHtmlPath,
+	updateAgentsSummary,
+} from './utils.ts'
 
 export const agentsSummary = (): AstroIntegration => {
 	const redirectPathnames = new Set<string>()
@@ -80,8 +88,13 @@ export const agentsSummary = (): AstroIntegration => {
 				}
 
 				if (agentsPath === undefined) throw new Error('agents-summary: astro:build:done ran before astro:config:done')
-				await updateAgentsSummary(agentsPath, summaries, redirects)
-				logger.info(`Updated AGENTS.md with ${summaries.length} page entries${redirects.length > 0 ? ` and ${redirects.length} redirects` : ''}.`)
+				// `_redirects` holds what the host applies, including config redirects a build leaves out of
+				// Astro's routes; a redirect route it has no rule for is listed as Astro serves it.
+				const fileRedirects = parseRedirectsFile(await readRedirectsFile(distDir))
+				const fileSources = new Set(fileRedirects.map(redirect => redirect.from))
+				const allRedirects = [...fileRedirects, ...redirects.filter(redirect => !fileSources.has(redirect.from))]
+				await updateAgentsSummary(agentsPath, summaries, allRedirects)
+				logger.info(`Updated AGENTS.md with ${summaries.length} page entries${allRedirects.length > 0 ? ` and ${allRedirects.length} redirects` : ''}.`)
 			},
 		},
 	}

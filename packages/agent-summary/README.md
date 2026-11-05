@@ -6,6 +6,7 @@
 
 - Discovers every concrete page emitted by Astro (skipping redirect-only routes).
 - Reads the built HTML, normalizes the title/description, and records prominent headings as contextual breadcrumbs.
+- Lists the redirects of the build output's `_redirects` (what the host applies), plus any Astro redirect route that file has no rule for.
 - Serializes each page (and redirect) into JSONL blocks bounded by dedicated `<page_summary*>` markers.
 - Creates `AGENTS.md` if it does not exist, or replaces only the generated blocks when they already exist.
 

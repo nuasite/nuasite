@@ -15,6 +15,7 @@ const {
 	resolveHtmlPath,
 	extractMetaFromHtml,
 	updateAgentsSummary,
+	parseRedirectsFile,
 	SUMMARY_START,
 	SUMMARY_END,
 } = utilsModule
@@ -141,6 +142,18 @@ describe('extractMetaFromHtml', () => {
 		expect(meta.description).toBe('This paragraph contains enough characters to act as a description even without a meta tag.')
 		expect(meta.headlines[0]).toEqual({ level: 'h2', text: 'Short' })
 		expect(meta.headlines[1]).toEqual({ level: 'h3', text: 'Enough characters to act as primary heading' })
+	})
+})
+
+describe('parseRedirectsFile', () => {
+	it('reads source, destination and status, and skips comments and lines without a destination', () => {
+		const text = '# legacy\n\n/old/ /new/ 301\n/blog/* /posts/:splat\n/ext https://example.com 302!\n/lonely\n  /spaced   /target   308  Language=cs\n'
+		expect(parseRedirectsFile(text)).toEqual([
+			{ from: '/old', to: '/new', status: '301' },
+			{ from: '/blog/*', to: '/posts/:splat', status: '302' },
+			{ from: '/ext', to: 'https://example.com', status: '302!' },
+			{ from: '/spaced', to: '/target', status: '308' },
+		])
 	})
 })
 

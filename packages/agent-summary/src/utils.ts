@@ -61,6 +61,31 @@ export const formatDestination = (value: string): string => {
 	return normalizeRoute(value)
 }
 
+/**
+ * The rules of a `_redirects` file (`source destination [status] [conditions]`) as redirect records.
+ * Comments and lines without a destination are skipped; a rule without a status gets 302, as Cloudflare
+ * Pages applies it.
+ */
+export const parseRedirectsFile = (text: string): RedirectMeta[] => {
+	const records: RedirectMeta[] = []
+	for (const line of text.split('\n')) {
+		const [from, to, status] = line.trim().split(/\s+/)
+		if (!from || from.startsWith('#') || !to) continue
+		records.push({ from: normalizeRoute(from), to: formatDestination(to), status: status && /^\d{3}!?$/.test(status) ? status : '302' })
+	}
+	return records
+}
+
+/** The `_redirects` of the build output, or `''` when there is none. */
+export const readRedirectsFile = async (distDir: string): Promise<string> => {
+	try {
+		return await fs.readFile(path.join(distDir, '_redirects'), 'utf8')
+	} catch (error) {
+		if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return ''
+		throw error
+	}
+}
+
 export const resolveHtmlPath = async (distDir: string, pathname: string): Promise<string | null> => {
 	const normalizedRoute = normalizeRoute(pathname)
 	const routeSegment = normalizedRoute === '/' ? '' : normalizedRoute.slice(1)

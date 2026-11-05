@@ -30,4 +30,21 @@ describe('AGENTS.md', () => {
 		expect(await readFile(path.join(root, 'AGENTS.md'), 'utf-8')).toContain('"title":"Home page"')
 		expect(await readFile(cwdAgents, 'utf-8').catch(() => null)).toBe(cwdBefore)
 	}, 30_000)
+
+	test('lists the redirects of _redirects, and the redirect routes it has no rule for', async () => {
+		root = await mkdtemp(path.join(import.meta.dir, '.project-'))
+		await mkdir(path.join(root, 'src/pages'), { recursive: true })
+		await mkdir(path.join(root, 'public'), { recursive: true })
+		await writeFile(path.join(root, 'src/pages/index.astro'), '<title>Home page</title><h1>Welcome home</h1>\n')
+		await writeFile(path.join(root, 'public/_redirects'), '# hand-written\n/stare /nove 301\n/oba /z-souboru 308\n')
+
+		await build({ root, logLevel: 'error', redirects: { '/z-configu': '/jinam', '/oba': '/z-configu' }, integrations: [agentsSummary()] })
+
+		const records = (await readFile(path.join(root, 'AGENTS.md'), 'utf-8')).split('\n').filter(line => line.includes('"kind":"redirect"'))
+		expect(records).toEqual([
+			JSON.stringify({ kind: 'redirect', route: '/oba', to: '/z-souboru', status: '308' }),
+			JSON.stringify({ kind: 'redirect', route: '/stare', to: '/nove', status: '301' }),
+			JSON.stringify({ kind: 'redirect', route: '/z-configu', to: '/jinam', status: '302' }),
+		])
+	}, 30_000)
 })
