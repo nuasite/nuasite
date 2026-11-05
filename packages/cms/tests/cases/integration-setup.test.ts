@@ -1,6 +1,8 @@
 import type { AstroIntegration } from 'astro'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { pathToFileURL } from 'node:url'
+import { resetProjectRoot } from '../../src/config'
 import nuaCms, { type NuaCmsOptions } from '../../src/index'
 import { cleanupTempDir, createTempDir, type TempDirContext } from '../utils/temp-directory'
 
@@ -50,6 +52,8 @@ describe('nuaCms integration — dev setup wiring', () => {
 			await new Promise<void>(resolve => httpServer?.close(() => resolve()))
 			httpServer = undefined
 		}
+		// The dev setup points the process at the project's root; later files expect the working directory.
+		resetProjectRoot()
 		await cleanupTempDir(ctx)
 	})
 
@@ -64,7 +68,10 @@ describe('nuaCms integration — dev setup wiring', () => {
 
 		// Only what the hooks read is stubbed; Astro passes far more.
 		const configSetup = {
-			config: { markdown: { processor: { name: 'unified', options: { remarkPlugins: [], rehypePlugins: [] } } } },
+			config: {
+				root: pathToFileURL(ctx.tempDir + '/'),
+				markdown: { processor: { name: 'unified', options: { remarkPlugins: [], rehypePlugins: [] } } },
+			},
 			command: 'dev',
 			logger,
 			updateConfig: () => ({}),
@@ -188,6 +195,22 @@ describe('nuaCms integration — dev setup wiring', () => {
 			expect(config.apiBase).toBe('/_nua/cms')
 			expect('locale' in config).toBe(false)
 		})
+	})
+
+	test('the project is read at the Astro root, not the working directory', async () => {
+		// `astro dev --root <site>` started from another directory.
+		process.chdir(ctx.originalCwd)
+		const { baseUrl } = await startDev({})
+		expect(await collectionLabel(`${baseUrl}/cms-manifest.json`, fromManifest)).toBe('Články')
+	})
+
+	test('default uploads are listed from the Astro root, not the working directory', async () => {
+		await ctx.writeFile('public/uploads/photo.png', 'png')
+		process.chdir(ctx.originalCwd)
+		const { baseUrl } = await startDev({})
+		const body: unknown = await (await Bun.fetch(`${baseUrl}/_nua/cms/media/list`)).json()
+		const urls = isRecord(body) && Array.isArray(body.items) ? body.items.map(item => (isRecord(item) ? item.url : undefined)) : undefined
+		expect(urls).toEqual(['/uploads/photo.png'])
 	})
 
 	describe('nua.cms.collections overrides reach everything the dev server serves', () => {

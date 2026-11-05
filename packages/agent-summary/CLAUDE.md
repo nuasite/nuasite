@@ -17,8 +17,9 @@ Astro integration that generates `AGENTS.md` — a machine-readable catalog of s
 
 ### How it Works
 
-1. Hooks into `astro:routes:resolved` to track redirect routes
+1. Hooks into `astro:routes:resolved` to track redirect routes (their pages are skipped)
 2. Hooks into `astro:build:done` to read all built HTML files
+   and the output's `_redirects`; its rules are the redirect records, plus any redirect route it has no rule for
 3. Extracts title, description, and headings from HTML using regex
 4. Serializes as JSONL records between `<page_summary>` markers in `AGENTS.md`
 5. Creates/updates only the generated block, preserving user content around it

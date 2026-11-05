@@ -2,7 +2,6 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { PageMeta, RedirectMeta } from './types.ts'
 
-export const AGENTS_PATH = path.resolve('AGENTS.md')
 export const SUMMARY_START = '<page_summary>'
 export const SUMMARY_END = '</page_summary>'
 
@@ -60,6 +59,34 @@ export const formatDestination = (value: string): string => {
 	}
 
 	return normalizeRoute(value)
+}
+
+/**
+ * The redirects of a `_redirects` file (`source destination [status] [conditions]`). A rule without a
+ * status redirects with 302, as Cloudflare Pages applies it; one with another status (a 200 rewrite, a
+ * 404) is no redirect and is skipped, as are comments and lines without a destination.
+ */
+export const parseRedirectsFile = (text: string): RedirectMeta[] => {
+	const records: RedirectMeta[] = []
+	for (const line of text.split('\n')) {
+		const [from, to, statusToken] = line.trim().split(/\s+/)
+		if (!from || from.startsWith('#') || !to) continue
+		// `!` forces the rule over an existing file; the status is the same.
+		const status = statusToken && /^\d{3}!?$/.test(statusToken) ? statusToken.replace('!', '') : '302'
+		if (!/^3\d\d$/.test(status)) continue
+		records.push({ from: normalizeRoute(from), to: formatDestination(to), status })
+	}
+	return records
+}
+
+/** The `_redirects` of the build output, or `''` when there is none. */
+export const readRedirectsFile = async (distDir: string): Promise<string> => {
+	try {
+		return await fs.readFile(path.join(distDir, '_redirects'), 'utf8')
+	} catch (error) {
+		if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return ''
+		throw error
+	}
 }
 
 export const resolveHtmlPath = async (distDir: string, pathname: string): Promise<string | null> => {
@@ -143,20 +170,20 @@ const createJsonlRecords = (pages: PageMeta[], redirects: RedirectMeta[]): strin
 	return records
 }
 
-export const updateAgentsSummary = async (pages: PageMeta[], redirects: RedirectMeta[]): Promise<void> => {
+export const updateAgentsSummary = async (agentsPath: string, pages: PageMeta[], redirects: RedirectMeta[]): Promise<void> => {
 	const jsonlRecords = createJsonlRecords(pages, redirects)
 	const summaryBody = jsonlRecords.join('\n')
 	const summaryBlock = summaryBody
 		? `${SUMMARY_START}\n${summaryBody}\n${SUMMARY_END}\n`
 		: `${SUMMARY_START}\n${SUMMARY_END}\n`
-	const agentsContent = await fs.readFile(AGENTS_PATH, 'utf8').catch(() => '')
+	const agentsContent = await fs.readFile(agentsPath, 'utf8').catch(() => '')
 
 	if (agentsContent.includes(SUMMARY_START) && agentsContent.includes(SUMMARY_END)) {
 		const startIndex = agentsContent.indexOf(SUMMARY_START)
 		const summaryEndIndex = agentsContent.indexOf(SUMMARY_END, startIndex)
 		if (summaryEndIndex === -1) {
 			const recovered = `${agentsContent.slice(0, startIndex)}${summaryBlock}`
-			await fs.writeFile(AGENTS_PATH, recovered, 'utf8')
+			await fs.writeFile(agentsPath, recovered, 'utf8')
 			return
 		}
 
@@ -166,11 +193,11 @@ export const updateAgentsSummary = async (pages: PageMeta[], redirects: Redirect
 		}
 
 		const updated = `${agentsContent.slice(0, startIndex)}${summaryBlock}${agentsContent.slice(endIndex)}`
-		await fs.writeFile(AGENTS_PATH, updated, 'utf8')
+		await fs.writeFile(agentsPath, updated, 'utf8')
 		return
 	}
 
 	const prefix = agentsContent.trimEnd()
 	const separator = prefix.length === 0 ? '' : '\n'
-	await fs.writeFile(AGENTS_PATH, `${prefix}${separator}${summaryBlock}`, 'utf8')
+	await fs.writeFile(agentsPath, `${prefix}${separator}${summaryBlock}`, 'utf8')
 }

@@ -80,7 +80,7 @@ The adapters moved out of this package — `src/media/types.ts` is now only a re
 | `s3Media()`        | `createS3StorageAdapter`        | `s3.ts` — S3/R2 direct (loads `@aws-sdk/client-s3` via dynamic import, optional peer dep) |
 | `contemberMedia()` | `createContemberStorageAdapter` | `contember.ts` — R2 + database                                                            |
 
-Only `list`/`upload`/`delete` are required; `createFolder` and `staticFiles` are optional. The default is local — see `media ?? (enableCmsApi ? createLocalStorageAdapter() : undefined)` in `src/index.ts`.
+Only `list`/`upload`/`delete` are required; `createFolder` and `staticFiles` are optional. The default is local, under `<project root>/public/uploads` — see `defaultMedia` in `src/index.ts`, created in `astro:server:setup` once the root is known.
 
 #### `staticFiles` does two jobs
 

@@ -16,7 +16,7 @@ export interface ProjectAtRoot {
  */
 export function projectAtRoot(root: string): ProjectAtRoot {
 	const context = createNodeProjectContext(root)
-	return { root, run: run => runInProjectContext(context, run) }
+	return { root: context.root, run: run => runInProjectContext(context, run) }
 }
 
 /** Run `run` once against the project at `root`, with empty caches. */

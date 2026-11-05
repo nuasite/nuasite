@@ -5,6 +5,7 @@ import cms, { addMarkdownPlugins, cmsRemarkPlugins, inlineNuasitePackages, merge
 import pageMarkdown from '@nuasite/llm-enhancements'
 import tailwindcss from '@tailwindcss/vite'
 import type { AstroConfig, AstroIntegration } from 'astro'
+import { redirectsAstroServes } from './redirects.ts'
 import { type NuaIntegrationOptions, resolveOptions } from './types.ts'
 
 export default function nua(options: NuaIntegrationOptions = {}): AstroIntegration {
@@ -72,9 +73,12 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 					)
 				}
 
-				// Captured for `_redirects`. The `redirects: {}` passed to `updateConfig` below does not clear
-				// them: Astro deep-merges config updates, so it still renders its own meta-refresh pages.
+				// A static build ships them as `_redirects` rules only. `updateConfig` deep-merges, so it cannot
+				// clear them; the config Astro reads them from is the one passed here. An adapter may serve them
+				// as routes, so Astro keeps them; dev has no `_redirects`, so Astro keeps the ones it accepts.
 				capturedRedirects = config.redirects ?? {}
+				if (command === 'build' && config.adapter === undefined) config.redirects = {}
+				if (command === 'dev') config.redirects = redirectsAstroServes(capturedRedirects, message => logger.warn(message))
 
 				// CMS list-style directives (`:::list{.class}`) need `remark-directive`
 				// in the markdown pipeline, both to render `<ul class="class">` and to
@@ -92,7 +96,6 @@ export default function nua(options: NuaIntegrationOptions = {}): AstroIntegrati
 
 				// Inject Vite plugins and integrations.
 				updateConfig({
-					redirects: {},
 					vite: {
 						plugins: vitePlugins,
 						ssr: {

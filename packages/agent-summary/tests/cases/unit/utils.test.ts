@@ -15,9 +15,9 @@ const {
 	resolveHtmlPath,
 	extractMetaFromHtml,
 	updateAgentsSummary,
+	parseRedirectsFile,
 	SUMMARY_START,
 	SUMMARY_END,
-	AGENTS_PATH,
 } = utilsModule
 
 describe('string helpers', () => {
@@ -145,23 +145,39 @@ describe('extractMetaFromHtml', () => {
 	})
 })
 
+describe('parseRedirectsFile', () => {
+	it('reads source, destination and status, and skips comments and lines without a destination', () => {
+		const text = '# legacy\n\n/old/ /new/ 301\n/blog/* /posts/:splat\n/ext https://example.com 302!\n/lonely\n  /spaced   /target   308  Language=cs\n'
+		expect(parseRedirectsFile(text)).toEqual([
+			{ from: '/old', to: '/new', status: '301' },
+			{ from: '/blog/*', to: '/posts/:splat', status: '302' },
+			{ from: '/ext', to: 'https://example.com', status: '302' },
+			{ from: '/spaced', to: '/target', status: '308' },
+		])
+	})
+
+	it('skips rules that do not redirect', () => {
+		expect(parseRedirectsFile('/api/* /backend/:splat 200\n/secret /404 404!\n/stare /nove 301\n')).toEqual([
+			{ from: '/stare', to: '/nove', status: '301' },
+		])
+	})
+})
+
 describe('updateAgentsSummary', () => {
-	let originalContent: string | null = null
+	let tempDir = ''
+	let agentsPath = ''
 
 	beforeAll(async () => {
-		originalContent = await fs.readFile(AGENTS_PATH, 'utf8').catch(() => null)
+		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agents-summary-'))
+		agentsPath = path.join(tempDir, 'AGENTS.md')
 	})
 
 	afterEach(async () => {
-		await fs.rm(AGENTS_PATH, { force: true })
+		await fs.rm(agentsPath, { force: true })
 	})
 
 	afterAll(async () => {
-		if (originalContent !== null) {
-			await fs.writeFile(AGENTS_PATH, originalContent, 'utf8')
-		} else {
-			await fs.rm(AGENTS_PATH, { force: true })
-		}
+		await fs.rm(tempDir, { recursive: true, force: true })
 	})
 
 	const blockBody = (content: string, start: string, end: string): string => {
@@ -209,9 +225,9 @@ describe('updateAgentsSummary', () => {
 			{ from: '/another', to: '/target', status: '301' },
 		]
 
-		await updateAgentsSummary(pages, redirects)
+		await updateAgentsSummary(agentsPath, pages, redirects)
 
-		const content = await fs.readFile(AGENTS_PATH, 'utf8')
+		const content = await fs.readFile(agentsPath, 'utf8')
 		expect(content.includes(SUMMARY_START)).toBe(true)
 
 		const lines = summaryLines(content)
@@ -227,7 +243,7 @@ describe('updateAgentsSummary', () => {
 		const prefix = '# Agents\n\nIntro text.\n'
 		const suffix = '\nAdditional details.'
 		const existing = `${prefix}${SUMMARY_START}\n\n{"kind":"page"}\n\n${SUMMARY_END}\n${suffix}`
-		await fs.writeFile(AGENTS_PATH, existing, 'utf8')
+		await fs.writeFile(agentsPath, existing, 'utf8')
 
 		const pages: PageMeta[] = [
 			{
@@ -238,9 +254,9 @@ describe('updateAgentsSummary', () => {
 			},
 		]
 
-		await updateAgentsSummary(pages, [])
+		await updateAgentsSummary(agentsPath, pages, [])
 
-		const content = await fs.readFile(AGENTS_PATH, 'utf8')
+		const content = await fs.readFile(agentsPath, 'utf8')
 		expect(content.startsWith(prefix)).toBe(true)
 		expect(content).toContain(suffix)
 		const lines = summaryLines(content)

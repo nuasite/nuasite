@@ -52,5 +52,8 @@
 		"tailwindcss": "catalog:ui",
 		"typescript": "catalog:build",
 		"vite": "catalog:build"
+	},
+	"devDependencies": {
+		"@nuasite/agent-summary": "workspace:*"
 	}
 }

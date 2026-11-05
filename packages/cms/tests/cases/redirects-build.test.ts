@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { resetProjectRoot, setProjectRoot } from '../../src/config'
 import nuaCms from '../../src/index'
 import { astroRedirectLines, mergeConfigRedirectsInto } from '../../src/redirects'
 import { cleanupTempDir, createTempDir, type TempDirContext } from '../utils/temp-directory'
@@ -16,6 +15,7 @@ import { cleanupTempDir, createTempDir, type TempDirContext } from '../utils/tem
 // rejecting the deploy.
 
 type BuildDone = NonNullable<AstroIntegration['hooks']['astro:build:done']>
+type ConfigDone = NonNullable<AstroIntegration['hooks']['astro:config:done']>
 
 describe('_redirects in the build output', () => {
 	let ctx: TempDirContext
@@ -27,13 +27,10 @@ describe('_redirects in the build output', () => {
 
 	beforeEach(async () => {
 		ctx = await createTempDir('redirects-build-')
-		// The root the dev editor writes `src/_redirects` under, which the build reads.
-		setProjectRoot(ctx.tempDir)
 		warnings.length = 0
 	})
 
 	afterEach(async () => {
-		resetProjectRoot()
 		await cleanupTempDir(ctx)
 	})
 
@@ -42,7 +39,13 @@ describe('_redirects in the build output', () => {
 	const rules = (text: string) => text.split('\n').filter(l => l && !l.startsWith('#'))
 
 	const nuaStep = (redirects: AstroConfig['redirects']) => mergeConfigRedirectsInto(dist(), logger, redirects, false)
-	const cmsStep = () => (nuaCms().hooks['astro:build:done'] as BuildDone)({ dir: dist(), logger } as Parameters<BuildDone>[0])
+	const cmsStep = async () => {
+		const cms = nuaCms()
+		// Only what the hooks read; Astro passes far more.
+		const config = { root: pathToFileURL(ctx.tempDir + '/'), publicDir: pathToFileURL(path.join(ctx.tempDir, 'public') + '/') }
+		await (cms.hooks['astro:config:done'] as ConfigDone)({ config } as unknown as Parameters<ConfigDone>[0])
+		await (cms.hooks['astro:build:done'] as BuildDone)({ dir: dist(), logger } as Parameters<BuildDone>[0])
+	}
 
 	test('a path redirected in code and in the CMS ends up listed once, with the CMS rule first', async () => {
 		await ctx.writeFile('dist/_redirects', '/letaky/a/a.pdf https://cdn.example/a.pdf 301\n/letaky/:slug/:file https://cdn.example/:slug/:file 301\n')
@@ -68,6 +71,17 @@ describe('_redirects in the build output', () => {
 		await nuaStep({ '/z-configu': '/jinam', '/spolecna': '/z-configu' })
 
 		expect(rules(await output())).toEqual(['/rucne /napsane 301', '/spolecna /z-public 301', '/z-configu /jinam 307'])
+	})
+
+	test('the CMS rules are read from the Astro root, not the working directory', async () => {
+		await ctx.writeFile('src/_redirects', '/z-cms /jinam\n')
+		await ctx.writeFile('dist/index.html', '')
+		// `astro build --root <site>` started from another directory.
+		process.chdir(ctx.originalCwd)
+
+		await cmsStep()
+
+		expect(rules(await output())).toEqual(['/z-cms /jinam'])
 	})
 
 	test('a hand-written file nothing is merged into is left exactly as written', async () => {

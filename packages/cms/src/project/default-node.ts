@@ -17,7 +17,8 @@ function byName(a: { name: string }, b: { name: string }): number {
 }
 
 export function setDefaultProjectRoot(root: string | null): void {
-	rootOverride = root
+	// Absolute and without a trailing slash (`fileURLToPath(config.root)` has one), as `root` is compared by prefix.
+	rootOverride = root === null ? null : path.resolve(root)
 }
 
 const nodeFiles: ProjectFiles = {
@@ -55,7 +56,8 @@ const context: ProjectContext = {
  * collection scans use, does not. It caches nothing between contexts, so a fresh one never serves a
  * stale read.
  */
-export function createNodeProjectContext(root: string): ProjectContext {
+export function createNodeProjectContext(projectRoot: string): ProjectContext {
+	const root = path.resolve(projectRoot)
 	return { root, fs: createNodeFs(root), files: nodeFiles, state: new ProjectState(), parseAstro: parse, mutate: mutation => mutation() }
 }
 

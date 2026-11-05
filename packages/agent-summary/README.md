@@ -6,6 +6,7 @@
 
 - Discovers every concrete page emitted by Astro (skipping redirect-only routes).
 - Reads the built HTML, normalizes the title/description, and records prominent headings as contextual breadcrumbs.
+- Lists the redirects of the build output's `_redirects` (what the host applies), plus any Astro redirect route that file has no rule for.
 - Serializes each page (and redirect) into JSONL blocks bounded by dedicated `<page_summary*>` markers.
 - Creates `AGENTS.md` if it does not exist, or replaces only the generated blocks when they already exist.
 
@@ -33,6 +34,8 @@ export default defineConfig({
 	],
 })
 ```
+
+With `@nuasite/nua`, list `agentsSummary()` after `nua()`, as `defineConfig` from `@nuasite/nua` does with your `integrations`. The redirects come from `dist/_redirects` as it stands when this integration's build hook runs, and nua writes the config's redirects there in its own hook. The CMS merges the editors' rules (`src/_redirects`) after both, so `AGENTS.md` does not list those.
 
 3. Run your normal build (`bun run astro build`, `npm run build`, etc.). When the build finishes you should see a log similar to:
 

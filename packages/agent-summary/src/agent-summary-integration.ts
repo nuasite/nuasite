@@ -2,15 +2,28 @@ import type { AstroIntegration } from 'astro'
 import fs from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import type { PageMeta, RedirectMeta } from './types.ts'
-import { extractMetaFromHtml, formatDestination, normalizeRoute, resolveHtmlPath, updateAgentsSummary } from './utils.ts'
+import {
+	extractMetaFromHtml,
+	formatDestination,
+	normalizeRoute,
+	parseRedirectsFile,
+	readRedirectsFile,
+	resolveHtmlPath,
+	updateAgentsSummary,
+} from './utils.ts'
 
 export const agentsSummary = (): AstroIntegration => {
 	const redirectPathnames = new Set<string>()
 	const redirects: RedirectMeta[] = []
+	// Next to the site's sources, which need not be the working directory (`astro build --root site`).
+	let agentsPath: string | undefined
 
 	return {
 		name: 'agents-summary',
 		hooks: {
+			'astro:config:done': ({ config }) => {
+				agentsPath = fileURLToPath(new URL('AGENTS.md', config.root))
+			},
 			'astro:routes:resolved': ({ routes }) => {
 				redirectPathnames.clear()
 				redirects.length = 0
@@ -74,8 +87,14 @@ export const agentsSummary = (): AstroIntegration => {
 					return
 				}
 
-				await updateAgentsSummary(summaries, redirects)
-				logger.info(`Updated AGENTS.md with ${summaries.length} page entries${redirects.length > 0 ? ` and ${redirects.length} redirects` : ''}.`)
+				if (agentsPath === undefined) throw new Error('agents-summary: astro:build:done ran before astro:config:done')
+				// `_redirects` holds what the host applies, including config redirects a build leaves out of
+				// Astro's routes; a redirect route it has no rule for is listed as Astro serves it.
+				const fileRedirects = parseRedirectsFile(await readRedirectsFile(distDir))
+				const fileSources = new Set(fileRedirects.map(redirect => redirect.from))
+				const allRedirects = [...fileRedirects, ...redirects.filter(redirect => !fileSources.has(redirect.from))]
+				await updateAgentsSummary(agentsPath, summaries, allRedirects)
+				logger.info(`Updated AGENTS.md with ${summaries.length} page entries${allRedirects.length > 0 ? ` and ${allRedirects.length} redirects` : ''}.`)
 			},
 		},
 	}
