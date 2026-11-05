@@ -62,16 +62,19 @@ export const formatDestination = (value: string): string => {
 }
 
 /**
- * The rules of a `_redirects` file (`source destination [status] [conditions]`) as redirect records.
- * Comments and lines without a destination are skipped; a rule without a status gets 302, as Cloudflare
- * Pages applies it.
+ * The redirects of a `_redirects` file (`source destination [status] [conditions]`). A rule without a
+ * status redirects with 302, as Cloudflare Pages applies it; one with another status (a 200 rewrite, a
+ * 404) is no redirect and is skipped, as are comments and lines without a destination.
  */
 export const parseRedirectsFile = (text: string): RedirectMeta[] => {
 	const records: RedirectMeta[] = []
 	for (const line of text.split('\n')) {
-		const [from, to, status] = line.trim().split(/\s+/)
+		const [from, to, statusToken] = line.trim().split(/\s+/)
 		if (!from || from.startsWith('#') || !to) continue
-		records.push({ from: normalizeRoute(from), to: formatDestination(to), status: status && /^\d{3}!?$/.test(status) ? status : '302' })
+		// `!` forces the rule over an existing file; the status is the same.
+		const status = statusToken && /^\d{3}!?$/.test(statusToken) ? statusToken.replace('!', '') : '302'
+		if (!/^3\d\d$/.test(status)) continue
+		records.push({ from: normalizeRoute(from), to: formatDestination(to), status })
 	}
 	return records
 }

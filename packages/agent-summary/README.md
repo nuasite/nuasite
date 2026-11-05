@@ -35,6 +35,8 @@ export default defineConfig({
 })
 ```
 
+With `@nuasite/nua`, list `agentsSummary()` after `nua()`, as `defineConfig` from `@nuasite/nua` does with your `integrations`. The redirects come from `dist/_redirects` as it stands when this integration's build hook runs, and nua writes the config's redirects there in its own hook. The CMS merges the editors' rules (`src/_redirects`) after both, so `AGENTS.md` does not list those.
+
 3. Run your normal build (`bun run astro build`, `npm run build`, etc.). When the build finishes you should see a log similar to:
 
 ```

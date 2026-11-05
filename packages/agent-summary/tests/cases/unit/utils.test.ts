@@ -151,8 +151,14 @@ describe('parseRedirectsFile', () => {
 		expect(parseRedirectsFile(text)).toEqual([
 			{ from: '/old', to: '/new', status: '301' },
 			{ from: '/blog/*', to: '/posts/:splat', status: '302' },
-			{ from: '/ext', to: 'https://example.com', status: '302!' },
+			{ from: '/ext', to: 'https://example.com', status: '302' },
 			{ from: '/spaced', to: '/target', status: '308' },
+		])
+	})
+
+	it('skips rules that do not redirect', () => {
+		expect(parseRedirectsFile('/api/* /backend/:splat 200\n/secret /404 404!\n/stare /nove 301\n')).toEqual([
+			{ from: '/stare', to: '/nove', status: '301' },
 		])
 	})
 })
