@@ -12,6 +12,9 @@ import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocatio
  */
 export type CollectionRouteInfo = string | true
 
+/** How many full clears a dropped parse stays reusable without being read; a deleted or renamed file's parse is let go after them. */
+const RETAINED_CLEARS = 4
+
 /**
  * Everything the visual editor caches about one project's sources. One instance per project
  * context, so two projects served by one process never see each other's files.
@@ -19,6 +22,9 @@ export type CollectionRouteInfo = string | true
 export class ProjectState {
 	/** Parsed Astro (and tsx/jsx) files, by absolute path. */
 	readonly parsedFiles = new Map<string, CachedParsedFile>()
+	/** Parses `clear` dropped, by absolute path, with the clear that dropped them. */
+	private readonly earlierParses = new Map<string, { parsed: CachedParsedFile; clearedAt: number }>()
+	private clears = 0
 	/** Parses in flight, so concurrent requests for one file share one parse. */
 	readonly parsing = new Map<string, Promise<CachedParsedFile | null>>()
 	/** Directory listings. */
@@ -58,14 +64,35 @@ export class ProjectState {
 	markFileDirty(absPath: string): void {
 		this.dirtyFiles.add(absPath)
 		this.parsedFiles.delete(absPath)
+		this.earlierParses.delete(absPath)
 		if (/^tsconfig.*\.json$/.test(path.basename(absPath))) this.importAliases = null
 		const fileDir = path.dirname(absPath)
 		this.declaredUrlIndex.delete(fileDir)
 		this.declaredUrlIndex.delete(path.dirname(fileDir))
 	}
 
-	/** Forget every cached file and index, as at the start of a build. */
+	/**
+	 * The parse `clear` dropped for `absPath`, when it was made from `content`: a parse depends on its
+	 * file's content only. Taken out either way, so a parse of other content is not kept.
+	 */
+	takeEarlierParse(absPath: string, content: string): CachedParsedFile | undefined {
+		const earlier = this.earlierParses.get(absPath)
+		this.earlierParses.delete(absPath)
+		return earlier?.parsed.content === content ? earlier.parsed : undefined
+	}
+
+	/** A file that could not be read has no parse to reuse. */
+	forgetEarlierParse(absPath: string): void {
+		this.earlierParses.delete(absPath)
+	}
+
+	/** Forget every cached file and index, as at the start of a build; a parse stays for reuse while its file is unchanged. */
 	clear(): void {
+		this.clears++
+		for (const [filePath, parsed] of this.parsedFiles) this.earlierParses.set(filePath, { parsed, clearedAt: this.clears })
+		for (const [filePath, earlier] of this.earlierParses) {
+			if (this.clears - earlier.clearedAt >= RETAINED_CLEARS) this.earlierParses.delete(filePath)
+		}
 		this.parsedFiles.clear()
 		this.directories.clear()
 		this.markdownFiles.clear()
