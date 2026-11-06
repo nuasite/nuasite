@@ -107,6 +107,11 @@ async function parseAndCacheFile(
 ): Promise<CachedParsedFile | null> {
 	try {
 		const content = await projectFiles().readFile(filePath)
+		const earlier = currentProjectContext().state.earlierParses.get(filePath)
+		if (earlier?.content === content) {
+			cache.set(filePath, earlier)
+			return earlier
+		}
 		const lines = content.split('\n')
 
 		// Only parse .astro files with AST

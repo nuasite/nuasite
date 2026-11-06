@@ -19,6 +19,8 @@ export type CollectionRouteInfo = string | true
 export class ProjectState {
 	/** Parsed Astro (and tsx/jsx) files, by absolute path. */
 	readonly parsedFiles = new Map<string, CachedParsedFile>()
+	/** Parses `clear` dropped, by absolute path: a parse depends on its file's content only, so it is reused while that reads the same. */
+	readonly earlierParses = new Map<string, CachedParsedFile>()
 	/** Parses in flight, so concurrent requests for one file share one parse. */
 	readonly parsing = new Map<string, Promise<CachedParsedFile | null>>()
 	/** Directory listings. */
@@ -64,8 +66,9 @@ export class ProjectState {
 		this.declaredUrlIndex.delete(path.dirname(fileDir))
 	}
 
-	/** Forget every cached file and index, as at the start of a build. */
+	/** Forget every cached file and index, as at the start of a build; a parse stays for reuse while its file is unchanged. */
 	clear(): void {
+		for (const [filePath, parsed] of this.parsedFiles) this.earlierParses.set(filePath, parsed)
 		this.parsedFiles.clear()
 		this.directories.clear()
 		this.markdownFiles.clear()
