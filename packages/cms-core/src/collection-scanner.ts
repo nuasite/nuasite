@@ -52,6 +52,8 @@ const SIDEBAR_FIELD_NAMES = new Set([
 
 /** Matches `@position <value>` or `@group <value>` in YAML comment text (# already stripped by parser) */
 const DIRECTIVE_PATTERN = /^\s*@(position|group)\s+(.+)$/
+/** Text every directive contains: a block without it has none, and is not parsed for them. */
+const DIRECTIVE_TEXT = /@(?:position|group)\s/
 
 /** Field names that should never be inferred as select (always free-text) */
 const FREE_TEXT_FIELD_NAMES = new Set([
@@ -142,7 +144,7 @@ function parseFrontmatter(content: string): Record<string, unknown> | null {
  */
 function parseFieldDirectives(content: string): Record<string, { position?: 'sidebar' | 'header'; group?: string }> {
 	const block = extractFrontmatterBlock(content)
-	if (!block) return {}
+	if (!block || !DIRECTIVE_TEXT.test(block)) return {}
 
 	const doc = parseDocument(block)
 	if (!isMap(doc.contents)) return {}
