@@ -1,7 +1,8 @@
 import { createNodeFs, scanCollections } from '@nuasite/cms-core'
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import * as yaml from 'yaml'
 
 describe('scanCollections: field directives in frontmatter comments', () => {
 	let root: string
@@ -38,5 +39,23 @@ describe('scanCollections: field directives in frontmatter comments', () => {
 		expect(fields.get('author')?.group).toBe('Credits')
 		expect(fields.get('subtitle')?.position).toBeUndefined()
 		expect(fields.get('subtitle')?.group).toBeUndefined()
+	})
+
+	test('a frontmatter that names no directive is not parsed for one', async () => {
+		await write({
+			'src/content/posts/plain.md': '---\ntitle: Plain\n# reviewed twice\nauthor: Ann\n---\n',
+			'src/content/posts/other.md': '---\ntitle: Other\nauthor: Bob\n---\n',
+		})
+		const documents = spyOn(yaml, 'parseDocument')
+		try {
+			await scanCollections(createNodeFs(root))
+			expect(documents).not.toHaveBeenCalled()
+
+			await write({ 'src/content/posts/grouped.md': '---\ntitle: Grouped\n# @group Credits\nauthor: Cid\n---\n' })
+			await scanCollections(createNodeFs(root))
+			expect(documents).toHaveBeenCalledTimes(1)
+		} finally {
+			documents.mockRestore()
+		}
 	})
 })
