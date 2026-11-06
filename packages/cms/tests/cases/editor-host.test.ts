@@ -348,6 +348,50 @@ describe('createEditorHost', () => {
 		expect(entryWithText(manifest, 'Hello world').sourcePath).toBe('/project/src/pages/index.astro')
 	})
 
+	test('a parse not read through four full invalidates is let go, so the file is parsed again', async () => {
+		const fs = project()
+		const parsed: string[] = []
+		const host = await hostOver(fs, {
+			parseAstro: (source, options) => {
+				parsed.push(source)
+				return parse(source, options)
+			},
+		})
+		await host.processPage('/', renderedPage('/project'))
+
+		parsed.length = 0
+		for (let i = 0; i < 4; i++) host.invalidate()
+		await host.processPage('/', renderedPage('/project'))
+		expect(parsed).toEqual([])
+
+		parsed.length = 0
+		for (let i = 0; i < 5; i++) host.invalidate()
+		await host.processPage('/', renderedPage('/project'))
+		expect(parsed.toSorted()).toEqual([CARD, PAGE].toSorted())
+	})
+
+	test('a file that could not be read is parsed again when it is back', async () => {
+		const fs = project()
+		const parsed: string[] = []
+		const host = await hostOver(fs, {
+			parseAstro: (source, options) => {
+				parsed.push(source)
+				return parse(source, options)
+			},
+		})
+		await host.processPage('/', renderedPage('/project'))
+
+		await fs.remove('src/components/Card.astro')
+		host.invalidate()
+		await host.processPage('/', renderedPage('/project'))
+		await fs.writeFile('src/components/Card.astro', CARD)
+		parsed.length = 0
+		host.invalidate()
+		await host.processPage('/', renderedPage('/project'))
+
+		expect(parsed).toEqual([CARD])
+	})
+
 	test('two hosts in one process keep their projects apart, also when used concurrently', async () => {
 		const first = await createEditorHost({ root: '/first', fs: project(), parseAstro: parse })
 		const second = await createEditorHost({

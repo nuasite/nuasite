@@ -107,8 +107,8 @@ async function parseAndCacheFile(
 ): Promise<CachedParsedFile | null> {
 	try {
 		const content = await projectFiles().readFile(filePath)
-		const earlier = currentProjectContext().state.earlierParses.get(filePath)
-		if (earlier?.content === content) {
+		const earlier = currentProjectContext().state.takeEarlierParse(filePath, content)
+		if (earlier) {
 			cache.set(filePath, earlier)
 			return earlier
 		}
@@ -160,6 +160,7 @@ async function parseAndCacheFile(
 		cache.set(filePath, entry)
 		return entry
 	} catch {
+		currentProjectContext().state.forgetEarlierParse(filePath)
 		return null
 	}
 }
