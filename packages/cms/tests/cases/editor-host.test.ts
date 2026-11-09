@@ -1,6 +1,6 @@
 import { parse } from '@astrojs/compiler'
 import { type CmsCommit, commitChangeset } from '@nuasite/cms-core'
-import { createEditorHost, type EditorHost, type EditorHostOptions } from '@nuasite/cms/editor-host'
+import { createEditorHost, type EditorDefinitions, type EditorHost, type EditorHostOptions } from '@nuasite/cms/editor-host'
 import { describe, expect, test } from 'bun:test'
 import type { ComponentInstance, ManifestEntry } from '../../src/types'
 import { createMemoryFileSystem, type MemoryFileSystem } from '../utils/memory-fs'
@@ -425,5 +425,119 @@ describe('createEditorHost', () => {
 		expect(await host.fetch(new Request('http://preview.test/about'))).toBeUndefined()
 		expect(await host.fetch(new Request('http://preview.test/missing.json'))).toBeUndefined()
 		expect((await host.fetch(new Request('http://preview.test/_nua/cms/update', { method: 'OPTIONS' })))?.status).toBe(204)
+	})
+})
+
+describe('createEditorHost with a definitions store', () => {
+	const POST = '---\ntitle: First post\n---\nBody\n'
+
+	function projectWithPosts(): MemoryFileSystem {
+		return createMemoryFileSystem({
+			'src/pages/index.astro': PAGE,
+			'src/components/Card.astro': CARD,
+			'src/content/posts/first.md': POST,
+			'src/content/posts/second.md': POST.replace('First', 'Second'),
+		})
+	}
+
+	/** The store of a host that has nothing saved yet: it records what the editor host hands it. */
+	function emptyStore() {
+		const saved: EditorDefinitions[] = []
+		let loads = 0
+		return {
+			saved,
+			loads: () => loads,
+			store: {
+				load: async () => {
+					loads++
+					return undefined
+				},
+				save: (definitions: EditorDefinitions) => saved.push(definitions),
+			},
+		}
+	}
+
+	/** A store holding one save, kept as JSON as a host keeps it between starts. */
+	function storeWith(definitions: EditorDefinitions) {
+		const json = JSON.stringify(definitions)
+		return { load: async () => JSON.parse(json), save: () => {} }
+	}
+
+	interface GlobalManifest {
+		componentDefinitions: Record<string, unknown>
+		collectionDefinitions: Record<string, { label: string; entryCount: number }>
+	}
+
+	test('a start from saved definitions parses no component and reads no entry, and serves what a scan serves', async () => {
+		const first = emptyStore()
+		const scanned = await hostOver(projectWithPosts(), { definitions: first.store })
+		const { body: scannedManifest } = await fetchJson<GlobalManifest>(scanned, '/cms-manifest.json')
+		expect(first.saved).toHaveLength(1)
+
+		const fs = projectWithPosts()
+		const read: string[] = []
+		const readFile = fs.readFile
+		fs.readFile = path => {
+			read.push(path)
+			return readFile(path)
+		}
+		let parses = 0
+		const restarted = await hostOver(fs, {
+			definitions: storeWith(first.saved[0]!),
+			parseAstro: (source, options) => {
+				parses++
+				return parse(source, options)
+			},
+		})
+		const { body: restartedManifest } = await fetchJson<GlobalManifest>(restarted, '/cms-manifest.json')
+
+		expect(parses).toBe(0)
+		expect(read.filter(path => path.startsWith('src/components/') || path.startsWith('src/content/'))).toEqual([])
+		expect(restartedManifest).toEqual(scannedManifest)
+		expect(Object.keys(restartedManifest.componentDefinitions)).toEqual(['Card'])
+		expect(restartedManifest.collectionDefinitions.posts?.entryCount).toBe(2)
+	})
+
+	test('saves the scan before the collection overrides, and lays the overrides over saved definitions', async () => {
+		const first = emptyStore()
+		const collections = { posts: { label: 'Articles' } }
+		await hostOver(projectWithPosts(), { definitions: first.store, collections })
+		const saved = first.saved[0]!
+		expect(saved.collections.posts?.label).not.toBe('Articles')
+
+		const restarted = await hostOver(projectWithPosts(), { definitions: storeWith(saved), collections })
+		const { body } = await fetchJson<GlobalManifest>(restarted, '/cms-manifest.json')
+		expect(body.collectionDefinitions.posts?.label).toBe('Articles')
+	})
+
+	test('what was saved does not change when the host goes on using its definitions', async () => {
+		let saved: EditorDefinitions | undefined
+		let atSave = ''
+		const store = {
+			load: async () => undefined,
+			save: (definitions: EditorDefinitions) => {
+				saved = definitions
+				atSave = JSON.stringify(definitions)
+			},
+		}
+		const host = await hostOver(projectWithPosts(), { definitions: store, collections: { posts: { label: 'Articles' } } })
+		await host.processPage('/', renderedPage('/project'))
+		await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		expect(JSON.stringify(saved)).toBe(atSave)
+	})
+
+	test('asks the store again after an invalidate that can change the definitions, and saves the new scan', async () => {
+		const fs = projectWithPosts()
+		const first = emptyStore()
+		const host = await hostOver(fs, { definitions: first.store })
+		expect(first.loads()).toBe(1)
+
+		await fs.writeFile('src/components/Hero.astro', '<section>Hero</section>\n')
+		host.invalidate(['src/components/Hero.astro'])
+		const { body } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(first.loads()).toBe(2)
+		expect(first.saved.map(definitions => Object.keys(definitions.components).sort())).toEqual([['Card'], ['Card', 'Hero']])
+		expect(Object.keys(body.componentDefinitions).sort()).toEqual(['Card', 'Hero'])
 	})
 })

@@ -1,6 +1,6 @@
 import { type CmsCommit, type CmsFileSystem, createCmsCore, parseProjectCmsConfig } from '@nuasite/cms-core'
 import path from 'node:path'
-import type { CollectionOverrides } from './collection-overrides.ts'
+import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides.ts'
 import { ComponentRegistry } from './component-registry.ts'
 import { EditorService, invalidateCollectionRoutesCache } from './editor-service.ts'
 import { errorResponse, jsonResponse, preflightResponse } from './handlers/request-utils.ts'
@@ -10,8 +10,9 @@ import { resolveMarkerConfig } from './marker-config.ts'
 import type { MediaStorageAdapter } from './media/types.ts'
 import { type AstroParse, createProjectContext, runInProjectContext } from './project/context.ts'
 import { reloadClientScript } from './reload-client.ts'
-import { scanCollections } from './scan-cache.ts'
-import type { CmsMarkerOptions, ComponentDefinition } from './types.ts'
+import { scanCollectionsWithoutOverrides } from './scan-cache.ts'
+import { parseTailwindConfig, parseTextStyles } from './tailwind-colors.ts'
+import type { AvailableColors, AvailableTextStyles, CmsMarkerOptions, CollectionDefinition, ComponentDefinition } from './types.ts'
 
 const DEFAULT_MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 const API_PREFIX = '/_nua/cms/'
@@ -41,6 +42,12 @@ export interface EditorHostOptions extends CmsMarkerOptions {
 	collections?: CollectionOverrides
 	/** @default 20 MB */
 	maxUploadSize?: number
+	/**
+	 * Keeps the definitions across starts. Without it, every start (and the first use after an
+	 * {@link EditorHost.invalidate} that can change them) scans the project: it parses every
+	 * component and reads every collection entry.
+	 */
+	definitions?: EditorDefinitionsStore
 	/** Inject the editor into every page {@link EditorHost.processPage} returns. */
 	editor?: {
 		/** URL of the editor bundle (`cms-editor.js`). */
@@ -49,6 +56,31 @@ export interface EditorHostOptions extends CmsMarkerOptions {
 		/** WebSocket URL of the host's change notifications; adds the reload client. */
 		reloadUrl?: string
 	}
+}
+
+/** What the editor host scans the project for before it serves anything. Plain data, safe to serialize as JSON. */
+export interface EditorDefinitions {
+	components: Record<string, ComponentDefinition>
+	/** As the content scan found them, before the `collections` overrides. */
+	collections: Record<string, CollectionDefinition>
+	colors: AvailableColors
+	textStyles: AvailableTextStyles
+}
+
+/**
+ * The host's store of {@link EditorDefinitions}, keyed by the files `fs` serves. The definitions
+ * depend on those files, on this package's version and on the options `componentDirs`, `contentDir`
+ * and `markComponents`; a host keys what it saves by all of them, e.g. by its revision of the files
+ * and its build.
+ */
+export interface EditorDefinitionsStore {
+	/**
+	 * The definitions saved for the files `fs` serves now, or `undefined` to scan them. The editor
+	 * host keeps and changes what it gets, so each call returns a fresh copy.
+	 */
+	load(): Promise<EditorDefinitions | undefined>
+	/** A scan of the files `fs` serves now found these. The editor host does not wait for the save. */
+	save(definitions: EditorDefinitions): void
 }
 
 export interface EditorHost {
@@ -101,12 +133,16 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 
 	async function loadDefinitions(): Promise<void> {
 		await runInProjectContext(context, async () => {
-			await manifestWriter.loadAvailableColors(options.root)
-			const definitions = config.markComponents ? await scanComponents(config.componentDirs) : {}
-			manifestWriter.setComponentDefinitions(definitions)
-			service.setComponentDefinitions(definitions)
-			if (options.mdxComponentDirs) manifestWriter.setMdxComponents(mdxComponentNames(definitions, options.mdxComponentDirs))
-			manifestWriter.setCollectionDefinitions(await scanCollections(config.contentDir, options.collections))
+			const saved = await options.definitions?.load()
+			const definitions = saved ?? await scanDefinitions(options.root, config)
+			// A copy: the editor host changes its definitions in place (overrides, entry pathnames).
+			if (saved === undefined) options.definitions?.save(structuredClone(definitions))
+			manifestWriter.setAvailableColors(definitions.colors)
+			manifestWriter.setAvailableTextStyles(definitions.textStyles)
+			manifestWriter.setComponentDefinitions(definitions.components)
+			service.setComponentDefinitions(definitions.components)
+			if (options.mdxComponentDirs) manifestWriter.setMdxComponents(mdxComponentNames(definitions.components, options.mdxComponentDirs))
+			manifestWriter.setCollectionDefinitions(applyCollectionOverrides(definitions.collections, options.collections))
 		})
 	}
 
@@ -174,6 +210,15 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 				}
 			})
 		},
+	}
+}
+
+async function scanDefinitions(root: string, config: Required<CmsMarkerOptions>): Promise<EditorDefinitions> {
+	return {
+		colors: await parseTailwindConfig(root),
+		textStyles: await parseTextStyles(root),
+		components: config.markComponents ? await scanComponents(config.componentDirs) : {},
+		collections: await scanCollectionsWithoutOverrides(config.contentDir),
 	}
 }
 

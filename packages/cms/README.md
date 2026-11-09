@@ -608,6 +608,7 @@ const host = await createEditorHost({
 	parseAstro, // `parse` of an initialized @astrojs/compiler
 	commit, // optional CmsCommit: fences editor writes against other writers
 	media, // optional MediaStorageAdapter
+	definitions, // optional EditorDefinitionsStore: keeps the start scan across starts
 	editor: { src: editorBundleUrl, reloadUrl: '/_live' },
 })
 
@@ -619,5 +620,6 @@ host.invalidate(['src/components/Card.astro']) // after a change made elsewhere
 - The rendered HTML must carry the Astro compiler's source annotations (`annotateSourceFile`). `processPage` marks the editable elements, records the page manifest and, with `editor`, injects `window.NuaCmsConfig`, the editor bundle and the reload client.
 - `fetch` answers `/_nua/cms/*`, `/cms-manifest.json` and `/<page>.json` of a processed page.
 - Each host keeps its own caches and manifests, so one process can serve several projects.
+- Before it serves anything, the host scans the project for its definitions: it parses every component and reads every collection entry, again after an `invalidate` that can change them. A host whose files are costly to read passes `definitions`, a store keyed by its revision of the files (and by its build, since the definitions also depend on this package's version and on `componentDirs`, `contentDir` and `markComponents`). `load()` returns the definitions saved for the files `fs` serves now, or `undefined` to scan them; after a scan, `save(definitions)` hands over what it found, as plain data. The `collections` overrides are laid over what `load()` returns, so they are not part of the key.
 - With `commit`, a write based on a file that changed meanwhile is refused: `409` for a single operation, a per-change error for that file in a batch save.
 - The reload client (`reloadClientScript`) opens a WebSocket to `reloadUrl`. On a message `{ "revision": "…" }` that differs from the page's revision, it dispatches a cancelable `nua:external-change` event on `window` and reloads the page unless the event was cancelled.
