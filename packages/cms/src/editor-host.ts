@@ -3,6 +3,7 @@ import path from 'node:path'
 import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides.ts'
 import { ComponentRegistry } from './component-registry.ts'
 import { EditorService, invalidateCollectionRoutesCache } from './editor-service.ts'
+import { getErrorCollector } from './error-collector.ts'
 import { errorResponse, jsonResponse, preflightResponse } from './handlers/request-utils.ts'
 import type { NuaCmsOptions } from './index.ts'
 import { ManifestWriter } from './manifest-writer.ts'
@@ -68,20 +69,25 @@ export interface EditorDefinitions {
 }
 
 /**
- * The host's store of {@link EditorDefinitions}, keyed by the files `fs` serves. The definitions
- * depend on those files, on this package's version and on the options `componentDirs`, `contentDir`
- * and `markComponents`; a host keys what it saves by all of them, e.g. by its revision of the files
- * and its build.
+ * The host's store of {@link EditorDefinitions}. The definitions depend on the files `fs` serves,
+ * on the host's build and on the options `componentDirs`, `contentDir` and `markComponents`; a host
+ * keys what it saves by all of them, e.g. by its revision of the files and its build.
  */
 export interface EditorDefinitionsStore {
 	/**
-	 * The definitions saved for the files `fs` serves now, or `undefined` to scan them. The editor
-	 * host keeps and changes what it gets, so each call returns a fresh copy.
+	 * Look up the definitions for the files `fs` serves now. A miss returns the `save` for the key it
+	 * looked up, which receives the scan of those files.
 	 */
-	load(): Promise<EditorDefinitions | undefined>
-	/** A scan of the files `fs` serves now found these. The editor host does not wait for the save. */
-	save(definitions: EditorDefinitions): void
+	load(): Promise<EditorDefinitionsLookup>
 }
+
+/**
+ * A hit returns the saved definitions, as a fresh copy each time: the editor host keeps and changes
+ * them. A miss returns `save`, which the editor host calls without waiting; an error it throws or
+ * rejects with goes to the error collector. A scan the host superseded by an `invalidate` meanwhile
+ * is not saved.
+ */
+export type EditorDefinitionsLookup = { definitions: EditorDefinitions } | { save(definitions: EditorDefinitions): Promise<void> | void }
 
 export interface EditorHost {
 	/**
@@ -97,7 +103,9 @@ export interface EditorHost {
 	fetch(request: Request): Promise<Response | undefined>
 	/**
 	 * Report files changed by anything other than this host (an agent, a checkout): paths relative
-	 * to the root or absolute under it. Without paths, everything cached is dropped.
+	 * to the root or absolute under it. Without paths, everything cached is dropped, and the
+	 * definitions are loaded again before the next use: from `definitions` when it has them for the
+	 * files now, scanned otherwise.
 	 */
 	invalidate(changedPaths?: readonly string[]): void
 }
@@ -131,26 +139,43 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 		},
 	})
 
+	/** Bumped by each `invalidate` that can change the definitions; a load started before it is superseded. */
+	let definitionsGeneration = 0
+	let definitionsStale = false
+
 	async function loadDefinitions(): Promise<void> {
-		await runInProjectContext(context, async () => {
-			const saved = await options.definitions?.load()
-			const definitions = saved ?? await scanDefinitions(options.root, config)
-			// A copy: the editor host changes its definitions in place (overrides, entry pathnames).
-			if (saved === undefined) options.definitions?.save(structuredClone(definitions))
-			manifestWriter.setAvailableColors(definitions.colors)
-			manifestWriter.setAvailableTextStyles(definitions.textStyles)
-			manifestWriter.setComponentDefinitions(definitions.components)
-			service.setComponentDefinitions(definitions.components)
-			if (options.mdxComponentDirs) manifestWriter.setMdxComponents(mdxComponentNames(definitions.components, options.mdxComponentDirs))
-			manifestWriter.setCollectionDefinitions(applyCollectionOverrides(definitions.collections, options.collections))
-		})
+		const generation = definitionsGeneration
+		let found: { definitions: EditorDefinitions; save?: EditorDefinitionsSave }
+		try {
+			found = await runInProjectContext(context, () => findDefinitions(options.definitions, options.root, config))
+		} catch (error) {
+			if (generation !== definitionsGeneration) return currentDefinitions()
+			// Not kept: the next use loads again.
+			definitionsStale = true
+			throw error
+		}
+		// Files changed while this load ran: neither serve nor save what it found, wait for the newer load.
+		if (generation !== definitionsGeneration) return currentDefinitions()
+		const { definitions, save } = found
+		// A copy: the editor host changes its definitions in place (overrides, entry pathnames).
+		if (save) saveDefinitions(save, structuredClone(definitions))
+		manifestWriter.setAvailableColors(definitions.colors)
+		manifestWriter.setAvailableTextStyles(definitions.textStyles)
+		manifestWriter.setComponentDefinitions(definitions.components)
+		service.setComponentDefinitions(definitions.components)
+		if (options.mdxComponentDirs) manifestWriter.setMdxComponents(mdxComponentNames(definitions.components, options.mdxComponentDirs))
+		manifestWriter.setCollectionDefinitions(applyCollectionOverrides(definitions.collections, options.collections))
+	}
+
+	function markDefinitionsStale(): void {
+		definitionsStale = true
+		definitionsGeneration++
 	}
 
 	let definitions: Promise<void> = loadDefinitions()
-	let definitionsStale = false
 	await definitions
 
-	/** Definitions are rescanned lazily, once per batch of changes, before the next use. */
+	/** Definitions are loaded again lazily, once per batch of changes, before the next use. */
 	function currentDefinitions(): Promise<void> {
 		if (definitionsStale) {
 			definitionsStale = false
@@ -195,7 +220,7 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 				if (changedPaths === undefined) {
 					context.state.clear()
 					invalidateCollectionRoutesCache()
-					definitionsStale = true
+					markDefinitionsStale()
 					return
 				}
 				for (const changed of changedPaths) {
@@ -206,11 +231,32 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 						invalidateCollectionRoutesCache()
 						manifestWriter.clearCollectionPathnames()
 					}
-					if (affectsDefinitions(relative, config)) definitionsStale = true
+					if (affectsDefinitions(relative, config)) markDefinitionsStale()
 				}
 			})
 		},
 	}
+}
+
+type EditorDefinitionsSave = (definitions: EditorDefinitions) => Promise<void> | void
+
+/** The saved definitions, or a scan and the `save` of the key the store looked up. */
+async function findDefinitions(
+	store: EditorDefinitionsStore | undefined,
+	root: string,
+	config: Required<CmsMarkerOptions>,
+): Promise<{ definitions: EditorDefinitions; save?: EditorDefinitionsSave }> {
+	const lookup = await store?.load()
+	if (lookup && 'definitions' in lookup) return { definitions: lookup.definitions }
+	return { definitions: await scanDefinitions(root, config), save: lookup?.save }
+}
+
+function saveDefinitions(save: EditorDefinitionsSave, definitions: EditorDefinitions): void {
+	Promise.resolve()
+		.then(() => save(definitions))
+		.catch((error: unknown) => {
+			getErrorCollector().addError('Saving the editor definitions', error instanceof Error ? error : new Error(String(error)))
+		})
 }
 
 async function scanDefinitions(root: string, config: Required<CmsMarkerOptions>): Promise<EditorDefinitions> {
