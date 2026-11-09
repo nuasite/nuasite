@@ -622,8 +622,10 @@ host.invalidate(['src/components/Card.astro']) // after a change made elsewhere
 - Each host keeps its own caches and manifests, so one process can serve several projects.
 - Before it serves anything, the host scans the project for its definitions: it parses every component and reads every collection entry. It does so again after an `invalidate` that can change them. A host whose files are costly to read passes `definitions`, a store keyed by its revision of the files and by its build. The build matters because the definitions also depend on the package versions and on `componentDirs`, `contentDir` and `markComponents`.
   - `load()` looks up the files `fs` serves now. A hit returns `{ definitions }`, a fresh copy on each call, because the host changes what it gets in place; a host that keeps them as JSON parses them again. A miss returns `{ save }` for the key it looked up.
-  - After a scan, the host calls that `save` with what it found, as plain data, and does not wait for it. An error from `save` goes to the error collector.
-  - A load that an `invalidate` superseded while it ran is neither served nor saved. A failed load is not kept: the next use loads again.
+  - The scan reads `fs` after `load()` returned. So `fs` serves the revision `load()` looked up for the whole scan, or the host calls `invalidate` before `fs` serves changed files; otherwise a scan of newer files can be saved under the older key.
+  - After a scan, the host calls that `save` with what it found, as plain data, and does not wait for it. An error from `save` is logged with `console.error`.
+  - A load that an `invalidate` superseded while it ran still answers the requests waiting for it, so they do not wait for the files to settle. It is served only when no newer load has been, it is never saved, and the next use loads again.
+  - A failed load is not kept: the next use loads again. This holds without a store too.
   - The `collections` overrides are laid over the loaded definitions, so they are not part of the key.
 - With `commit`, a write based on a file that changed meanwhile is refused: `409` for a single operation, a per-change error for that file in a batch save.
 - The reload client (`reloadClientScript`) opens a WebSocket to `reloadUrl`. On a message `{ "revision": "…" }` that differs from the page's revision, it dispatches a cancelable `nua:external-change` event on `window` and reloads the page unless the event was cancelled.

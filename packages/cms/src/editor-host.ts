@@ -3,7 +3,6 @@ import path from 'node:path'
 import { applyCollectionOverrides, type CollectionOverrides } from './collection-overrides.ts'
 import { ComponentRegistry } from './component-registry.ts'
 import { EditorService, invalidateCollectionRoutesCache } from './editor-service.ts'
-import { getErrorCollector } from './error-collector.ts'
 import { errorResponse, jsonResponse, preflightResponse } from './handlers/request-utils.ts'
 import type { NuaCmsOptions } from './index.ts'
 import { ManifestWriter } from './manifest-writer.ts'
@@ -76,7 +75,9 @@ export interface EditorDefinitions {
 export interface EditorDefinitionsStore {
 	/**
 	 * Look up the definitions for the files `fs` serves now. A miss returns the `save` for the key it
-	 * looked up, which receives the scan of those files.
+	 * looked up, which receives the scan of those files. The scan reads `fs` after `load()` returns, so
+	 * `fs` serves that revision for the whole scan, or the host calls `invalidate` before `fs` serves
+	 * changed files; otherwise a scan of newer files can be saved under the older key.
 	 */
 	load(): Promise<EditorDefinitionsLookup>
 }
@@ -84,8 +85,8 @@ export interface EditorDefinitionsStore {
 /**
  * A hit returns the saved definitions, as a fresh copy each time: the editor host keeps and changes
  * them. A miss returns `save`, which the editor host calls without waiting; an error it throws or
- * rejects with goes to the error collector. A scan the host superseded by an `invalidate` meanwhile
- * is not saved.
+ * rejects with is logged with `console.error`. A scan that an `invalidate` superseded while it ran is
+ * not saved.
  */
 export type EditorDefinitionsLookup = { definitions: EditorDefinitions } | { save(definitions: EditorDefinitions): Promise<void> | void }
 
@@ -141,6 +142,8 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 
 	/** Bumped by each `invalidate` that can change the definitions; a load started before it is superseded. */
 	let definitionsGeneration = 0
+	/** The generation of the load whose definitions are served. */
+	let appliedGeneration = -1
 	let definitionsStale = false
 
 	async function loadDefinitions(): Promise<void> {
@@ -149,16 +152,17 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 		try {
 			found = await runInProjectContext(context, () => findDefinitions(options.definitions, options.root, config))
 		} catch (error) {
-			if (generation !== definitionsGeneration) return currentDefinitions()
-			// Not kept: the next use loads again.
-			definitionsStale = true
+			// Not kept: the next use loads again (a superseded load's invalidate already asked for that).
+			if (generation === definitionsGeneration) definitionsStale = true
 			throw error
 		}
-		// Files changed while this load ran: neither serve nor save what it found, wait for the newer load.
-		if (generation !== definitionsGeneration) return currentDefinitions()
+		// A superseded load still answers its callers, without waiting for the files to settle, and the
+		// next use loads again. It is served only when no newer load has been, and never saved.
+		if (generation < appliedGeneration) return
+		appliedGeneration = generation
 		const { definitions, save } = found
 		// A copy: the editor host changes its definitions in place (overrides, entry pathnames).
-		if (save) saveDefinitions(save, structuredClone(definitions))
+		if (save && generation === definitionsGeneration) saveDefinitions(save, structuredClone(definitions))
 		manifestWriter.setAvailableColors(definitions.colors)
 		manifestWriter.setAvailableTextStyles(definitions.textStyles)
 		manifestWriter.setComponentDefinitions(definitions.components)
@@ -255,7 +259,7 @@ function saveDefinitions(save: EditorDefinitionsSave, definitions: EditorDefinit
 	Promise.resolve()
 		.then(() => save(definitions))
 		.catch((error: unknown) => {
-			getErrorCollector().addError('Saving the editor definitions', error instanceof Error ? error : new Error(String(error)))
+			console.error('[cms] Saving the editor definitions failed:', error)
 		})
 }
 
