@@ -459,19 +459,19 @@ describe('createEditorHost with a definitions store', () => {
 
 	/**
 	 * A store as a host keeps one: definitions as JSON by its revision of the files, which the test
-	 * moves. `failLoads` makes that many next loads reject.
+	 * moves. `failLoads` makes that many next loads reject; each load answers after `loadDelay` ms.
 	 */
 	function revisionStore() {
 		const saved = new Map<number, string>()
-		const state = { revision: 1, loads: 0, failLoads: 0 }
+		const state = { revision: 1, loads: 0, failLoads: 0, loadDelay: 0 }
 		const store: EditorDefinitionsStore = {
 			load: async () => {
 				state.loads++
-				if (state.failLoads > 0) {
-					state.failLoads--
-					throw new Error('store unavailable')
-				}
 				const revision = state.revision
+				const fails = state.failLoads > 0
+				if (fails) state.failLoads--
+				if (state.loadDelay > 0) await new Promise(resolve => setTimeout(resolve, state.loadDelay))
+				if (fails) throw new Error('store unavailable')
 				const json = saved.get(revision)
 				if (json !== undefined) return { definitions: JSON.parse(json) }
 				return { save: definitions => void saved.set(revision, JSON.stringify(definitions)) }
@@ -633,6 +633,35 @@ describe('createEditorHost with a definitions store', () => {
 
 		expect(Object.keys(fast.componentDefinitions).sort()).toEqual(['A', 'B', 'Card'])
 		expect(Object.keys(after.componentDefinitions).sort()).toEqual(['A', 'B', 'Card'])
+	})
+
+	test('a superseded load that fails answers its caller with the error; a request after the invalidate gets the newer definitions', async () => {
+		const fs = projectWithPosts()
+		const { store, state, savedAt } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+
+		await fs.writeFile('src/components/A.astro', CARD)
+		state.revision = 2
+		host.invalidate(['src/components/A.astro'])
+		state.loadDelay = 40
+		state.failLoads = 1
+		const oldCaller = fetchJson<GlobalManifest>(host, '/cms-manifest.json').then(
+			({ body }) => Object.keys(body.componentDefinitions).sort(),
+			(error: Error) => error.message,
+		)
+		await new Promise(resolve => setTimeout(resolve, 5))
+
+		await fs.writeFile('src/components/B.astro', CARD)
+		state.revision = 3
+		host.invalidate(['src/components/B.astro'])
+		state.loadDelay = 0
+		const { body: newer } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await settle()
+
+		expect(await oldCaller).toBe('store unavailable')
+		expect(Object.keys(newer.componentDefinitions).sort()).toEqual(['A', 'B', 'Card'])
+		expect(savedAt(2)).toBeUndefined()
+		expect(Object.keys(savedAt(3)?.components ?? {}).sort()).toEqual(['A', 'B', 'Card'])
 	})
 
 	test('a request made during a burst of invalidates does not wait for the burst to end', async () => {
