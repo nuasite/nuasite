@@ -434,6 +434,46 @@ describe('createEditorHost', () => {
 	})
 })
 
+/** A project whose page lists a collection of `count` posts, each with a title in its frontmatter. */
+function projectWithPosts(count: number): MemoryFileSystem {
+	const files: Record<string, string> = {
+		'src/pages/index.astro': [
+			'---',
+			'import { getCollection } from "astro:content"',
+			'const posts = await getCollection("posts")',
+			'---',
+			'<html><body>',
+			'{posts.map(post => <h2>{post.data.title}</h2>)}',
+			'</body></html>',
+		].join('\n'),
+	}
+	for (let index = 0; index < count; index++) files[`src/content/posts/post-${index}.md`] = `---\ntitle: Post number ${index}\n---\nBody ${index}\n`
+	return createMemoryFileSystem(files)
+}
+
+const POSTS_PAGE = '<html><body><h2>Post number 0</h2><h2>Post number 1</h2></body></html>'
+
+describe('createEditorHost source resolution after a page', () => {
+	test('with waitUntil, the resolution is handed to it and the manifest carries its sources', async () => {
+		const host = await hostOver(projectWithPosts(120))
+		const handed: Promise<unknown>[] = []
+		await host.processPage('/', POSTS_PAGE, { waitUntil: work => handed.push(work) })
+
+		expect(handed).toHaveLength(1)
+		await Promise.all(handed)
+		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+	})
+
+	test('without waitUntil, the manifest waits for the resolution', async () => {
+		const host = await hostOver(projectWithPosts(120))
+		await host.processPage('/', POSTS_PAGE)
+
+		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+	})
+})
+
 describe('createEditorHost with a definitions store', () => {
 	const POST = '---\ntitle: First post\n---\nBody\n'
 

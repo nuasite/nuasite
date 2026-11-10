@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import { getProjectRoot } from '../config.ts'
 import { currentProjectContext, projectFiles } from '../project/context.ts'
+import { forEachYielding } from '../project/host-yield.ts'
 import { escapeRegex } from '../utils.ts'
 import { buildDefinitionPath, parseExpressionPath } from './ast-extractors.ts'
 import { getCachedParsedFile } from './ast-parser.ts'
@@ -899,7 +900,7 @@ async function indexContentCollectionImages(): Promise<void> {
 		}
 	}
 
-	await Promise.all(dataFiles.map(async (filePath) => {
+	await forEachYielding(dataFiles, async (filePath) => {
 		try {
 			const content = await projectFiles().readFile(filePath)
 			const relFile = path.relative(getProjectRoot(), filePath)
@@ -914,7 +915,7 @@ async function indexContentCollectionImages(): Promise<void> {
 		} catch {
 			// Skip unreadable files
 		}
-	}))
+	})
 }
 
 const DATA_FILE_PATTERN = /\.(json|ya?ml|mdx?)$/
