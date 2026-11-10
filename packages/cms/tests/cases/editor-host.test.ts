@@ -1,7 +1,13 @@
 import { parse } from '@astrojs/compiler'
 import { type CmsCommit, commitChangeset } from '@nuasite/cms-core'
-import { createEditorHost, type EditorHost, type EditorHostOptions } from '@nuasite/cms/editor-host'
-import { describe, expect, test } from 'bun:test'
+import {
+	createEditorHost,
+	type EditorDefinitions,
+	type EditorDefinitionsStore,
+	type EditorHost,
+	type EditorHostOptions,
+} from '@nuasite/cms/editor-host'
+import { describe, expect, spyOn, test } from 'bun:test'
 import type { ComponentInstance, ManifestEntry } from '../../src/types'
 import { createMemoryFileSystem, type MemoryFileSystem } from '../utils/memory-fs'
 
@@ -425,5 +431,311 @@ describe('createEditorHost', () => {
 		expect(await host.fetch(new Request('http://preview.test/about'))).toBeUndefined()
 		expect(await host.fetch(new Request('http://preview.test/missing.json'))).toBeUndefined()
 		expect((await host.fetch(new Request('http://preview.test/_nua/cms/update', { method: 'OPTIONS' })))?.status).toBe(204)
+	})
+})
+
+describe('createEditorHost with a definitions store', () => {
+	const POST = '---\ntitle: First post\n---\nBody\n'
+
+	function projectWithPosts(): MemoryFileSystem {
+		return createMemoryFileSystem({
+			'src/pages/index.astro': PAGE,
+			'src/components/Card.astro': CARD,
+			'src/content/posts/first.md': POST,
+			'src/content/posts/second.md': POST.replace('First', 'Second'),
+		})
+	}
+
+	/** Records the reads of component and content files, which only a scan makes. */
+	function countScanReads(fs: MemoryFileSystem): string[] {
+		const read: string[] = []
+		const readFile = fs.readFile
+		fs.readFile = path => {
+			if (path.startsWith('src/components/') || path.startsWith('src/content/')) read.push(path)
+			return readFile(path)
+		}
+		return read
+	}
+
+	/**
+	 * A store as a host keeps one: definitions as JSON by its revision of the files, which the test
+	 * moves. `failLoads` makes that many next loads reject; each load answers after `loadDelay` ms.
+	 */
+	function revisionStore() {
+		const saved = new Map<number, string>()
+		const state = { revision: 1, loads: 0, failLoads: 0, loadDelay: 0 }
+		const store: EditorDefinitionsStore = {
+			load: async () => {
+				state.loads++
+				const revision = state.revision
+				const fails = state.failLoads > 0
+				if (fails) state.failLoads--
+				if (state.loadDelay > 0) await new Promise(resolve => setTimeout(resolve, state.loadDelay))
+				if (fails) throw new Error('store unavailable')
+				const json = saved.get(revision)
+				if (json !== undefined) return { definitions: JSON.parse(json) }
+				return { save: definitions => void saved.set(revision, JSON.stringify(definitions)) }
+			},
+		}
+		const savedAt = (revision: number): EditorDefinitions | undefined => {
+			const json = saved.get(revision)
+			return json === undefined ? undefined : JSON.parse(json)
+		}
+		return { store, state, saved, savedAt }
+	}
+
+	/** Lets the queued saves run. */
+	const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+
+	interface GlobalManifest {
+		componentDefinitions: Record<string, unknown>
+		collectionDefinitions: Record<string, { label: string; entryCount: number }>
+		mdxComponents?: string[]
+	}
+
+	test('a start from saved definitions reads no component or entry, and serves what a scan serves', async () => {
+		const { store, savedAt } = revisionStore()
+		const scanningFs = projectWithPosts()
+		const scanReads = countScanReads(scanningFs)
+		const scanned = await hostOver(scanningFs, { definitions: store, mdxComponentDirs: ['src/components'] })
+		const { body: scannedManifest } = await fetchJson<GlobalManifest>(scanned, '/cms-manifest.json')
+		await settle()
+		expect(savedAt(1)).toBeDefined()
+		expect(scanReads.length).toBeGreaterThan(0)
+
+		const fs = projectWithPosts()
+		const reads = countScanReads(fs)
+		const restarted = await hostOver(fs, { definitions: store, mdxComponentDirs: ['src/components'] })
+		const { body: restartedManifest } = await fetchJson<GlobalManifest>(restarted, '/cms-manifest.json')
+
+		expect(reads).toEqual([])
+		expect(restartedManifest).toEqual(scannedManifest)
+		expect(Object.keys(restartedManifest.componentDefinitions)).toEqual(['Card'])
+		expect(restartedManifest.mdxComponents).toEqual(['Card'])
+		expect(restartedManifest.collectionDefinitions.posts?.entryCount).toBe(2)
+	})
+
+	test('saves the scan before the collection overrides, and lays the overrides over saved definitions', async () => {
+		const { store, savedAt } = revisionStore()
+		const collections = { posts: { label: 'Articles' } }
+		await hostOver(projectWithPosts(), { definitions: store, collections })
+		await settle()
+		expect(savedAt(1)?.collections.posts?.label).not.toBe('Articles')
+
+		const restarted = await hostOver(projectWithPosts(), { definitions: store, collections })
+		const { body } = await fetchJson<GlobalManifest>(restarted, '/cms-manifest.json')
+		expect(body.collectionDefinitions.posts?.label).toBe('Articles')
+	})
+
+	test('what was saved does not change when the host goes on using its definitions', async () => {
+		let saved: EditorDefinitions | undefined
+		let atSave = ''
+		const store: EditorDefinitionsStore = {
+			load: async () => ({
+				save: definitions => {
+					saved = definitions
+					atSave = JSON.stringify(definitions)
+				},
+			}),
+		}
+		const host = await hostOver(projectWithPosts(), { definitions: store, collections: { posts: { label: 'Articles' } } })
+		await host.processPage('/', renderedPage('/project'))
+		await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await settle()
+		expect(JSON.stringify(saved)).toBe(atSave)
+	})
+
+	test('after an invalidate, a miss scans and saves under the new revision, and a hit serves the saved definitions without a scan', async () => {
+		const fs = projectWithPosts()
+		const reads = countScanReads(fs)
+		const { store, state, saved, savedAt } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+
+		await fs.writeFile('src/components/Hero.astro', '<section>Hero</section>\n')
+		state.revision = 2
+		host.invalidate(['src/components/Hero.astro'])
+		const { body: scanned } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await settle()
+		expect(Object.keys(scanned.componentDefinitions).sort()).toEqual(['Card', 'Hero'])
+		expect(Object.keys(savedAt(2)?.components ?? {}).sort()).toEqual(['Card', 'Hero'])
+
+		// Revision 3 was saved by another start; its Footer is not among the files, so only the store can serve it.
+		const third = savedAt(2)!
+		third.components.Footer = { name: 'Footer', file: 'src/components/Footer.astro', props: [] }
+		saved.set(3, JSON.stringify(third))
+		state.revision = 3
+		reads.length = 0
+		host.invalidate(['src/components/Footer.astro'])
+		const { body: loaded } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(reads).toEqual([])
+		expect(Object.keys(loaded.componentDefinitions).sort()).toEqual(['Card', 'Footer', 'Hero'])
+	})
+
+	/** Delays each read of a component file by `delay.ms`, as a slow remote storage would. */
+	function slowComponentReads(fs: MemoryFileSystem): { ms: number } {
+		const delay = { ms: 0 }
+		const readFile = fs.readFile
+		fs.readFile = async path => {
+			if (delay.ms > 0 && path.startsWith('src/components/')) await new Promise(resolve => setTimeout(resolve, delay.ms))
+			return readFile(path)
+		}
+		return delay
+	}
+
+	test('a load an invalidate superseded while it ran answers its caller and is never saved; the next use loads again', async () => {
+		const fs = projectWithPosts()
+		const { store, state, savedAt } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+		const delay = slowComponentReads(fs)
+
+		await fs.writeFile('src/components/A.astro', CARD)
+		state.revision = 2
+		host.invalidate(['src/components/A.astro'])
+		delay.ms = 50
+		const slow = fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await new Promise(resolve => setTimeout(resolve, 5))
+
+		await fs.writeFile('src/components/B.astro', CARD)
+		state.revision = 3
+		host.invalidate(['src/components/B.astro'])
+		delay.ms = 0
+		const { body: slowBody } = await slow
+		const { body: later } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await settle()
+
+		expect(Object.keys(slowBody.componentDefinitions).sort()).toEqual(['A', 'Card'])
+		expect(Object.keys(later.componentDefinitions).sort()).toEqual(['A', 'B', 'Card'])
+		expect(savedAt(2)).toBeUndefined()
+		expect(Object.keys(savedAt(3)?.components ?? {}).sort()).toEqual(['A', 'B', 'Card'])
+	})
+
+	test('a superseded load that finishes after a newer one was served does not replace it', async () => {
+		const fs = projectWithPosts()
+		const { store, state } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+		const delay = slowComponentReads(fs)
+
+		await fs.writeFile('src/components/A.astro', CARD)
+		state.revision = 2
+		host.invalidate(['src/components/A.astro'])
+		delay.ms = 50
+		const slow = fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await new Promise(resolve => setTimeout(resolve, 5))
+
+		await fs.writeFile('src/components/B.astro', CARD)
+		state.revision = 3
+		host.invalidate(['src/components/B.astro'])
+		delay.ms = 0
+		const { body: fast } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await slow
+		const { body: after } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(Object.keys(fast.componentDefinitions).sort()).toEqual(['A', 'B', 'Card'])
+		expect(Object.keys(after.componentDefinitions).sort()).toEqual(['A', 'B', 'Card'])
+	})
+
+	test('a superseded load that fails answers its caller with the error; a request after the invalidate gets the newer definitions', async () => {
+		const fs = projectWithPosts()
+		const { store, state, savedAt } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+
+		await fs.writeFile('src/components/A.astro', CARD)
+		state.revision = 2
+		host.invalidate(['src/components/A.astro'])
+		state.loadDelay = 40
+		state.failLoads = 1
+		const oldCaller = fetchJson<GlobalManifest>(host, '/cms-manifest.json').then(
+			({ body }) => Object.keys(body.componentDefinitions).sort(),
+			(error: Error) => error.message,
+		)
+		await new Promise(resolve => setTimeout(resolve, 5))
+
+		await fs.writeFile('src/components/B.astro', CARD)
+		state.revision = 3
+		host.invalidate(['src/components/B.astro'])
+		state.loadDelay = 0
+		const { body: newer } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await settle()
+
+		expect(await oldCaller).toBe('store unavailable')
+		expect(Object.keys(newer.componentDefinitions).sort()).toEqual(['A', 'B', 'Card'])
+		expect(savedAt(2)).toBeUndefined()
+		expect(Object.keys(savedAt(3)?.components ?? {}).sort()).toEqual(['A', 'B', 'Card'])
+	})
+
+	test('a request made during a burst of invalidates does not wait for the burst to end', async () => {
+		const fs = projectWithPosts()
+		const { store, state } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+		const delay = slowComponentReads(fs)
+		delay.ms = 40
+
+		let written = 0
+		const burstControl = { stopped: false }
+		const burst = (async () => {
+			const until = Date.now() + 1500
+			while (!burstControl.stopped && Date.now() < until) {
+				const path = `src/components/C${written++}.astro`
+				await fs.writeFile(path, CARD)
+				state.revision++
+				host.invalidate([path])
+				await new Promise(resolve => setTimeout(resolve, 20))
+			}
+			return 'burst ended'
+		})()
+		await new Promise(resolve => setTimeout(resolve, 10))
+		const request = fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		const first = await Promise.race([request.then(() => 'answered'), burst])
+		burstControl.stopped = true
+		await burst
+		const { body: during } = await request
+		delay.ms = 0
+		const { body: after } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(first).toBe('answered')
+		expect(Object.keys(during.componentDefinitions)).toContain('Card')
+		expect(Object.keys(after.componentDefinitions)).toHaveLength(written + 1)
+	})
+
+	test('a save that throws or rejects does not fail the start, and is logged', async () => {
+		const logged = spyOn(console, 'error').mockImplementation(() => {})
+		const rejecting = () => Promise.reject(new Error('store down'))
+		const throwing = () => {
+			throw new Error('store down')
+		}
+		try {
+			// A rejection that escaped would fail this test: bun fails a test on an unhandled rejection.
+			for (const save of [rejecting, throwing]) {
+				const host = await hostOver(projectWithPosts(), { definitions: { load: async () => ({ save }) } })
+				const { body } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+				expect(Object.keys(body.componentDefinitions)).toEqual(['Card'])
+			}
+			await settle()
+			expect(logged.mock.calls.map(([message, error]) => [message, error instanceof Error ? error.message : error])).toEqual([
+				['[cms] Saving the editor definitions failed:', 'store down'],
+				['[cms] Saving the editor definitions failed:', 'store down'],
+			])
+		} finally {
+			logged.mockRestore()
+		}
+	})
+
+	test('a load that failed is not kept: the next use loads again', async () => {
+		const fs = projectWithPosts()
+		const { store, state } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+
+		await fs.writeFile('src/components/Hero.astro', '<section>Hero</section>\n')
+		state.revision = 2
+		state.failLoads = 1
+		host.invalidate(['src/components/Hero.astro'])
+		const failed = await host.fetch(new Request('http://preview.test/cms-manifest.json')).then(() => 'served', (error: Error) => error.message)
+		const { body } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(failed).toBe('store unavailable')
+		expect(state.loads).toBe(3)
+		expect(Object.keys(body.componentDefinitions).sort()).toEqual(['Card', 'Hero'])
 	})
 })

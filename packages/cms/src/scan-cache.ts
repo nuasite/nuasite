@@ -13,6 +13,11 @@ import { currentProjectContext } from './project/context.ts'
  * an editor passes them, so the labels it serves do not depend on which scan produced them.
  */
 export async function scanCollections(contentDir?: string, overrides?: CollectionOverrides): Promise<Record<string, CollectionDefinition>> {
+	return applyCollectionOverrides(await scanCollectionsWithoutOverrides(contentDir), overrides)
+}
+
+/** What the content scan finds, before the overrides; for a caller that keeps the scan and lays the overrides over it each time. */
+export async function scanCollectionsWithoutOverrides(contentDir?: string): Promise<Record<string, CollectionDefinition>> {
 	const context = currentProjectContext()
-	return applyCollectionOverrides(await coreScanCollections(context.fs, contentDir, context.state.contentConfigParses), overrides)
+	return await coreScanCollections(context.fs, contentDir, context.state.contentConfigParses)
 }
