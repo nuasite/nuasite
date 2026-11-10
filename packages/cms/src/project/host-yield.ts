@@ -26,6 +26,6 @@ export async function forEachYielding<T>(items: readonly T[], run: (item: T) => 
 	}
 	for (let start = 0; start < items.length; start += YIELD_EVERY) {
 		await Promise.all(items.slice(start, start + YIELD_EVERY).map(run))
-		await pause()
+		if (start + YIELD_EVERY < items.length) await pause()
 	}
 }

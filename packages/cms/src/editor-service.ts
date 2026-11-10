@@ -125,11 +125,12 @@ export class EditorService {
 				)
 			// Yielding only when the host keeps the work alive: a host that does not may drop a timer once its request ends.
 			const phase2 = waitUntil ? runYieldingToHost(resolveSources) : resolveSources()
-			waitUntil?.(phase2)
 			this.pendingPhase2.set(pagePath, phase2)
 			phase2.finally(() => {
 				if (this.pendingPhase2.get(pagePath) === phase2) this.pendingPhase2.delete(pagePath)
 			})
+			// After the work is recorded: the manifest waits for it even if `waitUntil` throws.
+			waitUntil?.(phase2)
 			return marked.html
 		})
 	}

@@ -98,8 +98,10 @@ export interface EditorHost {
 	 *
 	 * The page's source locations are resolved after the HTML is returned, over every collection
 	 * entry of a large project. A host passes `waitUntil` to keep that work alive past its response
-	 * (a Worker's `ctx.waitUntil`); with it, the work also gives the event loop a turn every few
-	 * dozen files, so a host sharing its thread with other work is not held by it.
+	 * (in a Worker, `work => ctx.waitUntil(work)`); with it, the work also gives the event loop a turn
+	 * every few dozen files, so a host sharing its thread with other work is not held by it.
+	 * `waitUntil` must keep the work alive until it completes: the project's indexes are built once
+	 * and shared, and a build cut off halfway leaves later pages waiting for it.
 	 */
 	processPage(pagePath: string, html: string, options?: { revision?: string; waitUntil?: (work: Promise<unknown>) => void }): Promise<string>
 	/**
