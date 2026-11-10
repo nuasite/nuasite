@@ -15,6 +15,7 @@ import { processHtml } from './html-processor.ts'
 import type { ManifestWriter } from './manifest-writer.ts'
 import type { MediaStorageAdapter } from './media/types.ts'
 import { currentProjectContext, type ProjectContext, projectFiles, runInProjectContext } from './project/context.ts'
+import { runYieldingToHost } from './project/host-yield.ts'
 import type { CollectionRouteInfo } from './project/state.ts'
 import {
 	buildCollectionTextIndex,
@@ -104,26 +105,32 @@ export class EditorService {
 	/**
 	 * Mark a rendered page and record its manifest. Returns the marked HTML as soon as the
 	 * elements are marked; their source locations are resolved after that, and
-	 * {@link pageManifest} waits for them.
+	 * {@link pageManifest} waits for them. With `waitUntil`, that resolution is handed to it and
+	 * gives the event loop a turn between chunks of files.
 	 */
-	processPage(pagePath: string, html: string): Promise<string> {
+	processPage(pagePath: string, html: string, waitUntil?: (work: Promise<unknown>) => void): Promise<string> {
 		return runInProjectContext(this.context, async () => {
 			const marked = await markHtml(html, pagePath, this.config, this.manifestWriter)
 			this.manifestWriter.addPage(pagePath, marked.entries, marked.components, marked.collection, marked.seo)
-			const phase2 = enhanceManifestInBackground(
-				pagePath,
-				marked.entries,
-				marked.components,
-				marked.collection,
-				marked.seo,
-				marked.collectionDefinitions,
-				this.config,
-				this.manifestWriter,
-			)
+			const resolveSources = () =>
+				enhanceManifestInBackground(
+					pagePath,
+					marked.entries,
+					marked.components,
+					marked.collection,
+					marked.seo,
+					marked.collectionDefinitions,
+					this.config,
+					this.manifestWriter,
+				)
+			// Yielding only when the host keeps the work alive: a host that does not may drop a timer once its request ends.
+			const phase2 = waitUntil ? runYieldingToHost(resolveSources) : resolveSources()
 			this.pendingPhase2.set(pagePath, phase2)
 			phase2.finally(() => {
 				if (this.pendingPhase2.get(pagePath) === phase2) this.pendingPhase2.delete(pagePath)
 			})
+			// After the work is recorded: the manifest waits for it even if `waitUntil` throws.
+			waitUntil?.(phase2)
 			return marked.html
 		})
 	}

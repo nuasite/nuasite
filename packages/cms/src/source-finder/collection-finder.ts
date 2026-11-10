@@ -4,6 +4,7 @@ import { isMap, isPair, isScalar, isSeq, LineCounter, parseDocument } from 'yaml
 
 import { getProjectRoot } from '../config.ts'
 import { currentProjectContext, projectFiles } from '../project/context.ts'
+import { forEachYielding } from '../project/host-yield.ts'
 import { scanCollections } from '../scan-cache.ts'
 import type { CollectionDefinition } from '../types.ts'
 import { getCollectionTextIndex, getDeclaredUrlIndexCache, getMarkdownFileCache, setCollectionTextIndex } from './cache.ts'
@@ -41,7 +42,7 @@ async function doBuildCollectionTextIndex(
 	for (const def of Object.values(collections)) {
 		if (!def.entries || def.entries.length === 0) continue
 
-		await Promise.all(def.entries.map(async (entry) => {
+		await forEachYielding(def.entries, async (entry) => {
 			const info: CollectionInfo = { name: def.name, slug: entry.slug, file: entry.sourcePath }
 			try {
 				const filePath = path.join(getProjectRoot(), entry.sourcePath)
@@ -63,7 +64,7 @@ async function doBuildCollectionTextIndex(
 			} catch {
 				// Skip unreadable files
 			}
-		}))
+		})
 	}
 
 	setCollectionTextIndex(index)

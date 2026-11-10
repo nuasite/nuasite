@@ -95,8 +95,15 @@ export interface EditorHost {
 	 * Mark a rendered page for the editor and record its manifest. The HTML must carry the
 	 * compiler's source annotations (`annotateSourceFile`). `revision` is what the reload client
 	 * compares the host's notifications with.
+	 *
+	 * The page's source locations are resolved after the HTML is returned, over every collection
+	 * entry of a large project. A host passes `waitUntil` to keep that work alive past its response
+	 * (in a Worker, `work => ctx.waitUntil(work)`); with it, the work also gives the event loop a turn
+	 * every few dozen files, so a host sharing its thread with other work is not held by it.
+	 * `waitUntil` must keep the work alive until it completes: the project's indexes are built once
+	 * and shared, and a build cut off halfway leaves later pages waiting for it.
 	 */
-	processPage(pagePath: string, html: string, options?: { revision?: string }): Promise<string>
+	processPage(pagePath: string, html: string, options?: { revision?: string; waitUntil?: (work: Promise<unknown>) => void }): Promise<string>
 	/**
 	 * Answer `/_nua/cms/*`, `/cms-manifest.json` and `/<page>.json` of a processed page. Returns
 	 * `undefined` for any other request, which the host serves itself.
@@ -193,7 +200,7 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 	return {
 		async processPage(pagePath, html, pageOptions) {
 			await currentDefinitions()
-			const marked = await service.processPage(pagePath, html)
+			const marked = await service.processPage(pagePath, html, pageOptions?.waitUntil)
 			if (!injection) return marked
 			return injectIntoHead(marked, await injection(pageOptions?.revision))
 		},
