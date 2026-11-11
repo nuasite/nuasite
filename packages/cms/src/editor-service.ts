@@ -81,8 +81,10 @@ export class EditorService {
 	private readonly manifestWriter: ManifestWriter
 	private componentDefinitions: Record<string, ComponentDefinition>
 	private readonly api: EditorServiceOptions['api']
-	/** On-demand resolutions and searches in flight, by page, entry and kind, so repeated asks share one. */
-	private readonly pendingEntrySearch = new Map<string, Promise<void>>()
+	/** On-demand resolutions and searches in flight, by the entry asked about and kind, so repeated asks share one; a new render brings new entries. */
+	private readonly entrySearches = new WeakMap<ManifestEntry, Map<boolean, Promise<void>>>()
+	/** The entries of each processed page as marked: the context an entry is resolved in, whichever entries were resolved before it. */
+	private readonly markedEntries = new Map<string, Record<string, ManifestEntry>>()
 	/** Entries a search found no source for; a new render of the page brings new entry objects. */
 	private readonly unlocatable = new WeakSet<ManifestEntry>()
 
@@ -108,8 +110,14 @@ export class EditorService {
 	processPage(pagePath: string, html: string, waitUntil?: (work: Promise<unknown>) => void): Promise<string> {
 		return runInProjectContext(this.context, async () => {
 			const marked = await markHtml(html, pagePath, this.config, this.manifestWriter)
-			await populateComponentProps(pagePath, marked.components)
+			try {
+				await populateComponentProps(pagePath, marked.components)
+			} catch (error) {
+				// The page is served without its components' props, as it was when this ran past the response.
+				console.error("[cms] Filling the props of the page's components failed:", error)
+			}
 			const entries = Object.fromEntries(Object.entries(marked.entries).map(([id, entry]) => [id, { ...entry, pending: true }]))
+			this.markedEntries.set(pagePath, entries)
 			this.manifestWriter.addPage(pagePath, entries, marked.components, marked.collection, marked.seo)
 			if (waitUntil) {
 				const indexes = runYieldingToHost(() => buildSourceIndexes(this.manifestWriter.getCollectionDefinitions()))
@@ -123,11 +131,16 @@ export class EditorService {
 	 * The manifest of a page {@link processPage} has seen, its entries `pending` until the editor asks for them.
 	 * `resolveEntry` names a `pending` entry whose sources are resolved before the manifest is
 	 * returned; the project's indexes are built on the first such ask. `locateEntry` also searches
-	 * the whole project for the text of an entry the resolution left without a source.
+	 * the whole project for the text of an entry the resolution left without a source. With
+	 * `waitUntil`, that work is held by it and gives the event loop a turn between chunks of files;
+	 * without it, the work runs through. An entry whose resolution fails is recorded as marked.
 	 */
-	async pageManifest(pagePath: string, options: { resolveEntry?: string; locateEntry?: string } = {}): Promise<PageManifestResponse | undefined> {
-		if (options.resolveEntry !== undefined) await this.onDemand(pagePath, options.resolveEntry, false)
-		if (options.locateEntry !== undefined) await this.onDemand(pagePath, options.locateEntry, true)
+	async pageManifest(
+		pagePath: string,
+		options: { resolveEntry?: string; locateEntry?: string; waitUntil?: (work: Promise<unknown>) => void } = {},
+	): Promise<PageManifestResponse | undefined> {
+		if (options.resolveEntry !== undefined) await this.onDemand(pagePath, options.resolveEntry, false, options.waitUntil)
+		if (options.locateEntry !== undefined) await this.onDemand(pagePath, options.locateEntry, true, options.waitUntil)
 		const pageData = this.manifestWriter.getPageManifest(pagePath)
 		if (!pageData) return undefined
 		const response: PageManifestResponse = {
@@ -141,20 +154,24 @@ export class EditorService {
 		return response
 	}
 
-	private async onDemand(pagePath: string, entryId: string, searchProject: boolean): Promise<void> {
-		const key = `${pagePath}\0${entryId}\0${searchProject}`
-		let search = this.pendingEntrySearch.get(key)
+	private async onDemand(pagePath: string, entryId: string, searchProject: boolean, waitUntil?: (work: Promise<unknown>) => void): Promise<void> {
+		const entry = this.manifestWriter.getPageManifest(pagePath)?.entries[entryId]
+		if (!entry) return
+		const searches = this.entrySearches.get(entry) ?? new Map<boolean, Promise<void>>()
+		this.entrySearches.set(entry, searches)
+		let search = searches.get(searchProject)
 		if (!search) {
-			// Within the request that asks, so the passes over the project's files can give the host a turn.
-			const started = runInProjectContext(this.context, () =>
-				runYieldingToHost(async () => {
-					await resolvePendingEntry(pagePath, entryId, this.manifestWriter)
-					if (searchProject) await locateTextOnDemand(pagePath, entryId, this.manifestWriter, this.unlocatable)
-				}))
+			const work = async () => {
+				await resolvePendingEntry(pagePath, entryId, entry, this.markedEntries.get(pagePath), this.manifestWriter)
+				if (searchProject) await locateTextOnDemand(pagePath, entryId, this.manifestWriter, this.unlocatable)
+			}
+			// A pass that yields must be kept alive: cut off between two chunks, it would hold every ask that joins it.
+			const started = runInProjectContext(this.context, () => waitUntil ? runYieldingToHost(work) : work())
+			if (waitUntil) waitUntil(started.catch(() => {}))
 			search = started
-			this.pendingEntrySearch.set(key, started)
+			searches.set(searchProject, started)
 			const forget = () => {
-				if (this.pendingEntrySearch.get(key) === started) this.pendingEntrySearch.delete(key)
+				if (searches.get(searchProject) === started) searches.delete(searchProject)
 			}
 			started.then(forget, forget)
 		}
@@ -162,6 +179,7 @@ export class EditorService {
 			await search
 		} catch (error) {
 			console.error('[cms] On-demand source search failed:', error)
+			settleUnresolved(pagePath, entryId, entry, this.manifestWriter)
 		}
 	}
 
@@ -422,17 +440,23 @@ export async function enhanceManifestInBackground(
 
 /**
  * Resolve the sources of one `pending` entry of a page, as {@link enhanceManifestInBackground} does
- * for all of them, and record it in the page's manifest. A page re-rendered meanwhile keeps its new manifest.
+ * for all of them, in the context of the page's entries as `marked`, and record it in the page's
+ * manifest. A page re-rendered meanwhile keeps its new manifest.
  */
-async function resolvePendingEntry(pagePath: string, entryId: string, manifestWriter: ManifestWriter): Promise<void> {
+async function resolvePendingEntry(
+	pagePath: string,
+	entryId: string,
+	entry: ManifestEntry,
+	marked: Record<string, ManifestEntry> | undefined,
+	manifestWriter: ManifestWriter,
+): Promise<void> {
 	const pageData = manifestWriter.getPageManifest(pagePath)
-	const entry = pageData?.entries[entryId]
-	if (!pageData || !entry?.pending) return
+	if (!pageData || !entry.pending || marked?.[entryId] !== entry) return
 
 	const pageFiles = getPageFileCandidates(pagePath)
 	const page = pageSources(pageFiles, pageData.components)
 	const enhanced = await enhanceManifestWithSourceSnippets(
-		pageData.entries,
+		marked,
 		manifestWriter.getCollectionDefinitions(),
 		pageFiles,
 		page,
@@ -443,6 +467,17 @@ async function resolvePendingEntry(pagePath: string, entryId: string, manifestWr
 	const current = manifestWriter.getPageManifest(pagePath)
 	if (!resolved || !current || current.entries[entryId] !== entry) return
 	const { pending: _pending, ...settled } = resolved
+	manifestWriter.addPage(pagePath, { ...current.entries, [entryId]: settled }, current.components, current.collection, current.seo)
+}
+
+/**
+ * Record a `pending` entry whose resolution failed as it was marked, as a page whose resolution
+ * failed was before: the editor stops waiting for it, and the entry has no source snippet to edit with.
+ */
+function settleUnresolved(pagePath: string, entryId: string, entry: ManifestEntry, manifestWriter: ManifestWriter): void {
+	const current = manifestWriter.getPageManifest(pagePath)
+	if (!current || !entry.pending || current.entries[entryId] !== entry) return
+	const { pending: _pending, ...settled } = entry
 	manifestWriter.addPage(pagePath, { ...current.entries, [entryId]: settled }, current.components, current.collection, current.seo)
 }
 

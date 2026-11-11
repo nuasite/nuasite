@@ -107,9 +107,11 @@ export interface EditorHost {
 	processPage(pagePath: string, html: string, options?: { revision?: string; waitUntil?: (work: Promise<unknown>) => void }): Promise<string>
 	/**
 	 * Answer `/_nua/cms/*`, `/cms-manifest.json` and `/<page>.json` of a processed page. Returns
-	 * `undefined` for any other request, which the host serves itself.
+	 * `undefined` for any other request, which the host serves itself. An ask about an entry that
+	 * has to build the indexes gives the event loop turns only when `waitUntil` keeps that work alive,
+	 * as for {@link processPage}.
 	 */
-	fetch(request: Request): Promise<Response | undefined>
+	fetch(request: Request, options?: { waitUntil?: (work: Promise<unknown>) => void }): Promise<Response | undefined>
 	/**
 	 * Report files changed by anything other than this host (an agent, a checkout): paths relative
 	 * to the root or absolute under it. Without paths, everything cached is dropped, and the
@@ -206,7 +208,7 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 			return injectIntoHead(marked, await injection(pageOptions?.revision))
 		},
 
-		async fetch(request) {
+		async fetch(request, fetchOptions) {
 			const url = new URL(request.url)
 			if (url.pathname.startsWith(API_PREFIX)) {
 				if (request.method === 'OPTIONS') return preflightResponse(request)
@@ -221,9 +223,12 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 			}
 			const match = url.pathname.match(/^\/(.*)\.json$/)
 			if (!match) return undefined
+			// An ask resolves against the definitions of the files now, like the page after an invalidate.
+			await currentDefinitions()
 			const manifest = await service.pageManifest(match[1] === 'index' ? '/' : `/${match[1]}`, {
 				resolveEntry: url.searchParams.get('resolve') ?? undefined,
 				locateEntry: url.searchParams.get('locate') ?? undefined,
+				waitUntil: fetchOptions?.waitUntil,
 			})
 			return manifest ? noStore(jsonResponse(manifest)) : undefined
 		},

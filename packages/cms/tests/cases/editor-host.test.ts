@@ -8,6 +8,7 @@ import {
 	type EditorHostOptions,
 } from '@nuasite/cms/editor-host'
 import { describe, expect, spyOn, test } from 'bun:test'
+import * as snippets from '../../src/source-finder/snippet-utils'
 import type { ComponentInstance, ManifestEntry, PageSeoData } from '../../src/types'
 import { createMemoryFileSystem, type MemoryFileSystem } from '../utils/memory-fs'
 
@@ -56,8 +57,13 @@ interface PageManifest {
 	components: Record<string, ComponentInstance>
 }
 
-async function fetchJson<T>(host: EditorHost, path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
-	const response = await host.fetch(new Request(`http://preview.test${path}`, init))
+async function fetchJson<T>(
+	host: EditorHost,
+	path: string,
+	init?: RequestInit,
+	waitUntil?: (work: Promise<unknown>) => void,
+): Promise<{ status: number; body: T }> {
+	const response = await host.fetch(new Request(`http://preview.test${path}`, init), { waitUntil })
 	if (!response) throw new Error(`The host did not answer ${path}`)
 	const body: T = await response.json()
 	return { status: response.status, body }
@@ -492,13 +498,20 @@ describe('createEditorHost source resolution on demand', () => {
 		expect(parsed).toEqual([])
 	})
 
-	test('the first entry asked for builds the indexes, pausing between chunks of the posts, and the next one reuses them', async () => {
+	test("the first entry asked for builds the indexes, held by the ask's waitUntil and pausing between chunks of the posts, and the next one reuses them", async () => {
 		const host = await hostOver(projectWithPosts(120))
 		await host.processPage('/', POSTS_PAGE)
 		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
 		using yields = countYields()
 
-		const { body: first } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`)
+		const handed: Promise<unknown>[] = []
+		const { body: first } = await fetchJson<PageManifest>(
+			host,
+			`/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`,
+			undefined,
+			work => handed.push(work),
+		)
+		expect(handed).toHaveLength(1)
 		// Two passes over the 120 posts, for the text index and the image index, pause after each of their first two chunks of 50.
 		expect(yields.count()).toBe(4)
 		const post = entryWithText(first, 'Post number 0')
@@ -527,6 +540,66 @@ describe('createEditorHost source resolution on demand', () => {
 		const { body } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`)
 		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
 		expect(yields.count()).toBe(4)
+	})
+
+	test('without waitUntil, an ask that builds the indexes runs through, without a turn of the event loop', async () => {
+		const host = await hostOver(projectWithPosts(120))
+		await host.processPage('/', POSTS_PAGE)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		using yields = countYields()
+
+		const { body } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`)
+		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+		expect(yields.count()).toBe(0)
+	})
+
+	test("an ask made after the page was rendered again resolves the new render's entry, also while an ask about the old one runs", async () => {
+		const host = await hostOver(projectWithPosts(120))
+		await host.processPage('/', POSTS_PAGE)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		const id = entryWithText(loaded, 'Post number 0').id
+
+		const before = fetchJson<PageManifest>(host, `/index.json?resolve=${id}`, undefined, () => {})
+		await host.processPage('/', POSTS_PAGE)
+		const after = fetchJson<PageManifest>(host, `/index.json?resolve=${id}`, undefined, () => {})
+		await before
+		const post = entryWithText((await after).body, 'Post number 0')
+		expect([post.sourcePath, post.pending]).toEqual(['src/content/posts/post-0.md', undefined])
+	})
+
+	test('an ask between a full invalidate and the next page resolves against the definitions of the files now', async () => {
+		const fs = projectWithPosts(2)
+		const host = await hostOver(fs)
+		await host.processPage('/', POSTS_PAGE)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+
+		await fs.writeFile('src/content/posts/post-2.md', '---\ntitle: Post number 2\n---\nBody 2\n')
+		host.invalidate()
+		// The editor still shows the page rendered before and asks about one of its entries.
+		await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 1').id}`)
+
+		await host.processPage('/', '<html><body><h2>Post number 0</h2><h2>Post number 1</h2><h2>Post number 2</h2></body></html>')
+		const { body: reloaded } = await fetchJson<PageManifest>(host, '/index.json')
+		const { body } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(reloaded, 'Post number 2').id}`)
+		expect(entryWithText(body, 'Post number 2').sourcePath).toBe('src/content/posts/post-2.md')
+	})
+
+	test('an entry whose resolution fails is recorded as marked, no longer pending', async () => {
+		const host = await hostOver(projectWithPosts(2))
+		await host.processPage('/', POSTS_PAGE)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		const errors = spyOn(console, 'error').mockImplementation(() => {})
+		const failing = spyOn(snippets, 'enhanceManifestWithSourceSnippets').mockRejectedValue(new Error('The files are gone'))
+		try {
+			const { body } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`)
+			const post = entryWithText(body, 'Post number 0')
+			expect([post.pending, post.sourceSnippet]).toEqual([undefined, undefined])
+			expect(entryWithText(body, 'Post number 1').pending).toBe(true)
+			expect(errors.mock.calls.map(call => call[0])).toEqual(['[cms] On-demand source search failed:'])
+		} finally {
+			failing.mockRestore()
+			errors.mockRestore()
+		}
 	})
 })
 
