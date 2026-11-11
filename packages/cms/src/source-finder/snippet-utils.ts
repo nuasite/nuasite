@@ -691,6 +691,12 @@ function preferredSourcesFor(sourcePath: string | undefined, page: PageSources |
 	return [...new Set([...invokers, ...page.renderedFiles])]
 }
 
+/** Build the indexes resolving an entry reads: the project's text index and, with collections, their text index. */
+export async function buildSourceIndexes(collectionDefinitions?: Record<string, CollectionDefinition>): Promise<void> {
+	await initializeSearchIndex()
+	if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) await buildCollectionTextIndex(collectionDefinitions)
+}
+
 /**
  * Enhance manifest entries with actual source snippets from source files.
  * This reads the source files and extracts the innerHTML at the specified locations.
@@ -707,9 +713,8 @@ export async function enhanceManifestWithSourceSnippets(
 	page?: PageSources,
 	targets?: ReadonlySet<string>,
 ): Promise<Record<string, ManifestEntry>> {
-	// Ensure the search index is ready (returns immediately if already built,
-	// otherwise waits for the in-flight initialization or triggers a new one).
-	await initializeSearchIndex()
+	// Each returns at once if built, or waits for a build in flight.
+	await buildSourceIndexes(collectionDefinitions)
 
 	const enhanced: Record<string, ManifestEntry> = {}
 
@@ -733,11 +738,6 @@ export async function enhanceManifestWithSourceSnippets(
 				}
 			}
 		}
-	}
-
-	// Build collection text index upfront for O(1) lookups in both entries and augment phases
-	if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
-		await buildCollectionTextIndex(collectionDefinitions)
 	}
 
 	// Propagate collectionName/collectionSlug from wrapper entries to their children.

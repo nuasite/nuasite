@@ -510,6 +510,24 @@ describe('createEditorHost source resolution on demand', () => {
 		expect(entryWithText(second, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
 		expect(yields.count()).toBe(4)
 	})
+
+	test('with waitUntil, the indexes are built after the page, held by it, and the first ask builds nothing', async () => {
+		const host = await hostOver(projectWithPosts(120))
+		const handed: Promise<unknown>[] = []
+		using yields = countYields()
+		await host.processPage('/', POSTS_PAGE, { waitUntil: work => handed.push(work) })
+
+		expect(handed).toHaveLength(1)
+		await Promise.all(handed)
+		// Two passes over the 120 posts, for the text index and the image index, pause after each of their first two chunks of 50.
+		expect(yields.count()).toBe(4)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(entryWithText(loaded, 'Post number 0').pending).toBe(true)
+
+		const { body } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`)
+		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+		expect(yields.count()).toBe(4)
+	})
 })
 
 const BASE_LAYOUT = `---

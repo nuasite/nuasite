@@ -19,6 +19,7 @@ import { runYieldingToHost } from './project/host-yield.ts'
 import type { CollectionRouteInfo } from './project/state.ts'
 import {
 	buildCollectionTextIndex,
+	buildSourceIndexes,
 	collectionsReadByPage,
 	declaredSitePathFromData,
 	enhanceManifestWithSourceSnippets,
@@ -99,15 +100,21 @@ export class EditorService {
 
 	/**
 	 * Mark a rendered page and record its manifest. Every entry is recorded `pending`: its sources
-	 * are resolved only when the editor asks for that entry (see {@link pageManifest}), so a page
-	 * load builds none of the project's indexes and resolves nothing that is not edited.
+	 * are resolved only when the editor asks for that entry (see {@link pageManifest}), so nothing
+	 * is resolved that is not edited. With `waitUntil`, the indexes that resolution reads are built
+	 * after the page is returned, held by it and giving the event loop a turn between chunks of
+	 * files, so the editor's first ask finds them; without it, the first ask builds them.
 	 */
-	processPage(pagePath: string, html: string): Promise<string> {
+	processPage(pagePath: string, html: string, waitUntil?: (work: Promise<unknown>) => void): Promise<string> {
 		return runInProjectContext(this.context, async () => {
 			const marked = await markHtml(html, pagePath, this.config, this.manifestWriter)
 			await populateComponentProps(pagePath, marked.components)
 			const entries = Object.fromEntries(Object.entries(marked.entries).map(([id, entry]) => [id, { ...entry, pending: true }]))
 			this.manifestWriter.addPage(pagePath, entries, marked.components, marked.collection, marked.seo)
+			if (waitUntil) {
+				const indexes = runYieldingToHost(() => buildSourceIndexes(this.manifestWriter.getCollectionDefinitions()))
+				waitUntil(indexes.catch(error => console.error('[cms] Building the source indexes failed:', error)))
+			}
 			return marked.html
 		})
 	}
