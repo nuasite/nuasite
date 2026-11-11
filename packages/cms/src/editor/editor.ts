@@ -1,5 +1,5 @@
 import type { CmsOpenEntryMessage } from '../types.ts'
-import { fetchManifest, getMarkdownContent, saveBatchChanges } from './api.ts'
+import { fetchManifest, fetchPageManifest, getMarkdownContent, saveBatchChanges } from './api.ts'
 import { CSS, TIMING } from './constants.ts'
 import {
 	cleanupHighlightSystem,
@@ -127,46 +127,70 @@ export function notifyLockedElement(): void {
 	signals.showToast(STRINGS.editor.lockedElement, 'info')
 }
 
-/** CMS IDs being located, per edit session (its signal), so repeated clicks share one search. */
-const locatingEntries = new WeakMap<AbortSignal, Set<string>>()
+/** What the editor asks the server about one entry: its sources resolved, or also a project-wide search for its text. */
+type EntryAsk = 'resolve' | 'locate'
+
+/** Entries being asked about, per edit session (its signal) and ask, so repeated hovers and clicks share one request. */
+const askedEntries = new WeakMap<AbortSignal, Set<string>>()
+
+/** The attribute that marks an element waiting for the answer of an ask. */
+const WAITING_ATTRIBUTE: Record<EntryAsk, string> = { resolve: CSS.PENDING_ATTRIBUTE, locate: CSS.LOCKED_ATTRIBUTE }
 
 /**
- * A locked element has no source location yet. Clicking it asks the server to search the project
- * for one (the page load leaves that search out, see `EditorService.pageManifest`); once found, the
- * element is wired for editing in place, so open dialogs and other edits stay as they are.
+ * A locked element has no source location. Clicking it asks the server to search the project
+ * for one (see `EditorService.pageManifest`); once found, the element is wired for editing in
+ * place, so open dialogs and other edits stay as they are.
  */
 function handleLockedClick(event: Event, session: EditSession): void {
 	const target = event.currentTarget
 	// Its listener outlives a rewire, which removes the lock.
 	if (target instanceof HTMLElement && !target.hasAttribute(CSS.LOCKED_ATTRIBUTE)) return
 	const id = target instanceof HTMLElement ? target.getAttribute(CSS.ID_ATTRIBUTE) : null
-	const locating = locatingEntries.get(session.signal) ?? new Set<string>()
-	locatingEntries.set(session.signal, locating)
-	if (id && !locating.has(id)) {
-		locating.add(id)
-		void locateLockedEntry(id, session)
-			.catch(() => {})
-			.finally(() => locating.delete(id))
-	}
+	if (id) askAboutEntry(id, 'locate', session, true)
 	notifyLockedElement()
 }
 
-async function locateLockedEntry(id: string, session: EditSession): Promise<void> {
-	// Phase 2 may have placed it since the session fetched its manifest; search only when it has not.
-	if (!signals.manifest.value.entries[id]?.sourcePath) {
-		const fresh = await fetchManifest(id)
+/**
+ * A pending element's entry is resolved by the server when the editor first needs it: on the
+ * first hover, or a click before that. Once answered, the element is wired the way its entry allows.
+ */
+function handlePendingElement(event: Event, session: EditSession): void {
+	const target = event.currentTarget
+	// Its listeners outlive a rewire, which removes the mark.
+	if (!(target instanceof HTMLElement) || !target.hasAttribute(CSS.PENDING_ATTRIBUTE)) return
+	const id = target.getAttribute(CSS.ID_ATTRIBUTE)
+	if (id) askAboutEntry(id, 'resolve', session, event.type === 'click')
+}
+
+function askAboutEntry(id: string, ask: EntryAsk, session: EditSession, focus: boolean): void {
+	const asked = askedEntries.get(session.signal) ?? new Set<string>()
+	askedEntries.set(session.signal, asked)
+	const key = `${ask}\0${id}`
+	if (asked.has(key)) return
+	asked.add(key)
+	void wireAnsweredEntry(id, ask, session, focus)
+		.catch(() => {})
+		.finally(() => asked.delete(key))
+}
+
+async function wireAnsweredEntry(id: string, ask: EntryAsk, session: EditSession, focus: boolean): Promise<void> {
+	const known = signals.manifest.value.entries[id]
+	// Another ask may have answered it since the element was wired; ask only when none has.
+	if (ask === 'resolve' ? known?.pending : !known?.sourcePath) {
+		const page = await fetchPageManifest(ask === 'resolve' ? { resolve: id } : { locate: id })
 		if (session.signal.aborted) return
-		signals.setManifest(fresh)
+		signals.setManifest({ ...signals.manifest.value, ...page })
 	}
 	const manifest = signals.manifest.value
-	if (session.signal.aborted || !manifest.entries[id]?.sourcePath) return
+	const answered = manifest.entries[id]
+	if (session.signal.aborted || !answered || answered.pending || (ask === 'locate' && !answered.sourcePath)) return
 
-	// Looked up again: an HMR update may have replaced the element while the search ran.
+	// Looked up again: an HMR update may have replaced the element while the server answered.
 	const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${id}"]`)
-	if (!(el instanceof HTMLElement) || !el.hasAttribute(CSS.LOCKED_ATTRIBUTE)) return
-	el.removeAttribute(CSS.LOCKED_ATTRIBUTE)
+	if (!(el instanceof HTMLElement) || !el.hasAttribute(WAITING_ATTRIBUTE[ask])) return
+	el.removeAttribute(WAITING_ATTRIBUTE[ask])
 	wireElement(el, { ...session, manifest })
-	el.focus()
+	if (focus) el.focus()
 }
 
 /** Test-only: reset toast throttle state between test cases. */
@@ -371,6 +395,15 @@ function wireElement(el: HTMLElement, session: EditSession): void {
 	}
 
 	const manifestEntry = currentManifest.entries[cmsId]
+
+	// Nothing is known of how to edit it until the server resolves its entry.
+	if (manifestEntry?.pending) {
+		makeElementNonEditable(el)
+		el.setAttribute(CSS.PENDING_ATTRIBUTE, 'true')
+		el.addEventListener('pointerenter', event => handlePendingElement(event, session), { signal: editModeSignal })
+		el.addEventListener('click', event => handlePendingElement(event, session), { signal: editModeSignal })
+		return
+	}
 
 	// When the host edits collection entries, whatever edits one is handed to it instead of being
 	// edited here (see entryHandoverFor). An edit made here before is dropped: saved, it would
@@ -679,6 +712,7 @@ export function stopEditMode(onStateChange?: () => void): void {
 	getAllCmsElements().forEach(el => {
 		makeElementNonEditable(el)
 		el.removeAttribute(CSS.LOCKED_ATTRIBUTE)
+		el.removeAttribute(CSS.PENDING_ATTRIBUTE)
 		el.removeAttribute(CSS.ENTRY_HANDOVER_ATTRIBUTE)
 	})
 }

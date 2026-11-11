@@ -80,12 +80,7 @@ export class EditorService {
 	private readonly manifestWriter: ManifestWriter
 	private componentDefinitions: Record<string, ComponentDefinition>
 	private readonly api: EditorServiceOptions['api']
-	/**
-	 * Source resolution still running per page. A manifest request waits for it, so the editor
-	 * never receives entries without `sourcePath`, which it would treat as locked.
-	 */
-	private readonly pendingPhase2 = new Map<string, Promise<void>>()
-	/** On-demand source searches in flight, by page and entry, so repeated clicks share one search. */
+	/** On-demand resolutions and searches in flight, by page, entry and kind, so repeated asks share one. */
 	private readonly pendingEntrySearch = new Map<string, Promise<void>>()
 	/** Entries a search found no source for; a new render of the page brings new entry objects. */
 	private readonly unlocatable = new WeakSet<ManifestEntry>()
@@ -103,53 +98,29 @@ export class EditorService {
 	}
 
 	/**
-	 * Mark a rendered page and record its manifest. Returns the marked HTML as soon as the
-	 * elements are marked; their source locations are resolved after that, and
-	 * {@link pageManifest} waits for them. With `waitUntil`, that resolution is handed to it and
-	 * gives the event loop a turn between chunks of files.
+	 * Mark a rendered page and record its manifest. Every entry is recorded `pending`: its sources
+	 * are resolved only when the editor asks for that entry (see {@link pageManifest}), so a page
+	 * load builds none of the project's indexes and resolves nothing that is not edited.
 	 */
-	processPage(pagePath: string, html: string, waitUntil?: (work: Promise<unknown>) => void): Promise<string> {
+	processPage(pagePath: string, html: string): Promise<string> {
 		return runInProjectContext(this.context, async () => {
 			const marked = await markHtml(html, pagePath, this.config, this.manifestWriter)
-			this.manifestWriter.addPage(pagePath, marked.entries, marked.components, marked.collection, marked.seo)
-			const resolveSources = () =>
-				enhanceManifestInBackground(
-					pagePath,
-					marked.entries,
-					marked.components,
-					marked.collection,
-					marked.seo,
-					marked.collectionDefinitions,
-					this.config,
-					this.manifestWriter,
-				)
-			// Yielding only when the host keeps the work alive: a host that does not may drop a timer once its request ends.
-			const phase2 = waitUntil ? runYieldingToHost(resolveSources) : resolveSources()
-			this.pendingPhase2.set(pagePath, phase2)
-			phase2.finally(() => {
-				if (this.pendingPhase2.get(pagePath) === phase2) this.pendingPhase2.delete(pagePath)
-			})
-			// After the work is recorded: the manifest waits for it even if `waitUntil` throws.
-			waitUntil?.(phase2)
+			await populateComponentProps(pagePath, marked.components)
+			const entries = Object.fromEntries(Object.entries(marked.entries).map(([id, entry]) => [id, { ...entry, pending: true }]))
+			this.manifestWriter.addPage(pagePath, entries, marked.components, marked.collection, marked.seo)
 			return marked.html
 		})
 	}
 
 	/**
-	 * The manifest of a page {@link processPage} has seen, once its sources are resolved.
-	 * `locateEntry` names an entry whose text the page load left without a source: it is searched
-	 * for across the project before the manifest is returned.
+	 * The manifest of a page {@link processPage} has seen, its entries `pending` until the editor asks for them.
+	 * `resolveEntry` names a `pending` entry whose sources are resolved before the manifest is
+	 * returned; the project's indexes are built on the first such ask. `locateEntry` also searches
+	 * the whole project for the text of an entry the resolution left without a source.
 	 */
-	async pageManifest(pagePath: string, options: { locateEntry?: string } = {}): Promise<PageManifestResponse | undefined> {
-		const inFlight = this.pendingPhase2.get(pagePath)
-		if (inFlight) {
-			try {
-				await inFlight
-			} catch {
-				// Serve whatever partial manifest there is.
-			}
-		}
-		if (options.locateEntry !== undefined) await this.locateEntry(pagePath, options.locateEntry)
+	async pageManifest(pagePath: string, options: { resolveEntry?: string; locateEntry?: string } = {}): Promise<PageManifestResponse | undefined> {
+		if (options.resolveEntry !== undefined) await this.onDemand(pagePath, options.resolveEntry, false)
+		if (options.locateEntry !== undefined) await this.onDemand(pagePath, options.locateEntry, true)
 		const pageData = this.manifestWriter.getPageManifest(pagePath)
 		if (!pageData) return undefined
 		const response: PageManifestResponse = {
@@ -163,11 +134,16 @@ export class EditorService {
 		return response
 	}
 
-	private async locateEntry(pagePath: string, entryId: string): Promise<void> {
-		const key = `${pagePath}\0${entryId}`
+	private async onDemand(pagePath: string, entryId: string, searchProject: boolean): Promise<void> {
+		const key = `${pagePath}\0${entryId}\0${searchProject}`
 		let search = this.pendingEntrySearch.get(key)
 		if (!search) {
-			const started = runInProjectContext(this.context, () => locateTextOnDemand(pagePath, entryId, this.manifestWriter, this.unlocatable))
+			// Within the request that asks, so the passes over the project's files can give the host a turn.
+			const started = runInProjectContext(this.context, () =>
+				runYieldingToHost(async () => {
+					await resolvePendingEntry(pagePath, entryId, this.manifestWriter)
+					if (searchProject) await locateTextOnDemand(pagePath, entryId, this.manifestWriter, this.unlocatable)
+				}))
 			search = started
 			this.pendingEntrySearch.set(key, started)
 			const forget = () => {
@@ -303,10 +279,115 @@ async function markHtml(
 	}
 }
 
-/**
- * Phase 2 (background): Resolve source locations, enhance snippets, populate
- * component props, and update the manifest. Runs after the HTML response is sent.
- */
+/** Fill each component's props from where the page's sources invoke it. Reads only the files the page is rendered from. */
+async function populateComponentProps(pagePath: string, components: Record<string, ComponentInstance>): Promise<void> {
+	const projectRoot = getProjectRoot()
+	const fileCache = new Map<string, string[] | null>()
+	const readLines = async (filePath: string): Promise<string[] | null> => {
+		if (fileCache.has(filePath)) return fileCache.get(filePath)!
+		try {
+			const content = await projectFiles().readFile(filePath)
+			const lines = content.split('\n')
+			fileCache.set(filePath, lines)
+			return lines
+		} catch {
+			fileCache.set(filePath, null)
+			return null
+		}
+	}
+
+	for (const comp of Object.values(components)) {
+		if (comp.componentName.startsWith('__array:')) continue
+
+		let found = false
+
+		if (comp.invocationSourcePath) {
+			const filePath = normalizeFilePath(comp.invocationSourcePath)
+			const lines = await readLines(path.resolve(projectRoot, filePath))
+			if (lines) {
+				const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
+				if (invLine >= 0) {
+					comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
+					found = true
+				}
+			}
+		}
+
+		if (!found) {
+			for (const candidate of getPageFileCandidates(pagePath)) {
+				const lines = await readLines(path.resolve(projectRoot, candidate))
+				if (lines) {
+					const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
+					if (invLine >= 0) {
+						comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Resolve spread props for array-rendered components
+	const componentGroups = new Map<string, typeof components[string][]>()
+	for (const comp of Object.values(components)) {
+		const key = `${comp.componentName}::${comp.invocationSourcePath ?? ''}`
+		if (!componentGroups.has(key)) componentGroups.set(key, [])
+		componentGroups.get(key)!.push(comp)
+	}
+
+	for (const group of componentGroups.values()) {
+		if (group.length < 1) continue
+		if (!group.some(c => Object.keys(c.props).length === 0)) continue
+
+		const firstComp = group[0]!
+		const filePath = normalizeFilePath(firstComp.invocationSourcePath ?? firstComp.sourcePath)
+		const lines = await readLines(path.resolve(projectRoot, filePath))
+		if (!lines) continue
+
+		const fmEnd = findFrontmatterEnd(lines)
+
+		let pattern: ReturnType<typeof detectArrayPattern>
+		const parsed = parseInlineArrayName(firstComp.componentName)
+		if (parsed) {
+			const { arrayVarName, mapOccurrence } = parsed
+			const mapRegex = new RegExp(buildMapPattern(arrayVarName))
+			let mapLine = -1
+			let seen = 0
+			for (let i = fmEnd; i < lines.length; i++) {
+				if (mapRegex.test(lines[i]!)) {
+					if (seen === mapOccurrence) {
+						mapLine = i
+						break
+					}
+					seen++
+				}
+			}
+			if (mapLine < 0) continue
+			pattern = { arrayVarName, mapLineIndex: mapLine }
+		} else {
+			const invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
+			if (invLine < 0) continue
+			pattern = detectArrayPattern(lines, invLine)
+		}
+		if (!pattern) continue
+		if (fmEnd === 0) continue
+
+		const frontmatterContent = lines.slice(1, fmEnd - 1).join('\n')
+
+		const sorted = [...group].sort((a, b) => (a.invocationIndex ?? 0) - (b.invocationIndex ?? 0))
+		for (let i = 0; i < sorted.length; i++) {
+			const comp = sorted[i]!
+			if (Object.keys(comp.props).length > 0) continue
+
+			const arrayProps = extractArrayElementProps(frontmatterContent, pattern.arrayVarName, i)
+			if (arrayProps) {
+				comp.props = arrayProps
+			}
+		}
+	}
+}
+
+/** Resolve the sources of every entry of a page at once, and fill its components' props. */
 export async function enhanceManifestInBackground(
 	pagePath: string,
 	entries: Record<string, ManifestEntry>,
@@ -318,112 +399,7 @@ export async function enhanceManifestInBackground(
 	manifestWriter: ManifestWriter,
 ): Promise<void> {
 	try {
-		// Populate component props from source invocations
-		const projectRoot = getProjectRoot()
-		const fileCache = new Map<string, string[] | null>()
-		const readLines = async (filePath: string): Promise<string[] | null> => {
-			if (fileCache.has(filePath)) return fileCache.get(filePath)!
-			try {
-				const content = await projectFiles().readFile(filePath)
-				const lines = content.split('\n')
-				fileCache.set(filePath, lines)
-				return lines
-			} catch {
-				fileCache.set(filePath, null)
-				return null
-			}
-		}
-
-		for (const comp of Object.values(components)) {
-			if (comp.componentName.startsWith('__array:')) continue
-
-			let found = false
-
-			if (comp.invocationSourcePath) {
-				const filePath = normalizeFilePath(comp.invocationSourcePath)
-				const lines = await readLines(path.resolve(projectRoot, filePath))
-				if (lines) {
-					const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
-					if (invLine >= 0) {
-						comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
-						found = true
-					}
-				}
-			}
-
-			if (!found) {
-				for (const candidate of getPageFileCandidates(pagePath)) {
-					const lines = await readLines(path.resolve(projectRoot, candidate))
-					if (lines) {
-						const invLine = findComponentInvocationLine(lines, comp.componentName, comp.invocationIndex ?? 0)
-						if (invLine >= 0) {
-							comp.props = extractPropsFromSource(lines, invLine, comp.componentName)
-							break
-						}
-					}
-				}
-			}
-		}
-
-		// Resolve spread props for array-rendered components
-		const componentGroups = new Map<string, typeof components[string][]>()
-		for (const comp of Object.values(components)) {
-			const key = `${comp.componentName}::${comp.invocationSourcePath ?? ''}`
-			if (!componentGroups.has(key)) componentGroups.set(key, [])
-			componentGroups.get(key)!.push(comp)
-		}
-
-		for (const group of componentGroups.values()) {
-			if (group.length < 1) continue
-			if (!group.some(c => Object.keys(c.props).length === 0)) continue
-
-			const firstComp = group[0]!
-			const filePath = normalizeFilePath(firstComp.invocationSourcePath ?? firstComp.sourcePath)
-			const lines = await readLines(path.resolve(projectRoot, filePath))
-			if (!lines) continue
-
-			const fmEnd = findFrontmatterEnd(lines)
-
-			let pattern: ReturnType<typeof detectArrayPattern>
-			const parsed = parseInlineArrayName(firstComp.componentName)
-			if (parsed) {
-				const { arrayVarName, mapOccurrence } = parsed
-				const mapRegex = new RegExp(buildMapPattern(arrayVarName))
-				let mapLine = -1
-				let seen = 0
-				for (let i = fmEnd; i < lines.length; i++) {
-					if (mapRegex.test(lines[i]!)) {
-						if (seen === mapOccurrence) {
-							mapLine = i
-							break
-						}
-						seen++
-					}
-				}
-				if (mapLine < 0) continue
-				pattern = { arrayVarName, mapLineIndex: mapLine }
-			} else {
-				const invLine = findComponentInvocationLine(lines, firstComp.componentName, 0)
-				if (invLine < 0) continue
-				pattern = detectArrayPattern(lines, invLine)
-			}
-			if (!pattern) continue
-			if (fmEnd === 0) continue
-
-			const frontmatterContent = lines.slice(1, fmEnd - 1).join('\n')
-
-			const sorted = [...group].sort((a, b) => (a.invocationIndex ?? 0) - (b.invocationIndex ?? 0))
-			for (let i = 0; i < sorted.length; i++) {
-				const comp = sorted[i]!
-				if (Object.keys(comp.props).length > 0) continue
-
-				const arrayProps = extractArrayElementProps(frontmatterContent, pattern.arrayVarName, i)
-				if (arrayProps) {
-					comp.props = arrayProps
-				}
-			}
-		}
-
+		await populateComponentProps(pagePath, components)
 		const pageFiles = getPageFileCandidates(pagePath)
 		const page = pageSources(pageFiles, components)
 		const enhanced = await enhanceManifestWithSourceSnippets(entries, collectionDefinitions, pageFiles, page)
@@ -438,6 +414,32 @@ export async function enhanceManifestInBackground(
 }
 
 /**
+ * Resolve the sources of one `pending` entry of a page, as {@link enhanceManifestInBackground} does
+ * for all of them, and record it in the page's manifest. A page re-rendered meanwhile keeps its new manifest.
+ */
+async function resolvePendingEntry(pagePath: string, entryId: string, manifestWriter: ManifestWriter): Promise<void> {
+	const pageData = manifestWriter.getPageManifest(pagePath)
+	const entry = pageData?.entries[entryId]
+	if (!pageData || !entry?.pending) return
+
+	const pageFiles = getPageFileCandidates(pagePath)
+	const page = pageSources(pageFiles, pageData.components)
+	const enhanced = await enhanceManifestWithSourceSnippets(
+		pageData.entries,
+		manifestWriter.getCollectionDefinitions(),
+		pageFiles,
+		page,
+		new Set([entryId]),
+	)
+	const resolved = enhanced[entryId]
+
+	const current = manifestWriter.getPageManifest(pagePath)
+	if (!resolved || !current || current.entries[entryId] !== entry) return
+	const { pending: _pending, ...settled } = resolved
+	manifestWriter.addPage(pagePath, { ...current.entries, [entryId]: settled }, current.components, current.collection, current.seo)
+}
+
+/**
  * Search the whole project for the source of one text entry the page load left without one, and
  * record what is found in the page's manifest. A page re-rendered meanwhile keeps its new manifest.
  */
@@ -449,7 +451,9 @@ async function locateTextOnDemand(
 ): Promise<void> {
 	const pageData = manifestWriter.getPageManifest(pagePath)
 	const entry = pageData?.entries[entryId]
-	if (!pageData || !entry || unlocatable.has(entry) || entry.sourcePath || entry.imageMetadata?.src || !entry.text || !entry.tag) return
+	if (!pageData || !entry || entry.pending || unlocatable.has(entry) || entry.sourcePath || entry.imageMetadata?.src || !entry.text || !entry.tag) {
+		return
+	}
 
 	const pageFiles = getPageFileCandidates(pagePath)
 	const { renderedFiles } = pageSources(pageFiles, pageData.components)

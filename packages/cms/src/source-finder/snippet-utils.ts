@@ -697,6 +697,7 @@ function preferredSourcesFor(sourcePath: string | undefined, page: PageSources |
  * For images, it finds the correct line containing the src attribute.
  *
  * @param entries - Manifest entries to enhance
+ * @param targets - The ids of the entries to enhance; the others are read as their context. All when absent.
  * @returns Enhanced entries with sourceSnippet and openingTagSnippet populated
  */
 export async function enhanceManifestWithSourceSnippets(
@@ -704,6 +705,7 @@ export async function enhanceManifestWithSourceSnippets(
 	collectionDefinitions?: Record<string, CollectionDefinition>,
 	pageFiles?: readonly string[],
 	page?: PageSources,
+	targets?: ReadonlySet<string>,
 ): Promise<Record<string, ManifestEntry>> {
 	// Ensure the search index is ready (returns immediately if already built,
 	// otherwise waits for the in-flight initialization or triggers a new one).
@@ -799,7 +801,7 @@ export async function enhanceManifestWithSourceSnippets(
 	}
 
 	// Process entries in parallel for better performance
-	const entryPromises = Object.entries(entries).map(async ([id, entry]) => {
+	const entryPromises = Object.entries(entries).filter(([id]) => !targets || targets.has(id)).map(async ([id, entry]) => {
 		// Handle image entries specially - find the line with src attribute
 		if (entry.imageMetadata?.src) {
 			// Astro `image()` URLs (`/_image?href=/@fs/.../src/content/<collection>/<...>`)

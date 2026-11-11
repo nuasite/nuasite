@@ -477,3 +477,95 @@ test('a click after edit mode restarted searches again, though the previous sess
 	expect(locked.hasAttribute('data-cms-locked')).toBe(false)
 	expect(locked.contentEditable).toBe('true')
 })
+
+/** Answer manifest requests with a pending entry, and a `resolve=<id>` request with `resolved` in its place. */
+function servePendingManifest(resolved: CmsManifest['entries'][string]): string[] {
+	const requests: string[] = []
+	const pending: CmsManifest['entries'][string] = { id: 'pending-id', tag: 'p', text: 'Text not resolved yet', pending: true }
+	const respond = async (input: RequestInfo | URL): Promise<Response> => {
+		const urlStr = input instanceof Request ? input.url : input.toString()
+		requests.push(urlStr)
+		const resolve = new URL(urlStr, 'http://localhost').searchParams.get('resolve')
+		return Response.json({ entries: { 'pending-id': resolve === 'pending-id' ? resolved : pending }, components: {}, componentDefinitions: {} })
+	}
+	spyOn(globalThis, 'fetch').mockImplementation(Object.assign(respond, { preconnect: fetch.preconnect }))
+	return requests
+}
+
+function pendingElement(): HTMLElement {
+	const el = document.querySelector('[data-cms-id="pending-id"]')
+	if (!(el instanceof HTMLElement)) throw new Error('No pending element')
+	return el
+}
+
+const RESOLVED: CmsManifest['entries'][string] = {
+	id: 'pending-id',
+	tag: 'p',
+	text: 'Text not resolved yet',
+	sourcePath: 'src/pages/index.astro',
+	sourceLine: 3,
+}
+
+test('a pending element is wired once its first hover has the server resolve its entry', async () => {
+	const requests = servePendingManifest(RESOLVED)
+	document.body.innerHTML = `<p data-cms-id="pending-id">Text not resolved yet</p>`
+	await startEditMode(mockConfig, () => {})
+
+	const el = pendingElement()
+	expect(el.contentEditable).toBe('false')
+	expect(el.getAttribute('data-cms-pending')).toBe('true')
+
+	el.dispatchEvent(new PointerEvent('pointerenter'))
+	el.dispatchEvent(new PointerEvent('pointerenter'))
+	await settle()
+
+	expect(requests.filter(url => url.includes('resolve=pending-id'))).toHaveLength(1)
+	// Only the page's own manifest is asked for, not the global one.
+	expect(requests.filter(url => url.includes('cms-manifest.json'))).toHaveLength(1)
+	expect(el.hasAttribute('data-cms-pending')).toBe(false)
+	expect(el.contentEditable).toBe('true')
+	expect(signals.manifest.value.entries['pending-id']?.sourcePath).toBe('src/pages/index.astro')
+	expect(document.activeElement).not.toBe(el)
+})
+
+test('a click on a pending element before any hover resolves it and puts the caret in it', async () => {
+	servePendingManifest(RESOLVED)
+	document.body.innerHTML = `<p data-cms-id="pending-id">Text not resolved yet</p>`
+	await startEditMode(mockConfig, () => {})
+
+	const el = pendingElement()
+	el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	await settle()
+
+	expect(el.contentEditable).toBe('true')
+	expect(document.activeElement).toBe(el)
+	expect(signals.toasts.value).toHaveLength(0)
+})
+
+test('a pending entry the server resolves without a source becomes locked', async () => {
+	servePendingManifest({ id: 'pending-id', tag: 'p', text: 'Text not resolved yet' })
+	document.body.innerHTML = `<p data-cms-id="pending-id">Text not resolved yet</p>`
+	await startEditMode(mockConfig, () => {})
+
+	const el = pendingElement()
+	el.dispatchEvent(new PointerEvent('pointerenter'))
+	await settle()
+
+	expect(el.hasAttribute('data-cms-pending')).toBe(false)
+	expect(el.getAttribute('data-cms-locked')).toBe('true')
+	expect(el.contentEditable).toBe('false')
+})
+
+test('an answer that comes after edit mode stopped leaves the pending element alone', async () => {
+	servePendingManifest(RESOLVED)
+	document.body.innerHTML = `<p data-cms-id="pending-id">Text not resolved yet</p>`
+	await startEditMode(mockConfig, () => {})
+
+	const el = pendingElement()
+	el.dispatchEvent(new PointerEvent('pointerenter'))
+	stopEditMode(() => {})
+	await settle()
+
+	expect(el.hasAttribute('data-cms-pending')).toBe(false)
+	expect(el.contentEditable).not.toBe('true')
+})
