@@ -273,6 +273,7 @@ async function markHtml(
 				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine, bodyText: mdContent?.body, contentPath: collectionInfo.file }
 				: undefined,
 			seo: config.seo,
+			pageFiles: getPageFileCandidates(pagePath),
 			collectionDefinitions: manifestWriter.getCollectionDefinitions(),
 		},
 		idGenerator,

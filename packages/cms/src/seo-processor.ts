@@ -2,7 +2,8 @@ import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import path from 'node:path'
 import { getProjectRoot } from './config.ts'
 import { projectFiles } from './project/context.ts'
-import { findSourceLocation } from './source-finder/source-lookup.ts'
+import { findPageSourceLocation } from './source-finder/source-lookup.ts'
+import type { SourceLocation } from './source-finder/types.ts'
 import type {
 	CanonicalUrl,
 	JsonLdEntry,
@@ -25,7 +26,15 @@ export interface ProcessSeoOptions {
 	parseJsonLd?: boolean
 	/** Path to source file for source tracking (fallback) */
 	sourcePath?: string
+	/**
+	 * The page's own source file candidates, root-relative. A head value is looked up in them and in
+	 * the files the HTML says it was rendered from.
+	 */
+	pageFiles?: readonly string[]
 }
+
+/** Where a value of the head comes from: the same source finding as for regular text entries (props, variables, imports). */
+type LocateSource = (value: string, tag: string) => Promise<SourceLocation | undefined>
 
 export interface ProcessSeoResult {
 	/** Extracted SEO data */
@@ -45,7 +54,7 @@ export async function processSeoFromHtml(
 	options: ProcessSeoOptions = {},
 	getNextId?: () => string,
 ): Promise<ProcessSeoResult> {
-	const { markTitle = true, parseJsonLd = true, sourcePath } = options
+	const { markTitle = true, parseJsonLd = true, sourcePath, pageFiles = [] } = options
 
 	const root = parse(html, {
 		lowerCaseTagName: false,
@@ -62,8 +71,15 @@ export async function processSeoFromHtml(
 	const seo: PageSeoData = {}
 	let titleId: string | undefined
 
+	const renderedFiles = new Set<string>()
+	for (const element of root.querySelectorAll('[data-astro-source-file]')) {
+		const file = element.getAttribute('data-astro-source-file')
+		if (file) renderedFiles.add(file)
+	}
+	const locate: LocateSource = (value, tag) => findPageSourceLocation(value, tag, pageFiles, [...renderedFiles])
+
 	// Extract title
-	const titleResult = await extractTitle(root, html, sourcePath, markTitle, getNextId)
+	const titleResult = await extractTitle(root, html, locate, sourcePath, markTitle, getNextId)
 	if (titleResult) {
 		seo.title = titleResult.title
 		titleId = titleResult.id
@@ -71,17 +87,17 @@ export async function processSeoFromHtml(
 
 	// Extract meta tags from head
 	if (head) {
-		const metaTags = await extractMetaTags(head, html, sourcePath, getNextId)
+		const metaTags = await extractMetaTags(head, html, locate, sourcePath, getNextId)
 		categorizeMetaTags(metaTags, seo)
 
 		// Extract canonical URL
-		const canonical = await extractCanonical(head, html, sourcePath, getNextId)
+		const canonical = await extractCanonical(head, html, locate, sourcePath, getNextId)
 		if (canonical) {
 			seo.canonical = canonical
 		}
 
 		// Extract favicons
-		const favicons = await extractFavicons(head, html, sourcePath, getNextId)
+		const favicons = await extractFavicons(head, html, locate, sourcePath, getNextId)
 		if (favicons.length > 0) {
 			seo.favicons = favicons
 		}
@@ -108,6 +124,7 @@ export async function processSeoFromHtml(
 async function extractTitle(
 	root: HTMLNode,
 	html: string,
+	locate: LocateSource,
 	sourcePath?: string,
 	markTitle?: boolean,
 	getNextId?: () => string,
@@ -118,9 +135,7 @@ async function extractTitle(
 	const content = titleElement.textContent?.trim() || ''
 	if (!content) return undefined
 
-	// Use the same source finding logic as regular text entries
-	// This tracks through props, variables, and imports
-	const sourceLocation = await findSourceLocation(content, 'title')
+	const sourceLocation = await locate(content, 'title')
 
 	// Fall back to rendered HTML location if source not found
 	const sourceInfo = sourceLocation
@@ -153,6 +168,7 @@ async function extractTitle(
 async function extractMetaTags(
 	head: HTMLNode,
 	html: string,
+	locate: LocateSource,
 	sourcePath?: string,
 	getNextId?: () => string,
 ): Promise<SeoMetaTag[]> {
@@ -167,9 +183,7 @@ async function extractMetaTags(
 		// Skip meta tags without content or without name/property
 		if (!content || (!name && !property)) continue
 
-		// Use the same source finding logic as regular text entries
-		// This tracks through props, variables, and imports
-		const sourceLocation = await findSourceLocation(content, 'meta')
+		const sourceLocation = await locate(content, 'meta')
 
 		// Fall back to rendered HTML location if source not found
 		const sourceInfo = sourceLocation
@@ -303,6 +317,7 @@ function categorizeMetaTags(metaTags: SeoMetaTag[], seo: PageSeoData): void {
 async function extractCanonical(
 	head: HTMLNode,
 	html: string,
+	locate: LocateSource,
 	sourcePath?: string,
 	getNextId?: () => string,
 ): Promise<CanonicalUrl | undefined> {
@@ -312,9 +327,7 @@ async function extractCanonical(
 	const href = canonical.getAttribute('href')
 	if (!href) return undefined
 
-	// Use the same source finding logic as regular text entries
-	// This tracks through props, variables, and imports
-	const sourceLocation = await findSourceLocation(href, 'link')
+	const sourceLocation = await locate(href, 'link')
 
 	// Fall back to rendered HTML location if source not found
 	const sourceInfo = sourceLocation
@@ -345,6 +358,7 @@ async function extractCanonical(
 async function extractFavicons(
 	head: HTMLNode,
 	html: string,
+	locate: LocateSource,
 	sourcePath?: string,
 	getNextId?: () => string,
 ): Promise<SeoFavicon[]> {
@@ -358,7 +372,7 @@ async function extractFavicons(
 		const href = link.getAttribute('href')
 		if (!href) continue
 
-		const sourceLocation = await findSourceLocation(href, 'link')
+		const sourceLocation = await locate(href, 'link')
 		const sourceInfo = sourceLocation
 			? {
 				sourcePath: sourceLocation.file,

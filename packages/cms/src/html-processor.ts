@@ -109,6 +109,8 @@ export interface ProcessHtmlOptions {
 	}
 	/** SEO tracking options */
 	seo?: SeoOptions
+	/** The page's own source file candidates, root-relative: the head's values are looked up in them first. */
+	pageFiles?: readonly string[]
 	/** Collection definitions for resolving frontmatter text on listing pages */
 	collectionDefinitions?: Record<string, CollectionDefinition>
 }
@@ -267,6 +269,7 @@ export async function processHtml(
 		skipInlineStyleTags = true,
 		collectionInfo,
 		seo: seoOptions,
+		pageFiles,
 		collectionDefinitions,
 	} = options
 
@@ -1047,6 +1050,7 @@ export async function processHtml(
 				markTitle: seoOptions?.markTitle ?? true,
 				parseJsonLd: seoOptions?.parseJsonLd ?? true,
 				sourcePath,
+				pageFiles,
 			},
 			getNextId,
 		)

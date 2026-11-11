@@ -8,6 +8,14 @@ export function templateSearchDirs(): string[] {
 	return [path.join(srcDir, 'pages'), path.join(srcDir, 'components'), path.join(srcDir, 'layouts')]
 }
 
+/** Absolute paths of the `.astro` files among `files` (spelled as manifests spell them) under the template directories, in their order. */
+export function templateFilesAmong(files: readonly string[]): string[] {
+	const root = getProjectRoot()
+	const dirs = templateSearchDirs()
+	const absolute = files.map(file => path.join(root, projectRelativeSource(file)))
+	return [...new Set(absolute)].filter(file => file.endsWith('.astro') && dirs.some(dir => file.startsWith(`${dir}/`)))
+}
+
 /** Absolute paths of the `.astro` files under `dirs`, depth first in name order. A missing directory has none. */
 export async function astroFilesUnder(dirs: readonly string[]): Promise<string[]> {
 	const files: string[] = []

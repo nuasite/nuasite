@@ -8,7 +8,7 @@ import {
 	type EditorHostOptions,
 } from '@nuasite/cms/editor-host'
 import { describe, expect, spyOn, test } from 'bun:test'
-import type { ComponentInstance, ManifestEntry } from '../../src/types'
+import type { ComponentInstance, ManifestEntry, PageSeoData } from '../../src/types'
 import { createMemoryFileSystem, type MemoryFileSystem } from '../utils/memory-fs'
 
 const PAGE = `---
@@ -363,16 +363,20 @@ describe('createEditorHost', () => {
 				return parse(source, options)
 			},
 		})
+		// The manifest waits for the source resolution after the page, which parses too.
 		await host.processPage('/', renderedPage('/project'))
+		await fetchJson<PageManifest>(host, '/index.json')
 
 		parsed.length = 0
 		for (let i = 0; i < 4; i++) host.invalidate()
 		await host.processPage('/', renderedPage('/project'))
+		await fetchJson<PageManifest>(host, '/index.json')
 		expect(parsed).toEqual([])
 
 		parsed.length = 0
 		for (let i = 0; i < 5; i++) host.invalidate()
 		await host.processPage('/', renderedPage('/project'))
+		await fetchJson<PageManifest>(host, '/index.json')
 		expect(parsed.toSorted()).toEqual([CARD, PAGE].toSorted())
 	})
 
@@ -482,6 +486,63 @@ describe('createEditorHost source resolution after a page', () => {
 		const { body } = await fetchJson<PageManifest>(host, '/index.json')
 		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
 		expect(yields.count()).toBe(0)
+	})
+})
+
+const BASE_LAYOUT = `---
+const { title, description } = Astro.props
+---
+<html><head><title>{title}</title><meta name="description" content={description} /></head><body><slot /></body></html>
+`
+
+function pageInLayout(title: string): string {
+	return `---
+import BaseLayout from '../layouts/BaseLayout.astro'
+---
+<BaseLayout title="${title}" description="Shared description"><h1>${title}</h1></BaseLayout>
+`
+}
+
+/** Two pages in one layout with the same description, beside components neither of them renders. */
+function projectWithHead(): MemoryFileSystem {
+	const files: Record<string, string> = {
+		'src/layouts/BaseLayout.astro': BASE_LAYOUT,
+		'src/pages/about.astro': pageInLayout('About us'),
+		'src/pages/faq.astro': pageInLayout('Questions'),
+	}
+	for (let index = 0; index < 5; index++) files[`src/components/Extra${index}.astro`] = `<p>Extra ${index}</p>\n`
+	return createMemoryFileSystem(files)
+}
+
+const FAQ_PAGE = `<html><head>
+<title data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:13">Questions</title>
+<meta name="description" content="Shared description" data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:35">
+</head><body><h1 data-astro-source-file="src/pages/faq.astro" data-astro-source-loc="4:65">Questions</h1></body></html>`
+
+describe('createEditorHost head of a page', () => {
+	test('looks up the head values in the files the page is rendered from, parsing no other file before the page is returned', async () => {
+		const fs = projectWithHead()
+		const parsed: string[] = []
+		let pageReturned = false
+		const host = await hostOver(fs, {
+			parseAstro: (source, options) => {
+				if (!pageReturned) parsed.push(source)
+				return parse(source, options)
+			},
+		})
+		const handed: Promise<unknown>[] = []
+		// The source resolution after the page parses only after an await, so after it is handed over.
+		await host.processPage('/faq', FAQ_PAGE, {
+			waitUntil: work => {
+				pageReturned = true
+				handed.push(work)
+			},
+		})
+		await Promise.all(handed)
+
+		expect(parsed.toSorted()).toEqual([BASE_LAYOUT, pageInLayout('Questions')].toSorted())
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/faq.json')
+		expect([body.seo.title?.sourcePath, body.seo.description?.sourcePath]).toEqual(['src/pages/faq.astro', 'src/pages/faq.astro'])
 	})
 })
 

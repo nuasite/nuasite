@@ -8,7 +8,7 @@ import { searchForExpressionProp, searchForImportedValue, searchForPropInParents
 import { findElementWithText } from './element-finder.ts'
 import { findInTextIndex } from './search-index.ts'
 import { definitionSnippet, extractCompleteTagSnippet, extractOpeningTagSnippet } from './snippet-utils.ts'
-import { astroFilesUnder, preferringFiles } from './source-files.ts'
+import { astroFilesUnder, preferringFiles, templateFilesAmong } from './source-files.ts'
 import type { SourceLocation } from './types.ts'
 
 // ============================================================================
@@ -50,18 +50,39 @@ export async function findSourceLocation(
 	return searchForPropInParents(textContent, preferred)
 }
 
+/**
+ * {@link findSourceLocation} for a value the page renders. Until the search index is built, only
+ * `pageFiles` and `renderedFiles` are searched: the project-wide search parses every template of
+ * the project, and a file the page is not rendered from is not the source of its value.
+ */
+export async function findPageSourceLocation(
+	textContent: string,
+	tag: string,
+	pageFiles: readonly string[],
+	renderedFiles: readonly string[],
+): Promise<SourceLocation | undefined> {
+	if (isSearchIndexInitialized()) return findSourceLocation(textContent, tag, pageFiles, renderedFiles)
+	const files = templateFilesAmong([...pageFiles, ...renderedFiles])
+	for (const filePath of files) {
+		const result = await searchAstroFile(filePath, textContent, tag, files)
+		if (result) return result
+	}
+	return searchForPropInParents(textContent, undefined, files)
+}
+
 // ============================================================================
 // Astro File Search
 // ============================================================================
 
 /**
  * Search a single Astro file for matching content using AST parsing.
- * Uses caching for better performance.
+ * Uses caching for better performance. A prop is followed to its value `within` these files (absolute), or the whole project.
  */
 export async function searchAstroFile(
 	filePath: string,
 	textContent: string,
 	tag: string,
+	within?: readonly string[],
 ): Promise<SourceLocation | undefined> {
 	try {
 		// Use cached parsed file
@@ -123,6 +144,9 @@ export async function searchAstroFile(
 					propCandidate.propName,
 					propCandidate.expressionPath,
 					textContent,
+					0,
+					undefined,
+					within,
 				)
 				if (exprPropResult) {
 					return exprPropResult
