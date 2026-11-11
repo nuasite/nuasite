@@ -2,6 +2,7 @@ import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import path from 'node:path'
 import { getProjectRoot } from './config.ts'
 import { projectFiles } from './project/context.ts'
+import { projectRelativeSource } from './source-finder/source-files.ts'
 import { type PageSourceLookup, pageSourceLookup } from './source-finder/source-lookup.ts'
 import type { SourceLocation } from './source-finder/types.ts'
 import type {
@@ -31,6 +32,8 @@ export interface ProcessSeoOptions {
 	 * the files the HTML says it was rendered from.
 	 */
 	pageFiles?: readonly string[]
+	/** The files the page was annotated with before its elements were marked, which strips their annotations. */
+	renderedFiles?: readonly string[]
 }
 
 export interface ProcessSeoResult {
@@ -68,10 +71,11 @@ export async function processSeoFromHtml(
 	const seo: PageSeoData = {}
 	let titleId: string | undefined
 
-	const renderedFiles = new Set<string>()
+	// Root-relative, as the search index records files: the dev server annotates absolute paths.
+	const renderedFiles = new Set((options.renderedFiles ?? []).map(projectRelativeSource))
 	for (const element of root.querySelectorAll('[data-astro-source-file]')) {
 		const file = element.getAttribute('data-astro-source-file')
-		if (file) renderedFiles.add(file)
+		if (file) renderedFiles.add(projectRelativeSource(file))
 	}
 	const locate = pageSourceLookup(pageFiles, [...renderedFiles])
 

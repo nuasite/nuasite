@@ -8,7 +8,7 @@ import { searchForExpressionProp, searchForImportedValue, searchForPropInParents
 import { findElementWithText } from './element-finder.ts'
 import { findInTextIndex } from './search-index.ts'
 import { definitionSnippet, extractCompleteTagSnippet, extractOpeningTagSnippet } from './snippet-utils.ts'
-import { astroFilesUnder, preferringFiles, templateFilesAmong } from './source-files.ts'
+import { astroFilesUnder, preferringFiles, projectTemplatesAmong } from './source-files.ts'
 import type { SourceLocation } from './types.ts'
 import { resolveImportPath } from './variable-extraction.ts'
 
@@ -59,39 +59,46 @@ export type PageSourceLookup = (textContent: string, tag: string) => Promise<Sou
  * files the page is rendered from are searched: the project-wide search parses every template of the
  * project, and a file the page is not rendered from is not the source of its value. Those are
  * `pageFiles` and `renderedFiles`, then, on a miss, the templates they import, a round at a time: a
- * layout that passes a value on to a head component has no element of its own in the HTML. The
- * rounds are kept for the page's next values.
+ * layout that passes a value on to a head component has no element of its own in the HTML. Imports
+ * through a module that is not a template (a barrel `index.ts`) are not followed. The rounds are kept
+ * for the page's next values, and whether the index is used is decided once for the page.
  */
 export function pageSourceLookup(pageFiles: readonly string[], renderedFiles: readonly string[]): PageSourceLookup {
-	const known = templateFilesAmong([...pageFiles, ...renderedFiles])
-	const rounds: Promise<readonly string[]>[] = [Promise.resolve([...known])]
-	const roundAt = (index: number): Promise<readonly string[]> => {
+	if (isSearchIndexInitialized()) return (textContent, tag) => findSourceLocation(textContent, tag, pageFiles, renderedFiles)
+	const known = projectTemplatesAmong([...pageFiles, ...renderedFiles])
+	/** Each round's new files, and the files known once it was added, which its props are followed in. */
+	const rounds: Promise<{ files: readonly string[]; within: readonly string[] }>[] = [Promise.resolve({ files: [...known], within: [...known] })]
+	const roundAt = (index: number) => {
 		while (rounds.length <= index) {
-			const previous = rounds[rounds.length - 1] ?? Promise.resolve([])
-			rounds.push(previous.then(async files => {
-				const imported = files.length === 0 ? [] : await importedTemplates(files, known)
-				known.push(...imported)
-				return imported
+			const previous = rounds[rounds.length - 1] ?? Promise.resolve({ files: [], within: [] })
+			rounds.push(previous.then(async ({ files }) => {
+				try {
+					const imported = files.length === 0 ? [] : await importedTemplates(files, known)
+					known.push(...imported)
+					return { files: imported, within: [...known] }
+				} catch (error) {
+					console.error('[cms] Following the imports of a page failed:', error)
+					return { files: [], within: [...known] }
+				}
 			}))
 		}
-		return rounds[index] ?? Promise.resolve([])
+		return rounds[index] ?? Promise.resolve({ files: [], within: [] })
 	}
 	return async (textContent, tag) => {
-		if (isSearchIndexInitialized()) return findSourceLocation(textContent, tag, pageFiles, renderedFiles)
 		for (let index = 0;; index++) {
-			const round = await roundAt(index)
-			if (round.length === 0) return undefined
-			for (const filePath of round) {
-				const result = await searchAstroFile(filePath, textContent, tag, known)
+			const { files, within } = await roundAt(index)
+			if (files.length === 0) return undefined
+			for (const filePath of files) {
+				const result = await searchAstroFile(filePath, textContent, tag, within)
 				if (result) return result
 			}
-			const fromParents = await searchForPropInParents(textContent, undefined, round)
+			const fromParents = await searchForPropInParents(textContent, undefined, files)
 			if (fromParents) return fromParents
 		}
 	}
 }
 
-/** The templates `files` import (absolute), other than those `known`. */
+/** The project's templates `files` import (absolute), other than those `known`. */
 async function importedTemplates(files: readonly string[], known: readonly string[]): Promise<string[]> {
 	const seen = new Set(known)
 	const imported: string[] = []
@@ -100,7 +107,7 @@ async function importedTemplates(files: readonly string[], known: readonly strin
 		for (const { source } of cached?.imports ?? []) {
 			if (!source.endsWith('.astro')) continue
 			const resolved = await resolveImportPath(source, filePath)
-			if (!resolved || seen.has(resolved) || templateFilesAmong([resolved]).length === 0) continue
+			if (!resolved || seen.has(resolved) || projectTemplatesAmong([resolved]).length === 0) continue
 			seen.add(resolved)
 			imported.push(resolved)
 		}

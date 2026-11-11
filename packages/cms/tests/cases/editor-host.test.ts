@@ -590,6 +590,73 @@ describe('createEditorHost head of a page', () => {
 		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
 		expect([body.seo.description?.sourcePath, body.seo.description?.sourceLine]).toEqual(['src/layouts/Layout.astro', 5])
 	})
+	test('looks up a head value in the dynamic route file that renders the page', async () => {
+		const host = await hostOver(createMemoryFileSystem({
+			'src/layouts/BaseLayout.astro': BASE_LAYOUT,
+			'src/pages/blog/[slug].astro': [
+				'---',
+				"import BaseLayout from '../../layouts/BaseLayout.astro'",
+				'const { post } = Astro.props',
+				'---',
+				'<BaseLayout title={post.data.title} description="Articles about our work"><article>{post.body}</article></BaseLayout>',
+				'',
+			].join('\n'),
+		}))
+		await host.processPage(
+			'/blog/first',
+			`<html><head>
+<title data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:13">First</title>
+<meta name="description" content="Articles about our work" data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:35">
+</head><body><article>Body of the first post</article></body></html>`,
+		)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/blog/first.json')
+		expect(body.seo.description?.sourcePath).toBe('src/pages/blog/[slug].astro')
+	})
+
+	test('looks up a head value in a file only the annotations of a marked element name', async () => {
+		const seo = '<title>Landing title</title>\n'
+		const host = await hostOver(
+			createMemoryFileSystem({ 'src/components/Seo.astro': seo, 'src/components/Hero.astro': '<section><h1>Welcome</h1></section>\n' }),
+		)
+		// No page file renders the path, and marking the heading strips its annotation.
+		await host.processPage(
+			'/landing',
+			`<html><head><title>Landing title</title></head><body><section data-astro-source-file="/project/src/components/Seo.astro" data-astro-source-loc="1:1"><h1 data-astro-source-file="/project/src/components/Hero.astro" data-astro-source-loc="1:10">Welcome</h1></section></body></html>`,
+		)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/landing.json')
+		expect(body.seo.title?.sourcePath).toBe('src/components/Seo.astro')
+	})
+
+	test('follows an import through a layout outside the template directories', async () => {
+		const host = await hostOver(createMemoryFileSystem({
+			'src/components/Head.astro': '<title>Acme site</title>\n',
+			'src/layout/Layout.astro': "---\nimport Head from '../components/Head.astro'\n---\n<html><head><Head /></head><body><slot /></body></html>\n",
+			'src/pages/about.astro': "---\nimport Layout from '../layout/Layout.astro'\n---\n<Layout><h1>About</h1></Layout>\n",
+		}))
+		await host.processPage('/about', '<html><head><title>Acme site</title></head><body><h1>About</h1></body></html>')
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		expect(body.seo.title?.sourcePath).toBe('src/components/Head.astro')
+	})
+
+	test('once the index is built, prefers a file the page is rendered from also when the annotations are absolute', async () => {
+		const host = await hostOver(createMemoryFileSystem({
+			'src/components/AOther.astro': '<title>Shared title</title>\n',
+			'src/layouts/Layout.astro': '<html><head><title>Shared title</title></head><body><slot /></body></html>\n',
+			'src/pages/about.astro': "---\nimport Layout from '../layouts/Layout.astro'\n---\n<Layout><h1>About</h1></Layout>\n",
+		}))
+		const page =
+			'<html data-astro-source-file="/project/src/layouts/Layout.astro" data-astro-source-loc="1:1"><head><title>Shared title</title></head><body><h1>About</h1></body></html>'
+		const handed: Promise<unknown>[] = []
+		await host.processPage('/about', page, { waitUntil: work => handed.push(work) })
+		await Promise.all(handed)
+		await host.processPage('/about', page)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		expect(body.seo.title?.sourcePath).toBe('src/layouts/Layout.astro')
+	})
 })
 
 describe('createEditorHost with a definitions store', () => {

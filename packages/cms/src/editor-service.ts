@@ -28,7 +28,7 @@ import {
 	readableCollectionsHoldText,
 	reindexDirtyFiles,
 } from './source-finder/index.ts'
-import { projectRelativeSource } from './source-finder/source-files.ts'
+import { pageRouteFiles, projectRelativeSource } from './source-finder/source-files.ts'
 import type { PageSources } from './source-finder/types.ts'
 import type {
 	CmsMarkerOptions,
@@ -273,7 +273,7 @@ async function markHtml(
 				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine, bodyText: mdContent?.body, contentPath: collectionInfo.file }
 				: undefined,
 			seo: config.seo,
-			pageFiles: getPageFileCandidates(pagePath),
+			pageFiles: [...new Set([...getPageFileCandidates(pagePath), ...await pageRouteFiles(pagePath)])],
 			collectionDefinitions: manifestWriter.getCollectionDefinitions(),
 		},
 		idGenerator,

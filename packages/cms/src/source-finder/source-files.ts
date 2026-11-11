@@ -8,12 +8,60 @@ export function templateSearchDirs(): string[] {
 	return [path.join(srcDir, 'pages'), path.join(srcDir, 'components'), path.join(srcDir, 'layouts')]
 }
 
-/** Absolute paths of the `.astro` files among `files` (spelled as manifests spell them) under the template directories, in their order. */
-export function templateFilesAmong(files: readonly string[]): string[] {
+/** Absolute paths of the project's own `.astro` files among `files` (spelled as manifests spell them), in their order: none of a package. */
+export function projectTemplatesAmong(files: readonly string[]): string[] {
 	const root = getProjectRoot()
-	const dirs = templateSearchDirs()
 	const absolute = files.map(file => path.join(root, projectRelativeSource(file)))
-	return [...new Set(absolute)].filter(file => file.endsWith('.astro') && dirs.some(dir => file.startsWith(`${dir}/`)))
+	return [...new Set(absolute)].filter(file => file.endsWith('.astro') && file.startsWith(`${root}/`) && !file.includes('/node_modules/'))
+}
+
+/**
+ * The files under `src/pages` that can render `pathname`, root-relative: the file named after it, and the dynamic
+ * routes (`[param]`, `[...rest]`) whose segments match it. Found from directory listings, without reading a file.
+ */
+export async function pageRouteFiles(pathname: string): Promise<string[]> {
+	const pagesDir = path.join(getProjectRoot(), 'src', 'pages')
+	const segments = pathname.split(/[?#]/)[0]?.split('/').filter(segment => segment !== '') ?? []
+	const found: string[] = []
+	const match = async (dir: string, rest: readonly string[]): Promise<void> => {
+		let entries
+		try {
+			entries = await projectFiles().readdir(dir)
+		} catch {
+			return
+		}
+		const [segment, ...after] = rest
+		// Static names before parameters before rest parameters, as Astro ranks them.
+		for (const rank of ['static', 'param', 'rest'] as const) {
+			for (const entry of entries) {
+				const extension = path.extname(entry.name)
+				const isPage = entry.isFile() && PAGE_FILE_EXTENSIONS.has(extension)
+				const name = isPage ? path.basename(entry.name, extension) : entry.name
+				if (!isPage && !entry.isDirectory()) continue
+				if (routeSegmentRank(name) !== rank) continue
+				const fullPath = path.join(dir, entry.name)
+				if (rank === 'rest') {
+					if (isPage) found.push(fullPath)
+					else await match(fullPath, [])
+				} else if (segment === undefined) {
+					if (isPage && name === 'index') found.push(fullPath)
+				} else if (rank === 'param' || name === segment) {
+					if (isPage && after.length === 0) found.push(fullPath)
+					else if (!isPage) await match(fullPath, after)
+				}
+			}
+		}
+	}
+	await match(pagesDir, segments)
+	const root = getProjectRoot()
+	return found.map(file => path.relative(root, file))
+}
+
+const PAGE_FILE_EXTENSIONS = new Set(['.astro', '.md', '.mdx'])
+
+function routeSegmentRank(name: string): 'static' | 'param' | 'rest' {
+	if (name.startsWith('[...')) return 'rest'
+	return name.includes('[') ? 'param' : 'static'
 }
 
 /** Absolute paths of the `.astro` files under `dirs`, depth first in name order. A missing directory has none. */

@@ -284,6 +284,13 @@ export async function processHtml(
 		},
 	})
 
+	// Marking strips the annotations, and the head's values are looked up in the files they name.
+	const renderedFiles = new Set<string>()
+	for (const node of root.querySelectorAll('[data-astro-source-file]')) {
+		const file = node.getAttribute('data-astro-source-file')
+		if (file) renderedFiles.add(file)
+	}
+
 	const entries: Record<string, ManifestEntry> = {}
 	const components: Record<string, ComponentInstance> = {}
 	const sourceLocationMap = new Map<string, { file: string; line: number }>()
@@ -1051,6 +1058,7 @@ export async function processHtml(
 				parseJsonLd: seoOptions?.parseJsonLd ?? true,
 				sourcePath,
 				pageFiles,
+				renderedFiles: [...renderedFiles],
 			},
 			getNextId,
 		)
