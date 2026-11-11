@@ -18,9 +18,10 @@ export function projectTemplatesAmong(files: readonly string[]): string[] {
 }
 
 /**
- * The file under `src/pages` that renders `pathname`, root-relative, ranked as Astro ranks routes: at
- * each level a static name before a parameter (`[slug]`, `[lang]-[slug]`) before a rest parameter
- * (`[...rest]`), depth first. Found from directory listings, without reading a file.
+ * The file under `src/pages` that most likely renders `pathname`, root-relative, ranked as Astro ranks
+ * routes: at each level a static name before a parameter before a rest parameter, depth first. Found from
+ * directory listings without reading a file, so it misses a route whose `getStaticPaths` lacks the path,
+ * and a site's `base` is not stripped.
  */
 export async function pageRouteFile(pageUrl: string): Promise<string | undefined> {
 	const pagesDir = path.join(getProjectRoot(), 'src', 'pages')
@@ -46,7 +47,7 @@ export async function pageRouteFile(pageUrl: string): Promise<string | undefined
 			.filter(route => route.isPage || route.isDirectory)
 		const [segment, ...after] = segments
 		for (const rank of ROUTE_RANKS) {
-			for (const route of routes.filter(candidate => routeSegmentRank(candidate.name) === rank)) {
+			for (const route of routes.filter(candidate => routeSegmentRank(candidate.name) === rank).sort(routeOrderWithinRank)) {
 				if (rank === 'rest') {
 					if (route.isPage) return route.fullPath
 					// A rest directory takes as many segments as its own routes leave over, the most first.
@@ -95,6 +96,22 @@ const ROUTE_RANKS: readonly RouteRank[] = ['static', 'param', 'rest']
 function routeSegmentRank(name: string): RouteRank {
 	if (name.startsWith('[...')) return 'rest'
 	return name.includes('[') ? 'param' : 'static'
+}
+
+/**
+ * Within one rank, as Astro orders them: a name with static text (`page-[n]`) before a bare parameter;
+ * a page before a directory, whose catch-all would also match it; but a rest directory, whose deeper
+ * static routes rank higher, before a rest page.
+ */
+function routeOrderWithinRank(a: RouteEntry, b: RouteEntry): number {
+	const bare = (name: string) => name.replace(/\[[^\]]+\]/g, '') === ''
+	const directoryLast = routeSegmentRank(a.name) === 'rest' ? -1 : 1
+	return Number(bare(a.name)) - Number(bare(b.name)) || (Number(a.isDirectory) - Number(b.isDirectory)) * directoryLast
+}
+
+interface RouteEntry {
+	name: string
+	isDirectory: boolean
 }
 
 /** A route segment's name as a pattern: its static text as is, each `[param]` one or more characters. */

@@ -30,6 +30,14 @@ describe('pageRouteFile', () => {
 		expect(await routeOf(['src/pages/index.astro', 'src/pages/[lang]/index.astro'], '/en')).toBe('src/pages/[lang]/index.astro')
 	})
 
+	test('within a rank: static text before a bare parameter, a page before a directory, a rest directory before a rest page', async () => {
+		expect(await routeOf(['src/pages/[slug].astro', 'src/pages/page-[n].astro'], '/page-2')).toBe('src/pages/page-[n].astro')
+		expect(await routeOf(['src/pages/blog.astro', 'src/pages/blog/[...slug].astro'], '/blog')).toBe('src/pages/blog.astro')
+		expect(await routeOf(['src/pages/[lang].astro', 'src/pages/[lang]/[...slug].astro'], '/en')).toBe('src/pages/[lang].astro')
+		expect(await routeOf(['src/pages/[...slug].astro', 'src/pages/[...slug]/edit.astro'], '/a/b/edit')).toBe('src/pages/[...slug]/edit.astro')
+		expect(await routeOf(['src/pages/[...slug].astro', 'src/pages/[...slug]/edit.astro'], '/a/b')).toBe('src/pages/[...slug].astro')
+	})
+
 	test('index pages, and a catch-all that matches no segment', async () => {
 		expect(await routeOf(['src/pages/index.astro'], '/')).toBe('src/pages/index.astro')
 		expect(await routeOf(['src/pages/blog/index.md', 'src/pages/blog/[...slug].astro'], '/blog/')).toBe('src/pages/blog/index.md')
