@@ -569,3 +569,113 @@ test('an answer that comes after edit mode stopped leaves the pending element al
 	expect(el.hasAttribute('data-cms-pending')).toBe(false)
 	expect(el.contentEditable).not.toBe('true')
 })
+
+test('an unsaved edit stored for a pending element is resolved before wiring, and counts as a change', async () => {
+	sessionStorage.clear()
+	// Earlier tests leave their elements' changes behind.
+	signals.pendingChanges.value = new Map()
+	sessionStorage.setItem(
+		'cms-pending-edits',
+		JSON.stringify({ 'pending-id': { originalText: 'Text not resolved yet', newText: 'Edited', currentHTML: 'Edited', hasStyledContent: false } }),
+	)
+	const requests = servePendingManifest({ ...RESOLVED, sourceSnippet: '<p>Text not resolved yet</p>' })
+	document.body.innerHTML = `<p data-cms-id="pending-id">Text not resolved yet</p>`
+	await startEditMode(mockConfig, () => {})
+
+	const el = pendingElement()
+	expect(requests.filter(url => url.includes('resolve=pending-id'))).toHaveLength(1)
+	expect(el.innerHTML).toBe('Edited')
+	expect(el.contentEditable).toBe('true')
+	expect(signals.dirtyChanges.value.map(([id]) => id)).toEqual(['pending-id'])
+	sessionStorage.clear()
+})
+
+test('an answer computed before another one does not turn the entry that one wired back to pending', async () => {
+	const pendingEntry = (id: string, text: string): CmsManifest['entries'][string] => ({ id, tag: 'p', text, pending: true })
+	const resolvedEntry = (id: string, text: string): CmsManifest['entries'][string] => ({
+		id,
+		tag: 'p',
+		text,
+		sourcePath: 'src/pages/index.astro',
+		sourceLine: 2,
+		sourceSnippet: `<p>${text}</p>`,
+	})
+	const release: Record<string, () => void> = {}
+	const answers: Record<string, Promise<Response>> = {
+		// `a` was answered last, `b` first, while `a` was still pending on the server.
+		a: new Promise(
+			resolve => (release.a = () =>
+				resolve(Response.json({ entries: { a: resolvedEntry('a', 'Alpha'), b: resolvedEntry('b', 'Beta') }, components: {} }))),
+		),
+		b: new Promise(
+			resolve => (release.b = () =>
+				resolve(Response.json({ entries: { a: pendingEntry('a', 'Alpha'), b: resolvedEntry('b', 'Beta') }, components: {} }))),
+		),
+	}
+	const respond = async (input: RequestInfo | URL): Promise<Response> => {
+		const resolve = new URL(input instanceof Request ? input.url : input.toString(), 'http://localhost').searchParams.get('resolve')
+		const answer = resolve === null ? undefined : answers[resolve]
+		return answer
+			?? Response.json({ entries: { a: pendingEntry('a', 'Alpha'), b: pendingEntry('b', 'Beta') }, components: {}, componentDefinitions: {} })
+	}
+	spyOn(globalThis, 'fetch').mockImplementation(Object.assign(respond, { preconnect: fetch.preconnect }))
+	document.body.innerHTML = `<p data-cms-id="a">Alpha</p><p data-cms-id="b">Beta</p>`
+	await startEditMode(mockConfig, () => {})
+
+	const a = document.querySelector<HTMLElement>('[data-cms-id="a"]')!
+	const b = document.querySelector<HTMLElement>('[data-cms-id="b"]')!
+	a.dispatchEvent(new PointerEvent('pointerenter'))
+	b.dispatchEvent(new PointerEvent('pointerenter'))
+	release.a!()
+	await settle()
+	release.b!()
+	await settle()
+
+	expect(a.contentEditable).toBe('true')
+	expect(b.contentEditable).toBe('true')
+	expect(signals.manifest.value.entries.a?.pending).toBeUndefined()
+	expect(signals.manifest.value.entries.a?.sourceSnippet).toBe('<p>Alpha</p>')
+})
+
+test('a pending element whose ask fails is locked instead of left waiting', async () => {
+	const requests: string[] = []
+	const respond = async (input: RequestInfo | URL): Promise<Response> => {
+		const url = input instanceof Request ? input.url : input.toString()
+		requests.push(url)
+		if (url.includes('resolve=')) return new Response('failed', { status: 500 })
+		return Response.json({
+			entries: { 'pending-id': { id: 'pending-id', tag: 'p', text: 'Text not resolved yet', pending: true } },
+			components: {},
+			componentDefinitions: {},
+		})
+	}
+	spyOn(globalThis, 'fetch').mockImplementation(Object.assign(respond, { preconnect: fetch.preconnect }))
+	spyOn(console, 'error').mockImplementation(() => {})
+	document.body.innerHTML = `<p data-cms-id="pending-id">Text not resolved yet</p>`
+	await startEditMode(mockConfig, () => {})
+
+	const el = pendingElement()
+	el.dispatchEvent(new PointerEvent('pointerenter'))
+	await settle()
+
+	expect(el.hasAttribute('data-cms-pending')).toBe(false)
+	expect(el.getAttribute('data-cms-locked')).toBe('true')
+	el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	await settle()
+	expect(requests.filter(url => url.includes('locate=pending-id'))).toHaveLength(1)
+})
+
+test('a click on a pending image opens the media library once the image is wired', async () => {
+	signals.resetMediaLibraryState()
+	servePendingManifest({ ...RESOLVED, tag: 'img', imageMetadata: { src: '/photo.webp', alt: 'Photo', srcSet: '' } })
+	document.body.innerHTML = `<img data-cms-id="pending-id" data-cms-img src="/photo.webp" alt="Photo">`
+	await startEditMode(mockConfig, () => {})
+
+	const el = pendingElement()
+	el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+	await settle()
+
+	expect(el.hasAttribute('data-cms-pending')).toBe(false)
+	expect(signals.mediaLibraryState.value.isOpen).toBe(true)
+	signals.resetMediaLibraryState()
+})

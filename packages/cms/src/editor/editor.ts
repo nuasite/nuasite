@@ -1,5 +1,5 @@
 import type { CmsOpenEntryMessage } from '../types.ts'
-import { fetchManifest, fetchPageManifest, getMarkdownContent, saveBatchChanges } from './api.ts'
+import { fetchManifest, fetchPageManifest, getMarkdownContent, type PageManifestPart, saveBatchChanges } from './api.ts'
 import { CSS, TIMING } from './constants.ts'
 import {
 	cleanupHighlightSystem,
@@ -169,8 +169,41 @@ function askAboutEntry(id: string, ask: EntryAsk, session: EditSession, focus: b
 	if (asked.has(key)) return
 	asked.add(key)
 	void wireAnsweredEntry(id, ask, session, focus)
-		.catch(() => {})
+		.catch(error => {
+			console.error('[CMS] Asking about an entry failed:', error)
+			// A pending element is not left waiting: locked, a click asks again with a search of the project.
+			const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${id}"]`)
+			if (ask === 'resolve' && el instanceof HTMLElement && el.hasAttribute(CSS.PENDING_ATTRIBUTE) && !session.signal.aborted) {
+				el.removeAttribute(CSS.PENDING_ATTRIBUTE)
+				lockElement(el, session)
+			}
+		})
 		.finally(() => asked.delete(key))
+}
+
+/**
+ * The manifest with the server's answer about one entry. Only that entry is taken: the answer's other
+ * entries may be older than those already wired, or of a page the server rendered again meanwhile.
+ * A resolved entry is never replaced by a pending one.
+ */
+function withAnsweredEntry(manifest: CmsManifest, id: string, page: PageManifestPart): CmsManifest {
+	const answered = page.entries[id]
+	const known = manifest.entries[id]
+	if (!answered || (answered.pending && known && !known.pending)) return manifest
+	return { ...manifest, entries: { ...manifest.entries, [id]: answered } }
+}
+
+/** Resolve the pending entries among `ids` before their elements are wired, each with an ask of its own. */
+async function resolveEntriesFirst(ids: Iterable<string>, signal: AbortSignal): Promise<void> {
+	const pending = [...new Set(ids)].filter(id => signals.manifest.value.entries[id]?.pending)
+	await Promise.all(pending.map(async id => {
+		try {
+			const page = await fetchPageManifest({ resolve: id })
+			if (!signal.aborted) signals.setManifest(withAnsweredEntry(signals.manifest.value, id, page))
+		} catch (error) {
+			console.error('[CMS] Resolving an entry with a stored edit failed:', error)
+		}
+	}))
 }
 
 async function wireAnsweredEntry(id: string, ask: EntryAsk, session: EditSession, focus: boolean): Promise<void> {
@@ -179,18 +212,26 @@ async function wireAnsweredEntry(id: string, ask: EntryAsk, session: EditSession
 	if (ask === 'resolve' ? known?.pending : !known?.sourcePath) {
 		const page = await fetchPageManifest(ask === 'resolve' ? { resolve: id } : { locate: id })
 		if (session.signal.aborted) return
-		signals.setManifest({ ...signals.manifest.value, ...page })
+		signals.setManifest(withAnsweredEntry(signals.manifest.value, id, page))
 	}
 	const manifest = signals.manifest.value
 	const answered = manifest.entries[id]
-	if (session.signal.aborted || !answered || answered.pending || (ask === 'locate' && !answered.sourcePath)) return
+	if (session.signal.aborted || !answered || (ask === 'locate' && !answered.sourcePath)) return
 
 	// Looked up again: an HMR update may have replaced the element while the server answered.
 	const el = document.querySelector(`[${CSS.ID_ATTRIBUTE}="${id}"]`)
 	if (!(el instanceof HTMLElement) || !el.hasAttribute(WAITING_ATTRIBUTE[ask])) return
 	el.removeAttribute(WAITING_ATTRIBUTE[ask])
+	// Still pending: the server rendered the page again meanwhile. Locked, a click asks again.
+	if (answered.pending) {
+		lockElement(el, session)
+		return
+	}
 	wireElement(el, { ...session, manifest })
-	if (focus) el.focus()
+	if (!focus) return
+	// The click came before the wiring: text takes the caret, any other element gets the click its wiring handles.
+	if (el.contentEditable === 'true') el.focus()
+	else el.click()
 }
 
 /** Test-only: reset toast throttle state between test cases. */
@@ -280,6 +321,7 @@ export async function startEditMode(
 	const savedImageEdits = loadImageEditsFromStorage()
 	const savedColorEdits = loadColorEditsFromStorage()
 	const savedAttributeEdits = loadAttributeEditsFromStorage()
+	const savedBgImageEdits = loadBgImageEditsFromStorage()
 
 	// Paint saved edits before awaiting the manifest so slow fetches don't show stale text.
 	// The captured pre-paint state is read by the wiring loop later as the pendingChange origin —
@@ -308,6 +350,13 @@ export async function startEditMode(
 		console.error('[CMS] Failed to load manifest:', err)
 		return
 	}
+	// A stored edit becomes a change once its element is wired, and a pending element is not: without its entry
+	// resolved, the next save to storage or of the changes would drop the edit.
+	await resolveEntriesFirst(
+		[savedEdits, savedImageEdits, savedColorEdits, savedAttributeEdits, savedBgImageEdits].flatMap(edits => Object.keys(edits)),
+		editModeSignal,
+	)
+	if (editModeSignal.aborted) return
 	const session: EditSession = {
 		config,
 		manifest: signals.manifest.value,
@@ -317,7 +366,7 @@ export async function startEditMode(
 		savedImageEdits,
 		savedColorEdits,
 		savedAttributeEdits,
-		savedBgImageEdits: loadBgImageEditsFromStorage(),
+		savedBgImageEdits,
 		preEagerPaintDomState,
 		handedOver: new Set<string>(),
 	}
@@ -342,6 +391,13 @@ export async function startEditMode(
 			)
 		}
 	}
+}
+
+/** Lock an element that cannot be edited: a click tells why and asks the server to search the project for its source. */
+function lockElement(el: HTMLElement, session: EditSession): void {
+	makeElementNonEditable(el)
+	el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
+	el.addEventListener('click', event => handleLockedClick(event, session), { signal: session.signal })
 }
 
 /** One edit mode session, as wiring an element for editing reads it. */
@@ -459,9 +515,7 @@ function wireElement(el: HTMLElement, session: EditSession): void {
 	// element so it can't be typed into and the user gets told why on click.
 	if (!manifestEntry?.sourcePath) {
 		logDebug(config.debug, 'Skipping element without source path:', cmsId)
-		makeElementNonEditable(el)
-		el.setAttribute(CSS.LOCKED_ATTRIBUTE, 'true')
-		el.addEventListener('click', event => handleLockedClick(event, session), { signal: editModeSignal })
+		lockElement(el, session)
 		return
 	}
 
