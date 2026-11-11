@@ -88,7 +88,8 @@ export function pageSourceLookup(pageFiles: readonly string[], renderedFiles: re
 		for (let index = 0;; index++) {
 			const { files, within } = await roundAt(index)
 			if (files.length === 0) return undefined
-			for (const filePath of files) {
+			// A later round searches the earlier files again: a prop of theirs may lead into the files it added.
+			for (const filePath of index === 0 ? files : within) {
 				const result = await searchAstroFile(filePath, textContent, tag, within)
 				if (result) return result
 			}

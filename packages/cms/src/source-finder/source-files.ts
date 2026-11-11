@@ -11,57 +11,96 @@ export function templateSearchDirs(): string[] {
 /** Absolute paths of the project's own `.astro` files among `files` (spelled as manifests spell them), in their order: none of a package. */
 export function projectTemplatesAmong(files: readonly string[]): string[] {
 	const root = getProjectRoot()
-	const absolute = files.map(file => path.join(root, projectRelativeSource(file)))
+	// An absolute path outside the root is another package's, not one spelled from the root (`/src/…`).
+	const own = files.filter(file => !file.startsWith('/') || file.startsWith(`${root}/`) || file.startsWith('/src/'))
+	const absolute = own.map(file => path.join(root, projectRelativeSource(file)))
 	return [...new Set(absolute)].filter(file => file.endsWith('.astro') && file.startsWith(`${root}/`) && !file.includes('/node_modules/'))
 }
 
 /**
- * The files under `src/pages` that can render `pathname`, root-relative: the file named after it, and the dynamic
- * routes (`[param]`, `[...rest]`) whose segments match it. Found from directory listings, without reading a file.
+ * The file under `src/pages` that renders `pathname`, root-relative, ranked as Astro ranks routes: at
+ * each level a static name before a parameter (`[slug]`, `[lang]-[slug]`) before a rest parameter
+ * (`[...rest]`), depth first. Found from directory listings, without reading a file.
  */
-export async function pageRouteFiles(pathname: string): Promise<string[]> {
+export async function pageRouteFile(pageUrl: string): Promise<string | undefined> {
 	const pagesDir = path.join(getProjectRoot(), 'src', 'pages')
-	const segments = pathname.split(/[?#]/)[0]?.split('/').filter(segment => segment !== '') ?? []
-	const found: string[] = []
-	const match = async (dir: string, rest: readonly string[]): Promise<void> => {
+	const match = async (dir: string, segments: readonly string[]): Promise<string | undefined> => {
 		let entries
 		try {
 			entries = await projectFiles().readdir(dir)
 		} catch {
-			return
+			return undefined
 		}
-		const [segment, ...after] = rest
-		// Static names before parameters before rest parameters, as Astro ranks them.
-		for (const rank of ['static', 'param', 'rest'] as const) {
-			for (const entry of entries) {
+		const routes = entries
+			.filter(entry => !entry.name.startsWith('_') && !entry.name.startsWith('.'))
+			.map(entry => {
 				const extension = path.extname(entry.name)
 				const isPage = entry.isFile() && PAGE_FILE_EXTENSIONS.has(extension)
-				const name = isPage ? path.basename(entry.name, extension) : entry.name
-				if (!isPage && !entry.isDirectory()) continue
-				if (routeSegmentRank(name) !== rank) continue
-				const fullPath = path.join(dir, entry.name)
+				return {
+					fullPath: path.join(dir, entry.name),
+					isPage,
+					isDirectory: entry.isDirectory(),
+					name: isPage ? path.basename(entry.name, extension) : entry.name,
+				}
+			})
+			.filter(route => route.isPage || route.isDirectory)
+		const [segment, ...after] = segments
+		for (const rank of ROUTE_RANKS) {
+			for (const route of routes.filter(candidate => routeSegmentRank(candidate.name) === rank)) {
 				if (rank === 'rest') {
-					if (isPage) found.push(fullPath)
-					else await match(fullPath, [])
+					if (route.isPage) return route.fullPath
+					// A rest directory takes as many segments as its own routes leave over, the most first.
+					for (let taken = segments.length; taken >= 0; taken--) {
+						const found = await match(route.fullPath, segments.slice(taken))
+						if (found) return found
+					}
 				} else if (segment === undefined) {
-					if (isPage && name === 'index') found.push(fullPath)
-				} else if (rank === 'param' || name === segment) {
-					if (isPage && after.length === 0) found.push(fullPath)
-					else if (!isPage) await match(fullPath, after)
+					if (route.isPage && route.name === 'index') return route.fullPath
+				} else if (routeSegmentPattern(route.name).test(segment)) {
+					const found = route.isPage ? (after.length === 0 ? route.fullPath : undefined) : await match(route.fullPath, after)
+					if (found) return found
 				}
 			}
 		}
+		return undefined
 	}
-	await match(pagesDir, segments)
-	const root = getProjectRoot()
-	return found.map(file => path.relative(root, file))
+	const found = await match(pagesDir, urlSegments(pageUrl))
+	return found === undefined ? undefined : path.relative(getProjectRoot(), found)
 }
 
 const PAGE_FILE_EXTENSIONS = new Set(['.astro', '.md', '.mdx'])
 
-function routeSegmentRank(name: string): 'static' | 'param' | 'rest' {
+/** The decoded segments of a page URL's path, from a path or a full URL. */
+function urlSegments(pageUrl: string): string[] {
+	let pathname: string
+	try {
+		pathname = new URL(pageUrl).pathname
+	} catch {
+		pathname = pageUrl.split(/[?#]/)[0] ?? ''
+	}
+	return pathname.split('/').filter(segment => segment !== '').map(segment => {
+		try {
+			return decodeURIComponent(segment)
+		} catch {
+			return segment
+		}
+	})
+}
+
+type RouteRank = 'static' | 'param' | 'rest'
+
+/** Astro's order of routes at one level of the path. */
+const ROUTE_RANKS: readonly RouteRank[] = ['static', 'param', 'rest']
+
+function routeSegmentRank(name: string): RouteRank {
 	if (name.startsWith('[...')) return 'rest'
 	return name.includes('[') ? 'param' : 'static'
+}
+
+/** A route segment's name as a pattern: its static text as is, each `[param]` one or more characters. */
+function routeSegmentPattern(name: string): RegExp {
+	const parts = name.split(/\[[^\]]+\]/).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+	return new RegExp(`^${parts.join('.+?')}$`)
 }
 
 /** Absolute paths of the `.astro` files under `dirs`, depth first in name order. A missing directory has none. */

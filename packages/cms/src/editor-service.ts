@@ -28,7 +28,7 @@ import {
 	readableCollectionsHoldText,
 	reindexDirtyFiles,
 } from './source-finder/index.ts'
-import { pageRouteFiles, projectRelativeSource } from './source-finder/source-files.ts'
+import { pageRouteFile, projectRelativeSource } from './source-finder/source-files.ts'
 import type { PageSources } from './source-finder/types.ts'
 import type {
 	CmsMarkerOptions,
@@ -273,7 +273,7 @@ async function markHtml(
 				? { name: collectionInfo.name, slug: collectionInfo.slug, bodyFirstLine, bodyText: mdContent?.body, contentPath: collectionInfo.file }
 				: undefined,
 			seo: config.seo,
-			pageFiles: [...new Set([...getPageFileCandidates(pagePath), ...await pageRouteFiles(pagePath)])],
+			pageFiles: await headLookupFiles(pagePath, config),
 			collectionDefinitions: manifestWriter.getCollectionDefinitions(),
 		},
 		idGenerator,
@@ -482,6 +482,14 @@ function pageSources(pageFiles: readonly string[], components: Record<string, Co
 		if (component.invocationSourcePath) rendered.add(projectRelativeSource(component.invocationSourcePath))
 	}
 	return { renderedFiles: [...rendered], components }
+}
+
+/** The page's own files its head is looked up in: its literal candidates, and the route file that renders it, unless the head is not tracked. */
+async function headLookupFiles(pagePath: string, config: Required<CmsMarkerOptions>): Promise<string[]> {
+	const candidates = getPageFileCandidates(pagePath)
+	if (config.seo.trackSeo === false) return candidates
+	const route = await pageRouteFile(pagePath)
+	return route === undefined || candidates.includes(route) ? candidates : [...candidates, route]
 }
 
 /** Page file extensions recognized by Astro */

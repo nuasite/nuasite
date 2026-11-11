@@ -629,6 +629,48 @@ describe('createEditorHost head of a page', () => {
 		expect(body.seo.title?.sourcePath).toBe('src/components/Seo.astro')
 	})
 
+	test('follows a page constant through a layout that only passes it on to the layout that renders it', async () => {
+		const host = await hostOver(createMemoryFileSystem({
+			'src/layouts/BaseLayout.astro': BASE_LAYOUT,
+			'src/layouts/PageLayout.astro':
+				'---\nimport BaseLayout from \'./BaseLayout.astro\'\nconst { title } = Astro.props\n---\n<BaseLayout title={title} description="Shared description"><slot /></BaseLayout>\n',
+			'src/pages/about.astro':
+				"---\nimport PageLayout from '../layouts/PageLayout.astro'\nconst pageTitle = 'About us'\n---\n<PageLayout title={pageTitle}><h1>Heading</h1></PageLayout>\n",
+		}))
+		await host.processPage(
+			'/about',
+			`<html><head>
+<title data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:13">About us</title>
+</head><body><h1 data-astro-source-file="src/pages/about.astro" data-astro-source-loc="5:31">Heading</h1></body></html>`,
+		)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		expect([body.seo.title?.sourcePath, body.seo.title?.sourceLine]).toEqual(['src/pages/about.astro', 3])
+	})
+
+	test('looks up the head of a static page not in a catch-all route beside it', async () => {
+		const catchAll =
+			'---\nimport BaseLayout from \'../layouts/BaseLayout.astro\'\n---\n<BaseLayout title="Page" description="Acme builds bridges"><p>Block</p></BaseLayout>\n'
+		const host = await hostOver(
+			createMemoryFileSystem({
+				'src/layouts/BaseLayout.astro': BASE_LAYOUT,
+				'src/pages/about.astro':
+					'---\nimport BaseLayout from \'../layouts/BaseLayout.astro\'\n---\n<BaseLayout title="About"><h1>About</h1></BaseLayout>\n',
+				'src/pages/[...slug].astro': catchAll,
+			}),
+		)
+		await host.processPage(
+			'/about',
+			`<html><head>
+<title data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:13">About</title>
+<meta name="description" content="Acme builds bridges" data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:35">
+</head><body><h1 data-astro-source-file="src/pages/about.astro" data-astro-source-loc="4:31">About</h1></body></html>`,
+		)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		expect(body.seo.description?.sourcePath).not.toBe('src/pages/[...slug].astro')
+	})
+
 	test('follows an import through a layout outside the template directories', async () => {
 		const host = await hostOver(createMemoryFileSystem({
 			'src/components/Head.astro': '<title>Acme site</title>\n',
