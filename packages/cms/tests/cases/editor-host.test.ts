@@ -544,6 +544,52 @@ describe('createEditorHost head of a page', () => {
 		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/faq.json')
 		expect([body.seo.title?.sourcePath, body.seo.description?.sourcePath]).toEqual(['src/pages/faq.astro', 'src/pages/faq.astro'])
 	})
+
+	test('follows the templates a page imports to a value a layout passes to a head component, and no further on a miss', async () => {
+		const baseHead = '---\nconst { title, description } = Astro.props\n---\n<title>{title}</title>\n<meta name="description" content={description} />\n'
+		const layout = [
+			'---',
+			"import BaseHead from '../components/BaseHead.astro'",
+			'const { title } = Astro.props',
+			'---',
+			'<html><head><BaseHead title={title} description="Site description" /></head><body><slot /></body></html>',
+			'',
+		].join('\n')
+		const about = '---\nimport Layout from \'../layouts/Layout.astro\'\n---\n<Layout title="About"><h1>About</h1></Layout>\n'
+		const files: Record<string, string> = {
+			'src/components/BaseHead.astro': baseHead,
+			'src/layouts/Layout.astro': layout,
+			'src/pages/about.astro': about,
+		}
+		for (let index = 0; index < 5; index++) files[`src/components/Extra${index}.astro`] = `<p>Extra ${index}</p>\n`
+		const parsed: string[] = []
+		let pageReturned = false
+		const host = await hostOver(createMemoryFileSystem(files), {
+			parseAstro: (source, options) => {
+				if (!pageReturned) parsed.push(source)
+				return parse(source, options)
+			},
+		})
+		await host.processPage(
+			'/about',
+			`<html><head>
+<title data-astro-source-file="src/components/BaseHead.astro" data-astro-source-loc="4:1">About</title>
+<meta name="description" content="Site description" data-astro-source-file="src/components/BaseHead.astro" data-astro-source-loc="5:1">
+<meta name="author" content="Nobody in the project">
+<meta name="keywords" content="Nowhere either">
+</head><body><h1 data-astro-source-file="src/pages/about.astro" data-astro-source-loc="4:23">About</h1></body></html>`,
+			{
+				waitUntil: () => {
+					pageReturned = true
+				},
+			},
+		)
+
+		// Two values found nowhere walk the page's imports, and only them, each file parsed once.
+		expect(parsed.toSorted()).toEqual([baseHead, layout, about].toSorted())
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		expect([body.seo.description?.sourcePath, body.seo.description?.sourceLine]).toEqual(['src/layouts/Layout.astro', 5])
+	})
 })
 
 describe('createEditorHost with a definitions store', () => {

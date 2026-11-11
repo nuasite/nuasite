@@ -10,6 +10,7 @@ import { findInTextIndex } from './search-index.ts'
 import { definitionSnippet, extractCompleteTagSnippet, extractOpeningTagSnippet } from './snippet-utils.ts'
 import { astroFilesUnder, preferringFiles, templateFilesAmong } from './source-files.ts'
 import type { SourceLocation } from './types.ts'
+import { resolveImportPath } from './variable-extraction.ts'
 
 // ============================================================================
 // Main Source Location Finding
@@ -50,24 +51,61 @@ export async function findSourceLocation(
 	return searchForPropInParents(textContent, preferred)
 }
 
+/** Finds the source of a value a page renders, by its text and tag. */
+export type PageSourceLookup = (textContent: string, tag: string) => Promise<SourceLocation | undefined>
+
 /**
- * {@link findSourceLocation} for a value the page renders. Until the search index is built, only
- * `pageFiles` and `renderedFiles` are searched: the project-wide search parses every template of
- * the project, and a file the page is not rendered from is not the source of its value.
+ * {@link findSourceLocation} for the values one page renders. Until the search index is built, only the
+ * files the page is rendered from are searched: the project-wide search parses every template of the
+ * project, and a file the page is not rendered from is not the source of its value. Those are
+ * `pageFiles` and `renderedFiles`, then, on a miss, the templates they import, a round at a time: a
+ * layout that passes a value on to a head component has no element of its own in the HTML. The
+ * rounds are kept for the page's next values.
  */
-export async function findPageSourceLocation(
-	textContent: string,
-	tag: string,
-	pageFiles: readonly string[],
-	renderedFiles: readonly string[],
-): Promise<SourceLocation | undefined> {
-	if (isSearchIndexInitialized()) return findSourceLocation(textContent, tag, pageFiles, renderedFiles)
-	const files = templateFilesAmong([...pageFiles, ...renderedFiles])
-	for (const filePath of files) {
-		const result = await searchAstroFile(filePath, textContent, tag, files)
-		if (result) return result
+export function pageSourceLookup(pageFiles: readonly string[], renderedFiles: readonly string[]): PageSourceLookup {
+	const known = templateFilesAmong([...pageFiles, ...renderedFiles])
+	const rounds: Promise<readonly string[]>[] = [Promise.resolve([...known])]
+	const roundAt = (index: number): Promise<readonly string[]> => {
+		while (rounds.length <= index) {
+			const previous = rounds[rounds.length - 1] ?? Promise.resolve([])
+			rounds.push(previous.then(async files => {
+				const imported = files.length === 0 ? [] : await importedTemplates(files, known)
+				known.push(...imported)
+				return imported
+			}))
+		}
+		return rounds[index] ?? Promise.resolve([])
 	}
-	return searchForPropInParents(textContent, undefined, files)
+	return async (textContent, tag) => {
+		if (isSearchIndexInitialized()) return findSourceLocation(textContent, tag, pageFiles, renderedFiles)
+		for (let index = 0;; index++) {
+			const round = await roundAt(index)
+			if (round.length === 0) return undefined
+			for (const filePath of round) {
+				const result = await searchAstroFile(filePath, textContent, tag, known)
+				if (result) return result
+			}
+			const fromParents = await searchForPropInParents(textContent, undefined, round)
+			if (fromParents) return fromParents
+		}
+	}
+}
+
+/** The templates `files` import (absolute), other than those `known`. */
+async function importedTemplates(files: readonly string[], known: readonly string[]): Promise<string[]> {
+	const seen = new Set(known)
+	const imported: string[] = []
+	for (const filePath of files) {
+		const cached = await getCachedParsedFile(filePath)
+		for (const { source } of cached?.imports ?? []) {
+			if (!source.endsWith('.astro')) continue
+			const resolved = await resolveImportPath(source, filePath)
+			if (!resolved || seen.has(resolved) || templateFilesAmong([resolved]).length === 0) continue
+			seen.add(resolved)
+			imported.push(resolved)
+		}
+	}
+	return imported
 }
 
 // ============================================================================

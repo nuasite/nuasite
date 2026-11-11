@@ -2,7 +2,7 @@ import { type HTMLElement as ParsedHTMLElement, parse } from 'node-html-parser'
 import path from 'node:path'
 import { getProjectRoot } from './config.ts'
 import { projectFiles } from './project/context.ts'
-import { findPageSourceLocation } from './source-finder/source-lookup.ts'
+import { type PageSourceLookup, pageSourceLookup } from './source-finder/source-lookup.ts'
 import type { SourceLocation } from './source-finder/types.ts'
 import type {
 	CanonicalUrl,
@@ -32,9 +32,6 @@ export interface ProcessSeoOptions {
 	 */
 	pageFiles?: readonly string[]
 }
-
-/** Where a value of the head comes from: the same source finding as for regular text entries (props, variables, imports). */
-type LocateSource = (value: string, tag: string) => Promise<SourceLocation | undefined>
 
 export interface ProcessSeoResult {
 	/** Extracted SEO data */
@@ -76,7 +73,7 @@ export async function processSeoFromHtml(
 		const file = element.getAttribute('data-astro-source-file')
 		if (file) renderedFiles.add(file)
 	}
-	const locate: LocateSource = (value, tag) => findPageSourceLocation(value, tag, pageFiles, [...renderedFiles])
+	const locate = pageSourceLookup(pageFiles, [...renderedFiles])
 
 	// Extract title
 	const titleResult = await extractTitle(root, html, locate, sourcePath, markTitle, getNextId)
@@ -124,7 +121,7 @@ export async function processSeoFromHtml(
 async function extractTitle(
 	root: HTMLNode,
 	html: string,
-	locate: LocateSource,
+	locate: PageSourceLookup,
 	sourcePath?: string,
 	markTitle?: boolean,
 	getNextId?: () => string,
@@ -168,7 +165,7 @@ async function extractTitle(
 async function extractMetaTags(
 	head: HTMLNode,
 	html: string,
-	locate: LocateSource,
+	locate: PageSourceLookup,
 	sourcePath?: string,
 	getNextId?: () => string,
 ): Promise<SeoMetaTag[]> {
@@ -317,7 +314,7 @@ function categorizeMetaTags(metaTags: SeoMetaTag[], seo: PageSeoData): void {
 async function extractCanonical(
 	head: HTMLNode,
 	html: string,
-	locate: LocateSource,
+	locate: PageSourceLookup,
 	sourcePath?: string,
 	getNextId?: () => string,
 ): Promise<CanonicalUrl | undefined> {
@@ -358,7 +355,7 @@ async function extractCanonical(
 async function extractFavicons(
 	head: HTMLNode,
 	html: string,
-	locate: LocateSource,
+	locate: PageSourceLookup,
 	sourcePath?: string,
 	getNextId?: () => string,
 ): Promise<SeoFavicon[]> {
