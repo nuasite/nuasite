@@ -8,7 +8,7 @@ import {
 	type EditorHostOptions,
 } from '@nuasite/cms/editor-host'
 import { describe, expect, spyOn, test } from 'bun:test'
-import type { ComponentInstance, ManifestEntry } from '../../src/types'
+import type { ComponentInstance, ManifestEntry, PageSeoData } from '../../src/types'
 import { createMemoryFileSystem, type MemoryFileSystem } from '../utils/memory-fs'
 
 const PAGE = `---
@@ -363,16 +363,20 @@ describe('createEditorHost', () => {
 				return parse(source, options)
 			},
 		})
+		// The manifest waits for the source resolution after the page, which parses too.
 		await host.processPage('/', renderedPage('/project'))
+		await fetchJson<PageManifest>(host, '/index.json')
 
 		parsed.length = 0
 		for (let i = 0; i < 4; i++) host.invalidate()
 		await host.processPage('/', renderedPage('/project'))
+		await fetchJson<PageManifest>(host, '/index.json')
 		expect(parsed).toEqual([])
 
 		parsed.length = 0
 		for (let i = 0; i < 5; i++) host.invalidate()
 		await host.processPage('/', renderedPage('/project'))
+		await fetchJson<PageManifest>(host, '/index.json')
 		expect(parsed.toSorted()).toEqual([CARD, PAGE].toSorted())
 	})
 
@@ -482,6 +486,219 @@ describe('createEditorHost source resolution after a page', () => {
 		const { body } = await fetchJson<PageManifest>(host, '/index.json')
 		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
 		expect(yields.count()).toBe(0)
+	})
+})
+
+const BASE_LAYOUT = `---
+const { title, description } = Astro.props
+---
+<html><head><title>{title}</title><meta name="description" content={description} /></head><body><slot /></body></html>
+`
+
+function pageInLayout(title: string): string {
+	return `---
+import BaseLayout from '../layouts/BaseLayout.astro'
+---
+<BaseLayout title="${title}" description="Shared description"><h1>${title}</h1></BaseLayout>
+`
+}
+
+/** Two pages in one layout with the same description, beside components neither of them renders. */
+function projectWithHead(): MemoryFileSystem {
+	const files: Record<string, string> = {
+		'src/layouts/BaseLayout.astro': BASE_LAYOUT,
+		'src/pages/about.astro': pageInLayout('About us'),
+		'src/pages/faq.astro': pageInLayout('Questions'),
+	}
+	for (let index = 0; index < 5; index++) files[`src/components/Extra${index}.astro`] = `<p>Extra ${index}</p>\n`
+	return createMemoryFileSystem(files)
+}
+
+const FAQ_PAGE = `<html><head>
+<title data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:13">Questions</title>
+<meta name="description" content="Shared description" data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:35">
+</head><body><h1 data-astro-source-file="src/pages/faq.astro" data-astro-source-loc="4:65">Questions</h1></body></html>`
+
+describe('createEditorHost head of a page', () => {
+	test('looks up the head values in the files the page is rendered from, parsing no other file before the page is returned', async () => {
+		const fs = projectWithHead()
+		const parsed: string[] = []
+		let pageReturned = false
+		const host = await hostOver(fs, {
+			parseAstro: (source, options) => {
+				if (!pageReturned) parsed.push(source)
+				return parse(source, options)
+			},
+		})
+		const handed: Promise<unknown>[] = []
+		// The source resolution after the page parses only after an await, so after it is handed over.
+		await host.processPage('/faq', FAQ_PAGE, {
+			waitUntil: work => {
+				pageReturned = true
+				handed.push(work)
+			},
+		})
+		await Promise.all(handed)
+
+		expect(parsed.toSorted()).toEqual([BASE_LAYOUT, pageInLayout('Questions')].toSorted())
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/faq.json')
+		expect([body.seo.title?.sourcePath, body.seo.description?.sourcePath]).toEqual(['src/pages/faq.astro', 'src/pages/faq.astro'])
+	})
+
+	test('follows the templates a page imports to a value a layout passes to a head component, and no further on a miss', async () => {
+		const baseHead = '---\nconst { title, description } = Astro.props\n---\n<title>{title}</title>\n<meta name="description" content={description} />\n'
+		const layout = [
+			'---',
+			"import BaseHead from '../components/BaseHead.astro'",
+			'const { title } = Astro.props',
+			'---',
+			'<html><head><BaseHead title={title} description="Site description" /></head><body><slot /></body></html>',
+			'',
+		].join('\n')
+		const about = '---\nimport Layout from \'../layouts/Layout.astro\'\n---\n<Layout title="About"><h1>About</h1></Layout>\n'
+		const files: Record<string, string> = {
+			'src/components/BaseHead.astro': baseHead,
+			'src/layouts/Layout.astro': layout,
+			'src/pages/about.astro': about,
+		}
+		for (let index = 0; index < 5; index++) files[`src/components/Extra${index}.astro`] = `<p>Extra ${index}</p>\n`
+		const parsed: string[] = []
+		let pageReturned = false
+		const host = await hostOver(createMemoryFileSystem(files), {
+			parseAstro: (source, options) => {
+				if (!pageReturned) parsed.push(source)
+				return parse(source, options)
+			},
+		})
+		await host.processPage(
+			'/about',
+			`<html><head>
+<title data-astro-source-file="src/components/BaseHead.astro" data-astro-source-loc="4:1">About</title>
+<meta name="description" content="Site description" data-astro-source-file="src/components/BaseHead.astro" data-astro-source-loc="5:1">
+<meta name="author" content="Nobody in the project">
+<meta name="keywords" content="Nowhere either">
+</head><body><h1 data-astro-source-file="src/pages/about.astro" data-astro-source-loc="4:23">About</h1></body></html>`,
+			{
+				waitUntil: () => {
+					pageReturned = true
+				},
+			},
+		)
+
+		// Two values found nowhere walk the page's imports, and only them, each file parsed once.
+		expect(parsed.toSorted()).toEqual([baseHead, layout, about].toSorted())
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		expect([body.seo.description?.sourcePath, body.seo.description?.sourceLine]).toEqual(['src/layouts/Layout.astro', 5])
+	})
+	test('looks up a head value in the dynamic route file that renders the page', async () => {
+		const host = await hostOver(createMemoryFileSystem({
+			'src/layouts/BaseLayout.astro': BASE_LAYOUT,
+			'src/pages/blog/[slug].astro': [
+				'---',
+				"import BaseLayout from '../../layouts/BaseLayout.astro'",
+				'const { post } = Astro.props',
+				'---',
+				'<BaseLayout title={post.data.title} description="Articles about our work"><article>{post.body}</article></BaseLayout>',
+				'',
+			].join('\n'),
+		}))
+		await host.processPage(
+			'/blog/first',
+			`<html><head>
+<title data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:13">First</title>
+<meta name="description" content="Articles about our work" data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:35">
+</head><body><article>Body of the first post</article></body></html>`,
+		)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/blog/first.json')
+		expect(body.seo.description?.sourcePath).toBe('src/pages/blog/[slug].astro')
+	})
+
+	test('looks up a head value in a file only the annotations of a marked element name', async () => {
+		const seo = '<title>Landing title</title>\n'
+		const host = await hostOver(
+			createMemoryFileSystem({ 'src/components/Seo.astro': seo, 'src/components/Hero.astro': '<section><h1>Welcome</h1></section>\n' }),
+		)
+		// No page file renders the path, and marking the heading strips its annotation.
+		await host.processPage(
+			'/landing',
+			`<html><head><title>Landing title</title></head><body><section data-astro-source-file="/project/src/components/Seo.astro" data-astro-source-loc="1:1"><h1 data-astro-source-file="/project/src/components/Hero.astro" data-astro-source-loc="1:10">Welcome</h1></section></body></html>`,
+		)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/landing.json')
+		expect(body.seo.title?.sourcePath).toBe('src/components/Seo.astro')
+	})
+
+	test('follows a page constant through a layout that only passes it on to the layout that renders it', async () => {
+		const host = await hostOver(createMemoryFileSystem({
+			'src/layouts/BaseLayout.astro': BASE_LAYOUT,
+			'src/layouts/PageLayout.astro':
+				'---\nimport BaseLayout from \'./BaseLayout.astro\'\nconst { title } = Astro.props\n---\n<BaseLayout title={title} description="Shared description"><slot /></BaseLayout>\n',
+			'src/pages/about.astro':
+				"---\nimport PageLayout from '../layouts/PageLayout.astro'\nconst pageTitle = 'About us'\n---\n<PageLayout title={pageTitle}><h1>Heading</h1></PageLayout>\n",
+		}))
+		await host.processPage(
+			'/about',
+			`<html><head>
+<title data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:13">About us</title>
+</head><body><h1 data-astro-source-file="src/pages/about.astro" data-astro-source-loc="5:31">Heading</h1></body></html>`,
+		)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		expect([body.seo.title?.sourcePath, body.seo.title?.sourceLine]).toEqual(['src/pages/about.astro', 3])
+	})
+
+	test('looks up the head of a static page not in a catch-all route beside it', async () => {
+		const catchAll =
+			'---\nimport BaseLayout from \'../layouts/BaseLayout.astro\'\n---\n<BaseLayout title="Page" description="Acme builds bridges"><p>Block</p></BaseLayout>\n'
+		const host = await hostOver(
+			createMemoryFileSystem({
+				'src/layouts/BaseLayout.astro': BASE_LAYOUT,
+				'src/pages/about.astro':
+					'---\nimport BaseLayout from \'../layouts/BaseLayout.astro\'\n---\n<BaseLayout title="About"><h1>About</h1></BaseLayout>\n',
+				'src/pages/[...slug].astro': catchAll,
+			}),
+		)
+		await host.processPage(
+			'/about',
+			`<html><head>
+<title data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:13">About</title>
+<meta name="description" content="Acme builds bridges" data-astro-source-file="src/layouts/BaseLayout.astro" data-astro-source-loc="4:35">
+</head><body><h1 data-astro-source-file="src/pages/about.astro" data-astro-source-loc="4:31">About</h1></body></html>`,
+		)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		// Found in none of the page's files, the value is left with an empty source.
+		expect(body.seo.description?.sourcePath).toBe('')
+	})
+
+	test('follows an import through a layout outside the template directories', async () => {
+		const host = await hostOver(createMemoryFileSystem({
+			'src/components/Head.astro': '<title>Acme site</title>\n',
+			'src/layout/Layout.astro': "---\nimport Head from '../components/Head.astro'\n---\n<html><head><Head /></head><body><slot /></body></html>\n",
+			'src/pages/about.astro': "---\nimport Layout from '../layout/Layout.astro'\n---\n<Layout><h1>About</h1></Layout>\n",
+		}))
+		await host.processPage('/about', '<html><head><title>Acme site</title></head><body><h1>About</h1></body></html>')
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		expect(body.seo.title?.sourcePath).toBe('src/components/Head.astro')
+	})
+
+	test('once the index is built, prefers a file the page is rendered from also when the annotations are absolute', async () => {
+		const host = await hostOver(createMemoryFileSystem({
+			'src/components/AOther.astro': '<title>Shared title</title>\n',
+			'src/layouts/Layout.astro': '<html><head><title>Shared title</title></head><body><slot /></body></html>\n',
+			'src/pages/about.astro': "---\nimport Layout from '../layouts/Layout.astro'\n---\n<Layout><h1>About</h1></Layout>\n",
+		}))
+		const page =
+			'<html data-astro-source-file="/project/src/layouts/Layout.astro" data-astro-source-loc="1:1"><head><title>Shared title</title></head><body><h1>About</h1></body></html>'
+		const handed: Promise<unknown>[] = []
+		await host.processPage('/about', page, { waitUntil: work => handed.push(work) })
+		await Promise.all(handed)
+		await host.processPage('/about', page)
+
+		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
+		expect(body.seo.title?.sourcePath).toBe('src/layouts/Layout.astro')
 	})
 })
 

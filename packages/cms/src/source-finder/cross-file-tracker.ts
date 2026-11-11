@@ -35,6 +35,7 @@ function buildWildcardPathRegex(wildcardPath: string): RegExp {
  * @param expressionPath - The full expression path (e.g., 'items[0]')
  * @param searchText - The text content we're searching for
  * @param depth - Current recursion depth (default 0, max 5)
+ * @param within - Absolute paths searched instead of every template of the project
  * @returns Source location if found
  */
 export async function searchForExpressionProp(
@@ -44,6 +45,7 @@ export async function searchForExpressionProp(
 	searchText: string,
 	depth: number = 0,
 	preferredFiles?: readonly string[],
+	within?: readonly string[],
 ): Promise<SourceLocation | undefined> {
 	// Limit recursion depth to prevent infinite loops
 	if (depth > 5) return undefined
@@ -52,8 +54,18 @@ export async function searchForExpressionProp(
 	const componentName = path.basename(componentFileName, '.astro')
 	const normalizedSearch = normalizeText(searchText)
 
-	for (const fullPath of preferringFiles(await astroFilesUnder(templateSearchDirs()), preferredFiles)) {
-		const result = await expressionPropIn(fullPath, componentName, propName, expressionPath, normalizedSearch, searchText, depth, preferredFiles)
+	for (const fullPath of within ?? preferringFiles(await astroFilesUnder(templateSearchDirs()), preferredFiles)) {
+		const result = await expressionPropIn(
+			fullPath,
+			componentName,
+			propName,
+			expressionPath,
+			normalizedSearch,
+			searchText,
+			depth,
+			preferredFiles,
+			within,
+		)
 		if (result) return result
 	}
 
@@ -69,6 +81,7 @@ async function expressionPropIn(
 	searchText: string,
 	depth: number,
 	preferredFiles: readonly string[] | undefined,
+	within: readonly string[] | undefined,
 ): Promise<SourceLocation | undefined> {
 	const cached = await getCachedParsedFile(fullPath)
 	if (!cached) return undefined
@@ -116,6 +129,7 @@ async function expressionPropIn(
 				searchText,
 				depth + 1,
 				preferredFiles,
+				within,
 			)
 			if (result) return result
 		}
@@ -185,6 +199,7 @@ async function expressionPropIn(
 				searchText,
 				depth + 1,
 				preferredFiles,
+				within,
 			)
 			if (result) return result
 		}
@@ -266,13 +281,14 @@ export async function searchForImportedValue(
 
 /**
  * Search for prop values passed to components using AST parsing.
- * Uses caching for better performance.
+ * Uses caching for better performance. `within` (absolute paths) replaces every template of the project.
  */
 export async function searchForPropInParents(
 	textContent: string,
 	preferredFiles?: readonly string[],
+	within?: readonly string[],
 ): Promise<SourceLocation | undefined> {
-	for (const fullPath of preferringFiles(await astroFilesUnder(templateSearchDirs()), preferredFiles)) {
+	for (const fullPath of within ?? preferringFiles(await astroFilesUnder(templateSearchDirs()), preferredFiles)) {
 		try {
 			// Use cached parsed file
 			const cached = await getCachedParsedFile(fullPath)

@@ -109,6 +109,8 @@ export interface ProcessHtmlOptions {
 	}
 	/** SEO tracking options */
 	seo?: SeoOptions
+	/** The page's own source file candidates, root-relative: the head's values are looked up in them first. */
+	pageFiles?: readonly string[]
 	/** Collection definitions for resolving frontmatter text on listing pages */
 	collectionDefinitions?: Record<string, CollectionDefinition>
 }
@@ -267,6 +269,7 @@ export async function processHtml(
 		skipInlineStyleTags = true,
 		collectionInfo,
 		seo: seoOptions,
+		pageFiles,
 		collectionDefinitions,
 	} = options
 
@@ -280,6 +283,13 @@ export async function processHtml(
 			pre: true,
 		},
 	})
+
+	// Marking strips the annotations, and the head's values are looked up in the files they name.
+	const renderedFiles = new Set<string>()
+	for (const node of root.querySelectorAll('[data-astro-source-file]')) {
+		const file = node.getAttribute('data-astro-source-file')
+		if (file) renderedFiles.add(file)
+	}
 
 	const entries: Record<string, ManifestEntry> = {}
 	const components: Record<string, ComponentInstance> = {}
@@ -1047,6 +1057,8 @@ export async function processHtml(
 				markTitle: seoOptions?.markTitle ?? true,
 				parseJsonLd: seoOptions?.parseJsonLd ?? true,
 				sourcePath,
+				pageFiles,
+				renderedFiles: [...renderedFiles],
 			},
 			getNextId,
 		)
