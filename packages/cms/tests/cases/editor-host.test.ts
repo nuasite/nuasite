@@ -668,7 +668,8 @@ describe('createEditorHost head of a page', () => {
 		)
 
 		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/about.json')
-		expect(body.seo.description?.sourcePath).not.toBe('src/pages/[...slug].astro')
+		// Found in none of the page's files, the value is left with an empty source.
+		expect(body.seo.description?.sourcePath).toBe('')
 	})
 
 	test('follows an import through a layout outside the template directories', async () => {
