@@ -44,6 +44,12 @@ for dir in packages/*; do
 
       log_info "$package_label: preparing to publish"
 
+      # Space-separated package names that another workflow step publishes.
+      if [[ " ${NPM_PUBLISH_SKIP:-} " == *" $package_label "* ]]; then
+        log_info "$package_label: listed in NPM_PUBLISH_SKIP, skipping"
+        exit 0
+      fi
+
       if jq -e '.private == true' package.json >/dev/null 2>&1; then
         log_info "$package_label: package marked private, skipping"
         exit 0

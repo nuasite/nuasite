@@ -15,6 +15,9 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      npmTag: ${{ steps.versions.outputs.npmTag }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -46,10 +49,67 @@ jobs:
       - name: "Build packages"
         run: bun run ts:build && bun run --filter '!playground' build
 
+      # Before anything is published, so a failure here leaves a release that can be re-run.
+      - name: Pack nua
+        working-directory: packages/nua
+        run: npm pack --pack-destination "$RUNNER_TEMP/nua"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nua-tarball
+          path: ${{ runner.temp }}/nua/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
       - name: "Publish NPM"
         run: bash ./scripts/npm-publish/run.sh
         env:
           NPM_TAG: ${{ steps.versions.outputs.npmTag }}
+          # nua pins its siblings exactly; publish-nua publishes it once npm serves them.
+          NPM_PUBLISH_SKIP: '@nuasite/nua'
+
+      - name: "Dump npm logs on failure"
+        if: failure()
+        run: |
+          echo "=== NPM Debug Logs ==="
+          find /home/runner/.npm/_logs -name "*.log" -type f -exec echo "=== {} ===" \; -exec cat {} \;
+
+  # A separate job, so "Re-run failed jobs" repeats only the wait and the nua publish
+  # when the registry takes longer than the wait to serve the new versions.
+  publish-nua:
+    needs: publish-node
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm
+        run: npm install -g npm@11.6.2
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: nua-tarball
+          path: ${{ runner.temp }}/nua
+
+      - name: Wait until npm serves every version nua pins
+        run: bun scripts/npm-publish/wait-for-pins.ts "$RUNNER_TEMP"/nua/*.tgz --timeout-seconds 300
+
+      - name: Publish nua
+        run: npm publish "$RUNNER_TEMP"/nua/*.tgz --tag "$NPM_TAG" --provenance --access public
+        env:
+          NPM_TAG: ${{ needs.publish-node.outputs.npmTag }}
 
       - name: "Dump npm logs on failure"
         if: failure()
