@@ -8,6 +8,7 @@ import {
 	type EditorHostOptions,
 } from '@nuasite/cms/editor-host'
 import { describe, expect, spyOn, test } from 'bun:test'
+import * as snippets from '../../src/source-finder/snippet-utils'
 import type { ComponentInstance, ManifestEntry, PageSeoData } from '../../src/types'
 import { createMemoryFileSystem, type MemoryFileSystem } from '../utils/memory-fs'
 
@@ -56,11 +57,23 @@ interface PageManifest {
 	components: Record<string, ComponentInstance>
 }
 
-async function fetchJson<T>(host: EditorHost, path: string, init?: RequestInit): Promise<{ status: number; body: T }> {
-	const response = await host.fetch(new Request(`http://preview.test${path}`, init))
+async function fetchJson<T>(
+	host: EditorHost,
+	path: string,
+	init?: RequestInit,
+	waitUntil?: (work: Promise<unknown>) => void,
+): Promise<{ status: number; body: T }> {
+	const response = await host.fetch(new Request(`http://preview.test${path}`, init), { waitUntil })
 	if (!response) throw new Error(`The host did not answer ${path}`)
 	const body: T = await response.json()
 	return { status: response.status, body }
+}
+
+/** The page manifest once the editor asked for the sources of each of its entries, as it does before editing one. */
+async function resolvedManifest(host: EditorHost, path: string): Promise<{ status: number; body: PageManifest }> {
+	const { body: loaded } = await fetchJson<PageManifest>(host, path)
+	for (const id of Object.keys(loaded.entries)) await fetchJson<PageManifest>(host, `${path}?resolve=${id}`)
+	return fetchJson<PageManifest>(host, path)
 }
 
 function entryWithText(manifest: PageManifest, text: string): ManifestEntry {
@@ -99,7 +112,7 @@ describe('createEditorHost', () => {
 		const marked = await host.processPage('/', renderedPage('/project'))
 		expect(marked).toContain('data-cms-id=')
 
-		const { body: manifest } = await fetchJson<PageManifest>(host, '/index.json')
+		const { body: manifest } = await resolvedManifest(host, '/index.json')
 		const heading = entryWithText(manifest, 'Hello world')
 		const cardHeading = entryWithText(manifest, 'Card title')
 		// Source paths keep the spelling of the annotations, as under the Astro dev server.
@@ -116,7 +129,7 @@ describe('createEditorHost', () => {
 		const fs = project()
 		const host = await hostOver(fs)
 		await host.processPage('/', renderedPage(''))
-		const { body: manifest } = await fetchJson<PageManifest>(host, '/index.json')
+		const { body: manifest } = await resolvedManifest(host, '/index.json')
 
 		const { body } = await save(host, [textChange(entryWithText(manifest, 'Card title'), 'Renamed')])
 		expect(body).toEqual({ updated: 1 })
@@ -142,7 +155,7 @@ describe('createEditorHost', () => {
 </div>
 </body></html>`,
 		)
-		const { body: manifest } = await fetchJson<PageManifest>(host, '/index.json')
+		const { body: manifest } = await resolvedManifest(host, '/index.json')
 		const details = entryWithText(manifest, 'Details')
 		expect([details.sourcePath, details.sourceLine]).toEqual(['src/components/IndustryCard.astro', 5])
 
@@ -256,7 +269,7 @@ describe('createEditorHost', () => {
 			'<html><body><h2>ACME Corp</h2><p>Launch day</p><p>Launch day</p><footer><p>Launch day</p></footer></body></html>',
 		)
 
-		const { body: loaded } = await fetchJson<PageManifest>(host, '/partners/2.json')
+		const { body: loaded } = await resolvedManifest(host, '/partners/2.json')
 		expect(entryWithText(loaded, 'ACME Corp').sourcePath).toBe('src/content/partners/acme.json')
 		const launch = entryWithText(loaded, 'Launch day')
 		expect(launch.sourcePath).toBeUndefined()
@@ -308,7 +321,7 @@ describe('createEditorHost', () => {
 		}
 		const host = await hostOver(fs, { commit })
 		await host.processPage('/', renderedPage('/project'))
-		const { body: manifest } = await fetchJson<PageManifest>(host, '/index.json')
+		const { body: manifest } = await resolvedManifest(host, '/index.json')
 		const cardHeading = entryWithText(manifest, 'Card title')
 
 		const { body } = await save(host, [textChange(entryWithText(manifest, 'Hello world'), 'Welcome'), textChange(cardHeading, 'Editor title')])
@@ -339,14 +352,14 @@ describe('createEditorHost', () => {
 			},
 		})
 		await host.processPage('/', renderedPage('/project'))
-		await fetchJson<PageManifest>(host, '/index.json')
+		await resolvedManifest(host, '/index.json')
 
 		parsed.length = 0
 		const card = CARD.replace('Card title', 'New title')
 		await fs.writeFile('src/components/Card.astro', card)
 		host.invalidate()
 		await host.processPage('/', renderedPage('/project').replace('Card title', 'New title'))
-		const { body: manifest } = await fetchJson<PageManifest>(host, '/index.json')
+		const { body: manifest } = await resolvedManifest(host, '/index.json')
 
 		expect(parsed).toEqual([card])
 		const cardHeading = entryWithText(manifest, 'New title')
@@ -363,20 +376,20 @@ describe('createEditorHost', () => {
 				return parse(source, options)
 			},
 		})
-		// The manifest waits for the source resolution after the page, which parses too.
+		// Resolving the entries parses the project's files, for its index.
 		await host.processPage('/', renderedPage('/project'))
-		await fetchJson<PageManifest>(host, '/index.json')
+		await resolvedManifest(host, '/index.json')
 
 		parsed.length = 0
 		for (let i = 0; i < 4; i++) host.invalidate()
 		await host.processPage('/', renderedPage('/project'))
-		await fetchJson<PageManifest>(host, '/index.json')
+		await resolvedManifest(host, '/index.json')
 		expect(parsed).toEqual([])
 
 		parsed.length = 0
 		for (let i = 0; i < 5; i++) host.invalidate()
 		await host.processPage('/', renderedPage('/project'))
-		await fetchJson<PageManifest>(host, '/index.json')
+		await resolvedManifest(host, '/index.json')
 		expect(parsed.toSorted()).toEqual([CARD, PAGE].toSorted())
 	})
 
@@ -390,14 +403,17 @@ describe('createEditorHost', () => {
 			},
 		})
 		await host.processPage('/', renderedPage('/project'))
+		await resolvedManifest(host, '/index.json')
 
 		await fs.remove('src/components/Card.astro')
 		host.invalidate()
 		await host.processPage('/', renderedPage('/project'))
+		await resolvedManifest(host, '/index.json')
 		await fs.writeFile('src/components/Card.astro', CARD)
 		parsed.length = 0
 		host.invalidate()
 		await host.processPage('/', renderedPage('/project'))
+		await resolvedManifest(host, '/index.json')
 
 		expect(parsed).toEqual([CARD])
 	})
@@ -463,8 +479,52 @@ function countYields(): { count: () => number; [Symbol.dispose]: () => void } {
 	return { count: () => timers.mock.calls.filter(call => call[1] === 0).length, [Symbol.dispose]: () => timers.mockRestore() }
 }
 
-describe('createEditorHost source resolution after a page', () => {
-	test('with waitUntil, the resolution is handed to it and pauses between chunks of the posts', async () => {
+describe('createEditorHost source resolution on demand', () => {
+	test('a page leaves its entries pending, without a turn of the event loop or a parse', async () => {
+		const parsed: string[] = []
+		const host = await hostOver(projectWithPosts(120), {
+			parseAstro: (source, options) => {
+				parsed.push(source)
+				return parse(source, options)
+			},
+		})
+		using yields = countYields()
+		await host.processPage('/', POSTS_PAGE)
+
+		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(Object.values(body.entries).map(entry => entry.pending)).toEqual([true, true])
+		expect(entryWithText(body, 'Post number 0').sourcePath).toBeUndefined()
+		expect(yields.count()).toBe(0)
+		expect(parsed).toEqual([])
+	})
+
+	test("the first entry asked for builds the indexes, held by the ask's waitUntil and pausing between chunks of the posts, and the next one reuses them", async () => {
+		const host = await hostOver(projectWithPosts(120))
+		await host.processPage('/', POSTS_PAGE)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		using yields = countYields()
+
+		const handed: Promise<unknown>[] = []
+		const { body: first } = await fetchJson<PageManifest>(
+			host,
+			`/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`,
+			undefined,
+			work => handed.push(work),
+		)
+		expect(handed).toHaveLength(1)
+		// Two passes over the 120 posts, for the text index and the image index, pause after each of their first two chunks of 50.
+		expect(yields.count()).toBe(4)
+		const post = entryWithText(first, 'Post number 0')
+		expect([post.sourcePath, post.pending]).toEqual(['src/content/posts/post-0.md', undefined])
+		expect(entryWithText(first, 'Post number 1').pending).toBe(true)
+
+		const { body: second } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 1').id}`)
+		expect(entryWithText(second, 'Post number 1').sourcePath).toBe('src/content/posts/post-1.md')
+		expect(entryWithText(second, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+		expect(yields.count()).toBe(4)
+	})
+
+	test('with waitUntil, the indexes are built after the page, held by it, and the first ask builds nothing', async () => {
 		const host = await hostOver(projectWithPosts(120))
 		const handed: Promise<unknown>[] = []
 		using yields = countYields()
@@ -474,18 +534,72 @@ describe('createEditorHost source resolution after a page', () => {
 		await Promise.all(handed)
 		// Two passes over the 120 posts, for the text index and the image index, pause after each of their first two chunks of 50.
 		expect(yields.count()).toBe(4)
-		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(entryWithText(loaded, 'Post number 0').pending).toBe(true)
+
+		const { body } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`)
 		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+		expect(yields.count()).toBe(4)
 	})
 
-	test('without waitUntil, the resolution does not pause and the manifest waits for it', async () => {
+	test('without waitUntil, an ask that builds the indexes runs through, without a turn of the event loop', async () => {
 		const host = await hostOver(projectWithPosts(120))
-		using yields = countYields()
 		await host.processPage('/', POSTS_PAGE)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		using yields = countYields()
 
-		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		const { body } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`)
 		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
 		expect(yields.count()).toBe(0)
+	})
+
+	test("an ask made after the page was rendered again resolves the new render's entry, also while an ask about the old one runs", async () => {
+		const host = await hostOver(projectWithPosts(120))
+		await host.processPage('/', POSTS_PAGE)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		const id = entryWithText(loaded, 'Post number 0').id
+
+		const before = fetchJson<PageManifest>(host, `/index.json?resolve=${id}`, undefined, () => {})
+		await host.processPage('/', POSTS_PAGE)
+		const after = fetchJson<PageManifest>(host, `/index.json?resolve=${id}`, undefined, () => {})
+		await before
+		const post = entryWithText((await after).body, 'Post number 0')
+		expect([post.sourcePath, post.pending]).toEqual(['src/content/posts/post-0.md', undefined])
+	})
+
+	test('an ask between a full invalidate and the next page resolves against the definitions of the files now', async () => {
+		const fs = projectWithPosts(2)
+		const host = await hostOver(fs)
+		await host.processPage('/', POSTS_PAGE)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+
+		await fs.writeFile('src/content/posts/post-2.md', '---\ntitle: Post number 2\n---\nBody 2\n')
+		host.invalidate()
+		// The editor still shows the page rendered before and asks about one of its entries.
+		await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 1').id}`)
+
+		await host.processPage('/', '<html><body><h2>Post number 0</h2><h2>Post number 1</h2><h2>Post number 2</h2></body></html>')
+		const { body: reloaded } = await fetchJson<PageManifest>(host, '/index.json')
+		const { body } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(reloaded, 'Post number 2').id}`)
+		expect(entryWithText(body, 'Post number 2').sourcePath).toBe('src/content/posts/post-2.md')
+	})
+
+	test('an entry whose resolution fails is recorded as marked, no longer pending', async () => {
+		const host = await hostOver(projectWithPosts(2))
+		await host.processPage('/', POSTS_PAGE)
+		const { body: loaded } = await fetchJson<PageManifest>(host, '/index.json')
+		const errors = spyOn(console, 'error').mockImplementation(() => {})
+		const failing = spyOn(snippets, 'enhanceManifestWithSourceSnippets').mockRejectedValue(new Error('The files are gone'))
+		try {
+			const { body } = await fetchJson<PageManifest>(host, `/index.json?resolve=${entryWithText(loaded, 'Post number 0').id}`)
+			const post = entryWithText(body, 'Post number 0')
+			expect([post.pending, post.sourceSnippet]).toEqual([undefined, undefined])
+			expect(entryWithText(body, 'Post number 1').pending).toBe(true)
+			expect(errors.mock.calls.map(call => call[0])).toEqual(['[cms] On-demand source search failed:'])
+		} finally {
+			failing.mockRestore()
+			errors.mockRestore()
+		}
 	})
 })
 
@@ -520,25 +634,16 @@ const FAQ_PAGE = `<html><head>
 </head><body><h1 data-astro-source-file="src/pages/faq.astro" data-astro-source-loc="4:65">Questions</h1></body></html>`
 
 describe('createEditorHost head of a page', () => {
-	test('looks up the head values in the files the page is rendered from, parsing no other file before the page is returned', async () => {
+	test('looks up the head values in the files the page is rendered from, parsing no other file', async () => {
 		const fs = projectWithHead()
 		const parsed: string[] = []
-		let pageReturned = false
 		const host = await hostOver(fs, {
 			parseAstro: (source, options) => {
-				if (!pageReturned) parsed.push(source)
+				parsed.push(source)
 				return parse(source, options)
 			},
 		})
-		const handed: Promise<unknown>[] = []
-		// The source resolution after the page parses only after an await, so after it is handed over.
-		await host.processPage('/faq', FAQ_PAGE, {
-			waitUntil: work => {
-				pageReturned = true
-				handed.push(work)
-			},
-		})
-		await Promise.all(handed)
+		await host.processPage('/faq', FAQ_PAGE)
 
 		expect(parsed.toSorted()).toEqual([BASE_LAYOUT, pageInLayout('Questions')].toSorted())
 		const { body } = await fetchJson<{ seo: PageSeoData }>(host, '/faq.json')

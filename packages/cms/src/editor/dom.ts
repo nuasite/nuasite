@@ -124,8 +124,8 @@ export function getCmsElementAtPosition(
 		if (!el.hasAttribute(CSS.ID_ATTRIBUTE)) continue
 		// Skip component roots - they should be handled separately
 		if (el.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)) continue
-		// Skip elements locked because their manifest entry has no source path
-		if (el.hasAttribute(CSS.LOCKED_ATTRIBUTE)) continue
+		// Skip elements locked because their manifest entry has no source path, and those whose entry is not resolved yet
+		if (el.hasAttribute(CSS.LOCKED_ATTRIBUTE) || el.hasAttribute(CSS.PENDING_ATTRIBUTE)) continue
 
 		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
 
@@ -146,7 +146,7 @@ export function getCmsElementAtPosition(
 		if (!(el instanceof HTMLElement)) continue
 		if (!el.hasAttribute(CSS.ID_ATTRIBUTE)) continue
 		if (el.hasAttribute(CSS.COMPONENT_ID_ATTRIBUTE)) continue
-		if (el.hasAttribute(CSS.LOCKED_ATTRIBUTE)) continue
+		if (el.hasAttribute(CSS.LOCKED_ATTRIBUTE) || el.hasAttribute(CSS.PENDING_ATTRIBUTE)) continue
 
 		const cmsId = el.getAttribute(CSS.ID_ATTRIBUTE)
 

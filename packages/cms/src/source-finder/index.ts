@@ -39,6 +39,7 @@ export {
 
 // Snippet utilities (used by html-processor)
 export {
+	buildSourceIndexes,
 	enhanceManifestWithSourceSnippets,
 	extractCompleteTagSnippet,
 	extractInnerHtmlFromSnippet,
