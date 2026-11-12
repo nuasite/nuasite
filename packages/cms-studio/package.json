@@ -14,7 +14,7 @@
 		"directory": "packages/cms-studio"
 	},
 	"license": "Apache-2.0",
-	"version": "0.67.4",
+	"version": "0.68.0",
 	"module": "src/index.ts",
 	"types": "src/index.ts",
 	"type": "module",
