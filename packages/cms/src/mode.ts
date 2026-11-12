@@ -8,7 +8,7 @@
  *   serves the `@nuasite/collections-admin` SPA at `/_nua/admin`. The inline
  *   widget runs in-page as usual.
  * - **`hosted`** (inside the agent sandbox): the sidecar is a managed sandbox
- *   service (cms-headless F2) and the collections admin is a hosted platform tab (F3),
+ *   service (cms-headless F2) and the collections admin is the hosted platform's tab (F3),
  *   so the plugin must NOT spawn a sidecar and must NOT serve `/_nua/admin`. It
  *   stays a pure marker + CDN-inject plugin (F5).
  *

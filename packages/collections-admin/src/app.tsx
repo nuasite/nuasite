@@ -325,7 +325,7 @@ export interface CollectionsAdminAppProps {
 	 * prefix). A host serving many projects mounts it under a per-project path.
 	 */
 	apiBase: string
-	/** Optional close affordance shown in the sidebar (e.g. to collapse the WM tab). */
+	/** Optional close affordance shown in the sidebar (e.g. to collapse the host's tab). */
 	onClose?: () => void
 }
 

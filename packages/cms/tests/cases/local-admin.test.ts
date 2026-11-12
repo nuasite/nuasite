@@ -132,7 +132,7 @@ describe('local-admin middleware (cms-headless F7)', () => {
 		const html = await response.text()
 
 		// The shell loads the virtual entry module and injects the sidecar apiBase as
-		// a window global; the SPA is reused verbatim (only apiBase differs from WM).
+		// a window global; the SPA is reused verbatim (only apiBase differs from the hosted platform's tab).
 		expect(html).toContain('id="nua-admin-root"')
 		expect(html).toContain(entryId)
 		expect(html).toContain(`window.__NUA_ADMIN_API_BASE__ = ${JSON.stringify(ADMIN_API_BASE)}`)
