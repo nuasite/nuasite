@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { afterAll, describe, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -7,11 +7,19 @@ import path from 'node:path'
 // The publish workflow reads `npmTag` from this action, so a wrong value publishes a release under the wrong dist-tag.
 
 const action = path.join(import.meta.dir, '..', '.github', 'actions', 'extract-version', 'index.mjs')
+// Keeps the developer's git config (signing, hooks) and an inherited GIT_DIR away from the temp repo.
+const gitEnv = { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull }
+const tempDirs: string[] = []
+
+afterAll(() => {
+	for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true })
+})
 
 function withTags(tags: string[]): string {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'extract-version-'))
+	tempDirs.push(dir)
 	const git = (...args: string[]) => {
-		const result = spawnSync('git', args, { cwd: dir, encoding: 'utf-8' })
+		const result = spawnSync('git', args, { cwd: dir, encoding: 'utf-8', env: gitEnv })
 		if (result.status !== 0) throw new Error(result.stderr)
 	}
 	git('init', '-q')
@@ -20,10 +28,11 @@ function withTags(tags: string[]): string {
 	return dir
 }
 
-function run(cwd: string, env: Record<string, string>) {
+function run(cwd: string, env: Record<string, string>, { withOutputFile = true } = {}) {
 	const output = path.join(cwd, 'github-output')
 	fs.writeFileSync(output, '')
-	const result = spawnSync('node', [action], { cwd, encoding: 'utf-8', env: { PATH: process.env.PATH, GITHUB_OUTPUT: output, ...env } })
+	const outputEnv = withOutputFile ? { GITHUB_OUTPUT: output } : {}
+	const result = spawnSync('node', [action], { cwd, encoding: 'utf-8', env: { ...gitEnv, ...outputEnv, ...env } })
 	return { status: result.status, stderr: result.stderr, outputs: parseOutputs(fs.readFileSync(output, 'utf-8')) }
 }
 
@@ -81,5 +90,12 @@ describe('extract-version action', () => {
 		expect(status).not.toBe(0)
 		expect(stderr).toContain('Input required and not supplied: version')
 		expect(outputs).toEqual({})
+	})
+
+	test('without an output file the step fails instead of losing the outputs', () => {
+		const cwd = withTags(['v0.67.4'])
+		const { status, stderr } = run(cwd, { INPUT_VERSION: 'v0.67.4' }, { withOutputFile: false })
+		expect(status).not.toBe(0)
+		expect(stderr).toContain('GITHUB_OUTPUT is not set')
 	})
 })
