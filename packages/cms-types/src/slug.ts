@@ -4,7 +4,7 @@
  * `slugify` names the file a new entry is written to. The sidecar re-slugifies whatever it
  * receives, so a host that derives a slug locally is *predicting* that write: an inline
  * duplicate check, a "saved as" preview or the slug a create form navigates to are all wrong
- * the moment the two implementations disagree. They have disagreed before — webmaster carried
+ * the moment the two implementations disagree. They have disagreed before — the hosted platform carried
  * its own copy that folded diacritics while `cms-core` dropped them, so a Czech title became
  * `vedra-jako-zdravotn-i-sociln-problm` on one side and `vedra-jako-zdravotni-i-socialni-problem`
  * on the other.

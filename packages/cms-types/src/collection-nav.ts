@@ -3,7 +3,7 @@
  * every browser renders from.
  *
  * It lives here for the reason `field-values.ts` does: there is more than one browser
- * (`@nuasite/cms`'s in-page editor, `@nuasite/collections-admin`, webmaster's collections
+ * (`@nuasite/cms`'s in-page editor, `@nuasite/collections-admin`, the hosted platform's collections
  * panel), each had its own sort and its own idea of where a nested collection goes, and
  * `cms-types` is the one package all of them already depend on. The inputs are the
  * collection-level keys of `defineCmsCollection({ cms: { label, hidden, order, group } })`

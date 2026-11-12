@@ -10,7 +10,7 @@
  * writes by and the collection browser arrangement (both re-exported from
  * `@nuasite/cms-types`).
  *
- * Any host builds its own collections UI on top of this: webmaster's native
+ * Any host builds its own collections UI on top of this: the hosted platform's native
  * tab, the `@nuasite/collections-admin` default SPA, or a third party. The
  * structural contract types live in `@nuasite/cms-types`; this package adds
  * the thin HTTP envelope (project model, sparse entries list, error/conflict

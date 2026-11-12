@@ -61,7 +61,11 @@
 		"@babel/parser": "catalog:parsers",
 		"node-html-parser": "catalog:parsers",
 		"remark-directive": "^3.0.1",
-		"yaml": "catalog:parsers"
+		"yaml": "catalog:parsers",
+		"unified": "catalog:editor",
+		"remark-parse": "catalog:editor",
+		"remark-rehype": "^11.1.2",
+		"rehype-stringify": "^10.0.1"
 	},
 	"devDependencies": {
 		"@nuasite/cms-sidecar": "workspace:*",
@@ -73,7 +77,6 @@
 		"react": "^19.2.1",
 		"react-dom": "^19.2.1",
 		"@milkdown/core": "catalog:editor",
-		"@milkdown/ctx": "catalog:editor",
 		"@milkdown/plugin-listener": "catalog:editor",
 		"@milkdown/preset-commonmark": "catalog:editor",
 		"@milkdown/preset-gfm": "catalog:editor",
@@ -83,26 +86,11 @@
 		"mdast-util-directive": "catalog:editor",
 		"micromark-extension-directive": "catalog:editor",
 		"remark-mdx": "catalog:editor",
-		"unified": "catalog:editor",
 		"@preact/signals": "catalog:editor",
 		"@tailwindcss/vite": "catalog:ui",
 		"@types/bun": "catalog:build",
-		"clsx": "catalog:editor",
-		"marked": "catalog:editor",
 		"preact": "catalog:editor",
-		"prosemirror-commands": "catalog:editor",
-		"prosemirror-inputrules": "catalog:editor",
-		"prosemirror-keymap": "catalog:editor",
-		"prosemirror-model": "catalog:editor",
-		"prosemirror-safari-ime-span": "catalog:editor",
-		"prosemirror-schema-list": "catalog:editor",
-		"prosemirror-state": "catalog:editor",
-		"prosemirror-transform": "catalog:editor",
-		"prosemirror-view": "catalog:editor",
-		"tailwind-merge": "catalog:editor",
-		"remark-parse": "catalog:editor",
-		"remark-rehype": "^11.1.2",
-		"rehype-stringify": "^10.0.1"
+		"tailwind-merge": "catalog:editor"
 	},
 	"peerDependencies": {
 		"astro": "catalog:astro",

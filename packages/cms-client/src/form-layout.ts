@@ -3,7 +3,7 @@
  *
  * This is the layout half of the form model, and it lives here for the reason `field-values.ts`
  * lives in `cms-types`: there is more than one editor, and a rule only some of them implement is
- * a rule that drifts. `@nuasite/collections-admin` and webmaster's collections panel had a copy
+ * a rule that drifts. `@nuasite/collections-admin` and the hosted platform's collections panel had a copy
  * each, and the copies disagreed about the two things below that carry a `WHY` — one of them
  * rendered a collection's declared `cms.sections` and the other could not.
  *

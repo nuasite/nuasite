@@ -10,9 +10,9 @@ import {
 	wrapInOrderedListCommand,
 } from '@milkdown/preset-commonmark'
 import { gfm, toggleStrikethroughCommand } from '@milkdown/preset-gfm'
+import { lift } from '@milkdown/prose/commands'
 import { callCommand, insert, replaceAll } from '@milkdown/utils'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { lift } from 'prosemirror-commands'
 import { useLinkPopover } from '../hooks/useLinkPopover.ts'
 import { cn } from '../lib/cn.ts'
 import { markWhitespacePlugin } from '../mark-whitespace.ts'

@@ -1,5 +1,26 @@
-import * as core from '@actions/core'
-import { exec } from 'child_process'
+import { exec } from 'node:child_process'
+import { appendFileSync } from 'node:fs'
+
+// The runner passes `with:` inputs as INPUT_<NAME> env vars and reads outputs from the $GITHUB_OUTPUT file.
+const getRequiredInput = (name) => {
+	const value = (process.env[`INPUT_${name.toUpperCase()}`] ?? '').trim()
+	if (!value) {
+		throw new Error(`Input required and not supplied: ${name}`)
+	}
+	return value
+}
+
+const setOutput = (name, value) => {
+	const file = process.env.GITHUB_OUTPUT
+	if (!file) {
+		throw new Error('GITHUB_OUTPUT is not set')
+	}
+	// A newline would let the value write further outputs.
+	if (/[\r\n]/.test(value)) {
+		throw new Error(`Output ${name} must be a single line`)
+	}
+	appendFileSync(file, `${name}=${value}\n`)
+}
 
 const parseVersion = (version) => {
 	const match = version.match(
@@ -17,7 +38,7 @@ const parseVersion = (version) => {
 	}
 }
 ;(() => {
-	const inputVersion = core.getInput('version', { required: true })
+	const inputVersion = getRequiredInput('version')
 	const version = parseVersion(inputVersion)
 	if (!version) {
 		return
@@ -59,7 +80,7 @@ const parseVersion = (version) => {
 				}
 			}
 		}
-		core.setOutput('npmTag', npmTag)
-		core.setOutput('versions', latestVersions.join(' '))
+		setOutput('npmTag', npmTag)
+		setOutput('versions', latestVersions.join(' '))
 	})
 })()

@@ -4,7 +4,7 @@
  * These describe the *data/structure* half of the CMS — collections, fields,
  * entries, page/redirect operations and the media storage adapter. They are
  * framework-agnostic (no Astro, Vite, manifest or SEO coupling) and are reused
- * 1:1 as the wire model across cms-core, the sidecar and webmaster.
+ * 1:1 as the wire model across cms-core, the sidecar and the hosted platform.
  *
  * Render/manifest/SEO types (ManifestEntry, CmsManifest, SeoOptions, color/text
  * style types, ComponentInstance) intentionally stay in `@nuasite/cms`.
