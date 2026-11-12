@@ -10,10 +10,11 @@ Dependency manifest package — **no source code**. Pins versions of shared Astr
 
 ### Pinned Dependencies
 
-- `@astrojs/check` — Type checking for Astro
 - `@astrojs/mdx` — MDX support
 - `@astrojs/sitemap` — Sitemap generation
 
 ### How it Works
 
 Versions are defined as `devDependencies` using Bun's catalog resolver (`catalog:astro` references). When installed, ensures all peer dependencies resolve to expected versions. Used by `@nuasite/nua` and downstream projects to lock the toolchain.
+
+`@astrojs/check` stays a `devDependency` only, so `astro check` works inside this repo. It is not a peer: sites that run `astro check` install it themselves, and `@nuasite/nua` lists it as an optional peer.

@@ -23,7 +23,6 @@
 		"@astrojs/sitemap": "catalog:astro"
 	},
 	"peerDependencies": {
-		"@astrojs/check": "catalog:astro",
 		"@astrojs/mdx": "catalog:astro",
 		"@astrojs/sitemap": "catalog:astro"
 	}

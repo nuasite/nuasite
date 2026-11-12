@@ -85,7 +85,11 @@
         "@nuasite/cms-core": "workspace:*",
         "@nuasite/cms-types": "workspace:*",
         "node-html-parser": "catalog:parsers",
+        "rehype-stringify": "^10.0.1",
         "remark-directive": "^3.0.1",
+        "remark-parse": "catalog:editor",
+        "remark-rehype": "^11.1.2",
+        "unified": "catalog:editor",
         "yaml": "catalog:parsers",
       },
       "devDependencies": {
@@ -110,12 +114,8 @@
         "preact": "catalog:editor",
         "react": "^19.2.1",
         "react-dom": "^19.2.1",
-        "rehype-stringify": "^10.0.1",
         "remark-mdx": "catalog:editor",
-        "remark-parse": "catalog:editor",
-        "remark-rehype": "^11.1.2",
         "tailwind-merge": "catalog:editor",
-        "unified": "catalog:editor",
       },
       "peerDependencies": {
         "@aws-sdk/client-s3": "^3.0.0",
@@ -292,7 +292,6 @@
         "@astrojs/sitemap": "catalog:astro",
       },
       "peerDependencies": {
-        "@astrojs/check": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
         "@astrojs/sitemap": "catalog:astro",
       },
@@ -341,7 +340,6 @@
       "name": "@nuasite/nua",
       "version": "0.67.4",
       "dependencies": {
-        "@astrojs/check": "catalog:astro",
         "@astrojs/markdown-remark": "catalog:astro",
         "@astrojs/mdx": "catalog:astro",
         "@astrojs/sitemap": "catalog:astro",
@@ -362,6 +360,12 @@
       "devDependencies": {
         "@nuasite/agent-summary": "workspace:*",
       },
+      "peerDependencies": {
+        "@astrojs/check": "catalog:astro",
+      },
+      "optionalPeers": [
+        "@astrojs/check",
+      ],
     },
     "packages/playground": {
       "name": "playground",
