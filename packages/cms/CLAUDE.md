@@ -105,7 +105,7 @@ Prefer AST-based approaches when building new CMS functionality. Use `@astrojs/c
 
 ### Styling: prefer `cn()` over inline `style={}` and template-literal class composition
 
-The editor uses `cn()` from `editor/lib/cn.ts` (clsx + twMerge) to compose Tailwind classes. Two anti-patterns to avoid:
+The editor uses `cn()` from `editor/lib/cn.ts` (twMerge) to compose Tailwind classes. Two anti-patterns to avoid:
 
 **1. Inline `style={}` for boolean toggles** — class swaps inside `cn()` are equivalent and consistent with the rest of the codebase. Tailwind's `transition-[property]` + class swap composes cleanly:
 

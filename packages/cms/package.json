@@ -86,7 +86,6 @@
 		"@preact/signals": "catalog:editor",
 		"@tailwindcss/vite": "catalog:ui",
 		"@types/bun": "catalog:build",
-		"clsx": "catalog:editor",
 		"preact": "catalog:editor",
 		"tailwind-merge": "catalog:editor",
 		"remark-parse": "catalog:editor",
