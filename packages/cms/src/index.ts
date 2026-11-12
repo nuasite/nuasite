@@ -87,7 +87,7 @@ export interface NuaCmsOptions extends CmsMarkerOptions {
 	 *   `@nuasite/collections-admin` SPA at `/_nua/admin`. The inline widget runs
 	 *   in-page as usual.
 	 * - `hosted` (inside the agent sandbox): a no-op for spawning/serving — the
-	 *   sidecar is a managed sandbox service and the admin is the webmaster tab.
+	 *   sidecar is a managed sandbox service and the admin is the hosted platform's tab.
 	 *   The plugin stays marker + CDN-inject only.
 	 *
 	 * Auto-detected from the environment when omitted (a sandbox env signal ⇒
@@ -142,9 +142,9 @@ const VIRTUAL_CMS_PATH = '/@nuasite/cms-editor.js'
 const VIRTUAL_ADMIN_ENTRY = '/@nuasite/cms-admin-entry.js'
 
 /**
- * Public CDN editor script. Same URL hosting injects (see webmaster
- * `packages/worker-hosting` `editorSrc`), so dev-preview and hosting load the
- * identical inline editor and a CDN push updates both without touching the site.
+ * Public CDN editor script. The hosting layer injects the same URL, so with the
+ * prebuilt bundle dev-preview and hosted sites load the identical inline editor and
+ * a CDN push updates both without touching the site.
  */
 const DEFAULT_CDN_EDITOR_SRC = 'https://cdn.nuasite.com/script/latest/cms-editor.js'
 
@@ -178,7 +178,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 	// Run mode (cms-headless F7): `local` serves a full-page collections admin at
 	// /_nua/admin over an in-process sidecar; `hosted` (inside the agent sandbox)
-	// is a no-op for that — the managed sandbox sidecar + the webmaster tab own it.
+	// is a no-op for that — the managed sandbox sidecar + the hosted platform's tab own it.
 	// An explicit `options.mode` wins; otherwise auto-detect from the environment.
 	const mode = resolveCmsMode(options.mode)
 	const serveLocalAdmin = mode === 'local'
@@ -451,7 +451,7 @@ export default function nuaCms(options: NuaCmsOptions = {}): AstroIntegration {
 
 				// Local-mode full-page collections admin (cms-headless F7). Registered
 				// only in `local` mode — in `hosted` (sandbox) this is a strict no-op:
-				// the managed sandbox sidecar (F2) + the webmaster tab (F3) own it.
+				// the managed sandbox sidecar (F2) + the hosted platform's tab (F3) own it.
 				// The in-process sidecar + SPA are built lazily on the first /_nua/admin
 				// hit, so dev startup stays fast. Media defaults to local public/uploads.
 				if (serveLocalAdmin) {

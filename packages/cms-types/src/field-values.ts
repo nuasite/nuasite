@@ -3,7 +3,7 @@
  *
  * These rules decide what reaches disk, so every editor has to answer them the same way — and
  * for a while none of them did. `@nuasite/cms`'s in-page editor, `@nuasite/collections-admin`,
- * webmaster's own collections panel and the content check each had their own copy, and the
+ * the hosted platform's own collections panel and the content check each had their own copy, and the
  * copies disagreed: appending `{}` to a repeater wrote frontmatter the schema rejects (13 of 14
  * build-breaking findings across five production sites), while the other copy seeded every key
  * with `''` and broke the fields that were happy absent.
@@ -83,7 +83,7 @@ export function seedValueForRequiredField(field: WriteModelField, today: () => D
  * The value a create form starts a field at, where leaving the key out is allowed.
  *
  * Both create forms now ask this one function — the in-page editor through
- * `newEntryFrontmatter`, `collections-admin` and webmaster's panel through `draftForCreate`.
+ * `newEntryFrontmatter`, `collections-admin` and the hosted platform's panel through `draftForCreate`.
  * They used to answer separately and disagree on `number` and `date`, so a check that
  * predicted one of them was silent about the other.
  *

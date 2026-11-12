@@ -4,7 +4,7 @@ import type { MediaSource } from '../src/media-source'
 
 const CONTEXT = { collection: 'posts', entry: 'hello-world' }
 
-/** A host whose project is served from somewhere else — the webmaster BFF shape. */
+/** A host whose project is served from somewhere else — the hosted platform's backend shape. */
 const resolving: MediaSource = {
 	listMedia: async () => ({ items: [], folders: [], hasMore: false }),
 	uploadMedia: async () => ({ success: true }),

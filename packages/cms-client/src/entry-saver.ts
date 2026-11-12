@@ -7,7 +7,7 @@
  * its hash) or "keep mine" (re-`PATCH` with `baseHash = serverHash`, which force-writes over it).
  *
  * That protocol was implemented twice, line for line — once in `@nuasite/collections-admin`, once
- * in webmaster's collections panel — while everything around it deliberately differed: one editor
+ * in the hosted platform's collections panel — while everything around it deliberately differed: one editor
  * saves on a debounce, the other on an explicit button. The token handling is contract knowledge
  * and belongs here; *when* to save, what to show while saving and whether to block on a blank
  * required field are the host's calls and stay there.

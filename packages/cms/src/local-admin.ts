@@ -2,7 +2,7 @@
  * Local-mode admin server (cms-headless F7).
  *
  * In `local` mode (`pletivo dev` on a developer machine), `@nuasite/cms` gives the
- * same full-page collections admin as the webmaster tab — reusing the exact
+ * same full-page collections admin as the hosted platform's tab — reusing the exact
  * `@nuasite/collections-admin` SPA — instead of the cramped in-iframe collection
  * form. This module wires two things into Astro's Vite dev server:
  *
@@ -136,7 +136,7 @@ export const defaultAdminPeerLoader: AdminPeerLoader = {
  * (which imports the lib's stylesheet and mounts `<CollectionsAdminApp apiBase={…} />`),
  * and injects the resolved `apiBase` as a window global so the entry needs no
  * build config. The host-agnostic SPA is reused verbatim — only `apiBase` differs
- * from the webmaster tab.
+ * from the hosted platform's tab.
  */
 function adminShellHtml(entryModuleId: string, apiBase: string): string {
 	return `<!doctype html>
@@ -243,7 +243,7 @@ async function writeWebResponse(res: ServerResponse, response: Response): Promis
 /**
  * Register the local-mode admin middleware on the Vite dev server. The caller
  * must only invoke this in `local` mode — in `hosted` mode the managed sandbox
- * sidecar + the webmaster tab own these responsibilities, so the plugin never
+ * sidecar + the hosted platform's tab own these responsibilities, so the plugin never
  * registers this middleware (verified by the no-op test).
  */
 export function createLocalAdminMiddleware(server: AdminViteServerLike, options: LocalAdminOptions): void {

@@ -5,7 +5,7 @@
  * by the local-admin dev middleware. The only host-specific input is `apiBase`,
  * which the HTML shell injects as `window.__NUA_ADMIN_API_BASE__` — it points at
  * the in-process cms-sidecar mounted by the dev middleware (`…/cms/v1`). The same
- * lib backs the webmaster Collections tab; only `apiBase` differs.
+ * lib backs the hosted platform's collections tab; only `apiBase` differs.
  *
  * This file is served as a virtual module through Astro's Vite dev server, so it
  * is transformed (TSX → JS, React resolved) and HMR-capable like any app module.

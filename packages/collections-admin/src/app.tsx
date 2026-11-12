@@ -8,7 +8,7 @@
  *
  * Host-agnostic: driven only by an `apiBase` prop, and the hash router keeps it
  * self-contained for its standalone consumers (cms-studio, the F7 `/_nua/admin`
- * page) without reaching for a host router. The webmaster Collections tab ships
+ * page) without reaching for a host router. The hosted platform's collections tab ships
  * its own UI, so hijacking the URL hash here is safe.
  *
  * Browse collections, list entries (sparse projection + cursor pagination), and
@@ -322,10 +322,10 @@ function EntriesTable({ client, collection, onOpen, onCreate, onRetry }: {
 export interface CollectionsAdminAppProps {
 	/**
 	 * Base URL the cms-sidecar is mounted under (the host adds the `/cms/v1`
-	 * prefix). In webmaster this is `/app/project/:slug/session/:sessionId/cms`.
+	 * prefix). A host serving many projects mounts it under a per-project path.
 	 */
 	apiBase: string
-	/** Optional close affordance shown in the sidebar (e.g. to collapse the WM tab). */
+	/** Optional close affordance shown in the sidebar (e.g. to collapse the host's tab). */
 	onClose?: () => void
 }
 

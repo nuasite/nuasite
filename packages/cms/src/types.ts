@@ -368,7 +368,7 @@ export interface CmsFeatures {
 	/**
 	 * Controls the in-preview collection browser/management UI (browse collections,
 	 * list/open entries). Defaults to enabled. When `false`, the widget hides this
-	 * UI because collection editing is owned elsewhere (e.g. the webmaster
+	 * UI because collection editing is owned elsewhere (e.g. the hosted platform's
 	 * Collections tab); inline text/image/color editing stays unaffected.
 	 */
 	collectionManagement?: boolean

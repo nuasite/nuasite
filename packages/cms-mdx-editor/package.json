@@ -1,6 +1,6 @@
 {
 	"name": "@nuasite/cms-mdx-editor",
-	"description": "React MDX body editor (Milkdown) for Nua CMS collection entries — round-trips component blocks, props, children and imports. Consumed by collections-admin and the webmaster collections tab.",
+	"description": "React MDX body editor (Milkdown) for Nua CMS collection entries — round-trips component blocks, props, children and imports. Consumed by collections-admin and the hosted platform's collections tab.",
 	"files": [
 		"dist/**",
 		"src/**",

@@ -7,7 +7,7 @@
  * Mount `<MdxBodyEditor value onChange components={…} media={client} mediaContext={…} />`;
  * feed `components` from `cmsClient.getComponents()` and `media` is the host's
  * `CmsClient` (it satisfies `MediaSource`). Consumed by `@nuasite/collections-admin`
- * and the webmaster collections tab.
+ * and the hosted platform's collections tab.
  */
 // Re-export the wire contract's runtime field-type guard so consumers can drive
 // field UIs off the same source of truth — and so `@nuasite/cms-types` stays a
