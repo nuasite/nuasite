@@ -1,7 +1,7 @@
 /**
  * Typed client over the cms-sidecar `/cms/v1` HTTP contract (reads + mutations).
  *
- * The host (webmaster BFF, or a local dev proxy in F7) mounts the sidecar under
+ * The host (the hosted platform's backend, or a local dev proxy in F7) mounts the sidecar under
  * an `apiBase` and adds the `/cms/v1` prefix itself — so this client requests
  * `${apiBase}/project`, `${apiBase}/collections`, etc. (never `/cms/v1/...`).
  *

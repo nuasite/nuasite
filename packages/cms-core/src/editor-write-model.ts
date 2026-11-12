@@ -3,7 +3,7 @@
  *
  * The value rules underneath (what a blank field holds, which keys a repeater item carries,
  * which required fields count as unfilled) live in `@nuasite/cms-types` so that every editor
- * can reach them: `collections-admin` and webmaster's own collections panel depend on
+ * can reach them: `collections-admin` and the hosted platform's own collections panel depend on
  * `cms-client`, which is a sibling of this package, not a consumer. They are re-exported here
  * because the create pipeline reads as one thing.
  *

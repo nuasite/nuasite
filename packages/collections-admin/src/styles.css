@@ -2,7 +2,7 @@
  * Self-contained styles for the collections-admin SPA.
  *
  * Scoped under `.nua-cadmin` so the lib does not depend on the host's Tailwind
- * config (webmaster) or any global CSS — F7 can reuse it verbatim in local dev.
+ * config or any global CSS — F7 can reuse it verbatim in local dev.
  * Kept deliberately minimal: this is a de-risk milestone, not a design showcase.
  */
 

@@ -1,6 +1,6 @@
 /**
  * Ambient declaration so a side-effect `import './styles.css'` typechecks in the
- * lib's own build. Hosts (webmaster) already declare `*.css` via `vite/client`,
+ * lib's own build. Hosts typically already declare `*.css` via `vite/client`,
  * and the bundler resolves the real file at build time.
  */
 declare module '*.css' {

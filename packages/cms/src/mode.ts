@@ -8,7 +8,7 @@
  *   serves the `@nuasite/collections-admin` SPA at `/_nua/admin`. The inline
  *   widget runs in-page as usual.
  * - **`hosted`** (inside the agent sandbox): the sidecar is a managed sandbox
- *   service (cms-headless F2) and the collections admin is a webmaster tab (F3),
+ *   service (cms-headless F2) and the collections admin is a hosted platform tab (F3),
  *   so the plugin must NOT spawn a sidecar and must NOT serve `/_nua/admin`. It
  *   stays a pure marker + CDN-inject plugin (F5).
  *
@@ -24,7 +24,7 @@ export type CmsMode = 'local' | 'hosted'
  * Environment signals that mean "this `pletivo dev` runs inside the managed
  * agent sandbox" (⇒ `hosted`):
  *
- * - `SANDBOX_ID` — set by the webmaster sandbox deployer when it starts the agent
+ * - `SANDBOX_ID` — set by the hosted platform's sandbox deployer when it starts the agent
  *   process (the Contember project id); every service the agent spawns, including
  *   `pletivo dev`, inherits it. It is never set on a developer machine. This is
  *   the canonical "we are in the sandbox" marker used across the agent runtime.

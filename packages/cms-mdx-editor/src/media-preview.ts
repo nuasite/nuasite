@@ -7,7 +7,7 @@
  * - `https://cdn.example.com/…`, `//…`, `data:…` — carries its own origin, loads directly.
  * - `/uploads/hero.webp` — a repository file at its *runtime* path. It exists wherever the site
  *   is built, which is not where the editor is served: a host that proxies the project (the
- *   webmaster BFF) answers unknown paths with its own SPA shell, so this renders a broken image
+ *   hosted platform's backend) answers unknown paths with its own SPA shell, so this renders a broken image
  *   unless it goes through `mediaAssetUrl`.
  * - `../../src/assets/hero.webp` — resolved against the entry's source file, so only the project
  *   can resolve it, and only with the owning entry's slug (`mediaFileUrl`).
