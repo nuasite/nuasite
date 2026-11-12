@@ -142,9 +142,9 @@ const VIRTUAL_CMS_PATH = '/@nuasite/cms-editor.js'
 const VIRTUAL_ADMIN_ENTRY = '/@nuasite/cms-admin-entry.js'
 
 /**
- * Public CDN editor script. The hosting layer injects the same URL, so dev-preview
- * and hosted sites load the identical inline editor and a CDN push updates both
- * without touching the site.
+ * Public CDN editor script. The hosting layer injects the same URL, so with the
+ * prebuilt bundle dev-preview and hosted sites load the identical inline editor and
+ * a CDN push updates both without touching the site.
  */
 const DEFAULT_CDN_EDITOR_SRC = 'https://cdn.nuasite.com/script/latest/cms-editor.js'
 
