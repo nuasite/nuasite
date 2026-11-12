@@ -1,10 +1,12 @@
-// Waits until the npm registry serves every exact version a packed package pins, so publishing it
-// never leaves `npm install` with a version that does not resolve yet.
+// Waits until the npm registry serves every exact version a packed package pins, directly or through its
+// pinned dependencies, so publishing it never leaves `npm install` with a version that does not resolve yet.
 // Usage: bun scripts/npm-publish/wait-for-pins.ts <package.tgz> [--timeout-seconds <n>]
 
 const REGISTRY = 'https://registry.npmjs.org'
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 const POLL_INTERVAL_MS = 20_000
+const REQUEST_TIMEOUT_MS = 15_000
+const INSTALL_ACCEPT = 'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*'
 
 type StringMap = Record<string, string>
 
@@ -79,24 +81,34 @@ export function readManifest(tarball: string): Manifest {
 
 export type Fetch = (url: string, init: RequestInit) => Promise<Response>
 
-/** Served means both the version metadata and its tarball answer 200, which is what an install needs. */
-export async function isServed(pin: Pin, fetchFn: Fetch): Promise<boolean> {
-	const noCache = { 'cache-control': 'no-cache' }
+/**
+ * The manifest of a pinned version once npm serves it to an install, or undefined while it does not.
+ * Reads the abbreviated packument with the accept header `npm install` sends, the document the CDN caches
+ * for installs, and checks that the version's tarball answers 200.
+ */
+export async function servedManifest(pin: Pin, fetchFn: Fetch, log: (line: string) => void): Promise<Manifest | undefined> {
 	try {
-		const meta = await fetchFn(`${REGISTRY}/${pin.name.replace('/', '%2F')}/${pin.version}`, { headers: noCache })
-		if (meta.status !== 200) return false
-		const body: unknown = await meta.json()
-		const tarball = isRecord(body) && isRecord(body.dist) ? body.dist.tarball : undefined
-		if (typeof tarball !== 'string') return false
-		const head = await fetchFn(tarball, { method: 'HEAD', headers: noCache })
-		return head.status === 200
-	} catch {
-		return false
+		const packument = await fetchFn(`${REGISTRY}/${pin.name.replace('/', '%2F')}`, {
+			headers: { accept: INSTALL_ACCEPT },
+			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+		})
+		if (packument.status !== 200) return undefined
+		const body: unknown = await packument.json()
+		const entry = isRecord(body) && isRecord(body.versions) ? body.versions[pin.version] : undefined
+		if (!isRecord(entry)) return undefined
+		const manifest = parseManifest(entry)
+		const tarball = isRecord(entry.dist) ? entry.dist.tarball : undefined
+		if (typeof tarball !== 'string') throw new Error('no dist.tarball')
+		const head = await fetchFn(tarball, { method: 'HEAD', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+		return head.status === 200 ? manifest : undefined
+	} catch (error) {
+		log(`${formatPin(pin)}: ${error instanceof Error ? error.message : String(error)}`)
+		return undefined
 	}
 }
 
 export interface WaitOptions {
-	isServed: (pin: Pin) => Promise<boolean>
+	served: (pin: Pin) => Promise<Manifest | undefined>
 	timeoutMs: number
 	intervalMs: number
 	now: () => number
@@ -104,16 +116,43 @@ export interface WaitOptions {
 	log: (line: string) => void
 }
 
-/** Returns the pins still not served when the timeout runs out; an empty list means all are served. */
-export async function waitForPins(pins: Pin[], options: WaitOptions): Promise<Pin[]> {
+export interface WaitResult {
+	/** Pins still not served when the timeout ran out; empty when every pin is served. */
+	missing: Pin[]
+	checked: number
+}
+
+/**
+ * Waits for the pins and, transitively, for the exact pins of every served version, because an install
+ * resolves those too. A served pin is checked once.
+ */
+export async function waitForPins(pins: Pin[], options: WaitOptions): Promise<WaitResult> {
 	const deadline = options.now() + options.timeoutMs
-	let missing = pins
+	const seen = new Set(pins.map(formatPin))
+	let pending = pins
 	for (;;) {
-		const served = await Promise.all(missing.map(pin => options.isServed(pin)))
-		missing = missing.filter((_, i) => !served[i])
-		if (missing.length === 0) return []
+		const manifests = await Promise.all(pending.map(pin => options.served(pin)))
+		const missing: Pin[] = []
+		const discovered: Pin[] = []
+		pending.forEach((pin, i) => {
+			const manifest = manifests[i]
+			if (manifest === undefined) {
+				missing.push(pin)
+				return
+			}
+			for (const dependency of exactPins(manifest)) {
+				const key = formatPin(dependency)
+				if (seen.has(key)) continue
+				seen.add(key)
+				discovered.push(dependency)
+			}
+		})
+		pending = [...missing, ...discovered]
+		if (pending.length === 0) return { missing: [], checked: seen.size }
+		// Newly found pins are checked at once; a sleep only waits for the registry.
+		if (discovered.length > 0) continue
 		const left = deadline - options.now()
-		if (left <= 0) return missing
+		if (left <= 0) return { missing, checked: seen.size }
 		options.log(`waiting for npm to serve: ${missing.map(formatPin).join(', ')}`)
 		await options.sleep(Math.min(options.intervalMs, left))
 	}
@@ -126,7 +165,7 @@ export function formatPin(pin: Pin): string {
 function parseArgs(argv: string[]): { tarball: string; timeoutMs: number } {
 	const [tarball, ...rest] = argv
 	if (!tarball) throw new Error('usage: wait-for-pins.ts <package.tgz> [--timeout-seconds <n>]')
-	let timeoutMs = 420_000
+	let timeoutMs = 360_000
 	if (rest.length > 0) {
 		const seconds = Number(rest[1])
 		if (rest[0] !== '--timeout-seconds' || rest.length !== 2 || !Number.isInteger(seconds) || seconds < 0) {
@@ -142,13 +181,14 @@ if (import.meta.main) {
 	const manifest = readManifest(tarball)
 	const pins = exactPins(manifest)
 	console.log(`${manifest.name}@${manifest.version} pins ${pins.length} exact versions`)
-	const missing = await waitForPins(pins, {
-		isServed: pin => isServed(pin, fetch),
+	const log = (line: string) => console.log(line)
+	const { missing, checked } = await waitForPins(pins, {
+		served: pin => servedManifest(pin, fetch, log),
 		timeoutMs,
 		intervalMs: POLL_INTERVAL_MS,
 		now: Date.now,
 		sleep: ms => Bun.sleep(ms),
-		log: line => console.log(line),
+		log,
 	})
 	if (missing.length > 0) {
 		const list = missing.map(formatPin).join(', ')
@@ -157,5 +197,5 @@ if (import.meta.main) {
 		)
 		process.exit(1)
 	}
-	console.log(`npm serves every pinned version; ${manifest.name} can be published`)
+	console.log(`npm serves all ${checked} pinned versions, dependencies included; ${manifest.name} can be published`)
 }

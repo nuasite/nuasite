@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { exactPins, type Fetch, isServed, parseManifest, type Pin, readManifest, waitForPins } from './wait-for-pins'
+import { exactPins, type Fetch, type Manifest, parseManifest, type Pin, readManifest, servedManifest, waitForPins } from './wait-for-pins'
 
 // The publish workflow publishes @nuasite/nua only after this reports every exact pin as served.
 
@@ -49,35 +49,43 @@ describe('readManifest', () => {
 	})
 })
 
-describe('isServed', () => {
-	const registry = (responses: Record<string, Response | Error>): { fetch: Fetch; urls: string[] } => {
-		const urls: string[] = []
+describe('servedManifest', () => {
+	const registry = (responses: Record<string, Response | Error>): { fetch: Fetch; requests: { url: string; init: RequestInit }[] } => {
+		const requests: { url: string; init: RequestInit }[] = []
 		return {
-			urls,
-			fetch: async url => {
-				urls.push(url)
+			requests,
+			fetch: async (url, init) => {
+				requests.push({ url, init })
 				const response = responses[url]
 				if (response instanceof Error) throw response
 				return response ?? new Response('not found', { status: 404 })
 			},
 		}
 	}
-	const meta = 'https://registry.npmjs.org/@nuasite%2Fcms/1.2.0'
+	const packumentUrl = 'https://registry.npmjs.org/@nuasite%2Fcms'
 	const tarball = 'https://registry.npmjs.org/@nuasite/cms/-/cms-1.2.0.tgz'
+	const packument = (versions: Record<string, unknown>) => Response.json({ name: '@nuasite/cms', versions })
+	const cmsEntry = { name: '@nuasite/cms', version: '1.2.0', dependencies: { '@nuasite/cms-types': '1.2.0' }, dist: { tarball } }
 
-	test('needs both the version metadata and the tarball', async () => {
-		const both = registry({ [meta]: Response.json({ dist: { tarball } }), [tarball]: new Response(null, { status: 200 }) })
-		expect(await isServed(cms, both.fetch)).toBe(true)
-		expect(both.urls).toEqual([meta, tarball])
+	test('reads the install packument and needs the version and its tarball', async () => {
+		const both = registry({ [packumentUrl]: packument({ '1.2.0': cmsEntry }), [tarball]: new Response(null, { status: 200 }) })
+		const manifest = await servedManifest(cms, both.fetch, () => {})
+		expect(manifest && exactPins(manifest)).toEqual([{ name: '@nuasite/cms-types', version: '1.2.0' }])
+		expect(both.requests.map(r => r.url)).toEqual([packumentUrl, tarball])
+		expect(new Headers(both.requests[0]?.init.headers).get('accept')).toStartWith('application/vnd.npm.install-v1+json')
+		expect(both.requests.every(r => r.init.signal instanceof AbortSignal)).toBe(true)
 
-		const metadataOnly = registry({ [meta]: Response.json({ dist: { tarball } }) })
-		expect(await isServed(cms, metadataOnly.fetch)).toBe(false)
+		const packumentOnly = registry({ [packumentUrl]: packument({ '1.2.0': cmsEntry }) })
+		expect(await servedManifest(cms, packumentOnly.fetch, () => {})).toBeUndefined()
 	})
 
-	test('a missing version, a malformed body or a network error is not served', async () => {
-		expect(await isServed(cms, registry({}).fetch)).toBe(false)
-		expect(await isServed(cms, registry({ [meta]: Response.json({ dist: {} }) }).fetch)).toBe(false)
-		expect(await isServed(cms, registry({ [meta]: new Error('ECONNRESET') }).fetch)).toBe(false)
+	test('a packument without the version, a 404 or a network error is not served, and errors are logged', async () => {
+		const logs: string[] = []
+		const log = (line: string) => logs.push(line)
+		expect(await servedManifest(cms, registry({ [packumentUrl]: packument({ '1.1.0': cmsEntry }) }).fetch, log)).toBeUndefined()
+		expect(await servedManifest(cms, registry({}).fetch, log)).toBeUndefined()
+		expect(await servedManifest(cms, registry({ [packumentUrl]: new Error('ECONNRESET') }).fetch, log)).toBeUndefined()
+		expect(logs).toEqual(['@nuasite/cms@1.2.0: ECONNRESET'])
 	})
 })
 
@@ -94,34 +102,52 @@ describe('waitForPins', () => {
 			log: (line: string) => logs.push(line),
 		}
 	}
+	const manifestOf = (pin: Pin, dependencies: Record<string, string> = {}): Manifest =>
+		parseManifest({ name: pin.name, version: pin.version, dependencies })
+	const types: Pin = { name: '@nuasite/cms-types', version: '1.2.0' }
 
 	test('returns once every pin is served, and checks a served pin only once', async () => {
 		const checks: string[] = []
 		const servedAt: Record<string, number> = { [cms.name]: 0, [cli.name]: 40_000 }
 		const c = clock()
-		const missing = await waitForPins([cms, cli], {
+		const result = await waitForPins([cms, cli], {
 			...c,
-			isServed: async pin => {
+			served: async pin => {
 				checks.push(pin.name)
-				return c.now() >= (servedAt[pin.name] ?? Infinity)
+				return c.now() >= (servedAt[pin.name] ?? Infinity) ? manifestOf(pin) : undefined
 			},
 			timeoutMs: 60_000,
 			intervalMs: 20_000,
 		})
-		expect(missing).toEqual([])
+		expect(result).toEqual({ missing: [], checked: 2 })
 		expect(checks).toEqual([cms.name, cli.name, cli.name, cli.name])
 		expect(c.logs).toEqual(['waiting for npm to serve: @nuasite/cli@1.2.0', 'waiting for npm to serve: @nuasite/cli@1.2.0'])
 	})
 
+	test('waits for the exact pins of served dependencies too', async () => {
+		const c = clock()
+		const result = await waitForPins([cms], {
+			...c,
+			served: async pin => {
+				if (pin.name === cms.name) return manifestOf(cms, { '@nuasite/cms-types': '1.2.0', yaml: '^2.0.0' })
+				return c.now() >= 20_000 ? manifestOf(pin, { '@nuasite/cms': '1.2.0' }) : undefined
+			},
+			timeoutMs: 60_000,
+			intervalMs: 20_000,
+		})
+		expect(result).toEqual({ missing: [], checked: 2 })
+		expect(c.logs).toEqual(['waiting for npm to serve: @nuasite/cms-types@1.2.0'])
+	})
+
 	test('returns the pins still missing when the timeout runs out, without sleeping past it', async () => {
 		const c = clock()
-		const missing = await waitForPins([cms, cli], {
+		const result = await waitForPins([cms, cli], {
 			...c,
-			isServed: async pin => pin.name === cms.name,
+			served: async pin => (pin.name === cms.name ? manifestOf(pin, { '@nuasite/cms-types': '1.2.0' }) : undefined),
 			timeoutMs: 50_000,
 			intervalMs: 20_000,
 		})
-		expect(missing).toEqual([cli])
+		expect(result).toEqual({ missing: [cli, types], checked: 3 })
 		expect(c.now()).toBe(50_000)
 	})
 })

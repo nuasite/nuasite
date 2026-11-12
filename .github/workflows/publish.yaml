@@ -49,13 +49,7 @@ jobs:
       - name: "Build packages"
         run: bun run ts:build && bun run --filter '!playground' build
 
-      - name: "Publish NPM"
-        run: bash ./scripts/npm-publish/run.sh
-        env:
-          NPM_TAG: ${{ steps.versions.outputs.npmTag }}
-          # nua pins its siblings exactly; publish-nua publishes it once npm serves them.
-          NPM_PUBLISH_SKIP: '@nuasite/nua'
-
+      # Before anything is published, so a failure here leaves a release that can be re-run.
       - name: Pack nua
         working-directory: packages/nua
         run: npm pack --pack-destination "$RUNNER_TEMP/nua"
@@ -66,6 +60,13 @@ jobs:
           path: ${{ runner.temp }}/nua/*.tgz
           if-no-files-found: error
           retention-days: 7
+
+      - name: "Publish NPM"
+        run: bash ./scripts/npm-publish/run.sh
+        env:
+          NPM_TAG: ${{ steps.versions.outputs.npmTag }}
+          # nua pins its siblings exactly; publish-nua publishes it once npm serves them.
+          NPM_PUBLISH_SKIP: '@nuasite/nua'
 
       - name: "Dump npm logs on failure"
         if: failure()
@@ -103,7 +104,7 @@ jobs:
           path: ${{ runner.temp }}/nua
 
       - name: Wait until npm serves every version nua pins
-        run: bun scripts/npm-publish/wait-for-pins.ts "$RUNNER_TEMP"/nua/*.tgz --timeout-seconds 420
+        run: bun scripts/npm-publish/wait-for-pins.ts "$RUNNER_TEMP"/nua/*.tgz --timeout-seconds 360
 
       - name: Publish nua
         run: npm publish "$RUNNER_TEMP"/nua/*.tgz --tag "$NPM_TAG" --provenance --access public
