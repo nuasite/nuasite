@@ -104,7 +104,7 @@ jobs:
           path: ${{ runner.temp }}/nua
 
       - name: Wait until npm serves every version nua pins
-        run: bun scripts/npm-publish/wait-for-pins.ts "$RUNNER_TEMP"/nua/*.tgz --timeout-seconds 360
+        run: bun scripts/npm-publish/wait-for-pins.ts "$RUNNER_TEMP"/nua/*.tgz --timeout-seconds 300
 
       - name: Publish nua
         run: npm publish "$RUNNER_TEMP"/nua/*.tgz --tag "$NPM_TAG" --provenance --access public

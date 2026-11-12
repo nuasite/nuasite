@@ -58,7 +58,7 @@ describe('servedManifest', () => {
 				requests.push({ url, init })
 				const response = responses[url]
 				if (response instanceof Error) throw response
-				return response ?? new Response('not found', { status: 404 })
+				return response?.clone() ?? new Response('not found', { status: 404 })
 			},
 		}
 	}
@@ -67,16 +67,28 @@ describe('servedManifest', () => {
 	const packument = (versions: Record<string, unknown>) => Response.json({ name: '@nuasite/cms', versions })
 	const cmsEntry = { name: '@nuasite/cms', version: '1.2.0', dependencies: { '@nuasite/cms-types': '1.2.0' }, dist: { tarball } }
 
-	test('reads the install packument and needs the version and its tarball', async () => {
+	test('needs the version in both packument forms, and its tarball', async () => {
 		const both = registry({ [packumentUrl]: packument({ '1.2.0': cmsEntry }), [tarball]: new Response(null, { status: 200 }) })
 		const manifest = await servedManifest(cms, both.fetch, () => {})
 		expect(manifest && exactPins(manifest)).toEqual([{ name: '@nuasite/cms-types', version: '1.2.0' }])
-		expect(both.requests.map(r => r.url)).toEqual([packumentUrl, tarball])
-		expect(new Headers(both.requests[0]?.init.headers).get('accept')).toStartWith('application/vnd.npm.install-v1+json')
+		expect(both.requests.map(r => r.url)).toEqual([packumentUrl, packumentUrl, tarball])
+		expect(both.requests.slice(0, 2).map(r => new Headers(r.init.headers).get('accept'))).toEqual([
+			'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*',
+			'application/json',
+		])
 		expect(both.requests.every(r => r.init.signal instanceof AbortSignal)).toBe(true)
 
 		const packumentOnly = registry({ [packumentUrl]: packument({ '1.2.0': cmsEntry }) })
 		expect(await servedManifest(cms, packumentOnly.fetch, () => {})).toBeUndefined()
+	})
+
+	test('a version only the abbreviated packument lists yet is not served', async () => {
+		const staleFull: Fetch = async (url, init) => {
+			if (url === tarball) return new Response(null, { status: 200 })
+			const abbreviated = new Headers(init.headers).get('accept')?.startsWith('application/vnd.npm.install-v1+json')
+			return packument(abbreviated ? { '1.2.0': cmsEntry } : { '1.1.0': cmsEntry })
+		}
+		expect(await servedManifest(cms, staleFull, () => {})).toBeUndefined()
 	})
 
 	test('a packument without the version, a 404 or a network error is not served, and errors are logged', async () => {

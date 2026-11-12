@@ -6,7 +6,9 @@ const REGISTRY = 'https://registry.npmjs.org'
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 const POLL_INTERVAL_MS = 20_000
 const REQUEST_TIMEOUT_MS = 15_000
-const INSTALL_ACCEPT = 'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*'
+// The CDN caches each packument form separately: npm resolves new dependencies from the full one,
+// npm with a lockfile, pnpm, bun and yarn from the abbreviated one.
+const PACKUMENT_ACCEPTS = ['application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*', 'application/json']
 
 type StringMap = Record<string, string>
 
@@ -83,19 +85,23 @@ export type Fetch = (url: string, init: RequestInit) => Promise<Response>
 
 /**
  * The manifest of a pinned version once npm serves it to an install, or undefined while it does not.
- * Reads the abbreviated packument with the accept header `npm install` sends, the document the CDN caches
- * for installs, and checks that the version's tarball answers 200.
+ * The version must be listed in both cached packument forms, and its tarball must answer 200.
  */
 export async function servedManifest(pin: Pin, fetchFn: Fetch, log: (line: string) => void): Promise<Manifest | undefined> {
 	try {
-		const packument = await fetchFn(`${REGISTRY}/${pin.name.replace('/', '%2F')}`, {
-			headers: { accept: INSTALL_ACCEPT },
-			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-		})
-		if (packument.status !== 200) return undefined
-		const body: unknown = await packument.json()
-		const entry = isRecord(body) && isRecord(body.versions) ? body.versions[pin.version] : undefined
-		if (!isRecord(entry)) return undefined
+		let entry: Record<string, unknown> | undefined
+		for (const accept of PACKUMENT_ACCEPTS) {
+			const packument = await fetchFn(`${REGISTRY}/${pin.name.replace('/', '%2F')}`, {
+				headers: { accept },
+				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+			})
+			if (packument.status !== 200) return undefined
+			const body: unknown = await packument.json()
+			const listed = isRecord(body) && isRecord(body.versions) ? body.versions[pin.version] : undefined
+			if (!isRecord(listed)) return undefined
+			entry ??= listed
+		}
+		if (entry === undefined) return undefined
 		const manifest = parseManifest(entry)
 		const tarball = isRecord(entry.dist) ? entry.dist.tarball : undefined
 		if (typeof tarball !== 'string') throw new Error('no dist.tarball')
@@ -165,7 +171,7 @@ export function formatPin(pin: Pin): string {
 function parseArgs(argv: string[]): { tarball: string; timeoutMs: number } {
 	const [tarball, ...rest] = argv
 	if (!tarball) throw new Error('usage: wait-for-pins.ts <package.tgz> [--timeout-seconds <n>]')
-	let timeoutMs = 360_000
+	let timeoutMs = 300_000
 	if (rest.length > 0) {
 		const seconds = Number(rest[1])
 		if (rest[0] !== '--timeout-seconds' || rest.length !== 2 || !Number.isInteger(seconds) || seconds < 0) {
