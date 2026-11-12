@@ -3,7 +3,6 @@
 	"packageOverrides": {
 		"@nuasite/nua": {
 			"allowedUnusedDependencies": [
-				"@astrojs/check",
 				"@nuasite/cli",
 				"@nuasite/components",
 				"@nuasite/core",

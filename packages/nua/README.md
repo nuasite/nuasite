@@ -10,7 +10,7 @@ runs behave exactly like the hosted service.
 Installing `@nuasite/nua` brings along:
 
 - `astro` plus the Nua-specific `nua-build` wrapper (`@nuasite/build`)
-- Official Astro integrations (`@astrojs/check`, `@astrojs/mdx`, `@astrojs/sitemap`)
+- Official Astro integrations (`@astrojs/mdx`, `@astrojs/sitemap`)
 - Tailwind CSS 4 + Flowbite, wired through `@tailwindcss/vite`
 - Shared UI primitives from `@nuasite/components`
 - The baseline dependency manifest from `@nuasite/core`
@@ -20,6 +20,15 @@ Installing `@nuasite/nua` brings along:
 ```bash
 bun add -d @nuasite/nua
 ```
+
+`astro check` needs `@astrojs/check`, which `@nuasite/nua` does not install. Add
+it to the project if you run `astro check`:
+
+```bash
+bun add -d @astrojs/check
+```
+
+`nua check` does not need it.
 
 This ensures every developer machine and CI job installs the same stack that
 Nua Site uses when publishing your project. After installing, run your normal

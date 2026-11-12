@@ -35,7 +35,6 @@
 		"prepack": "bun run ../../scripts/workspace-deps/resolve-deps.ts --compiled-exports"
 	},
 	"dependencies": {
-		"@astrojs/check": "catalog:astro",
 		"@astrojs/markdown-remark": "catalog:astro",
 		"@astrojs/mdx": "catalog:astro",
 		"@astrojs/sitemap": "catalog:astro",
@@ -52,6 +51,14 @@
 		"tailwindcss": "catalog:ui",
 		"typescript": "catalog:build",
 		"vite": "catalog:build"
+	},
+	"peerDependencies": {
+		"@astrojs/check": "catalog:astro"
+	},
+	"peerDependenciesMeta": {
+		"@astrojs/check": {
+			"optional": true
+		}
 	},
 	"devDependencies": {
 		"@nuasite/agent-summary": "workspace:*"
