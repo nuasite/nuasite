@@ -20,15 +20,10 @@
 		"ts:clean": "tsc --build --clean"
 	},
 	"devDependencies": {
-		"@actions/core": "catalog:build",
 		"@happy-dom/global-registrator": "catalog:tests",
 		"@types/bun": "catalog:build",
-		"@types/js-yaml": "catalog:build",
 		"deptective": "catalog:build",
 		"dprint": "catalog:build",
-		"happy-dom": "catalog:tests",
-		"js-yaml": "catalog:build",
-		"json5": "catalog:build",
 		"oxlint": "^1.59.0",
 		"typescript": "catalog:build"
 	},
@@ -38,14 +33,9 @@
 		],
 		"catalogs": {
 			"build": {
-				"@actions/core": "^3.0.0",
-				"@biomejs/biome": "^2.4.9",
 				"@types/bun": "1.3.11",
-				"@types/js-yaml": "^4.0.9",
 				"deptective": "^0.2.1",
 				"dprint": "^0.53.2",
-				"js-yaml": "^4.1.0",
-				"json5": "^2.2.3",
 				"typescript": "^6.0.2",
 				"vite": "^8.3.4"
 			},
@@ -60,7 +50,6 @@
 			"parsers": {
 				"@babel/parser": "^7.29.2",
 				"node-html-parser": "^7.1.0",
-				"stacktracey": "2.2.0",
 				"yaml": "^2.8.3"
 			},
 			"ui": {
@@ -70,12 +59,10 @@
 				"tailwindcss": "4.2.2"
 			},
 			"tests": {
-				"happy-dom": "^20.8.9",
 				"@happy-dom/global-registrator": "^20.8.9"
 			},
 			"editor": {
 				"@milkdown/core": "^7.20.0",
-				"@milkdown/ctx": "^7.20.0",
 				"@milkdown/plugin-listener": "^7.20.0",
 				"@milkdown/preset-commonmark": "^7.20.0",
 				"@milkdown/preset-gfm": "^7.20.0",
@@ -83,23 +70,9 @@
 				"@milkdown/transformer": "^7.20.0",
 				"@milkdown/utils": "^7.20.0",
 				"@preact/signals": "^2.9.0",
-				"@tailwindcss/postcss": "^4.1.17",
-				"autoprefixer": "^10.4.22",
-				"clsx": "^2.1.1",
-				"marked": "^18.0.0",
 				"mdast-util-directive": "^3.1.0",
 				"micromark-extension-directive": "^3.0.2",
-				"postcss": "^8",
 				"preact": "^10.29.1",
-				"prosemirror-commands": "^1.7.1",
-				"prosemirror-inputrules": "^1.5.1",
-				"prosemirror-keymap": "^1.2.3",
-				"prosemirror-model": "^1.25.4",
-				"prosemirror-safari-ime-span": "^1.0.2",
-				"prosemirror-schema-list": "^1.5.1",
-				"prosemirror-state": "^1.4.4",
-				"prosemirror-transform": "^1.12.0",
-				"prosemirror-view": "^1.41.8",
 				"remark-mdx": "^3.1.0",
 				"remark-parse": "^11.0.0",
 				"tailwind-merge": "^3.5.0",
