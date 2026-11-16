@@ -17,7 +17,7 @@ export const cssTrapPrefix = 'css_trap_'
 export const cssTrapSelector = `[name^="${cssTrapPrefix}"]`
 export const cssTrapConflictRegex = new RegExp(`<(?:input|select|textarea)[^>]*\\sname\\s*=\\s*["']${cssTrapPrefix}`, 'i')
 
-/** Marks a form's status box; `formStatusElements` looks it up inside the form, not by id on the page. */
+/** Marks a form's status box; `formStatusElements` looks it up as a direct child of the form, not by id on the page. */
 export const formStatusAttribute = 'data-form-status'
 
 export interface FormStatusElements {
@@ -33,7 +33,7 @@ export interface FormStatusElements {
  * the full contact form); a page-wide id lookup would give both the first form's box.
  */
 export const formStatusElements = (form: HTMLFormElement): FormStatusElements => {
-	const container = form.querySelector<HTMLElement>(`[${formStatusAttribute}]`)
+	const container = form.querySelector<HTMLElement>(`:scope > [${formStatusAttribute}]`)
 	const error = container?.querySelector<HTMLElement>('[data-status="error"]') ?? null
 	return {
 		container,

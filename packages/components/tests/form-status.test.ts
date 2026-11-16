@@ -37,6 +37,14 @@ describe('formStatusElements', () => {
 		expect(owners).toEqual(['callback', 'callback', 'callback', 'callback', 'callback'])
 	})
 
+	test("a status box inside the slot content does not shadow the form's own", () => {
+		const form = renderedForm('contact', 'outer')
+		const slotted = document.createElement('div')
+		slotted.innerHTML = '<div data-form-status data-name="slotted"></div>'
+		form.prepend(slotted)
+		expect(formStatusElements(form).container?.id).toBe('contact-status')
+	})
+
 	test("a form without a status box gets nulls, not another form's box", () => {
 		renderedForm('contact', 'contact')
 		const bare = document.createElement('form')
