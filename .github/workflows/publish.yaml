@@ -10,10 +10,43 @@ permissions:
   contents: read
 
 jobs:
-  publish-node:
+  # Build also runs on `v*` branches such as `v0.63`; only a pushed tag is a release.
+  release-tag:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.tag.outputs.release }}
+    steps:
+      - name: Check that the Build ran on a release tag
+        id: tag
+        env:
+          NAME: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          status=0
+          refs=$(git ls-remote --exit-code "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/tags/$NAME" "refs/tags/$NAME^{}") || status=$?
+          # ls-remote exits 2 when no ref matches: a branch, not a tag.
+          if [ "$status" -eq 2 ]; then
+            echo "$NAME is not a tag, nothing to publish"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [ "$status" -eq 0 ] || exit "$status"
+          # An annotated tag lists its commit on the peeled ^{} line.
+          commit=$(printf '%s\n' "$refs" | awk '$2 ~ /\^\{\}$/ { peeled = $1; next } { plain = $1 } END { print (peeled != "" ? peeled : plain) }')
+          if [ "$commit" != "$SHA" ]; then
+            echo "::error::Tag $NAME points to $commit, but Build ran on $SHA. Nothing was published."
+            exit 1
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+  publish-node:
+    needs: release-tag
+    if: needs.release-tag.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
