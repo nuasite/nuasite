@@ -44,17 +44,15 @@ export function getPageManifestUrl(pathname: string): string {
  * 1. Per-page manifest (/{page}.json) - contains entries, components for this page
  * 2. Global manifest (/cms-manifest.json) - contains componentDefinitions, availableColors
  */
-export async function fetchManifest(locateEntryId?: string): Promise<CmsManifest> {
+export async function fetchManifest(): Promise<CmsManifest> {
 	const pathname = window.location.pathname
 	const pageManifestUrl = getPageManifestUrl(pathname)
 	const globalManifestUrl = '/cms-manifest.json'
 
 	// Fetch both manifests in parallel with cache-busting to bypass CDN/edge caches
 	const cacheBuster = `_t=${Date.now()}`
-	// `locate` asks the server to search the project for that entry's source first (see EditorService.pageManifest)
-	const pageQuery = locateEntryId === undefined ? cacheBuster : `${cacheBuster}&locate=${encodeURIComponent(locateEntryId)}`
 	const [pageResult, globalResult] = await Promise.allSettled([
-		fetchWithTimeout(`${pageManifestUrl}?${pageQuery}`, { cache: 'no-store' }).then(res => res.ok ? res.json() : null),
+		fetchWithTimeout(`${pageManifestUrl}?${cacheBuster}`, { cache: 'no-store' }).then(res => res.ok ? res.json() : null),
 		fetchWithTimeout(`${globalManifestUrl}?${cacheBuster}`, { cache: 'no-store' }).then(res => res.ok ? res.json() : null),
 	])
 
@@ -96,6 +94,23 @@ export async function fetchManifest(locateEntryId?: string): Promise<CmsManifest
 		// MDX component allowlist from global manifest
 		mdxComponents: globalManifest?.mdxComponents,
 	} as CmsManifest
+}
+
+/** The part of the manifest that is the current page's own. */
+export type PageManifestPart = Pick<CmsManifest, 'entries' | 'components'>
+
+/**
+ * The current page's own manifest once the server has answered for one entry (see
+ * `EditorService.pageManifest`): `resolve` resolves the sources of a `pending` entry, `locate` also
+ * searches the whole project for the text of an entry left without a source.
+ */
+export async function fetchPageManifest(ask: { resolve: string } | { locate: string }): Promise<PageManifestPart> {
+	const [name, id] = 'resolve' in ask ? ['resolve', ask.resolve] : ['locate', ask.locate]
+	const url = `${getPageManifestUrl(window.location.pathname)}?_t=${Date.now()}&${name}=${encodeURIComponent(id)}`
+	const res = await fetchWithTimeout(url, { cache: 'no-store' })
+	if (!res.ok) throw new Error(`Page manifest failed (${res.status})`)
+	const page: PageManifestPart = await res.json()
+	return { entries: page.entries ?? {}, components: page.components ?? {} }
 }
 
 export async function saveBatchChanges(

@@ -165,7 +165,10 @@ export function createDevMiddleware(
 		if (match) {
 			// /about.json -> /about, /index.json -> /, /blog/post.json -> /blog/post
 			const pagePath = match[1] === 'index' ? '/' : '/' + match[1]
-			const manifest = await editor.pageManifest(pagePath, { locateEntry: url.searchParams.get('locate') ?? undefined })
+			const manifest = await editor.pageManifest(pagePath, {
+				resolveEntry: url.searchParams.get('resolve') ?? undefined,
+				locateEntry: url.searchParams.get('locate') ?? undefined,
+			})
 			if (manifest) {
 				res.setHeader('Content-Type', 'application/json')
 				res.setHeader('Access-Control-Allow-Origin', '*')

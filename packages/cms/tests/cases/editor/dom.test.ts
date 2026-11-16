@@ -558,3 +558,20 @@ test('getCmsElementAtPosition returns null when the only candidate is locked', (
 
 	expect(hit).toBeNull()
 })
+
+test('getCmsElementAtPosition skips elements whose entry is not resolved yet', () => {
+	const pending = document.createElement('p')
+	pending.setAttribute('data-cms-id', 'pending-id')
+	pending.setAttribute('data-cms-pending', 'true')
+	document.body.appendChild(pending)
+
+	const editable = document.createElement('p')
+	editable.setAttribute('data-cms-id', 'editable-id')
+	editable.contentEditable = 'true'
+	document.body.appendChild(editable)
+
+	const entries = { 'pending-id': {}, 'editable-id': {} }
+
+	expect(withMockedElementsFromPoint([pending, editable, document.body], () => getCmsElementAtPosition(0, 0, entries))).toBe(editable)
+	expect(withMockedElementsFromPoint([pending, document.body], () => getCmsElementAtPosition(0, 0, entries))).toBeNull()
+})

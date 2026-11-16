@@ -96,19 +96,22 @@ export interface EditorHost {
 	 * compiler's source annotations (`annotateSourceFile`). `revision` is what the reload client
 	 * compares the host's notifications with.
 	 *
-	 * The page's source locations are resolved after the HTML is returned, over every collection
-	 * entry of a large project. A host passes `waitUntil` to keep that work alive past its response
-	 * (in a Worker, `work => ctx.waitUntil(work)`); with it, the work also gives the event loop a turn
-	 * every few dozen files, so a host sharing its thread with other work is not held by it.
-	 * `waitUntil` must keep the work alive until it completes: the project's indexes are built once
-	 * and shared, and a build cut off halfway leaves later pages waiting for it.
+	 * The sources of an entry are resolved when the editor asks for that entry
+	 * (`/<page>.json?resolve=<id>`). The indexes that resolution reads are built once per project:
+	 * after the page when the host passes `waitUntil` to keep that work alive past its response (in
+	 * a Worker, `work => ctx.waitUntil(work)`), on the first ask otherwise. That work gives the event
+	 * loop a turn every few dozen files, so a host sharing its thread with other work is not held by it.
+	 * `waitUntil` must keep the work alive until it completes: a build cut off halfway leaves the
+	 * asks waiting for it.
 	 */
 	processPage(pagePath: string, html: string, options?: { revision?: string; waitUntil?: (work: Promise<unknown>) => void }): Promise<string>
 	/**
 	 * Answer `/_nua/cms/*`, `/cms-manifest.json` and `/<page>.json` of a processed page. Returns
-	 * `undefined` for any other request, which the host serves itself.
+	 * `undefined` for any other request, which the host serves itself. An ask about an entry that
+	 * has to build the indexes gives the event loop turns only when `waitUntil` keeps that work alive,
+	 * as for {@link processPage}.
 	 */
-	fetch(request: Request): Promise<Response | undefined>
+	fetch(request: Request, options?: { waitUntil?: (work: Promise<unknown>) => void }): Promise<Response | undefined>
 	/**
 	 * Report files changed by anything other than this host (an agent, a checkout): paths relative
 	 * to the root or absolute under it. Without paths, everything cached is dropped, and the
@@ -205,7 +208,7 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 			return injectIntoHead(marked, await injection(pageOptions?.revision))
 		},
 
-		async fetch(request) {
+		async fetch(request, fetchOptions) {
 			const url = new URL(request.url)
 			if (url.pathname.startsWith(API_PREFIX)) {
 				if (request.method === 'OPTIONS') return preflightResponse(request)
@@ -220,8 +223,12 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 			}
 			const match = url.pathname.match(/^\/(.*)\.json$/)
 			if (!match) return undefined
+			// An ask resolves against the definitions of the files now, like the page after an invalidate.
+			await currentDefinitions()
 			const manifest = await service.pageManifest(match[1] === 'index' ? '/' : `/${match[1]}`, {
+				resolveEntry: url.searchParams.get('resolve') ?? undefined,
 				locateEntry: url.searchParams.get('locate') ?? undefined,
+				waitUntil: fetchOptions?.waitUntil,
 			})
 			return manifest ? noStore(jsonResponse(manifest)) : undefined
 		},

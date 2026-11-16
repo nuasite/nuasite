@@ -864,6 +864,9 @@ export interface ManifestEntry {
 	 *  expression (`{VAR}`) or a key whose value lives elsewhere. Such an entry is locked
 	 *  in the editor instead of failing on save. */
 	textResolved?: boolean
+	/** The page load left this entry's sources unresolved: the editor asks for them
+	 *  (`/<page>.json?resolve=<id>`) before the entry is edited. */
+	pending?: boolean
 
 	// === Reference field metadata ===
 

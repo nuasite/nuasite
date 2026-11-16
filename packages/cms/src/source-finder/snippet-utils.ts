@@ -691,12 +691,19 @@ function preferredSourcesFor(sourcePath: string | undefined, page: PageSources |
 	return [...new Set([...invokers, ...page.renderedFiles])]
 }
 
+/** Build the indexes resolving an entry reads: the project's text index and, with collections, their text index. */
+export async function buildSourceIndexes(collectionDefinitions?: Record<string, CollectionDefinition>): Promise<void> {
+	await initializeSearchIndex()
+	if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) await buildCollectionTextIndex(collectionDefinitions)
+}
+
 /**
  * Enhance manifest entries with actual source snippets from source files.
  * This reads the source files and extracts the innerHTML at the specified locations.
  * For images, it finds the correct line containing the src attribute.
  *
  * @param entries - Manifest entries to enhance
+ * @param targets - The ids of the entries to enhance; the others are read as their context. All when absent.
  * @returns Enhanced entries with sourceSnippet and openingTagSnippet populated
  */
 export async function enhanceManifestWithSourceSnippets(
@@ -704,10 +711,10 @@ export async function enhanceManifestWithSourceSnippets(
 	collectionDefinitions?: Record<string, CollectionDefinition>,
 	pageFiles?: readonly string[],
 	page?: PageSources,
+	targets?: ReadonlySet<string>,
 ): Promise<Record<string, ManifestEntry>> {
-	// Ensure the search index is ready (returns immediately if already built,
-	// otherwise waits for the in-flight initialization or triggers a new one).
-	await initializeSearchIndex()
+	// Each returns at once if built, or waits for a build in flight.
+	await buildSourceIndexes(collectionDefinitions)
 
 	const enhanced: Record<string, ManifestEntry> = {}
 
@@ -731,11 +738,6 @@ export async function enhanceManifestWithSourceSnippets(
 				}
 			}
 		}
-	}
-
-	// Build collection text index upfront for O(1) lookups in both entries and augment phases
-	if (collectionDefinitions && Object.keys(collectionDefinitions).length > 0) {
-		await buildCollectionTextIndex(collectionDefinitions)
 	}
 
 	// Propagate collectionName/collectionSlug from wrapper entries to their children.
@@ -799,7 +801,7 @@ export async function enhanceManifestWithSourceSnippets(
 	}
 
 	// Process entries in parallel for better performance
-	const entryPromises = Object.entries(entries).map(async ([id, entry]) => {
+	const entryPromises = Object.entries(entries).filter(([id]) => !targets || targets.has(id)).map(async ([id, entry]) => {
 		// Handle image entries specially - find the line with src attribute
 		if (entry.imageMetadata?.src) {
 			// Astro `image()` URLs (`/_image?href=/@fs/.../src/content/<collection>/<...>`)
