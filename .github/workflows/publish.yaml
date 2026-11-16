@@ -118,7 +118,8 @@ jobs:
   publish-nua:
     needs: publish-node
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Holds the 900 s wait below plus setup and the publish.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -143,8 +144,9 @@ jobs:
           name: nua-tarball
           path: ${{ runner.temp }}/nua
 
+      # In v0.68.2, npm served @nuasite/cms 7 min after its publish. This is twice that, in case the slowest package is published last.
       - name: Wait until npm serves every version nua pins
-        run: bun scripts/npm-publish/wait-for-pins.ts "$RUNNER_TEMP"/nua/*.tgz --timeout-seconds 300
+        run: bun scripts/npm-publish/wait-for-pins.ts "$RUNNER_TEMP"/nua/*.tgz --timeout-seconds 900
 
       - name: Publish nua
         run: npm publish "$RUNNER_TEMP"/nua/*.tgz --tag "$NPM_TAG" --provenance --access public
