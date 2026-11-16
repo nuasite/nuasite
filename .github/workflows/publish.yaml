@@ -54,7 +54,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_branch }}
+          # The commit Build tested, not wherever the tag points now.
+          ref: ${{ github.event.workflow_run.head_sha }}
           # extract-version compares against every release tag to pick the npm dist-tag.
           fetch-tags: true
 
@@ -121,7 +122,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_branch }}
+          # The commit Build tested, not wherever the tag points now.
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Setup node
         uses: actions/setup-node@v7
