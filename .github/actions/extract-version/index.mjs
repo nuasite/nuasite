@@ -40,8 +40,9 @@ const parseVersion = (version) => {
 ;(() => {
 	const inputVersion = getRequiredInput('version')
 	const version = parseVersion(inputVersion)
+	// Without an npmTag the other packages publish as `latest` and nua fails to publish.
 	if (!version) {
-		return
+		throw new Error(`Not a release version: ${inputVersion}`)
 	}
 	exec('git tag -l', (err, stdout) => {
 		if (err) {
