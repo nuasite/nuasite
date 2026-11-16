@@ -77,10 +77,11 @@ describe('extract-version action', () => {
 		expect(outputs).toEqual({ npmTag: 'next', versions: '0.68.0-beta.2 0.68.0-beta 0.68-beta 0-beta' })
 	})
 
-	test('an input that is not a version sets no outputs', () => {
+	test.each(['main', 'v0.67', 'v0.68.0-rc1'])('an input that is not a release version (%s) fails the step without outputs', input => {
 		const cwd = withTags(['v0.67.4'])
-		const { status, outputs } = run(cwd, { INPUT_VERSION: 'main' })
-		expect(status).toBe(0)
+		const { status, stderr, outputs } = run(cwd, { INPUT_VERSION: input })
+		expect(status).not.toBe(0)
+		expect(stderr).toContain(`Not a release version: ${input}`)
 		expect(outputs).toEqual({})
 	})
 

@@ -10,10 +10,43 @@ permissions:
   contents: read
 
 jobs:
-  publish-node:
+  # Build also runs on `v*` branches such as `v0.63`; only a pushed tag is a release.
+  release-tag:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.tag.outputs.release }}
+    steps:
+      - name: Check that the Build ran on a release tag
+        id: tag
+        env:
+          NAME: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          status=0
+          refs=$(git ls-remote --exit-code "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/tags/$NAME" "refs/tags/$NAME^{}") || status=$?
+          # ls-remote exits 2 when no ref matches: a branch, not a tag.
+          if [ "$status" -eq 2 ]; then
+            echo "$NAME is not a tag, nothing to publish"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [ "$status" -eq 0 ] || exit "$status"
+          # An annotated tag lists its commit on the peeled ^{} line.
+          commit=$(printf '%s\n' "$refs" | awk '$2 ~ /\^\{\}$/ { peeled = $1; next } { plain = $1 } END { print (peeled != "" ? peeled : plain) }')
+          if [ "$commit" != "$SHA" ]; then
+            echo "::error::Tag $NAME points to $commit, but Build ran on $SHA. Nothing was published."
+            exit 1
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+  publish-node:
+    needs: release-tag
+    if: needs.release-tag.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -21,7 +54,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_branch }}
+          # The commit Build tested, not wherever the tag points now.
+          ref: ${{ github.event.workflow_run.head_sha }}
+          # extract-version compares against every release tag to pick the npm dist-tag.
+          fetch-tags: true
 
       - name: Setup node
         uses: actions/setup-node@v7
@@ -52,7 +88,10 @@ jobs:
       # Before anything is published, so a failure here leaves a release that can be re-run.
       - name: Pack nua
         working-directory: packages/nua
-        run: npm pack --pack-destination "$RUNNER_TEMP/nua"
+        # npm pack does not create the destination directory.
+        run: |
+          mkdir -p "$RUNNER_TEMP/nua"
+          npm pack --pack-destination "$RUNNER_TEMP/nua"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -83,7 +122,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_branch }}
+          # The commit Build tested, not wherever the tag points now.
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Setup node
         uses: actions/setup-node@v7
