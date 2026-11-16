@@ -52,7 +52,10 @@ jobs:
       # Before anything is published, so a failure here leaves a release that can be re-run.
       - name: Pack nua
         working-directory: packages/nua
-        run: npm pack --pack-destination "$RUNNER_TEMP/nua"
+        # npm pack does not create the destination directory.
+        run: |
+          mkdir -p "$RUNNER_TEMP/nua"
+          npm pack --pack-destination "$RUNNER_TEMP/nua"
 
       - uses: actions/upload-artifact@v7
         with:
