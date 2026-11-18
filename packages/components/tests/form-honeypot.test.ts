@@ -4,11 +4,12 @@ import { plugin } from 'bun'
 import { describe, expect, test } from 'bun:test'
 import { cssTrapSelector, filledHoneypot } from '../src/form/utils.ts'
 
-// Compiles `.astro` imports with Astro's own compiler, so the tests render the shipped component
+// Compiles this package's `.astro` files with Astro's own compiler, so the tests render the shipped component.
+// Bun runs all test files in one process, so the filter keeps the loader off other packages' components.
 plugin({
 	name: 'astro-component',
 	setup(build) {
-		build.onLoad({ filter: /\.astro$/ }, async ({ path }) => {
+		build.onLoad({ filter: /[\\/]packages[\\/]components[\\/]src[\\/].*\.astro$/ }, async ({ path }) => {
 			const result = transform(await Bun.file(path).text(), {
 				filename: path,
 				internalURL: 'astro/compiler-runtime',
@@ -77,10 +78,13 @@ describe('Form honeypots', () => {
 				expect(element.style.display).not.toBe('none')
 			}
 		}
-		expect(form.querySelector<HTMLInputElement>(cssTrapSelector)?.style.left).toBe('-9999px')
+		const cssTrap = form.querySelector<HTMLInputElement>(cssTrapSelector)
+		expect([cssTrap?.style.position, cssTrap?.style.left, cssTrap?.style.opacity]).toEqual(['absolute', '-9999px', '0'])
+		const named = honeypotInputs(form).filter(input => !input.matches(cssTrapSelector))
+		expect([...named, ...honeypotLabels(form)].filter(element => element.closest('.sr-only') === null)).toHaveLength(0)
 	})
 
-	test('a submission with a honeypot filled in fails the humanity check', async () => {
+	test('filledHoneypot reports each filled honeypot of the rendered form', async () => {
 		const form = await renderForm()
 		const names = form.dataset.requiredFields?.split(',') ?? []
 		expect(filledHoneypot(form, names)).toBeNull()
