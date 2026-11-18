@@ -14,7 +14,7 @@ Reusable Astro component library for common site patterns. No build step — com
 
 Progressive form enhancement with anti-spam protection:
 
-- Honeypot fields for bot detection
+- Honeypot fields for bot detection, in one `aria-hidden` container with `tabindex="-1"` inputs so screen-reader and keyboard users never meet them. They are hidden off-screen, never with `display:none`, which bots skip
 - Client-side validation tracking mouse, keyboard, and focus events
 - Minimum time-on-page (3s), keystroke count, and field interaction checks
 - Headless browser detection (Puppeteer, etc.)
@@ -27,7 +27,7 @@ Requires either `formId` (Nua-managed endpoint) or `action` (custom URL) — enf
 Supporting files:
 
 - `src/form/types.ts` — Props union type ensuring `formId` XOR `action`
-- `src/form/utils.ts` — Honeypot field names, regex validators, and `formStatusElements` (the form's own status box, a direct child of the `<form>`)
+- `src/form/utils.ts` — Honeypot field names, `filledHoneypot` (the honeypot part of the humanity check), regex validators, and `formStatusElements` (the form's own status box, a direct child of the `<form>`)
 - `src/form/tracking.ts`: what a submission reports to `window.analytics.form`. Field names and fixed error codes only, never what the visitor typed or the server's error text
 
 #### Image (`src/image/index.astro`)

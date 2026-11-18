@@ -63,30 +63,33 @@ const tokenId = `${tokenFieldName}_${formId}`
 		{...rest}
 	>
 		<div class="relative index-1">
-			<div class="sr-only">
-				{honeypotFields.map(field => (
-					<label for={`${field.name}_${formId}`}>Leave this {field.name} empty</label>
-					<input
-						type={field.type}
-						id={`${field.name}_${formId}`}
-						name={field.name}
-						tabindex="-1"
-						autocomplete="nope"
-						aria-hidden="true"
-					/>
-				))}
-			</div>
+			{/* Hidden from assistive technology, but not with display:none: bots skip fields hidden that way */}
+			<div aria-hidden="true">
+				<div class="sr-only">
+					{honeypotFields.map(field => (
+						<label for={`${field.name}_${formId}`}>Leave this {field.name} empty</label>
+						<input
+							type={field.type}
+							id={`${field.name}_${formId}`}
+							name={field.name}
+							tabindex="-1"
+							autocomplete="off"
+							aria-hidden="true"
+						/>
+					))}
+				</div>
 
-			<label for={cssHoneypotField} class="sr-only">Leave this field empty</label>
-			<input
-				type="text"
-				id={cssHoneypotField}
-				name={cssHoneypotField}
-				style="position: absolute; left: -9999px; opacity: 0;"
-				tabindex="-1"
-				autocomplete="nope"
-				aria-hidden="true"
-			/>
+				<label for={cssHoneypotField} class="sr-only">Leave this field empty</label>
+				<input
+					type="text"
+					id={cssHoneypotField}
+					name={cssHoneypotField}
+					style="position: absolute; left: -9999px; opacity: 0;"
+					tabindex="-1"
+					autocomplete="off"
+					aria-hidden="true"
+				/>
+			</div>
 
 			<slot />
 		</div>
@@ -124,7 +127,7 @@ const tokenId = `${tokenFieldName}_${formId}`
 
 <script>
 	import { internalFieldNames, responseErrorReason, trackedFields } from './tracking.ts'
-	import { cssTrapSelector, formStatusElements } from './utils.ts'
+	import { cssTrapSelector, filledHoneypot, formStatusElements } from './utils.ts'
 
 	class AstroForm extends HTMLElement {
 		private fieldInteractions = new Set<string>();
@@ -436,13 +439,8 @@ const tokenId = `${tokenFieldName}_${formId}`
 
 			if (this.getInteractionScore() < 2) return 'low_interaction'
 
-			for (const fieldName of this.honeypotFieldNames) {
-				const field = form.querySelector(`[name="${fieldName}"]`) as HTMLInputElement
-				if (field && field.value.trim()) return `honeypot:${fieldName}`
-			}
-
-			const cssHoneypot = form.querySelector(cssTrapSelector) as HTMLInputElement | null
-			if (cssHoneypot && cssHoneypot.value.trim()) return 'css_honeypot'
+			const honeypot = filledHoneypot(form, this.honeypotFieldNames)
+			if (honeypot) return honeypot
 
 			const suspicious = this.detectSuspiciousBrowser()
 			if (suspicious) return `suspicious_browser:${suspicious}`

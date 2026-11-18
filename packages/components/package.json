@@ -66,6 +66,10 @@
 	"peerDependencies": {
 		"typescript": "catalog:build"
 	},
+	"devDependencies": {
+		"@astrojs/compiler-rs": "catalog:astro",
+		"astro": "catalog:astro"
+	},
 	"keywords": [
 		"nuasite",
 		"ui",
