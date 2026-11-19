@@ -87,6 +87,8 @@ export class EditorService {
 	private readonly pendingPhase2 = new Map<string, Promise<void>>()
 	/** Source resolution of pages processed with `sourcesOnDemand`, not started until something reads the page's manifest. */
 	private readonly deferredPhase2 = new Map<string, () => Promise<void>>()
+	/** Resolutions from {@link deferredPhase2} that a request has started and that are still running. */
+	private readonly startedOnDemand = new Set<Promise<void>>()
 	/** On-demand source searches in flight, by page and entry, so repeated clicks share one search. */
 	private readonly pendingEntrySearch = new Map<string, Promise<void>>()
 	/** Entries a search found no source for; a new render of the page brings new entry objects. */
@@ -173,7 +175,11 @@ export class EditorService {
 		const deferred = this.deferredPhase2.get(pagePath)
 		if (deferred === undefined) return this.pendingPhase2.get(pagePath)
 		this.deferredPhase2.delete(pagePath)
-		return this.trackPhase2(pagePath, deferred())
+		const phase2 = this.trackPhase2(pagePath, deferred())
+		this.startedOnDemand.add(phase2)
+		const forget = () => this.startedOnDemand.delete(phase2)
+		phase2.then(forget, forget)
+		return phase2
 	}
 
 	/**
@@ -263,9 +269,10 @@ export class EditorService {
 		const api = this.api
 		if (!api) return undefined
 		return runInProjectContext(this.context, async () => {
-			// The handlers read page manifests: sources left for on demand are resolved first.
+			// The handlers read page manifests: sources left for on demand, deferred or already started, are resolved first.
+			for (const pagePath of [...this.deferredPhase2.keys()]) this.phase2Of(pagePath)
 			// A failed resolution leaves the manifest partial, as the manifest request serves it.
-			await Promise.allSettled([...this.deferredPhase2.keys()].map(pagePath => this.phase2Of(pagePath)))
+			await Promise.allSettled(this.startedOnDemand)
 			return handleCmsApiRequest(route, request, { ...api, manifestWriter: this.manifestWriter, projectRoot: this.context.root })
 		})
 	}
