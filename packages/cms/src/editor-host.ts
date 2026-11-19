@@ -105,9 +105,12 @@ export interface EditorHost {
 	 *
 	 * With `sourcesOnDemand`, nothing runs past the response and `waitUntil` is not used: the page's
 	 * `.json` manifest, or the next API request, resolves the sources and waits for them. For a host
-	 * whose thread that work would hold before the page's response is sent. The request that starts
-	 * it gives the event loop the same turns, so the host keeps what {@link fetch} returns alive
-	 * until it settles (in a Worker, `ctx.waitUntil(host.fetch(request))`), for the same reason.
+	 * whose thread that work would hold before the page's response is sent. An API request reads page
+	 * manifests, so it resolves every page left so far and waits for the resolutions other requests
+	 * started. Its cost grows with the pages processed since the previous API request, less those
+	 * whose manifest was read. A request that resolves gives the event loop the same turns, so the
+	 * host keeps what {@link fetch} returns alive until it settles (in a Worker,
+	 * `ctx.waitUntil(host.fetch(request))`), for the same reason.
 	 */
 	processPage(
 		pagePath: string,
