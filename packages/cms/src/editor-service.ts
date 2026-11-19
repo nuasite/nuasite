@@ -150,15 +150,21 @@ export class EditorService {
 	/** Records the resolution for later; a method of its own, so the closure holds neither the input nor the marked HTML. */
 	private deferPhase2(pagePath: string, sources: SourceResolutionInput): void {
 		this.deferredPhase2.set(pagePath, () =>
-			// The request that starts it waits for it, so it may yield: that request keeps it alive.
-			runInProjectContext(this.context, () => runYieldingToHost(() => this.resolveSources(pagePath, sources))))
+			runInProjectContext(this.context, () =>
+				// The request that starts it waits for it, so it may yield: that request keeps it alive.
+				runYieldingToHost(async () => {
+					// As the page render does: files invalidated since then are indexed again before the lookup.
+					await reindexDirtyFiles()
+					await this.resolveSources(pagePath, sources)
+				})))
 	}
 
 	private trackPhase2(pagePath: string, phase2: Promise<void>): Promise<void> {
 		this.pendingPhase2.set(pagePath, phase2)
-		phase2.finally(() => {
+		const forget = () => {
 			if (this.pendingPhase2.get(pagePath) === phase2) this.pendingPhase2.delete(pagePath)
-		})
+		}
+		phase2.then(forget, forget)
 		return phase2
 	}
 
@@ -258,7 +264,8 @@ export class EditorService {
 		if (!api) return undefined
 		return runInProjectContext(this.context, async () => {
 			// The handlers read page manifests: sources left for on demand are resolved first.
-			await Promise.all([...this.deferredPhase2.keys()].map(pagePath => this.phase2Of(pagePath)))
+			// A failed resolution leaves the manifest partial, as the manifest request serves it.
+			await Promise.allSettled([...this.deferredPhase2.keys()].map(pagePath => this.phase2Of(pagePath)))
 			return handleCmsApiRequest(route, request, { ...api, manifestWriter: this.manifestWriter, projectRoot: this.context.root })
 		})
 	}
