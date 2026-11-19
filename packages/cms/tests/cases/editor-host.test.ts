@@ -487,7 +487,69 @@ describe('createEditorHost source resolution after a page', () => {
 		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
 		expect(yields.count()).toBe(0)
 	})
+
+	test('without sourcesOnDemand, the resolution starts after the page before any request', async () => {
+		const fs = projectWithPosts(120)
+		const host = await hostOver(fs)
+		const reads = postReads(fs)
+		await host.processPage('/', POSTS_PAGE)
+		await idle()
+
+		expect(reads.length).toBeGreaterThan(0)
+	})
+
+	test('with sourcesOnDemand, nothing is resolved or handed to waitUntil past the page, and its first manifest request resolves the sources', async () => {
+		const fs = projectWithPosts(120)
+		const host = await hostOver(fs)
+		const reads = postReads(fs)
+		const handed: Promise<unknown>[] = []
+		await host.processPage('/', POSTS_PAGE, { waitUntil: work => handed.push(work), sourcesOnDemand: true })
+		await idle()
+
+		expect(handed).toEqual([])
+		expect(reads).toEqual([])
+		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(reads.length).toBeGreaterThan(0)
+		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+		expect(entryWithText(body, 'Post number 1').sourcePath).toBe('src/content/posts/post-1.md')
+	})
+
+	test('with sourcesOnDemand, an editor API request resolves the sources of the processed pages first', async () => {
+		const fs = projectWithPosts(120)
+		const host = await hostOver(fs)
+		const reads = postReads(fs)
+		await host.processPage('/', POSTS_PAGE, { sourcesOnDemand: true })
+		await idle()
+
+		expect(reads).toEqual([])
+		await save(host, [])
+		expect(reads.length).toBeGreaterThan(0)
+	})
+
+	test('with sourcesOnDemand, a page processed again is resolved from its latest render', async () => {
+		const fs = projectWithPosts(120)
+		const host = await hostOver(fs)
+		await host.processPage('/', POSTS_PAGE, { sourcesOnDemand: true })
+		await host.processPage('/', '<html><body><h2>Post number 2</h2></body></html>', { sourcesOnDemand: true })
+
+		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(Object.values(body.entries).map(entry => [entry.text, entry.sourcePath])).toEqual([['Post number 2', 'src/content/posts/post-2.md']])
+	})
 })
+
+/** Records the reads of the posts once the host has started: only the source resolution reads them past the definitions scan. */
+function postReads(fs: MemoryFileSystem): string[] {
+	const read: string[] = []
+	const readFile = fs.readFile
+	fs.readFile = path => {
+		if (path.includes('src/content/posts/')) read.push(path)
+		return readFile(path)
+	}
+	return read
+}
+
+/** Lets work started past the page run. */
+const idle = () => new Promise(resolve => setTimeout(resolve, 10))
 
 const BASE_LAYOUT = `---
 const { title, description } = Astro.props

@@ -102,8 +102,18 @@ export interface EditorHost {
 	 * every few dozen files, so a host sharing its thread with other work is not held by it.
 	 * `waitUntil` must keep the work alive until it completes: the project's indexes are built once
 	 * and shared, and a build cut off halfway leaves later pages waiting for it.
+	 *
+	 * With `sourcesOnDemand`, nothing runs past the response and `waitUntil` is not used: the page's
+	 * `.json` manifest, or the next API request, resolves the sources and waits for them. For a host
+	 * whose thread that work would hold before the page's response is sent. The request that starts
+	 * it gives the event loop the same turns, so the host keeps what {@link fetch} returns alive
+	 * until it settles (in a Worker, `ctx.waitUntil(host.fetch(request))`), for the same reason.
 	 */
-	processPage(pagePath: string, html: string, options?: { revision?: string; waitUntil?: (work: Promise<unknown>) => void }): Promise<string>
+	processPage(
+		pagePath: string,
+		html: string,
+		options?: { revision?: string; waitUntil?: (work: Promise<unknown>) => void; sourcesOnDemand?: boolean },
+	): Promise<string>
 	/**
 	 * Answer `/_nua/cms/*`, `/cms-manifest.json` and `/<page>.json` of a processed page. Returns
 	 * `undefined` for any other request, which the host serves itself.
@@ -200,7 +210,7 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 	return {
 		async processPage(pagePath, html, pageOptions) {
 			await currentDefinitions()
-			const marked = await service.processPage(pagePath, html, pageOptions?.waitUntil)
+			const marked = await service.processPage(pagePath, html, { waitUntil: pageOptions?.waitUntil, sourcesOnDemand: pageOptions?.sourcesOnDemand })
 			if (!injection) return marked
 			return injectIntoHead(marked, await injection(pageOptions?.revision))
 		},
