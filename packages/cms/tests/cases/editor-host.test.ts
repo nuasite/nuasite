@@ -8,6 +8,7 @@ import {
 	type EditorHostOptions,
 } from '@nuasite/cms/editor-host'
 import { describe, expect, spyOn, test } from 'bun:test'
+import * as sourceFinder from '../../src/source-finder/index.ts'
 import type { ComponentInstance, ManifestEntry, PageSeoData } from '../../src/types'
 import { createMemoryFileSystem, type MemoryFileSystem } from '../utils/memory-fs'
 
@@ -536,6 +537,15 @@ describe('createEditorHost source resolution after a page', () => {
 		expect(Object.values(body.entries).map(entry => [entry.text, entry.sourcePath])).toEqual([['Post number 2', 'src/content/posts/post-2.md']])
 	})
 
+	test('with sourcesOnDemand, a page processed again without it keeps the manifest of its latest render', async () => {
+		const host = await hostOver(projectWithPosts(120))
+		await host.processPage('/', POSTS_PAGE, { sourcesOnDemand: true })
+		await host.processPage('/', '<html><body><h2>Post number 2</h2></body></html>')
+
+		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(Object.values(body.entries).map(entry => [entry.text, entry.sourcePath])).toEqual([['Post number 2', 'src/content/posts/post-2.md']])
+	})
+
 	test('with sourcesOnDemand, a save that arrives while a manifest request resolves the page waits for it and succeeds', async () => {
 		// The change the editor sends, taken from another host that resolved the same page.
 		const reference = await hostOver(projectWithPosts(120))
@@ -553,6 +563,26 @@ describe('createEditorHost source resolution after a page', () => {
 		expect(await fs.readFile('src/content/posts/post-0.md')).toContain('title: First post')
 		// A save that did not wait rewrites the post while the resolution looks for its old text, which then stays unplaced.
 		expect(entryWithText((await manifest).body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+	})
+
+	test('with sourcesOnDemand, a resolution that fails still answers the manifest, and later requests do not wait for it', async () => {
+		const host = await hostOver(projectWithPosts(120))
+		await host.processPage('/', POSTS_PAGE, { sourcesOnDemand: true })
+		const reindex = spyOn(sourceFinder, 'reindexDirtyFiles').mockImplementationOnce(() => Promise.reject(new Error('Index unavailable')))
+		try {
+			const manifest = fetchJson<PageManifest>(host, '/index.json')
+			// Arrives while the resolution runs, and answers once it failed.
+			expect((await save(host, [])).body).toEqual({ updated: 0 })
+			const { status, body } = await manifest
+			expect(reindex).toHaveBeenCalledTimes(1)
+			expect(status).toBe(200)
+			expect(entryWithText(body, 'Post number 0').sourcePath).toBeUndefined()
+
+			expect((await save(host, [])).body).toEqual({ updated: 0 })
+			expect((await fetchJson<PageManifest>(host, '/index.json')).status).toBe(200)
+		} finally {
+			reindex.mockRestore()
+		}
 	})
 })
 
