@@ -8,6 +8,7 @@ import {
 	type EditorHostOptions,
 } from '@nuasite/cms/editor-host'
 import { describe, expect, spyOn, test } from 'bun:test'
+import * as sourceFinder from '../../src/source-finder/index.ts'
 import type { ComponentInstance, ManifestEntry, PageSeoData } from '../../src/types'
 import { createMemoryFileSystem, type MemoryFileSystem } from '../utils/memory-fs'
 
@@ -487,7 +488,117 @@ describe('createEditorHost source resolution after a page', () => {
 		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
 		expect(yields.count()).toBe(0)
 	})
+
+	test('without sourcesOnDemand, the resolution starts after the page before any request', async () => {
+		const fs = projectWithPosts(120)
+		const host = await hostOver(fs)
+		const reads = postReads(fs)
+		await host.processPage('/', POSTS_PAGE)
+		await idle()
+
+		expect(reads.length).toBeGreaterThan(0)
+	})
+
+	test('with sourcesOnDemand, nothing is resolved or handed to waitUntil past the page, and its first manifest request resolves the sources', async () => {
+		const fs = projectWithPosts(120)
+		const host = await hostOver(fs)
+		const reads = postReads(fs)
+		const handed: Promise<unknown>[] = []
+		await host.processPage('/', POSTS_PAGE, { waitUntil: work => handed.push(work), sourcesOnDemand: true })
+		await idle()
+
+		expect(handed).toEqual([])
+		expect(reads).toEqual([])
+		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(reads.length).toBeGreaterThan(0)
+		expect(entryWithText(body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+		expect(entryWithText(body, 'Post number 1').sourcePath).toBe('src/content/posts/post-1.md')
+	})
+
+	test('with sourcesOnDemand, an editor API request resolves the sources of the processed pages first', async () => {
+		const fs = projectWithPosts(120)
+		const host = await hostOver(fs)
+		const reads = postReads(fs)
+		await host.processPage('/', POSTS_PAGE, { sourcesOnDemand: true })
+		await idle()
+
+		expect(reads).toEqual([])
+		await save(host, [])
+		expect(reads.length).toBeGreaterThan(0)
+	})
+
+	test('with sourcesOnDemand, a page processed again is resolved from its latest render', async () => {
+		const fs = projectWithPosts(120)
+		const host = await hostOver(fs)
+		await host.processPage('/', POSTS_PAGE, { sourcesOnDemand: true })
+		await host.processPage('/', '<html><body><h2>Post number 2</h2></body></html>', { sourcesOnDemand: true })
+
+		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(Object.values(body.entries).map(entry => [entry.text, entry.sourcePath])).toEqual([['Post number 2', 'src/content/posts/post-2.md']])
+	})
+
+	test('with sourcesOnDemand, a page processed again without it keeps the manifest of its latest render', async () => {
+		const host = await hostOver(projectWithPosts(120))
+		await host.processPage('/', POSTS_PAGE, { sourcesOnDemand: true })
+		await host.processPage('/', '<html><body><h2>Post number 2</h2></body></html>')
+
+		const { body } = await fetchJson<PageManifest>(host, '/index.json')
+		expect(Object.values(body.entries).map(entry => [entry.text, entry.sourcePath])).toEqual([['Post number 2', 'src/content/posts/post-2.md']])
+	})
+
+	test('with sourcesOnDemand, a save that arrives while a manifest request resolves the page waits for it and succeeds', async () => {
+		// The change the editor sends, taken from another host that resolved the same page.
+		const reference = await hostOver(projectWithPosts(120))
+		await reference.processPage('/', POSTS_PAGE)
+		const { body: resolved } = await fetchJson<PageManifest>(reference, '/index.json')
+		const change = textChange(entryWithText(resolved, 'Post number 0'), 'First post')
+
+		const fs = projectWithPosts(120)
+		const host = await hostOver(fs)
+		await host.processPage('/', POSTS_PAGE, { sourcesOnDemand: true })
+		const manifest = fetchJson<PageManifest>(host, '/index.json')
+		const { body } = await save(host, [change])
+
+		expect(body).toEqual({ updated: 1 })
+		expect(await fs.readFile('src/content/posts/post-0.md')).toContain('title: First post')
+		// A save that did not wait rewrites the post while the resolution looks for its old text, which then stays unplaced.
+		expect(entryWithText((await manifest).body, 'Post number 0').sourcePath).toBe('src/content/posts/post-0.md')
+	})
+
+	test('with sourcesOnDemand, a resolution that fails still answers the manifest, and later requests do not wait for it', async () => {
+		const host = await hostOver(projectWithPosts(120))
+		await host.processPage('/', POSTS_PAGE, { sourcesOnDemand: true })
+		const reindex = spyOn(sourceFinder, 'reindexDirtyFiles').mockImplementationOnce(() => Promise.reject(new Error('Index unavailable')))
+		try {
+			const manifest = fetchJson<PageManifest>(host, '/index.json')
+			// Arrives while the resolution runs, and answers once it failed.
+			expect((await save(host, [])).body).toEqual({ updated: 0 })
+			const { status, body } = await manifest
+			expect(reindex).toHaveBeenCalledTimes(1)
+			expect(status).toBe(200)
+			expect(entryWithText(body, 'Post number 0').sourcePath).toBeUndefined()
+
+			expect((await save(host, [])).body).toEqual({ updated: 0 })
+			expect((await fetchJson<PageManifest>(host, '/index.json')).status).toBe(200)
+		} finally {
+			reindex.mockRestore()
+		}
+	})
 })
+
+/** Records the reads of the posts once the host has started: only the source resolution reads them past the definitions scan. */
+function postReads(fs: MemoryFileSystem): string[] {
+	const read: string[] = []
+	const readFile = fs.readFile
+	fs.readFile = path => {
+		if (path.includes('src/content/posts/')) read.push(path)
+		return readFile(path)
+	}
+	return read
+}
+
+/** Lets work started past the page run. */
+const idle = () => new Promise(resolve => setTimeout(resolve, 10))
 
 const BASE_LAYOUT = `---
 const { title, description } = Astro.props

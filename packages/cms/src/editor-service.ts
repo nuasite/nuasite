@@ -85,6 +85,10 @@ export class EditorService {
 	 * never receives entries without `sourcePath`, which it would treat as locked.
 	 */
 	private readonly pendingPhase2 = new Map<string, Promise<void>>()
+	/** Source resolution of pages processed with `sourcesOnDemand`, not started until something reads the page's manifest. */
+	private readonly deferredPhase2 = new Map<string, () => Promise<void>>()
+	/** Resolutions from {@link deferredPhase2} that a request has started and that are still running. */
+	private readonly startedOnDemand = new Set<Promise<void>>()
 	/** On-demand source searches in flight, by page and entry, so repeated clicks share one search. */
 	private readonly pendingEntrySearch = new Map<string, Promise<void>>()
 	/** Entries a search found no source for; a new render of the page brings new entry objects. */
@@ -106,33 +110,76 @@ export class EditorService {
 	 * Mark a rendered page and record its manifest. Returns the marked HTML as soon as the
 	 * elements are marked; their source locations are resolved after that, and
 	 * {@link pageManifest} waits for them. With `waitUntil`, that resolution is handed to it and
-	 * gives the event loop a turn between chunks of files.
+	 * gives the event loop a turn between chunks of files. With `sourcesOnDemand`, it starts only
+	 * when the page's manifest or an API request needs it, so nothing runs past the page's response.
 	 */
-	processPage(pagePath: string, html: string, waitUntil?: (work: Promise<unknown>) => void): Promise<string> {
+	processPage(
+		pagePath: string,
+		html: string,
+		options: { waitUntil?: (work: Promise<unknown>) => void; sourcesOnDemand?: boolean } = {},
+	): Promise<string> {
+		const { waitUntil } = options
 		return runInProjectContext(this.context, async () => {
-			const marked = await markHtml(html, pagePath, this.config, this.manifestWriter)
-			this.manifestWriter.addPage(pagePath, marked.entries, marked.components, marked.collection, marked.seo)
-			const resolveSources = () =>
-				enhanceManifestInBackground(
-					pagePath,
-					marked.entries,
-					marked.components,
-					marked.collection,
-					marked.seo,
-					marked.collectionDefinitions,
-					this.config,
-					this.manifestWriter,
-				)
+			const { html: markedHtml, ...sources } = await markHtml(html, pagePath, this.config, this.manifestWriter)
+			this.manifestWriter.addPage(pagePath, sources.entries, sources.components, sources.collection, sources.seo)
+			this.deferredPhase2.delete(pagePath)
+			if (options.sourcesOnDemand) {
+				this.deferPhase2(pagePath, sources)
+				return markedHtml
+			}
+			const resolveSources = () => this.resolveSources(pagePath, sources)
 			// Yielding only when the host keeps the work alive: a host that does not may drop a timer once its request ends.
-			const phase2 = waitUntil ? runYieldingToHost(resolveSources) : resolveSources()
-			this.pendingPhase2.set(pagePath, phase2)
-			phase2.finally(() => {
-				if (this.pendingPhase2.get(pagePath) === phase2) this.pendingPhase2.delete(pagePath)
-			})
+			const phase2 = this.trackPhase2(pagePath, waitUntil ? runYieldingToHost(resolveSources) : resolveSources())
 			// After the work is recorded: the manifest waits for it even if `waitUntil` throws.
 			waitUntil?.(phase2)
-			return marked.html
+			return markedHtml
 		})
+	}
+
+	private resolveSources(pagePath: string, sources: SourceResolutionInput): Promise<void> {
+		return enhanceManifestInBackground(
+			pagePath,
+			sources.entries,
+			sources.components,
+			sources.collection,
+			sources.seo,
+			sources.collectionDefinitions,
+			this.config,
+			this.manifestWriter,
+		)
+	}
+
+	/** Records the resolution for later; a method of its own, so the closure holds neither the input nor the marked HTML. */
+	private deferPhase2(pagePath: string, sources: SourceResolutionInput): void {
+		this.deferredPhase2.set(pagePath, () =>
+			runInProjectContext(this.context, () =>
+				// The request that starts it waits for it, so it may yield: that request keeps it alive.
+				runYieldingToHost(async () => {
+					// As the page render does: files invalidated since then are indexed again before the lookup.
+					await reindexDirtyFiles()
+					await this.resolveSources(pagePath, sources)
+				})))
+	}
+
+	private trackPhase2(pagePath: string, phase2: Promise<void>): Promise<void> {
+		this.pendingPhase2.set(pagePath, phase2)
+		const forget = () => {
+			if (this.pendingPhase2.get(pagePath) === phase2) this.pendingPhase2.delete(pagePath)
+		}
+		phase2.then(forget, forget)
+		return phase2
+	}
+
+	/** The page's source resolution in flight, started first if it was left for on demand. */
+	private phase2Of(pagePath: string): Promise<void> | undefined {
+		const deferred = this.deferredPhase2.get(pagePath)
+		if (deferred === undefined) return this.pendingPhase2.get(pagePath)
+		this.deferredPhase2.delete(pagePath)
+		const phase2 = this.trackPhase2(pagePath, deferred())
+		this.startedOnDemand.add(phase2)
+		const forget = () => this.startedOnDemand.delete(phase2)
+		phase2.then(forget, forget)
+		return phase2
 	}
 
 	/**
@@ -141,7 +188,7 @@ export class EditorService {
 	 * for across the project before the manifest is returned.
 	 */
 	async pageManifest(pagePath: string, options: { locateEntry?: string } = {}): Promise<PageManifestResponse | undefined> {
-		const inFlight = this.pendingPhase2.get(pagePath)
+		const inFlight = this.phase2Of(pagePath)
 		if (inFlight) {
 			try {
 				await inFlight
@@ -221,12 +268,18 @@ export class EditorService {
 	handleApi(route: string, request: Request): Promise<Response> | undefined {
 		const api = this.api
 		if (!api) return undefined
-		return runInProjectContext(
-			this.context,
-			() => handleCmsApiRequest(route, request, { ...api, manifestWriter: this.manifestWriter, projectRoot: this.context.root }),
-		)
+		return runInProjectContext(this.context, async () => {
+			// The handlers read page manifests: sources left for on demand, deferred or already started, are resolved first.
+			for (const pagePath of [...this.deferredPhase2.keys()]) this.phase2Of(pagePath)
+			// A failed resolution leaves the manifest partial, as the manifest request serves it.
+			await Promise.allSettled(this.startedOnDemand)
+			return handleCmsApiRequest(route, request, { ...api, manifestWriter: this.manifestWriter, projectRoot: this.context.root })
+		})
 	}
 }
+
+/** What the source resolution of a page reads from its marked render: all of it but the HTML. */
+type SourceResolutionInput = Omit<Awaited<ReturnType<typeof markHtml>>, 'html'>
 
 /**
  * Phase 1 (fast): Mark HTML with CMS IDs and build basic manifest entries.
