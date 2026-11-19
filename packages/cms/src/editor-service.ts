@@ -118,31 +118,40 @@ export class EditorService {
 	): Promise<string> {
 		const { waitUntil } = options
 		return runInProjectContext(this.context, async () => {
-			const marked = await markHtml(html, pagePath, this.config, this.manifestWriter)
-			this.manifestWriter.addPage(pagePath, marked.entries, marked.components, marked.collection, marked.seo)
+			const { html: markedHtml, ...sources } = await markHtml(html, pagePath, this.config, this.manifestWriter)
+			this.manifestWriter.addPage(pagePath, sources.entries, sources.components, sources.collection, sources.seo)
 			this.deferredPhase2.delete(pagePath)
-			const resolveSources = () =>
-				enhanceManifestInBackground(
-					pagePath,
-					marked.entries,
-					marked.components,
-					marked.collection,
-					marked.seo,
-					marked.collectionDefinitions,
-					this.config,
-					this.manifestWriter,
-				)
 			if (options.sourcesOnDemand) {
-				// The request that starts it waits for it, so it may yield: that request keeps it alive.
-				this.deferredPhase2.set(pagePath, () => runInProjectContext(this.context, () => runYieldingToHost(resolveSources)))
-				return marked.html
+				this.deferPhase2(pagePath, sources)
+				return markedHtml
 			}
+			const resolveSources = () => this.resolveSources(pagePath, sources)
 			// Yielding only when the host keeps the work alive: a host that does not may drop a timer once its request ends.
 			const phase2 = this.trackPhase2(pagePath, waitUntil ? runYieldingToHost(resolveSources) : resolveSources())
 			// After the work is recorded: the manifest waits for it even if `waitUntil` throws.
 			waitUntil?.(phase2)
-			return marked.html
+			return markedHtml
 		})
+	}
+
+	private resolveSources(pagePath: string, sources: SourceResolutionInput): Promise<void> {
+		return enhanceManifestInBackground(
+			pagePath,
+			sources.entries,
+			sources.components,
+			sources.collection,
+			sources.seo,
+			sources.collectionDefinitions,
+			this.config,
+			this.manifestWriter,
+		)
+	}
+
+	/** Records the resolution for later; a method of its own, so the closure holds neither the input nor the marked HTML. */
+	private deferPhase2(pagePath: string, sources: SourceResolutionInput): void {
+		this.deferredPhase2.set(pagePath, () =>
+			// The request that starts it waits for it, so it may yield: that request keeps it alive.
+			runInProjectContext(this.context, () => runYieldingToHost(() => this.resolveSources(pagePath, sources))))
 	}
 
 	private trackPhase2(pagePath: string, phase2: Promise<void>): Promise<void> {
@@ -254,6 +263,9 @@ export class EditorService {
 		})
 	}
 }
+
+/** What the source resolution of a page reads from its marked render: all of it but the HTML. */
+type SourceResolutionInput = Omit<Awaited<ReturnType<typeof markHtml>>, 'html'>
 
 /**
  * Phase 1 (fast): Mark HTML with CMS IDs and build basic manifest entries.
