@@ -850,6 +850,132 @@ describe('createEditorHost head of a page', () => {
 	})
 })
 
+describe('createEditorHost definitions after an invalidate', () => {
+	const POST = '---\ntitle: First post\n---\nBody\n'
+	const STYLES = '@import "tailwindcss";\n@theme {\n  --color-brand: #123456;\n}\n'
+
+	function site(): MemoryFileSystem {
+		return createMemoryFileSystem({
+			'src/pages/index.astro': PAGE,
+			'src/components/Card.astro': CARD,
+			'src/content/posts/first.md': POST,
+			'src/content/posts/second.md': POST.replace('First', 'Second'),
+			'src/styles/global.css': STYLES,
+		})
+	}
+
+	/** Records the reads a scan of each part of the definitions makes: component files, collection entries, stylesheets. */
+	function scanReads(fs: MemoryFileSystem) {
+		const reads = { components: [] as string[], entries: [] as string[], styles: [] as string[] }
+		const readFile = fs.readFile
+		fs.readFile = path => {
+			if (path.includes('src/components/')) reads.components.push(path)
+			if (path.includes('src/content/')) reads.entries.push(path)
+			if (path.endsWith('.css')) reads.styles.push(path)
+			return readFile(path)
+		}
+		const reset = () => {
+			reads.components.length = 0
+			reads.entries.length = 0
+			reads.styles.length = 0
+		}
+		return { reads, reset }
+	}
+
+	interface GlobalManifest {
+		componentDefinitions: Record<string, unknown>
+		collectionDefinitions: Record<string, { entryCount: number }>
+		availableColors?: { colors: Array<{ name: string }> }
+	}
+
+	test('a component change re-reads no collection entry, an Astro config change re-reads them all', async () => {
+		const fs = site()
+		const { reads, reset } = scanReads(fs)
+		const host = await hostOver(fs)
+
+		reset()
+		await fs.writeFile('src/components/Hero.astro', '<section>Hero</section>\n')
+		host.invalidate(['src/components/Hero.astro'])
+		const { body: afterComponent } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(Object.keys(afterComponent.componentDefinitions).sort()).toEqual(['Card', 'Hero'])
+		expect(reads.components.length).toBeGreaterThan(0)
+		expect(reads.entries).toEqual([])
+		expect(afterComponent.collectionDefinitions.posts?.entryCount).toBe(2)
+
+		reset()
+		host.invalidate(['astro.config.mjs'])
+		const { body: afterConfig } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(reads.entries.map(path => path.slice(path.indexOf('src/'))).sort()).toEqual(['src/content/posts/first.md', 'src/content/posts/second.md'])
+		expect(reads.components.length).toBeGreaterThan(0)
+		expect(reads.styles.length).toBeGreaterThan(0)
+		expect(afterConfig).toEqual(afterComponent)
+	})
+
+	test('a content change re-reads only the collections, a stylesheet change only the colors and text styles', async () => {
+		const fs = site()
+		const { reads, reset } = scanReads(fs)
+		const host = await hostOver(fs)
+
+		reset()
+		await fs.writeFile('src/content/posts/third.md', POST.replace('First', 'Third'))
+		host.invalidate(['src/content/posts/third.md'])
+		const { body: afterEntry } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(afterEntry.collectionDefinitions.posts?.entryCount).toBe(3)
+		expect(reads.entries.length).toBeGreaterThan(0)
+		expect(reads.components).toEqual([])
+		expect(reads.styles).toEqual([])
+
+		reset()
+		await fs.writeFile('src/styles/global.css', STYLES.replace('--color-brand', '--color-accent'))
+		host.invalidate(['src/styles/global.css'])
+		const { body: afterStyles } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(afterStyles.availableColors?.colors.map(color => color.name)).toContain('accent')
+		expect(reads.styles.length).toBeGreaterThan(0)
+		expect(reads.components).toEqual([])
+		expect(reads.entries).toEqual([])
+		expect(Object.keys(afterStyles.componentDefinitions)).toEqual(['Card'])
+		expect(afterStyles.collectionDefinitions.posts?.entryCount).toBe(3)
+	})
+
+	test('a page path change re-reads no definition', async () => {
+		const fs = site()
+		const { reads, reset } = scanReads(fs)
+		const host = await hostOver(fs)
+
+		reset()
+		await fs.writeFile('src/pages/index.astro', PAGE.replace('Hello world', 'Welcome'))
+		host.invalidate(['src/pages/index.astro'])
+		await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(reads).toEqual({ components: [], entries: [], styles: [] })
+	})
+
+	test('a change in a collection loaded from outside the content directory re-reads the collections', async () => {
+		const fs = createMemoryFileSystem({
+			'src/pages/index.astro': PAGE,
+			'src/components/Card.astro': CARD,
+			'src/content.config.ts': [
+				`import { defineCollection } from 'astro:content'`,
+				`import { glob } from 'astro/loaders'`,
+				`const posts = defineCollection({ loader: glob({ pattern: '*.md', base: './src/data/posts' }) })`,
+				`export const collections = { posts }`,
+			].join('\n'),
+			'src/data/posts/first.md': POST,
+		})
+		const host = await hostOver(fs)
+
+		await fs.writeFile('src/data/posts/second.md', POST.replace('First', 'Second'))
+		host.invalidate(['src/data/posts/second.md'])
+		const { body } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(body.collectionDefinitions.posts?.entryCount).toBe(2)
+	})
+})
+
 describe('createEditorHost with a definitions store', () => {
 	const POST = '---\ntitle: First post\n---\nBody\n'
 
@@ -1136,6 +1262,98 @@ describe('createEditorHost with a definitions store', () => {
 		} finally {
 			logged.mockRestore()
 		}
+	})
+
+	test('a component change saves whole definitions under the new revision without reading an entry', async () => {
+		const fs = projectWithPosts()
+		const reads = countScanReads(fs)
+		const { store, state, savedAt } = revisionStore()
+		const host = await hostOver(fs, { definitions: store, collections: { posts: { label: 'Articles' } } })
+		await settle()
+
+		reads.length = 0
+		await fs.writeFile('src/components/Hero.astro', '<section>Hero</section>\n')
+		state.revision = 2
+		host.invalidate(['src/components/Hero.astro'])
+		await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await settle()
+
+		expect(reads.filter(path => path.startsWith('src/content/'))).toEqual([])
+		const saved = savedAt(2)
+		expect(Object.keys(saved?.components ?? {}).sort()).toEqual(['Card', 'Hero'])
+		// As scanned: the overrides the host laid over its collections are not saved.
+		expect(saved?.collections).toEqual(savedAt(1)?.collections)
+		expect(saved?.colors).toEqual(savedAt(1)?.colors)
+	})
+
+	test('after a write through the editor API, a component change saves the collections as the files are now', async () => {
+		const fs = projectWithPosts()
+		const { store, state, savedAt } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+		await settle()
+
+		const created = await fetchJson<{ success: boolean }>(host, '/_nua/cms/markdown/create', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ collection: 'posts', title: 'Third post', slug: 'third' }),
+		})
+		expect(created.body.success).toBe(true)
+
+		await fs.writeFile('src/components/Hero.astro', '<section>Hero</section>\n')
+		state.revision = 2
+		host.invalidate(['src/components/Hero.astro'])
+		const { body } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await settle()
+
+		expect(body.collectionDefinitions.posts?.entryCount).toBe(3)
+		expect(savedAt(2)?.collections.posts?.entryCount).toBe(3)
+		expect(Object.keys(savedAt(2)?.components ?? {}).sort()).toEqual(['Card', 'Hero'])
+	})
+
+	/** Delays each read of a collection entry by `delay.ms`, as a slow remote storage would. */
+	function slowEntryReads(fs: MemoryFileSystem): { ms: number } {
+		const delay = { ms: 0 }
+		const readFile = fs.readFile
+		fs.readFile = async path => {
+			if (delay.ms > 0 && path.startsWith('src/content/')) await new Promise(resolve => setTimeout(resolve, delay.ms))
+			return readFile(path)
+		}
+		return delay
+	}
+
+	test('a component load beside a collection load still running is served, and saved only once no other part loads', async () => {
+		const fs = projectWithPosts()
+		const { store, state, savedAt } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+		const delay = slowEntryReads(fs)
+
+		await fs.writeFile('src/content/posts/third.md', POST.replace('First', 'Third'))
+		state.revision = 2
+		host.invalidate(['src/content/posts/third.md'])
+		delay.ms = 50
+		const slow = fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await new Promise(resolve => setTimeout(resolve, 5))
+
+		await fs.writeFile('src/components/Hero.astro', '<section>Hero</section>\n')
+		state.revision = 3
+		host.invalidate(['src/components/Hero.astro'])
+		delay.ms = 0
+		const { body: both } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await slow
+		await settle()
+
+		expect(Object.keys(both.componentDefinitions).sort()).toEqual(['Card', 'Hero'])
+		expect(both.collectionDefinitions.posts?.entryCount).toBe(3)
+		// Neither is saved: the collection load was superseded, and the component load ran beside it.
+		expect(savedAt(2)).toBeUndefined()
+		expect(savedAt(3)).toBeUndefined()
+
+		state.revision = 4
+		host.invalidate(['src/components/Card.astro'])
+		await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await settle()
+		expect(Object.keys(savedAt(4)?.components ?? {}).sort()).toEqual(['Card', 'Hero'])
+		expect(savedAt(4)?.collections.posts?.entries?.length).toBe(3)
 	})
 
 	test('a load that failed is not kept: the next use loads again', async () => {
