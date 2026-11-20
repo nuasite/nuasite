@@ -45,12 +45,25 @@ export function parseCheckArgs(args: string[], cwd: string): CheckOptions {
 	}
 }
 
-/** `--flag a.css,b.astro` or `--flag=a.css,b.astro`, as normalized paths; null without the flag. */
+/** An argv `nua check` cannot run with; the CLI prints it and exits with 2. */
+export class CheckUsageError extends Error {
+	override name = 'CheckUsageError'
+}
+
+/**
+ * `--flag a.css,b.astro` or `--flag=a.css,b.astro`, as normalized paths; null without the flag. `--flag=` is an
+ * empty list. A flag with no value is refused: taking the next flag (`--files --json`) as the list, or nothing at
+ * all, would check none of the files the caller meant and still report a pass.
+ */
 function parseFileList(args: string[], name: '--fail-on' | '--files'): string[] | null {
 	const index = args.findIndex(arg => arg === name || arg.startsWith(`${name}=`))
 	if (index === -1) return null
 	const flag = args[index]!
-	const value = flag === name ? args[index + 1] ?? '' : flag.slice(name.length + 1)
+	const next = args[index + 1]
+	if (flag === name && (next === undefined || next.startsWith('--'))) {
+		throw new CheckUsageError(`${name} needs a comma-separated list of files, e.g. ${name} src/pages/index.astro (${name}= for none).`)
+	}
+	const value = flag === name ? next ?? '' : flag.slice(name.length + 1)
 	return value.split(',').map(file => file.trim()).filter(Boolean).map(file => path.normalize(file))
 }
 
@@ -85,7 +98,9 @@ const relativeToCwd = (cwd: string, files: string[]): string[] => files.map(file
 
 /** The listed files inside one Astro root, relative to that root. */
 function filesInRoot(listed: string[], root: string): Set<string> {
-	return new Set(listed.map(file => path.relative(root, file)).filter(file => !file.startsWith('..') && !path.isAbsolute(file)))
+	return new Set(
+		listed.map(file => path.relative(root, file)).filter(file => file !== '..' && !file.startsWith(`..${path.sep}`) && !path.isAbsolute(file)),
+	)
 }
 
 /** Re-root a sub-project's findings on the directory the command was run from. */
@@ -157,15 +172,19 @@ export async function check(options: CheckOptions): Promise<number> {
 	const failing = failOn === null
 		? errors
 		: report.findings.filter(finding => (finding.severity === 'error' || options.strict) && failOn.has(path.normalize(finding.file))).length
-	// A listed file the syntax pass did not read, e.g. a `.js`, one in `public/` or outside every Astro project:
-	// nothing here parsed it, so it is named rather than counted, and the summary cannot read as a pass for it.
+	// A listed file the syntax pass did not read, e.g. a `.js`, one in `public/` or outside every Astro project, a
+	// mistyped path: nothing here parsed it, so it is named rather than counted, and the summary cannot read as a pass for it.
 	const parsed = new Set(reports.flatMap(one => one.paths))
-	const unchecked = failOn === null ? [] : [...failOn].filter(file => !parsed.has(file))
+	const unparsed = (files: Iterable<string> | null): string[] => files === null ? [] : [...files].filter(file => !parsed.has(file))
+	const unchecked = unparsed(failOn)
+	const filesUnchecked = unparsed(listed)
+	const named = [...new Set([...unchecked, ...filesUnchecked])]
 
 	if (options.json) {
 		// The reason belongs inside the payload: a stray line would break anything parsing this.
 		const failOnErrors = failOn === null ? {} : { failOnErrors: failing, failOnUnchecked: unchecked }
-		console.log(JSON.stringify({ ...report, roots, liveSchemas: 'schemas' in live ? 'ran' : live.skipped, ...failOnErrors }, null, 2))
+		const filesReport = listed === null ? {} : { filesUnchecked }
+		console.log(JSON.stringify({ ...report, roots, liveSchemas: 'schemas' in live ? 'ran' : live.skipped, ...failOnErrors, ...filesReport }, null, 2))
 	} else {
 		const formatted = formatCheckReport(report)
 		if (formatted) console.log(formatted + '\n')
@@ -182,9 +201,9 @@ export async function check(options: CheckOptions): Promise<number> {
 					? `No errors in the ${covered} file(s) given to --fail-on that were checked.`
 					: `${failing} problem(s) in the files given to --fail-on. Fix them before going on.`,
 			)
-			if (unchecked.length > 0) {
-				console.log(`Not parsed by this run (a content entry is still checked with its collection): ${unchecked.join(', ')}`)
-			}
+		}
+		if (named.length > 0) {
+			console.log(`Not parsed by this run (a content entry is still checked with its collection): ${named.join(', ')}`)
 		}
 	}
 

@@ -44,7 +44,7 @@ function messageOf(error: unknown): string {
 }
 
 /** Bun's transpiler as the script parser: its positions are 1-based lines and 0-based columns. */
-function parseWithBun(code: string, loader: 'ts' | 'tsx'): ScriptSyntaxError | null {
+async function parseWithBun(code: string, loader: 'ts' | 'tsx'): Promise<ScriptSyntaxError | null> {
 	try {
 		new Bun.Transpiler({ loader }).transformSync(code)
 		return null

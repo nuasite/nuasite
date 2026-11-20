@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { astroRoots, check, type CheckOptions, parseCheckArgs } from '../src/check'
+import { astroRoots, check, type CheckOptions, CheckUsageError, parseCheckArgs } from '../src/check'
 
 // Running the check at a monorepo root has to work: that is where an agent's workspace starts,
 // and `bun run build` there builds admin/api/worker instead of the site — which is exactly how
@@ -87,7 +87,13 @@ describe('parseCheckArgs', () => {
 	test('--fail-on takes a comma-separated list, as the next argument or after =', () => {
 		expect(parseCheckArgs(['--fail-on', 'src/a.css,./src/pages/index.astro'], '/repo').failOn).toEqual(['src/a.css', 'src/pages/index.astro'])
 		expect(parseCheckArgs(['--fail-on=src/a.css', '--json'], '/repo')).toMatchObject({ failOn: ['src/a.css'], json: true })
-		expect(parseCheckArgs(['--fail-on'], '/repo').failOn).toEqual([])
+		expect(parseCheckArgs(['--fail-on='], '/repo').failOn).toEqual([])
+	})
+
+	// Taking the next flag as the list, or nothing, would check none of the files meant and still pass.
+	test('a list flag without its value is refused', () => {
+		expect(() => parseCheckArgs(['--fail-on'], '/repo')).toThrow(CheckUsageError)
+		expect(() => parseCheckArgs(['--files', '--json'], '/repo')).toThrow(CheckUsageError)
 	})
 
 	test('--files takes a list the same way, independently of --fail-on', () => {
@@ -329,17 +335,27 @@ describe('check --files', () => {
 		await fs.rm(workspace, { recursive: true, force: true })
 	})
 
-	async function report(files: string[] | null): Promise<{ code: number; findings: { code: string; file: string; line?: number }[] }> {
+	interface Report {
+		findings: { code: string; file: string; line?: number }[]
+		filesUnchecked?: string[]
+	}
+
+	async function run(files: string[] | null): Promise<{ code: number; report: Report }> {
 		const lines: string[] = []
 		const original = console.log
 		console.log = (...args: unknown[]) => lines.push(args.join(' '))
 		try {
 			const code = await check({ cwd: workspace, json: true, strict: false, contentOnly: false, live: false, failOn: null, files })
-			const parsed: { findings: { code: string; file: string; line?: number }[] } = JSON.parse(lines.join('\n'))
-			return { code, findings: parsed.findings }
+			const report: Report = JSON.parse(lines.join('\n'))
+			return { code, report }
 		} finally {
 			console.log = original
 		}
+	}
+
+	async function report(files: string[] | null): Promise<{ code: number; findings: Report['findings'] }> {
+		const { code, report } = await run(files)
+		return { code, findings: report.findings }
 	}
 
 	test('a broken file that is not listed is not parsed', async () => {
@@ -354,6 +370,22 @@ describe('check --files', () => {
 
 	test('an empty list parses nothing', async () => {
 		expect(await report([])).toEqual({ code: 0, findings: [] })
+	})
+
+	test('a file listed by its absolute path is parsed', async () => {
+		const { code, findings } = await report([path.join(workspace, 'packages/web/src/components/Header.astro')])
+		expect(code).toBe(1)
+		expect(findings.map(finding => finding.code)).toEqual(['code/syntax'])
+	})
+
+	// A gate that passes because it parsed nothing must say so: a typo, or a path relative to the site run from the root.
+	test('a listed file that was not parsed is named, without --fail-on too', async () => {
+		const { code, report } = await run(['packages/web/src/components/Headr.astro', 'src/components/Header.astro'])
+		expect(code).toBe(0)
+		expect(report.filesUnchecked).toEqual([
+			path.join('packages', 'web', 'src', 'components', 'Headr.astro'),
+			path.join('src', 'components', 'Header.astro'),
+		])
 	})
 
 	test('without it every source file is parsed', async () => {

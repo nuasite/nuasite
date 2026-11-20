@@ -112,8 +112,10 @@ pass; a content entry among them is still checked with its collection.
 
 `--files` limits the source parse to the files it lists, in the same format. Parsing is
 the slow part of the check on a large site, and a gate on a change only needs the files
-the change touched. Give the same list to `--fail-on` to fail on them and to have a listed
-file that was not parsed named.
+the change touched. A listed file it did not parse (a mistyped path, one outside every Astro
+project, a `.js`) is named in the output, and as `filesUnchecked` in `--json`. Give the same
+list to `--fail-on` to fail only on errors in those files. A flag without a value is refused
+(exit 2); `--files=` checks no source file.
 
 Use it instead of a full build when you only need to know whether the content is
 still valid: `astro build` validates the same things but costs the whole render

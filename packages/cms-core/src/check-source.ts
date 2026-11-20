@@ -56,7 +56,7 @@ export interface SourceCheckPorts {
 	/** Astro's `transform` of a component. Throws when the compiler gives up on the source. */
 	compileAstro(source: string, filename: string): Promise<CompiledAstro>
 	/** Parse TypeScript (`tsx` with JSX) without running it; null when it parses. */
-	parseScript(code: string, loader: 'ts' | 'tsx'): ScriptSyntaxError | null
+	parseScript(code: string, loader: 'ts' | 'tsx'): Promise<ScriptSyntaxError | null>
 }
 
 /**
@@ -78,8 +78,11 @@ function toSource(map: string, error: ScriptSyntaxError): { line?: number; colum
 	return { line: traced.line, column: traced.column + 1 }
 }
 
+/** The first line of what the compiler threw; a port may reject with a plain object that carries a message. */
 function compileFailure(error: unknown): string {
-	const message = error instanceof Error ? error.message : String(error)
+	const message = typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+		? error.message
+		: String(error)
 	return message.split('\n')[0]!
 }
 
@@ -96,7 +99,7 @@ export async function checkScriptSource(
 	filename: string = file,
 ): Promise<CheckFinding | null> {
 	if (kind !== 'astro') {
-		const error = ports.parseScript(source, kind)
+		const error = await ports.parseScript(source, kind)
 		if (error === null) return null
 		return {
 			severity: 'error',
@@ -114,7 +117,7 @@ export async function checkScriptSource(
 	} catch (error) {
 		return { severity: 'error', code: 'code/astro-parse', file, message: compileFailure(error) }
 	}
-	const error = ports.parseScript(compiled.code, 'ts')
+	const error = await ports.parseScript(compiled.code, 'ts')
 	if (error === null) return null
 	return { severity: 'error', code: 'code/syntax', file, ...toSource(compiled.map, error), message: error.message }
 }

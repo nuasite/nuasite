@@ -7,7 +7,7 @@ const MAP = JSON.stringify({ version: 3, sources: ['Header.astro'], names: [], m
 function ports(parse: (code: string, loader: 'ts' | 'tsx') => ScriptSyntaxError | null, compiled = 'compiled'): SourceCheckPorts {
 	return {
 		compileAstro: async () => ({ code: compiled, map: MAP }),
-		parseScript: parse,
+		parseScript: async (code, loader) => parse(code, loader),
 	}
 }
 
@@ -42,13 +42,33 @@ describe('checkScriptSource', () => {
 			compileAstro: async () => {
 				throw new Error('Unterminated frontmatter\nat line 1')
 			},
-			parseScript: () => null,
+			parseScript: async () => null,
 		}
 		expect(await checkScriptSource('src/Header.astro', '---', 'astro', failing)).toEqual({
 			severity: 'error',
 			code: 'code/astro-parse',
 			file: 'src/Header.astro',
 			message: 'Unterminated frontmatter',
+		})
+	})
+
+	test('an error the parser gives no position for names the file without one', async () => {
+		expect(await checkScriptSource('src/a.ts', 'x', 'ts', ports(() => ({ message: 'Syntax Error' })))).toEqual({
+			severity: 'error',
+			code: 'code/syntax',
+			file: 'src/a.ts',
+			message: 'Syntax Error',
+		})
+	})
+
+	test('a compiler port that rejects with a plain object is reported by its message', async () => {
+		const failing: SourceCheckPorts = {
+			compileAstro: () => Promise.reject({ message: 'The compiler service failed' }),
+			parseScript: async () => null,
+		}
+		expect(await checkScriptSource('src/A.astro', '', 'astro', failing)).toMatchObject({
+			code: 'code/astro-parse',
+			message: 'The compiler service failed',
 		})
 	})
 
@@ -76,7 +96,7 @@ describe('checkScriptSource', () => {
 				filenames.push(filename)
 				return { code: '', map: MAP }
 			},
-			parseScript: () => ({ message: 'x' }),
+			parseScript: async () => ({ message: 'x' }),
 		}
 		expect(await checkScriptSource('src/A.astro', '', 'astro', named, '/site/src/A.astro')).toMatchObject({ file: 'src/A.astro' })
 		expect(filenames).toEqual(['/site/src/A.astro'])

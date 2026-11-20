@@ -41,8 +41,16 @@ if (command && ['build', 'dev', 'preview'].includes(command)) {
 } else {
 	switch (command) {
 		case 'check': {
-			const { check, parseCheckArgs } = await import('./check')
-			process.exit(await check(parseCheckArgs(args, process.cwd())))
+			const { check, CheckUsageError, parseCheckArgs } = await import('./check')
+			let options: ReturnType<typeof parseCheckArgs>
+			try {
+				options = parseCheckArgs(args, process.cwd())
+			} catch (error) {
+				if (!(error instanceof CheckUsageError)) throw error
+				console.error(error.message)
+				process.exit(2)
+			}
+			process.exit(await check(options))
 			break
 		}
 		case 'init': {
