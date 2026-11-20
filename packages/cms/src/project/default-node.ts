@@ -1,9 +1,10 @@
-import { parse } from '@astrojs/compiler'
+import { parse, transform } from '@astrojs/compiler'
 import { type CmsFileSystem, createNodeFs } from '@nuasite/cms-core'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectContext } from './context.ts'
 import type { ProjectFiles } from './files.ts'
+import { type CompileAstro, guardSourceWrites } from './source-guard.ts'
 import { ProjectState } from './state.ts'
 
 // The context of the Astro integration and of code that runs outside any host context: the
@@ -33,6 +34,12 @@ const nodeFiles: ProjectFiles = {
 	stat: filePath => fs.stat(filePath),
 }
 
+/** The compiler of `node_modules`, which loads its own WASM. */
+export const nodeCompileAstro: CompileAstro = async (source, filename) => {
+	const { code, map } = await transform(source, { filename, sourcemap: 'external' })
+	return { code, map }
+}
+
 let portFor: { root: string; fs: CmsFileSystem } | null = null
 
 const context: ProjectContext = {
@@ -44,7 +51,7 @@ const context: ProjectContext = {
 		if (portFor?.root !== root) portFor = { root, fs: createNodeFs(root) }
 		return portFor.fs
 	},
-	files: nodeFiles,
+	files: guardSourceWrites(nodeFiles, () => context.root, nodeCompileAstro),
 	state: new ProjectState(),
 	parseAstro: parse,
 	mutate: mutation => mutation(),
@@ -58,7 +65,14 @@ const context: ProjectContext = {
  */
 export function createNodeProjectContext(projectRoot: string): ProjectContext {
 	const root = path.resolve(projectRoot)
-	return { root, fs: createNodeFs(root), files: nodeFiles, state: new ProjectState(), parseAstro: parse, mutate: mutation => mutation() }
+	return {
+		root,
+		fs: createNodeFs(root),
+		files: guardSourceWrites(nodeFiles, () => root, nodeCompileAstro),
+		state: new ProjectState(),
+		parseAstro: parse,
+		mutate: mutation => mutation(),
+	}
 }
 
 export function defaultProjectContext(): ProjectContext {

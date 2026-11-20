@@ -606,6 +606,7 @@ const host = await createEditorHost({
 	root: '/project', // how the HTML's source annotations spell the project root
 	fs, // a CmsFileSystem rooted there; every read and write goes through it
 	parseAstro, // `parse` of an initialized @astrojs/compiler
+	compileAstro, // `transform` of the same compiler: a save that leaves a .astro/.ts/.tsx file the build cannot parse is refused
 	commit, // optional CmsCommit: fences editor writes against other writers
 	media, // optional MediaStorageAdapter
 	definitions, // optional EditorDefinitionsStore: keeps the start scan across starts

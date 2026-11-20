@@ -4,6 +4,7 @@ import { type CmsCommit, type CmsFileSystem, createStagedFileSystem } from '@nua
 import { AsyncLocalStorage } from 'node:async_hooks'
 import path from 'node:path'
 import { createProjectFiles, type ProjectFiles } from './files.ts'
+import { type CompileAstro, guardSourceWrites } from './source-guard.ts'
 import { ProjectState } from './state.ts'
 
 export type AstroParse = typeof parse
@@ -45,23 +46,26 @@ export interface ProjectContextOptions {
 	root: string
 	fs: CmsFileSystem
 	parseAstro: AstroParse
+	/** Astro's `transform`, with which a write of a component is checked to still build. */
+	compileAstro: CompileAstro
 	/** Applies a mutation's changes; see {@link CmsCommit}. Without it, mutations write directly. */
 	commit?: CmsCommit
 }
 
 export function createProjectContext(options: ProjectContextOptions): ProjectContext {
-	const { root, fs, parseAstro, commit } = options
+	const { root, fs, parseAstro, compileAstro, commit } = options
+	const guarded = (files: ProjectFiles): ProjectFiles => guardSourceWrites(files, () => root, compileAstro)
 	const state = new ProjectState()
 	const context: ProjectContext = {
 		root,
 		fs,
-		files: createProjectFiles(fs, root),
+		files: guarded(createProjectFiles(fs, root)),
 		state,
 		parseAstro,
 		async mutate(mutation) {
 			if (commit === undefined) return mutation()
 			const staged = createStagedFileSystem(fs)
-			const stagedContext: ProjectContext = { ...context, fs: staged, files: createProjectFiles(staged, root), mutate: run => run() }
+			const stagedContext: ProjectContext = { ...context, fs: staged, files: guarded(createProjectFiles(staged, root)), mutate: run => run() }
 			const result = await runInProjectContext(stagedContext, mutation)
 			const changeset = staged.changeset()
 			await commit(changeset)

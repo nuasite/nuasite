@@ -9,6 +9,7 @@ import { ManifestWriter } from './manifest-writer.ts'
 import { resolveMarkerConfig } from './marker-config.ts'
 import type { MediaStorageAdapter } from './media/types.ts'
 import { type AstroParse, createProjectContext, runInProjectContext } from './project/context.ts'
+import type { CompileAstro } from './project/source-guard.ts'
 import { reloadClientScript } from './reload-client.ts'
 import { scanCollectionsWithoutOverrides } from './scan-cache.ts'
 import { parseTailwindConfig, parseTextStyles } from './tailwind-colors.ts'
@@ -28,6 +29,11 @@ export interface EditorHostOptions extends CmsMarkerOptions {
 	fs: CmsFileSystem
 	/** `parse` of an initialized `@astrojs/compiler`. */
 	parseAstro: AstroParse
+	/**
+	 * `transform` of the same compiler. A write that would leave a `.astro`, `.ts` or `.tsx` file the
+	 * site's build cannot parse is refused with it.
+	 */
+	compileAstro: CompileAstro
 	/**
 	 * Applies the changes of each editor write; see `CmsCommit`. A host whose files can change by
 	 * other means passes one, and a write based on files that changed meanwhile is then refused
@@ -138,7 +144,13 @@ export interface EditorHost {
  */
 export async function createEditorHost(options: EditorHostOptions): Promise<EditorHost> {
 	const config = resolveMarkerConfig(options)
-	const context = createProjectContext({ root: options.root, fs: options.fs, parseAstro: options.parseAstro, commit: options.commit })
+	const context = createProjectContext({
+		root: options.root,
+		fs: options.fs,
+		parseAstro: options.parseAstro,
+		compileAstro: options.compileAstro,
+		commit: options.commit,
+	})
 	const manifestWriter = new ManifestWriter(config.manifestFile)
 	const service = new EditorService({
 		context,

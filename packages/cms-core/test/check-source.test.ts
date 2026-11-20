@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { checkScriptSource, type ScriptSyntaxError, type SourceCheckPorts, type SourceKind, sourceKind } from '../src/check-source'
+import {
+	checkScriptSource,
+	parseScriptWithBabel,
+	type ScriptSyntaxError,
+	type SourceCheckPorts,
+	type SourceKind,
+	sourceKind,
+} from '../src/check-source'
 
 // Generated line 3, column 0 comes from source line 4, column 0 (`;;AAGA`).
 const MAP = JSON.stringify({ version: 3, sources: ['Header.astro'], names: [], mappings: ';;AAGA' })
@@ -127,5 +134,21 @@ describe('sourceKind', () => {
 		'src/scripts/menu.js',
 	])('%s is not read', file => {
 		expect(sourceKind(file)).toBeNull()
+	})
+})
+
+describe('parseScriptWithBabel', () => {
+	test('names the position babel stopped at, without repeating it in the message', async () => {
+		expect(await parseScriptWithBabel('export const list = [1, 2\n', 'ts')).toEqual({ message: 'Unexpected token, expected ","', line: 2, column: 0 })
+	})
+
+	test('reads JSX only with the tsx loader', async () => {
+		expect(await parseScriptWithBabel('export const Menu = () => <nav />\n', 'tsx')).toBeNull()
+		expect(await parseScriptWithBabel('export const Menu = () => <nav />\n', 'ts')).not.toBeNull()
+		expect(await parseScriptWithBabel('export const Menu = () => <nav>\n', 'tsx')).toMatchObject({ line: 1 })
+	})
+
+	test('a generic arrow function in TypeScript parses', async () => {
+		expect(await parseScriptWithBabel('export const id = <T,>(a: T) => a\n', 'ts')).toBeNull()
 	})
 })
