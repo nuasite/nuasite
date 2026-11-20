@@ -11,7 +11,7 @@
  * own: the CLI on Bun, a Worker over a compiler service and a JavaScript parser of its bundle.
  */
 
-import { parse as parseBabel } from '@babel/parser'
+import { parse as parseBabel, type ParserPlugin } from '@babel/parser'
 import { originalPositionFor, TraceMap } from '@jridgewell/trace-mapping'
 import type { CheckFinding } from './check.ts'
 
@@ -67,7 +67,9 @@ export interface SourceCheckPorts {
  */
 export async function parseScriptWithBabel(code: string, loader: 'ts' | 'tsx'): Promise<ScriptSyntaxError | null> {
 	try {
-		parseBabel(code, { sourceType: 'module', plugins: loader === 'tsx' ? ['typescript', 'jsx'] : ['typescript'] })
+		// Bun's transpiler accepts decorators, so the parser must too.
+		const syntax: ParserPlugin[] = ['typescript', ['decorators', { decoratorsBeforeExport: true }], 'decoratorAutoAccessors']
+		parseBabel(code, { sourceType: 'module', plugins: loader === 'tsx' ? [...syntax, 'jsx'] : syntax })
 		return null
 	} catch (error) {
 		if (!(error instanceof SyntaxError)) throw error

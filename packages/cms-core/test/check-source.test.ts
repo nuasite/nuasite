@@ -151,4 +151,9 @@ describe('parseScriptWithBabel', () => {
 	test('a generic arrow function in TypeScript parses', async () => {
 		expect(await parseScriptWithBabel('export const id = <T,>(a: T) => a\n', 'ts')).toBeNull()
 	})
+
+	test('decorators and auto-accessors parse, as Bun builds them', async () => {
+		expect(await parseScriptWithBabel('const d = (c: unknown) => c\n@d export class A { accessor x = 1 }\n', 'ts')).toBeNull()
+		expect(await parseScriptWithBabel('const d = (c: unknown) => c\n@d export class A { accessor x = 1 }\n', 'tsx')).toBeNull()
+	})
 })

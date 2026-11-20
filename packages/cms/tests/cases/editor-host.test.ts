@@ -128,6 +128,27 @@ describe('createEditorHost', () => {
 		expect(await fs.readFile('src/pages/index.astro')).toBe(PAGE)
 	})
 
+	test('with a commit, a refused change is never committed while the other file of the batch is', async () => {
+		const fs = project()
+		const committed: string[][] = []
+		const commit: CmsCommit = async changeset => {
+			committed.push(changeset.changes.map(change => change.path))
+			await commitChangeset(fs)(changeset)
+		}
+		const host = await hostOver(fs, { commit })
+		await host.processPage('/', renderedPage('/project'))
+		const { body: manifest } = await fetchJson<PageManifest>(host, '/index.json')
+		const heading = entryWithText(manifest, 'Hello world')
+
+		const { body } = await save(host, [textChange(heading, 'a <b c={ d'), textChange(entryWithText(manifest, 'Card title'), 'Renamed')])
+
+		expect(body.updated).toBe(1)
+		expect(body.errors).toEqual([{ cmsId: heading.id, error: expect.stringContaining('src/pages/index.astro:7:') }])
+		expect(committed).toEqual([['src/components/Card.astro']])
+		expect(await fs.readFile('src/pages/index.astro')).toBe(PAGE)
+		expect(await fs.readFile('src/components/Card.astro')).toContain('<h2>Renamed</h2>')
+	})
+
 	test('accepts annotations spelled relative to the root', async () => {
 		const fs = project()
 		const host = await hostOver(fs)

@@ -30,6 +30,7 @@ export function guardSourceWrites(files: ProjectFiles, root: () => string, compi
 	}
 
 	async function previousParses(filePath: string): Promise<boolean> {
+		// Unreadable counts as new, which is checked: the safe side, as the write is then refused rather than let through.
 		const previous = await files.readFile(filePath).catch(() => null)
 		return previous === null || await syntaxError(filePath, previous) === null
 	}

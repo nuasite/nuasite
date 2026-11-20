@@ -30,8 +30,9 @@ export interface EditorHostOptions extends CmsMarkerOptions {
 	/** `parse` of an initialized `@astrojs/compiler`. */
 	parseAstro: AstroParse
 	/**
-	 * `transform` of the same compiler. A write that would leave a `.astro`, `.ts` or `.tsx` file the
-	 * site's build cannot parse is refused with it.
+	 * One component compiled by the same compiler: `transform(source, { filename, sourcemap: 'external' })`,
+	 * returning its `code` and `map`. A write that would leave a `.astro`, `.ts` or `.tsx` file the site's
+	 * build cannot parse is refused with it.
 	 */
 	compileAstro: CompileAstro
 	/**
