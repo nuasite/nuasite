@@ -18,6 +18,11 @@ export interface CheckOptions {
 	 * that must not add a broken file but should not be blocked by one it did not touch.
 	 */
 	failOn: string[] | null
+	/**
+	 * Parse only these source files, relative to `cwd`; null parses all of them. The content rules still cover
+	 * every collection. For a check of what a change touched that has to stay fast on a large site.
+	 */
+	files: string[] | null
 }
 
 /**
@@ -29,7 +34,8 @@ export interface CheckOptions {
 export function parseCheckArgs(args: string[], cwd: string): CheckOptions {
 	const contentOnly = args.includes('--content-only')
 	return {
-		failOn: parseFailOn(args),
+		failOn: parseFileList(args, '--fail-on'),
+		files: parseFileList(args, '--files'),
 		cwd,
 		json: args.includes('--json'),
 		strict: args.includes('--strict'),
@@ -39,12 +45,12 @@ export function parseCheckArgs(args: string[], cwd: string): CheckOptions {
 	}
 }
 
-/** `--fail-on a.css,b.astro` or `--fail-on=a.css,b.astro`, as normalized relative paths; null without the flag. */
-function parseFailOn(args: string[]): string[] | null {
-	const index = args.findIndex(arg => arg === '--fail-on' || arg.startsWith('--fail-on='))
+/** `--flag a.css,b.astro` or `--flag=a.css,b.astro`, as normalized paths; null without the flag. */
+function parseFileList(args: string[], name: '--fail-on' | '--files'): string[] | null {
+	const index = args.findIndex(arg => arg === name || arg.startsWith(`${name}=`))
 	if (index === -1) return null
 	const flag = args[index]!
-	const value = flag === '--fail-on' ? args[index + 1] ?? '' : flag.slice('--fail-on='.length)
+	const value = flag === name ? args[index + 1] ?? '' : flag.slice(name.length + 1)
 	return value.split(',').map(file => file.trim()).filter(Boolean).map(file => path.normalize(file))
 }
 
@@ -72,6 +78,14 @@ export function astroRoots(cwd: string): string[] {
 		.sort()
 		.filter(name => hasAstroConfig(path.join(packagesDir, name)))
 		.map(name => path.join('packages', name))
+}
+
+/** Paths relative to `cwd` (an agent may list absolute ones), as given or as resolved against `cwd`. */
+const relativeToCwd = (cwd: string, files: string[]): string[] => files.map(file => path.relative(cwd, path.resolve(cwd, file)))
+
+/** The listed files inside one Astro root, relative to that root. */
+function filesInRoot(listed: string[], root: string): Set<string> {
+	return new Set(listed.map(file => path.relative(root, file)).filter(file => !file.startsWith('..') && !path.isAbsolute(file)))
 }
 
 /** Re-root a sub-project's findings on the directory the command was run from. */
@@ -113,12 +127,13 @@ export async function check(options: CheckOptions): Promise<number> {
 
 	const live = await liveSchemasFor(options, roots)
 	const schemas = 'schemas' in live ? live.schemas : undefined
+	const listed = options.files === null ? null : relativeToCwd(options.cwd, options.files)
 
 	const reports = await Promise.all(roots.map(async root => {
 		const absolute = path.join(options.cwd, root)
 		const content = prefixed(await checkContent(createNodeFs(absolute), schemas ? { schemas } : {}), root)
 		if (options.contentOnly) return { ...content, files: 0, paths: [] }
-		const code = await checkCode(absolute, { projectCode: options.live })
+		const code = await checkCode(absolute, { projectCode: options.live, only: listed === null ? null : filesInRoot(listed, root) })
 		return {
 			...content,
 			findings: [...content.findings, ...code.findings.map(finding => ({ ...finding, file: path.join(root, finding.file) }))],
@@ -137,7 +152,7 @@ export async function check(options: CheckOptions): Promise<number> {
 	const errors = report.findings.filter(finding => finding.severity === 'error').length
 	const warnings = report.findings.length - errors
 	// An agent may list a file by its absolute path; findings are relative to the cwd.
-	const failOn = options.failOn === null ? null : new Set(options.failOn.map(file => path.relative(options.cwd, path.resolve(options.cwd, file))))
+	const failOn = options.failOn === null ? null : new Set(relativeToCwd(options.cwd, options.failOn))
 	// Under --strict a warning in a listed file fails as well, as it would without --fail-on.
 	const failing = failOn === null
 		? errors

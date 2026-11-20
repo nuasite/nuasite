@@ -38,7 +38,7 @@ CLI wrapper that proxies `build`/`dev`/`preview` to `astro` and adds project-lev
 - `build` — Proxies to `astro build`
 - `dev` — Proxies to `astro dev`
 - `preview` — Proxies to `astro preview`
-- `check` — `--json`, `--strict`, `--content-only`, `--no-live`, `--fail-on <file,...>`
+- `check` — `--json`, `--strict`, `--content-only`, `--no-live`, `--fail-on <file,...>`, `--files <file,...>`
 - `init` / `clean` / `migrate` — Project transformations
 - `help` — Shows usage
 

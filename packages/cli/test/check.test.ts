@@ -64,7 +64,7 @@ describe('astroRoots', () => {
 
 describe('parseCheckArgs', () => {
 	test('no flags: everything off, live rules on', () => {
-		expect(parseCheckArgs([], '/repo')).toEqual({ cwd: '/repo', json: false, strict: false, contentOnly: false, live: true, failOn: null })
+		expect(parseCheckArgs([], '/repo')).toEqual({ cwd: '/repo', json: false, strict: false, contentOnly: false, live: true, failOn: null, files: null })
 	})
 
 	test('each flag is read independently', () => {
@@ -88,6 +88,12 @@ describe('parseCheckArgs', () => {
 		expect(parseCheckArgs(['--fail-on', 'src/a.css,./src/pages/index.astro'], '/repo').failOn).toEqual(['src/a.css', 'src/pages/index.astro'])
 		expect(parseCheckArgs(['--fail-on=src/a.css', '--json'], '/repo')).toMatchObject({ failOn: ['src/a.css'], json: true })
 		expect(parseCheckArgs(['--fail-on'], '/repo').failOn).toEqual([])
+	})
+
+	test('--files takes a list the same way, independently of --fail-on', () => {
+		expect(parseCheckArgs(['--files', 'src/a.astro,./src/b.ts'], '/repo')).toMatchObject({ files: ['src/a.astro', 'src/b.ts'], failOn: null })
+		expect(parseCheckArgs(['--files=src/a.astro', '--fail-on=src/b.ts'], '/repo')).toMatchObject({ files: ['src/a.astro'], failOn: ['src/b.ts'] })
+		expect(parseCheckArgs(['--json'], '/repo').files).toBeNull()
 	})
 
 	test('an unknown flag changes nothing', () => {
@@ -148,7 +154,7 @@ describe('check reports whether the live rules ran', () => {
 	test('--json stays one document, with the skip reason inside it', async () => {
 		const cwd = await project('two-sites', twoSites)
 
-		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: true, failOn: null })
+		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: true, failOn: null, files: null })
 		const payload: unknown = JSON.parse(out)
 		expect(payload).toMatchObject({ liveSchemas: expect.stringContaining('exactly one Astro project') })
 		expect(out.trimEnd().endsWith('}')).toBe(true)
@@ -157,7 +163,7 @@ describe('check reports whether the live rules ran', () => {
 	test('a multi-root run says the live rules were skipped', async () => {
 		const cwd = await project('two-sites-human', twoSites)
 
-		const { out } = await run({ cwd, json: false, strict: false, contentOnly: false, live: true, failOn: null })
+		const { out } = await run({ cwd, json: false, strict: false, contentOnly: false, live: true, failOn: null, files: null })
 		expect(out).toContain('Live schema rules did not run:')
 		expect(out).toContain(path.join('packages', 'web'))
 	})
@@ -168,7 +174,7 @@ describe('check reports whether the live rules ran', () => {
 			'src/content.config.ts': CONFIG,
 		})
 
-		const { out } = await run({ cwd, json: true, strict: false, contentOnly: true, live: false, failOn: null })
+		const { out } = await run({ cwd, json: true, strict: false, contentOnly: true, live: false, failOn: null, files: null })
 		expect(JSON.parse(out)).toMatchObject({ liveSchemas: expect.stringContaining('--content-only') })
 	})
 
@@ -178,7 +184,7 @@ describe('check reports whether the live rules ran', () => {
 			'src/content.config.ts': CONFIG,
 		})
 
-		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: false, failOn: null })
+		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: false, failOn: null, files: null })
 		expect(JSON.parse(out)).toMatchObject({ liveSchemas: expect.stringContaining('--no-live') })
 	})
 
@@ -186,7 +192,7 @@ describe('check reports whether the live rules ran', () => {
 	test("the loader's skip reason reaches the payload", async () => {
 		const cwd = await project('no-content-config', { 'astro.config.mjs': 'export default {}' })
 
-		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: true, failOn: null })
+		const { out } = await run({ cwd, json: true, strict: false, contentOnly: false, live: true, failOn: null, files: null })
 		expect(JSON.parse(out)).toMatchObject({ liveSchemas: expect.stringContaining('src/content.config.ts') })
 	})
 })
@@ -230,7 +236,15 @@ describe('check --fail-on', () => {
 		await fs.rm(workspace, { recursive: true, force: true })
 	})
 
-	const options = (failOn: string[] | null): CheckOptions => ({ cwd: workspace, json: false, strict: false, contentOnly: true, live: false, failOn })
+	const options = (failOn: string[] | null): CheckOptions => ({
+		cwd: workspace,
+		json: false,
+		strict: false,
+		contentOnly: true,
+		live: false,
+		failOn,
+		files: null,
+	})
 
 	async function quiet(run: () => Promise<number>): Promise<number> {
 		const original = console.log
@@ -275,5 +289,74 @@ describe('check --fail-on', () => {
 
 	test('a file listed by its absolute path counts as listed', async () => {
 		expect(await quiet(() => check({ ...options([path.join(workspace, 'src/styles/old.css')]), contentOnly: false }))).toBe(1)
+	})
+})
+
+// A change that must not add a broken file is checked on what it touched: on a large site, parsing every file
+// is the slow part of the check.
+describe('check --files', () => {
+	let workspace: string
+
+	// An attribute expression left open swallows the `<style>` and `<script>` below it. Astro's parser reports
+	// nothing; the emitted code does not parse, and the build stops on it.
+	const OPEN_ATTRIBUTE_EXPRESSION = [
+		'---',
+		'const open = false',
+		'---',
+		'<header class={open>Menu</header>',
+		'<style>',
+		'  [data-panel] details[open] > summary { transform: rotate(180deg); }',
+		'</style>',
+		'<script>',
+		"  const panel = document.querySelector<HTMLElement>('[data-panel]')",
+		'</script>',
+		'',
+	].join('\n')
+
+	beforeAll(async () => {
+		workspace = path.join(import.meta.dir, `.files-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+		const write = async (relative: string, contents: string) => {
+			await fs.mkdir(path.dirname(path.join(workspace, relative)), { recursive: true })
+			await fs.writeFile(path.join(workspace, relative), contents)
+		}
+		await write('packages/web/astro.config.mjs', 'export default {}')
+		await write('packages/web/src/content.config.ts', 'export const collections = {}\n')
+		await write('packages/web/src/components/Header.astro', OPEN_ATTRIBUTE_EXPRESSION)
+		await write('packages/web/src/components/Footer.astro', '<footer>ok</footer>\n')
+	})
+
+	afterAll(async () => {
+		await fs.rm(workspace, { recursive: true, force: true })
+	})
+
+	async function report(files: string[] | null): Promise<{ code: number; findings: { code: string; file: string; line?: number }[] }> {
+		const lines: string[] = []
+		const original = console.log
+		console.log = (...args: unknown[]) => lines.push(args.join(' '))
+		try {
+			const code = await check({ cwd: workspace, json: true, strict: false, contentOnly: false, live: false, failOn: null, files })
+			const parsed: { findings: { code: string; file: string; line?: number }[] } = JSON.parse(lines.join('\n'))
+			return { code, findings: parsed.findings }
+		} finally {
+			console.log = original
+		}
+	}
+
+	test('a broken file that is not listed is not parsed', async () => {
+		expect(await report(['packages/web/src/components/Footer.astro'])).toEqual({ code: 0, findings: [] })
+	})
+
+	test('a listed file is parsed in its own Astro project, and its error named at the source line', async () => {
+		const { code, findings } = await report(['packages/web/src/components/Header.astro', 'packages/web/src/components/Footer.astro'])
+		expect(code).toBe(1)
+		expect(findings).toMatchObject([{ code: 'code/syntax', file: path.join('packages', 'web', 'src', 'components', 'Header.astro'), line: 4 }])
+	})
+
+	test('an empty list parses nothing', async () => {
+		expect(await report([])).toEqual({ code: 0, findings: [] })
+	})
+
+	test('without it every source file is parsed', async () => {
+		expect((await report(null)).findings.map(finding => finding.file)).toEqual([path.join('packages', 'web', 'src', 'components', 'Header.astro')])
 	})
 })
