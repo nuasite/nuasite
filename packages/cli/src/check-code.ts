@@ -16,24 +16,13 @@
  */
 
 import { transform } from '@astrojs/compiler'
-import { originalPositionFor, TraceMap } from '@jridgewell/trace-mapping'
-import type { CheckFinding } from '@nuasite/cms-core'
+import { type CheckFinding, checkScriptSource, type ScriptSyntaxError, type SourceCheckPorts, type SourceKind, sourceKind } from '@nuasite/cms-core'
 import { Glob } from 'bun'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { compile as bundledCompile } from 'tailwindcss'
 
 type Compile = typeof bundledCompile
-
-/** Directories that are never the project's own source. */
-const IGNORED = ['node_modules', 'dist', '.astro', '.git', '.output', '.vercel', '.netlify']
-
-/** Copied to the output as they are: nothing parses them, so nothing in them can fail a build. */
-const UNPROCESSED_STYLESHEETS = ['public']
-
-const isIgnored = (relative: string): boolean =>
-	// Declaration files are types only — nothing compiles them, and the TS loader rejects them.
-	/\.d\.[mc]?ts$/.test(relative) || relative.split(path.sep).some(segment => IGNORED.includes(segment))
 
 /** Bun's parser reports a `BuildMessage` carrying the offending position in the code it was given. */
 interface BuildPosition {
@@ -54,65 +43,20 @@ function messageOf(error: unknown): string {
 	return String(typeof message === 'string' ? message : error).split('\n')[0]!
 }
 
-/**
- * Map a position in the emitted TypeScript back to the `.astro` source.
- *
- * Without this the position points into generated `$$render` code, which is worse than no position
- * at all — it looks like a real line number and is not one.
- */
-function toSource(map: string | undefined, position: BuildPosition | null): { line?: number; column?: number } {
-	if (!map || position?.line === undefined) return {}
+/** Bun's transpiler as the script parser: its positions are 1-based lines and 0-based columns. */
+function parseWithBun(code: string, loader: 'ts' | 'tsx'): ScriptSyntaxError | null {
 	try {
-		const traced = originalPositionFor(new TraceMap(JSON.parse(map)), {
-			line: position.line,
-			column: position.column ?? 0,
-		})
-		if (traced.line === null) return {}
-		// trace-mapping columns are 0-based; editors and build output are not.
-		return { line: traced.line, column: traced.column + 1 }
-	} catch {
-		return {}
-	}
-}
-
-async function checkAstroFile(absolute: string, relative: string, source: string): Promise<CheckFinding | null> {
-	let emitted: { code: string; map: string }
-	try {
-		emitted = await transform(source, { filename: absolute, sourcemap: 'both' })
-	} catch (error) {
-		return { severity: 'error', code: 'code/astro-parse', file: relative, message: messageOf(error) }
-	}
-
-	try {
-		new Bun.Transpiler({ loader: 'ts' }).transformSync(emitted.code)
+		new Bun.Transpiler({ loader }).transformSync(code)
 		return null
 	} catch (error) {
 		const position = buildPosition(error)
-		return {
-			severity: 'error',
-			code: 'code/syntax',
-			file: relative,
-			...toSource(emitted.map, position),
-			message: messageOf(error),
-		}
+		return { message: messageOf(error), line: position?.line, column: position?.column }
 	}
 }
 
-function checkScriptFile(relative: string, source: string, loader: 'ts' | 'tsx'): CheckFinding | null {
-	try {
-		new Bun.Transpiler({ loader }).transformSync(source)
-		return null
-	} catch (error) {
-		const position = buildPosition(error)
-		return {
-			severity: 'error',
-			code: 'code/syntax',
-			file: relative,
-			line: position?.line,
-			column: position?.column === undefined ? undefined : position.column + 1,
-			message: messageOf(error),
-		}
-	}
+const BUN_PORTS: SourceCheckPorts = {
+	compileAstro: (source, filename) => transform(source, { filename, sourcemap: 'both' }),
+	parseScript: parseWithBun,
 }
 
 /**
@@ -192,31 +136,32 @@ export interface CodeCheckOptions {
 	 * the project's installed code, which `--no-live` promises not to do; the bundled parser stands in then.
 	 */
 	projectCode: boolean
+	/** Parse only these files, relative to the root; null parses every source file of the project. */
+	only?: ReadonlySet<string> | null
 }
 
-/** Parse every `.astro`/`.ts`/`.tsx`/`.css` under `root`; order is by path. */
-export async function checkCode(root: string, { projectCode }: CodeCheckOptions = { projectCode: false }): Promise<CodeCheckResult> {
+/** Parse every `.astro`/`.ts`/`.tsx`/`.css` under `root`, or those of them in `only`; order is by path. */
+export async function checkCode(root: string, { projectCode, only = null }: CodeCheckOptions = { projectCode: false }): Promise<CodeCheckResult> {
 	const findings: CheckFinding[] = []
 	let files = 0
 
-	const paths: string[] = []
+	const sources: { relative: string; kind: SourceKind }[] = []
 	for await (const relative of new Glob('**/*.{astro,ts,tsx,mts,cts,css}').scan({ cwd: root })) {
-		if (isIgnored(relative)) continue
-		if (relative.endsWith('.css') && UNPROCESSED_STYLESHEETS.includes(relative.split(path.sep)[0]!)) continue
-		paths.push(relative)
+		const kind = sourceKind(relative)
+		if (kind === null || (only !== null && !only.has(relative))) continue
+		sources.push({ relative, kind })
 	}
-	paths.sort()
+	sources.sort((a, b) => (a.relative < b.relative ? -1 : a.relative > b.relative ? 1 : 0))
+	const paths = sources.map(source => source.relative)
 
-	const compile = projectCode && paths.some(relative => relative.endsWith('.css')) ? await compileFor(root) : bundledCompile
-	for (const relative of paths) {
+	const compile = projectCode && sources.some(source => source.kind === 'css') ? await compileFor(root) : bundledCompile
+	for (const { relative, kind } of sources) {
 		files++
 		const absolute = path.join(root, relative)
 		const source = await Bun.file(absolute).text()
-		const finding = relative.endsWith('.astro')
-			? await checkAstroFile(absolute, relative, source)
-			: relative.endsWith('.css')
+		const finding = kind === 'css'
 			? await checkCssFile(compile, absolute, relative, source)
-			: checkScriptFile(relative, source, relative.endsWith('.tsx') ? 'tsx' : 'ts')
+			: await checkScriptSource(relative, source, kind, BUN_PORTS, absolute)
 		if (finding) findings.push(finding)
 	}
 
