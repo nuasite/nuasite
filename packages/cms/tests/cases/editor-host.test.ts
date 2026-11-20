@@ -953,6 +953,27 @@ describe('createEditorHost definitions after an invalidate', () => {
 
 		expect(reads).toEqual({ components: [], entries: [], styles: [] })
 	})
+
+	test('a change in a collection loaded from outside the content directory re-reads the collections', async () => {
+		const fs = createMemoryFileSystem({
+			'src/pages/index.astro': PAGE,
+			'src/components/Card.astro': CARD,
+			'src/content.config.ts': [
+				`import { defineCollection } from 'astro:content'`,
+				`import { glob } from 'astro/loaders'`,
+				`const posts = defineCollection({ loader: glob({ pattern: '*.md', base: './src/data/posts' }) })`,
+				`export const collections = { posts }`,
+			].join('\n'),
+			'src/data/posts/first.md': POST,
+		})
+		const host = await hostOver(fs)
+
+		await fs.writeFile('src/data/posts/second.md', POST.replace('First', 'Second'))
+		host.invalidate(['src/data/posts/second.md'])
+		const { body } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+
+		expect(body.collectionDefinitions.posts?.entryCount).toBe(2)
+	})
 })
 
 describe('createEditorHost with a definitions store', () => {
@@ -1263,6 +1284,30 @@ describe('createEditorHost with a definitions store', () => {
 		// As scanned: the overrides the host laid over its collections are not saved.
 		expect(saved?.collections).toEqual(savedAt(1)?.collections)
 		expect(saved?.colors).toEqual(savedAt(1)?.colors)
+	})
+
+	test('after a write through the editor API, a component change saves the collections as the files are now', async () => {
+		const fs = projectWithPosts()
+		const { store, state, savedAt } = revisionStore()
+		const host = await hostOver(fs, { definitions: store })
+		await settle()
+
+		const created = await fetchJson<{ success: boolean }>(host, '/_nua/cms/markdown/create', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ collection: 'posts', title: 'Third post', slug: 'third' }),
+		})
+		expect(created.body.success).toBe(true)
+
+		await fs.writeFile('src/components/Hero.astro', '<section>Hero</section>\n')
+		state.revision = 2
+		host.invalidate(['src/components/Hero.astro'])
+		const { body } = await fetchJson<GlobalManifest>(host, '/cms-manifest.json')
+		await settle()
+
+		expect(body.collectionDefinitions.posts?.entryCount).toBe(3)
+		expect(savedAt(2)?.collections.posts?.entryCount).toBe(3)
+		expect(Object.keys(savedAt(2)?.components ?? {}).sort()).toEqual(['Card', 'Hero'])
 	})
 
 	/** Delays each read of a collection entry by `delay.ms`, as a slow remote storage would. */

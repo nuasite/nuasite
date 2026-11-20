@@ -93,7 +93,7 @@ export interface EditorDefinitionsStore {
  * A hit returns the saved definitions, as a fresh copy each time: the editor host keeps and changes
  * them. A miss returns `save`, which the editor host calls without waiting; an error it throws or
  * rejects with is logged with `console.error`. A scan that an `invalidate` superseded while it ran is
- * not saved.
+ * not saved, nor is a scan of some parts that ran beside a load of another part.
  */
 export type EditorDefinitionsLookup = { definitions: EditorDefinitions } | { save(definitions: EditorDefinitions): Promise<void> | void }
 
@@ -135,8 +135,8 @@ export interface EditorHost {
 	 * definitions are loaded again before the next use: from `definitions` when it has them for the
 	 * files now, scanned otherwise. With paths, only the part of the definitions they can affect is
 	 * scanned again: the components for a file under `componentDirs`, the collections for one under
-	 * `contentDir` or the content config, the colors and text styles for a `.css` file, all of them for
-	 * the Astro config.
+	 * `contentDir`, under a directory a served collection loads from or in the content config, the
+	 * colors and text styles for a `.css` file, all of them for the Astro config.
 	 */
 	invalidate(changedPaths?: readonly string[]): void
 }
@@ -186,12 +186,22 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 	const loadsInFlight = new Map<DefinitionsPart, number>()
 	/**
 	 * Copies of the served parts as loaded, before the host changes them in place. Kept only with a
-	 * store: a load of some parts saves them whole, with these for the rest.
+	 * store: a load of some parts saves them whole, with these for the rest. Dropped by a write of
+	 * the editor's API, which `invalidate` is not told about, so a later load scans every part again.
 	 */
-	const kept: Partial<EditorDefinitions> = {}
+	let kept: Partial<EditorDefinitions> = {}
+	/** Bumped when a write of the editor's API starts and when it ends; a load that saw it change keeps nothing. */
+	let apiWrites = 0
+	function dropKept(): void {
+		apiWrites++
+		kept = {}
+	}
+	/** Root-relative directories (or files) of the served collections, some of them outside `contentDir`. */
+	let collectionPaths: string[] = []
 
 	async function loadDefinitions(parts: ReadonlySet<DefinitionsPart>): Promise<void> {
 		const generation = definitionsGeneration
+		const writesAtStart = apiWrites
 		// Only a load that no load of another part ran beside saves: the parts it did not load are then those it was started with.
 		const othersSettled = DEFINITIONS_PARTS.every(part => parts.has(part) || !loadsInFlight.get(part))
 		for (const part of parts) loadsInFlight.set(part, (loadsInFlight.get(part) ?? 0) + 1)
@@ -199,8 +209,8 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 		try {
 			found = await runInProjectContext(context, () => findDefinitions(options.definitions, options.root, config, parts))
 		} catch (error) {
-			// Not kept: the next use loads these parts again.
-			for (const part of parts) staleParts.add(part)
+			// Not kept: the next use loads again the parts no newer load has served.
+			for (const part of parts) if (generation >= appliedGeneration[part]) staleParts.add(part)
 			throw error
 		} finally {
 			for (const part of parts) loadsInFlight.set(part, (loadsInFlight.get(part) ?? 1) - 1)
@@ -210,7 +220,7 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 		const served = (found.whole ? DEFINITIONS_PARTS : [...parts]).filter(part => generation >= appliedGeneration[part])
 		for (const part of served) appliedGeneration[part] = generation
 		const { definitions } = found
-		if (options.definitions) {
+		if (options.definitions && apiWrites === writesAtStart) {
 			// A copy: the editor host changes its definitions in place (overrides, entry pathnames).
 			Object.assign(kept, structuredClone(pick(definitions, served)))
 			const whole = wholeDefinitions(kept)
@@ -227,6 +237,7 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 		}
 		if (served.includes('collections') && definitions.collections) {
 			manifestWriter.setCollectionDefinitions(applyCollectionOverrides(definitions.collections, options.collections))
+			collectionPaths = Object.values(definitions.collections).map(collection => collection.path.split(path.sep).join('/'))
 		}
 	}
 
@@ -251,6 +262,10 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 	function currentDefinitions(): Promise<void> {
 		if (staleParts.size > 0) {
 			const parts = new Set(staleParts)
+			// With a store, a part not kept is scanned too, so that what is saved is whole and current.
+			if (options.definitions) {
+				for (const part of DEFINITIONS_PARTS) if (!isKept(kept, part)) parts.add(part)
+			}
 			staleParts.clear()
 			startLoad(parts)
 		}
@@ -272,8 +287,14 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 			if (url.pathname.startsWith(API_PREFIX)) {
 				if (request.method === 'OPTIONS') return preflightResponse(request)
 				await currentDefinitions()
-				const response = await service.handleApi(url.pathname.slice(API_PREFIX.length), request)
-				return response ?? errorResponse('Not found', 404)
+				const writes = request.method !== 'GET' && request.method !== 'HEAD'
+				if (writes) dropKept()
+				try {
+					const response = await service.handleApi(url.pathname.slice(API_PREFIX.length), request)
+					return response ?? errorResponse('Not found', 404)
+				} finally {
+					if (writes) dropKept()
+				}
 			}
 			if (request.method !== 'GET' && request.method !== 'HEAD') return undefined
 			if (url.pathname === '/cms-manifest.json') {
@@ -304,7 +325,7 @@ export async function createEditorHost(options: EditorHostOptions): Promise<Edit
 						invalidateCollectionRoutesCache()
 						manifestWriter.clearCollectionPathnames()
 					}
-					markDefinitionsStale(definitionsAffectedBy(relative, config))
+					markDefinitionsStale(definitionsAffectedBy(relative, config, collectionPaths))
 				}
 			})
 		},
@@ -372,6 +393,11 @@ function pick(definitions: Partial<EditorDefinitions>, parts: readonly Definitio
 	return picked
 }
 
+function isKept(kept: Partial<EditorDefinitions>, part: DefinitionsPart): boolean {
+	if (part === 'styles') return kept.colors !== undefined && kept.textStyles !== undefined
+	return kept[part] !== undefined
+}
+
 /** The definitions, once every part of them is there. */
 function wholeDefinitions(definitions: Partial<EditorDefinitions>): EditorDefinitions | undefined {
 	const { components, collections, colors, textStyles } = definitions
@@ -390,13 +416,16 @@ function mdxComponentNames(definitions: Record<string, ComponentDefinition>, mdx
 	return Object.values(definitions).filter(def => dirs.some(dir => def.file.startsWith(dir))).map(def => def.name)
 }
 
-/** The parts of the definitions a change of `relative` can alter. */
-function definitionsAffectedBy(relative: string, config: Required<CmsMarkerOptions>): DefinitionsPart[] {
+/** The parts of the definitions a change of `relative` can alter; `collectionPaths` are where the served collections load from. */
+function definitionsAffectedBy(relative: string, config: Required<CmsMarkerOptions>, collectionPaths: readonly string[]): DefinitionsPart[] {
 	if (/^astro\.config\.[cm]?[jt]s$/.test(relative)) return [...DEFINITIONS_PARTS]
-	const under = (dir: string) => relative.startsWith(`${dir.replace(/\/$/, '')}/`)
+	const under = (dir: string) => {
+		const trimmed = dir.replace(/\/$/, '')
+		return relative === trimmed || relative.startsWith(`${trimmed}/`)
+	}
 	const parts: DefinitionsPart[] = []
 	if (config.componentDirs.some(under)) parts.push('components')
-	if (under(config.contentDir) || /^src\/content\.config\.[cm]?[jt]s$/.test(relative)) parts.push('collections')
+	if (under(config.contentDir) || collectionPaths.some(under) || /^src\/content\.config\.[cm]?[jt]s$/.test(relative)) parts.push('collections')
 	if (relative.endsWith('.css')) parts.push('styles')
 	return parts
 }
