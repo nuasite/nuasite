@@ -8,6 +8,7 @@ import {
 	type EditorHostOptions,
 } from '@nuasite/cms/editor-host'
 import { describe, expect, spyOn, test } from 'bun:test'
+import { nodeCompileAstro } from '../../src/project/default-node.ts'
 import * as sourceFinder from '../../src/source-finder/index.ts'
 import type { ComponentInstance, ManifestEntry, PageSeoData } from '../../src/types'
 import { createMemoryFileSystem, type MemoryFileSystem } from '../utils/memory-fs'
@@ -49,7 +50,7 @@ function project(): MemoryFileSystem {
 }
 
 function hostOver(fs: MemoryFileSystem, options: Partial<EditorHostOptions> = {}): Promise<EditorHost> {
-	return createEditorHost({ root: '/project', fs, parseAstro: parse, ...options })
+	return createEditorHost({ root: '/project', fs, parseAstro: parse, compileAstro: nodeCompileAstro, ...options })
 }
 
 interface PageManifest {
@@ -111,6 +112,41 @@ describe('createEditorHost', () => {
 		const { body } = await save(host, [textChange(heading, 'Welcome')])
 		expect(body).toEqual({ updated: 1 })
 		expect(await fs.readFile('src/pages/index.astro')).toContain('<h1>Welcome</h1>')
+	})
+
+	test('a text change the build could not parse is refused and the file is left as it was', async () => {
+		const fs = project()
+		const host = await hostOver(fs)
+		await host.processPage('/', renderedPage('/project'))
+		const { body: manifest } = await fetchJson<PageManifest>(host, '/index.json')
+		const heading = entryWithText(manifest, 'Hello world')
+
+		const { body } = await save(host, [textChange(heading, 'a <b c={ d')])
+
+		expect(body.updated).toBe(0)
+		expect(body.errors?.[0]?.error).toContain('src/pages/index.astro:7:')
+		expect(await fs.readFile('src/pages/index.astro')).toBe(PAGE)
+	})
+
+	test('with a commit, a refused change is never committed while the other file of the batch is', async () => {
+		const fs = project()
+		const committed: string[][] = []
+		const commit: CmsCommit = async changeset => {
+			committed.push(changeset.changes.map(change => change.path))
+			await commitChangeset(fs)(changeset)
+		}
+		const host = await hostOver(fs, { commit })
+		await host.processPage('/', renderedPage('/project'))
+		const { body: manifest } = await fetchJson<PageManifest>(host, '/index.json')
+		const heading = entryWithText(manifest, 'Hello world')
+
+		const { body } = await save(host, [textChange(heading, 'a <b c={ d'), textChange(entryWithText(manifest, 'Card title'), 'Renamed')])
+
+		expect(body.updated).toBe(1)
+		expect(body.errors).toEqual([{ cmsId: heading.id, error: expect.stringContaining('src/pages/index.astro:7:') }])
+		expect(committed).toEqual([['src/components/Card.astro']])
+		expect(await fs.readFile('src/pages/index.astro')).toBe(PAGE)
+		expect(await fs.readFile('src/components/Card.astro')).toContain('<h2>Renamed</h2>')
 	})
 
 	test('accepts annotations spelled relative to the root', async () => {
@@ -404,11 +440,12 @@ describe('createEditorHost', () => {
 	})
 
 	test('two hosts in one process keep their projects apart, also when used concurrently', async () => {
-		const first = await createEditorHost({ root: '/first', fs: project(), parseAstro: parse })
+		const first = await createEditorHost({ root: '/first', fs: project(), parseAstro: parse, compileAstro: nodeCompileAstro })
 		const second = await createEditorHost({
 			root: '/second',
 			fs: createMemoryFileSystem({ 'src/pages/index.astro': PAGE.replace('Hello world', 'Other heading'), 'src/components/Card.astro': CARD }),
 			parseAstro: parse,
+			compileAstro: nodeCompileAstro,
 		})
 
 		await Promise.all([

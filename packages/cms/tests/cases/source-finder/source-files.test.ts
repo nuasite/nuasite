@@ -1,6 +1,7 @@
 import { parse } from '@astrojs/compiler'
 import { describe, expect, test } from 'bun:test'
 import { createProjectContext, runInProjectContext } from '../../../src/project/context'
+import { nodeCompileAstro } from '../../../src/project/default-node'
 import { pageRouteFile, projectTemplatesAmong } from '../../../src/source-finder/source-files'
 import { createMemoryFileSystem } from '../../utils/memory-fs'
 
@@ -9,6 +10,7 @@ function inProject<T>(files: string[], run: () => T): T {
 		root: '/project',
 		fs: createMemoryFileSystem(Object.fromEntries(files.map(file => [file, '']))),
 		parseAstro: parse,
+		compileAstro: nodeCompileAstro,
 	})
 	return runInProjectContext(context, run)
 }

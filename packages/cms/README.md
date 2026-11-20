@@ -606,6 +606,7 @@ const host = await createEditorHost({
 	root: '/project', // how the HTML's source annotations spell the project root
 	fs, // a CmsFileSystem rooted there; every read and write goes through it
 	parseAstro, // `parse` of an initialized @astrojs/compiler
+	compileAstro, // see below: a save that leaves a .astro/.ts/.tsx file the build cannot parse is refused
 	commit, // optional CmsCommit: fences editor writes against other writers
 	media, // optional MediaStorageAdapter
 	definitions, // optional EditorDefinitionsStore: keeps the start scan across starts
@@ -615,6 +616,18 @@ const host = await createEditorHost({
 const html = await host.processPage(pagePath, renderedHtml, { revision })
 const response = await host.fetch(request) // undefined → not an editor request
 host.invalidate(['src/components/Card.astro']) // after a change made elsewhere
+```
+
+`compileAstro` compiles one component with the same compiler's `transform` and returns the code with its external source map, which the refusal uses to name the component's own line:
+
+```ts
+const compileAstro = async (source: string, filename: string) => {
+	const { code, map } = await transform(source, {
+		filename,
+		sourcemap: 'external',
+	})
+	return { code, map }
+}
 ```
 
 - The rendered HTML must carry the Astro compiler's source annotations (`annotateSourceFile`). `processPage` marks the editable elements, records the page manifest and, with `editor`, injects `window.NuaCmsConfig`, the editor bundle and the reload client.

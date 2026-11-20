@@ -25,7 +25,15 @@ export {
 } from './check-entries.ts'
 export { checkAgainstSchemas, type LiveCheckInput } from './check-live.ts'
 export { checkFieldShapes, type ShapeCheckInput } from './check-shape.ts'
-export { checkScriptSource, type CompiledAstro, type ScriptSyntaxError, type SourceCheckPorts, type SourceKind, sourceKind } from './check-source.ts'
+export {
+	checkScriptSource,
+	type CompiledAstro,
+	parseScriptWithBabel,
+	type ScriptSyntaxError,
+	type SourceCheckPorts,
+	type SourceKind,
+	sourceKind,
+} from './check-source.ts'
 export { checkEditorWrites, type WriteCheckInput } from './check-write.ts'
 export { checkContent, type CheckContentOptions, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check.ts'
 export { collectionScanReport, scanCollections } from './collection-scanner.ts'

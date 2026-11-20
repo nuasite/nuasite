@@ -11,6 +11,7 @@
  * own: the CLI on Bun, a Worker over a compiler service and a JavaScript parser of its bundle.
  */
 
+import { parse as parseBabel, type ParserPlugin } from '@babel/parser'
 import { originalPositionFor, TraceMap } from '@jridgewell/trace-mapping'
 import type { CheckFinding } from './check.ts'
 
@@ -57,6 +58,25 @@ export interface SourceCheckPorts {
 	compileAstro(source: string, filename: string): Promise<CompiledAstro>
 	/** Parse TypeScript (`tsx` with JSX) without running it; null when it parses. */
 	parseScript(code: string, loader: 'ts' | 'tsx'): Promise<ScriptSyntaxError | null>
+}
+
+/**
+ * The script parser of a host without Bun: `@babel/parser`, which stops where Bun's transpiler stops, so a
+ * position in a compiled component maps back to the component's line. Babel ends its message with the
+ * position, ` (line:column)`.
+ */
+export async function parseScriptWithBabel(code: string, loader: 'ts' | 'tsx'): Promise<ScriptSyntaxError | null> {
+	try {
+		// Bun's transpiler accepts decorators, so the parser must too.
+		const syntax: ParserPlugin[] = ['typescript', ['decorators', { decoratorsBeforeExport: true }], 'decoratorAutoAccessors']
+		parseBabel(code, { sourceType: 'module', plugins: loader === 'tsx' ? [...syntax, 'jsx'] : syntax })
+		return null
+	} catch (error) {
+		if (!(error instanceof SyntaxError)) throw error
+		const position = / \((\d+):(\d+)\)$/.exec(error.message)
+		if (position === null) return { message: error.message }
+		return { message: error.message.slice(0, position.index), line: Number(position[1]), column: Number(position[2]) }
+	}
 }
 
 /**
