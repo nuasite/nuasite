@@ -388,6 +388,20 @@ describe('check --files', () => {
 		])
 	})
 
+	test('the text report names a file not parsed once, when both lists hold it', async () => {
+		const lines: string[] = []
+		const original = console.log
+		console.log = (...args: unknown[]) => lines.push(args.join(' '))
+		try {
+			await check({ cwd: workspace, json: false, strict: false, contentOnly: false, live: false, failOn: ['src/x.js'], files: ['src/x.js', 'src/x.js'] })
+		} finally {
+			console.log = original
+		}
+		expect(lines.filter(line => line.startsWith('Not parsed by this run'))).toEqual([
+			'Not parsed by this run (a content entry is still checked with its collection): src/x.js',
+		])
+	})
+
 	test('without it every source file is parsed', async () => {
 		expect((await report(null)).findings.map(finding => finding.file)).toEqual([path.join('packages', 'web', 'src', 'components', 'Header.astro')])
 	})

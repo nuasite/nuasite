@@ -177,7 +177,7 @@ export async function check(options: CheckOptions): Promise<number> {
 	const parsed = new Set(reports.flatMap(one => one.paths))
 	const unparsed = (files: Iterable<string> | null): string[] => files === null ? [] : [...files].filter(file => !parsed.has(file))
 	const unchecked = unparsed(failOn)
-	const filesUnchecked = unparsed(listed)
+	const filesUnchecked = unparsed(listed === null ? null : new Set(listed))
 	const named = [...new Set([...unchecked, ...filesUnchecked])]
 
 	if (options.json) {
