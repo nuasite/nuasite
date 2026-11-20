@@ -17,6 +17,17 @@ export const cssTrapPrefix = 'css_trap_'
 export const cssTrapSelector = `[name^="${cssTrapPrefix}"]`
 export const cssTrapConflictRegex = new RegExp(`<(?:input|select|textarea)[^>]*\\sname\\s*=\\s*["']${cssTrapPrefix}`, 'i')
 
+/** The humanity-check failure for a honeypot that holds a value (`honeypot:<name>` or `css_honeypot`), or null when all are empty. */
+export const filledHoneypot = (form: HTMLFormElement, honeypotFieldNames: readonly string[]): string | null => {
+	for (const fieldName of honeypotFieldNames) {
+		const field = form.querySelector<HTMLInputElement>(`[name="${fieldName}"]`)
+		if (field?.value.trim()) return `honeypot:${fieldName}`
+	}
+	const cssHoneypot = form.querySelector<HTMLInputElement>(cssTrapSelector)
+	if (cssHoneypot?.value.trim()) return 'css_honeypot'
+	return null
+}
+
 /** Marks a form's status box; `formStatusElements` looks it up as a direct child of the form, not by id on the page. */
 export const formStatusAttribute = 'data-form-status'
 
