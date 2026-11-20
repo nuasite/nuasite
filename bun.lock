@@ -64,7 +64,6 @@
       },
       "dependencies": {
         "@astrojs/compiler": "^4.0.0",
-        "@jridgewell/trace-mapping": "^0.3.31",
         "@nuasite/cms": "workspace:*",
         "@nuasite/cms-core": "workspace:*",
         "tailwindcss": "catalog:ui",
@@ -153,6 +152,7 @@
       "version": "0.68.4",
       "dependencies": {
         "@babel/parser": "catalog:parsers",
+        "@jridgewell/trace-mapping": "^0.3.31",
         "@nuasite/cms-types": "workspace:*",
         "yaml": "catalog:parsers",
       },

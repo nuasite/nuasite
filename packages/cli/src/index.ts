@@ -26,7 +26,8 @@ function printUsage() {
 	console.log('  dev                Run astro dev with the Nua defaults')
 	console.log('  preview            Run astro preview with the Nua defaults')
 	console.log('  check              Validate collections and parse the source (no build). --json, --strict, --content-only, --no-live,')
-	console.log('                     --fail-on <file,...> (fail only on errors in these files). --no-live also keeps the')
+	console.log('                     --fail-on <file,...> (fail only on errors in these files), --files <file,...> (parse only')
+	console.log('                     these source files; content is still checked in full). --no-live also keeps the')
 	console.log("                     project's own tailwindcss unloaded; stylesheets are then parsed with the bundled one")
 	console.log('  init               Convert a standard Astro project to use Nua')
 	console.log('  clean              Eject to a standard Astro project (remove @nuasite/* deps)')
@@ -40,8 +41,16 @@ if (command && ['build', 'dev', 'preview'].includes(command)) {
 } else {
 	switch (command) {
 		case 'check': {
-			const { check, parseCheckArgs } = await import('./check')
-			process.exit(await check(parseCheckArgs(args, process.cwd())))
+			const { check, CheckUsageError, parseCheckArgs } = await import('./check')
+			let options: ReturnType<typeof parseCheckArgs>
+			try {
+				options = parseCheckArgs(args, process.cwd())
+			} catch (error) {
+				if (!(error instanceof CheckUsageError)) throw error
+				console.error(error.message)
+				process.exit(2)
+			}
+			process.exit(await check(options))
 			break
 		}
 		case 'init': {

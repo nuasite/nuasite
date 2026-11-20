@@ -29,7 +29,7 @@ CLI wrapper that proxies `build`/`dev`/`preview` to `astro` and adds project-lev
 
 - `src/index.ts` — CLI entry point (shebang `#!/usr/bin/env bun`), command parsing and Astro invocation
 - `src/check.ts` — `nua check`: finds the Astro root(s), runs the checks, prints the report. `parseCheckArgs` is the exported pure argv parser (`index.ts` cannot be imported by a test — top-level await plus `process.exit`)
-- `src/check-code.ts` — Syntax pass over the project's own `.astro`/`.ts`/`.tsx`, and its stylesheets through Tailwind's CSS parser (syntax errors only)
+- `src/check-code.ts` — Walks the project's source files (or the `--files` subset), runs `.astro`/`.ts`/`.tsx` through `cms-core`'s `checkScriptSource` with Bun's compiler and parser as its ports, and stylesheets through Tailwind's CSS parser (syntax errors only). `cms-core/src/check-source.ts` holds the compile, parse and source-map step and stays free of Bun, `node:*` and the filesystem: the `workerd` entry exports it
 - `src/live-schema.ts` — Imports the project's `content.config.ts` behind an `astro:content` stub and hands `cms-core` real schemas through its port
 - `src/init.ts` / `src/clean.ts` / `src/migrate.ts` — Project transformation commands
 
@@ -38,7 +38,7 @@ CLI wrapper that proxies `build`/`dev`/`preview` to `astro` and adds project-lev
 - `build` — Proxies to `astro build`
 - `dev` — Proxies to `astro dev`
 - `preview` — Proxies to `astro preview`
-- `check` — `--json`, `--strict`, `--content-only`, `--no-live`, `--fail-on <file,...>`
+- `check` — `--json`, `--strict`, `--content-only`, `--no-live`, `--fail-on <file,...>`, `--files <file,...>`
 - `init` / `clean` / `migrate` — Project transformations
 - `help` — Shows usage
 

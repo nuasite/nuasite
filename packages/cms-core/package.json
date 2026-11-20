@@ -33,6 +33,7 @@
 	},
 	"dependencies": {
 		"@nuasite/cms-types": "workspace:*",
+		"@jridgewell/trace-mapping": "^0.3.31",
 		"@babel/parser": "catalog:parsers",
 		"yaml": "catalog:parsers"
 	},
