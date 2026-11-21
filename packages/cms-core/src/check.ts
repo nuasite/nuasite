@@ -13,7 +13,7 @@
  */
 
 import { assetBaseDir, resolveAssetCandidates } from './asset-paths.ts'
-import { isPlainObject, loadCollections, type LoadedEntry } from './check-entries.ts'
+import { DEFAULT_ENTRY_PATTERN, isPlainObject, loadCollections, type LoadedEntry } from './check-entries.ts'
 import { checkAgainstSchemas } from './check-live.ts'
 import { checkFieldShapes } from './check-shape.ts'
 import { checkEditorWrites } from './check-write.ts'
@@ -235,18 +235,17 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 	const config = await parseContentConfig(fs, new Map())
 
 	if (config.size === 0) {
-		// A config that reads fine and declares nothing is a site without content collections. It
-		// builds, so by this function's own contract it is not an error — and reporting it as one
-		// blocked the publish of every such site and sent the agent chasing a defect that was not there.
+		// The build loads no collection without a declaring config, so a site without one builds: by this
+		// function's contract that is no error. Entries left under src/content then render nothing — a warning.
 		const reason = await classifyEmptyContentConfig(fs)
-		if (reason !== 'no-collections') {
+		if (reason === 'unparseable') {
+			findings.push({ severity: 'error', code: 'config/unreadable', file: 'src/content.config.ts', message: 'The content config could not be parsed.' })
+		} else if (reason === 'missing' && (await fs.glob(`src/content/${DEFAULT_ENTRY_PATTERN}`)).length > 0) {
 			findings.push({
-				severity: 'error',
-				code: reason === 'missing' ? 'config/missing' : 'config/unreadable',
+				severity: 'warning',
+				code: 'config/missing',
 				file: 'src/content.config.ts',
-				message: reason === 'missing'
-					? `No content config found — expected one of ${CONTENT_CONFIG_PATHS.join(' or ')}.`
-					: 'The content config could not be parsed.',
+				message: `No content config found — expected one of ${CONTENT_CONFIG_PATHS.join(' or ')}. The build loads none of the entries under src/content.`,
 			})
 		}
 		return { findings, collections: 0, entries: 0 }

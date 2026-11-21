@@ -192,11 +192,29 @@ export const collections = { people${extra ? ', articles' : ''} }
 		expect(report.findings[0]!.file).toBe('src/content/articles/two.md')
 	})
 
-	test('no content config at all is an error, not an empty pass', async () => {
+	test('no content config and no content directory passes clean', async () => {
+		await write({ 'src/pages/index.astro': '<h1>Home</h1>\n' })
+
+		const report = await check()
+		expect(report.findings).toEqual([])
+		expect(report.collections).toBe(0)
+	})
+
+	// Git keeps no empty folder, so a content directory without entries is one holding a `.gitkeep`.
+	test('no content config beside a content directory without entries passes clean', async () => {
+		await write({ 'src/content/.gitkeep': '', 'src/content/people/.gitkeep': '' })
+
+		const report = await check()
+		expect(report.findings).toEqual([])
+		expect(report.collections).toBe(0)
+	})
+
+	// Without a config the build loads no collection, so the entries build green and render nothing.
+	test('no content config while entries exist is a warning, not an empty pass', async () => {
 		await write({ 'src/content/people/ada.md': '---\nname: Ada\n---\n' })
 
 		const report = await check()
-		expect(report.findings.map(f => f.code)).toEqual(['config/missing'])
+		expect(report.findings.map(f => [f.severity, f.code])).toEqual([['warning', 'config/missing']])
 	})
 
 	// Errors are what fails the build. A site with no collections builds, so calling it an error
