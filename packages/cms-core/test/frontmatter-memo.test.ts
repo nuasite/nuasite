@@ -107,6 +107,42 @@ describe('scanCollections — frontmatter memo', () => {
 			expect(next.blog?.entries?.[0]?.data).toEqual({ title: 'A', tags: ['x'] })
 		}
 	})
+
+	test('field directives still apply when the parse comes from the memo', async () => {
+		await write({ 'src/content/blog/a.md': '---\n# @position sidebar\n# @group Meta\nauthor: Ann\ntitle: A\n---\n' })
+		const cache: FrontmatterCache = new Map()
+		await scan(cache)
+		const record = cache.get('src/content/blog/a.md')
+
+		const collections = await scan(cache)
+
+		expect(cache.get('src/content/blog/a.md')).toBe(record!)
+		expect(collections.blog?.fields.find(field => field.name === 'author')).toMatchObject({ position: 'sidebar', group: 'Meta' })
+	})
+
+	test('a glob-loader collection outside the content dir uses the memo', async () => {
+		await write({
+			'src/content.config.ts': `import { defineCollection } from 'astro:content'
+import { glob } from 'astro/loaders'
+export const collections = { team: defineCollection({ loader: glob({ pattern: '*.md', base: './src/people' }) }) }
+`,
+			'src/content/blog/a.md': '---\ntitle: A\n---\n',
+			'src/people/ann.md': '---\nname: Ann\n---\n',
+			'src/people/bob.md': '---\nname: Bob\n---\n',
+		})
+		const cache: FrontmatterCache = new Map()
+		await scan(cache)
+		const ann = cache.get('src/people/ann.md')
+		const bob = cache.get('src/people/bob.md')
+		expect(ann?.data).toEqual({ name: 'Ann' })
+
+		await write({ 'src/people/bob.md': '---\nname: Bob edited\n---\n' })
+		const collections = await scan(cache)
+
+		expect(cache.get('src/people/ann.md')).toBe(ann!)
+		expect(cache.get('src/people/bob.md')).not.toBe(bob!)
+		expect(titles(collections, 'team')).toEqual({ ann: 'Ann', bob: 'Bob edited' })
+	})
 })
 
 describe('CmsCore — collection list after a save', () => {

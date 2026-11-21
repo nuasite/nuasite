@@ -132,12 +132,22 @@ function extractFrontmatterBlock(content: string): string | null {
 	return match?.[1] ?? null
 }
 
+/** `@position`/`@group` comment directives of one entry's frontmatter, by field name. */
+export type FieldDirectives = Record<string, { position?: 'sidebar' | 'header'; group?: string }>
+
+/** One entry's frontmatter block and what the scan parses out of it. */
+export interface ParsedFrontmatter {
+	block: string
+	data: Record<string, unknown> | null
+	directives: FieldDirectives
+}
+
 /**
- * Parsed frontmatter of each markdown entry, by root-relative file path, with the block it was
- * parsed from. A scan reuses an entry's parse while its frontmatter block is unchanged and drops
- * the paths it no longer finds, so the memo never outlives the files it describes.
+ * Parsed frontmatter of each markdown entry, by root-relative file path. A scan reuses an entry's
+ * parse while its frontmatter block is unchanged and drops the paths it no longer finds, so the
+ * memo never outlives the files it describes.
  */
-export type FrontmatterCache = Map<string, { block: string; data: Record<string, unknown> | null }>
+export type FrontmatterCache = Map<string, ParsedFrontmatter>
 
 /** One scan's view of a {@link FrontmatterCache}: the paths this scan parsed, to sweep the rest. */
 interface FrontmatterMemo {
@@ -145,17 +155,22 @@ interface FrontmatterMemo {
 	seen: Set<string>
 }
 
-function parseFrontmatter(content: string, filePath: string, memo: FrontmatterMemo | undefined): Record<string, unknown> | null {
+function parseFrontmatter(content: string, filePath: string, memo: FrontmatterMemo | undefined): ParsedFrontmatter | null {
 	const block = extractFrontmatterBlock(content)
 	if (!block) return null
 	memo?.seen.add(filePath)
 	const cached = memo?.cache.get(filePath)
-	// Copies out of the memo, so a scan's caller can mutate its entries without changing the next scan's.
-	if (cached?.block === block) return structuredClone(cached.data)
-	const data = parseYaml(block) as Record<string, unknown> | null
-	if (!memo) return data
-	memo.cache.set(filePath, { block, data })
-	return structuredClone(data)
+	// `data` is copied out of the memo, so a scan's caller can mutate its entries without changing
+	// the next scan's; directives never leave the scanner.
+	if (cached?.block === block) return { ...cached, data: structuredClone(cached.data) }
+	const parsed: ParsedFrontmatter = {
+		block,
+		data: parseYaml(block) as Record<string, unknown> | null,
+		directives: parseFieldDirectives(block),
+	}
+	if (!memo) return parsed
+	memo.cache.set(filePath, parsed)
+	return { ...parsed, data: structuredClone(parsed.data) }
 }
 
 function sweepFrontmatterMemo(memo: FrontmatterMemo): void {
@@ -165,17 +180,16 @@ function sweepFrontmatterMemo(memo: FrontmatterMemo): void {
 }
 
 /**
- * Parse @position and @group comment directives from raw YAML frontmatter.
+ * Parse @position and @group comment directives from a raw YAML frontmatter block.
  * Uses the YAML AST which preserves comments via `commentBefore` on nodes.
  */
-function parseFieldDirectives(content: string): Record<string, { position?: 'sidebar' | 'header'; group?: string }> {
-	const block = extractFrontmatterBlock(content)
-	if (!block || !DIRECTIVE_TEXT.test(block)) return {}
+function parseFieldDirectives(block: string): FieldDirectives {
+	if (!DIRECTIVE_TEXT.test(block)) return {}
 
 	const doc = parseDocument(block)
 	if (!isMap(doc.contents)) return {}
 
-	const result: Record<string, { position?: 'sidebar' | 'header'; group?: string }> = {}
+	const result: FieldDirectives = {}
 
 	for (const pair of doc.contents.items) {
 		if (!isPair(pair) || !isScalar(pair.key)) continue
@@ -496,10 +510,10 @@ async function buildCollectionDefinition(
 		const source = sources[i]!
 		const content = fileContents[i]!
 		if (content === null) continue
-		const frontmatter = parseFrontmatter(content, path.join(basePath, source.relPath), frontmatterMemo)
+		const parsed = parseFrontmatter(content, path.join(basePath, source.relPath), frontmatterMemo)
+		const frontmatter = parsed?.data ?? null
 
-		const directives = parseFieldDirectives(content)
-		for (const [key, value] of Object.entries(directives)) {
+		for (const [key, value] of Object.entries(parsed?.directives ?? {})) {
 			if (!allDirectives[key]) {
 				allDirectives[key] = value
 			}
