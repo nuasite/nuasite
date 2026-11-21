@@ -218,16 +218,15 @@ function pathnameCollisions(collection: ParsedCollection, entries: LoadedEntry[]
 }
 
 function unreadConfigFinding(file: string): CheckFinding {
-	const legacy = file.startsWith('src/content/')
-		? ' Astro fails the build on a config under src/content/ unless its config sets `legacy.collectionsBackwardsCompat`.'
-		: ''
+	const reads = `the check does not read it (it reads ${CONTENT_CONFIG_PATHS.join(' or ')}), so none of the collections or entries were checked`
+	const message = file.startsWith('src/content/')
+		? `Astro loads the content collections from this legacy file only when its config sets \`legacy.collectionsBackwardsCompat\`, and fails the build otherwise; ${reads}.`
+		: `Astro loads the content collections from this file; ${reads}.`
 	return {
 		severity: 'warning',
 		code: 'config/unread',
 		file,
-		message: `Astro takes the content collections from this file, which the check does not read (it reads ${
-			CONTENT_CONFIG_PATHS.join(' or ')
-		}). None of the collections or entries were checked.${legacy}`,
+		message,
 		hint: 'Move the collections into src/content.config.ts and delete this file to have them checked.',
 	}
 }

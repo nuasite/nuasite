@@ -239,7 +239,20 @@ export const collections = { people${extra ? ', articles' : ''} }
 		await write({ 'src/content/config.js': PEOPLE_MJS, ...ADA })
 
 		const report = await check()
+		expect(report.findings.map(f => [f.code, f.file])).toEqual([['config/unread', 'src/content/config.js']])
 		expect(report.findings[0]!.message).toContain('legacy.collectionsBackwardsCompat')
+	})
+
+	// Astro's order: the current names before the legacy ones, and among the legacy ones `.ts` first.
+	test.each([
+		['src/content.config.ts', 'src/content/config.mjs'],
+		['src/content/config.ts', 'src/content/config.js'],
+	])('%s is loaded before %s, so the check reads it', async (loadedPath, ignoredPath) => {
+		await write({ [loadedPath]: config('n.object({ name: n.text() })'), [ignoredPath]: PEOPLE_MJS, ...ADA })
+
+		const report = await check()
+		expect(report.findings).toEqual([])
+		expect(report.collections).toBe(1)
 	})
 
 	// Astro takes the .mjs and ignores the .ts, so the .ts collections are not what the build loads.
