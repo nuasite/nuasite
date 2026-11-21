@@ -314,19 +314,39 @@ export const UNREAD_CONTENT_CONFIG_PATHS = [
 	'src/content/config.mts',
 ] as const
 
-/** The configs at {@link UNREAD_CONTENT_CONFIG_PATHS} the project has. */
-export async function findUnreadContentConfigs(fs: CmsFileSystem): Promise<string[]> {
-	const found: string[] = []
-	for (const configPath of UNREAD_CONTENT_CONFIG_PATHS) {
-		if (await fs.exists(configPath)) found.push(configPath)
+/**
+ * Every content config file name, in the order Astro 7 looks for them: it loads the first that exists. It looks at
+ * the legacy `src/content/config.*` names only when none of the others exists, and then fails the build unless the
+ * Astro config sets `legacy.collectionsBackwardsCompat`.
+ */
+const ASTRO_CONTENT_CONFIG_ORDER = [
+	'src/content.config.mjs',
+	'src/content.config.js',
+	'src/content.config.mts',
+	'src/content.config.ts',
+	'src/content/config.ts',
+	'src/content/config.js',
+	'src/content/config.mjs',
+	'src/content/config.mts',
+] as const
+
+const READ_CONTENT_CONFIG_PATHS: ReadonlySet<string> = new Set(CONTENT_CONFIG_PATHS)
+
+/** The content config file Astro loads, or `null` when the project has none. */
+export async function findLoadedContentConfig(fs: CmsFileSystem): Promise<string | null> {
+	for (const configPath of ASTRO_CONTENT_CONFIG_ORDER) {
+		if (await fs.exists(configPath)) return configPath
 	}
-	return found
+	return null
 }
 
+/** Whether this reader reads the content config at `configPath`. */
+export const isReadContentConfig = (configPath: string): boolean => READ_CONTENT_CONFIG_PATHS.has(configPath)
+
 /**
- * Why `parseContentConfig` came back empty. Four different facts share that one return value: a site
- * with no content collections is a legitimate site, and an `unread` config is one Astro loads from a
- * file name the reader does not look at.
+ * Why `parseContentConfig` came back empty. Four different facts share that one return value, and only two of them
+ * are a defect: `unparseable`, and `missing` beside entries. A site with `no-collections` is a legitimate site, and an
+ * `unread` config is one Astro loads from a file name this reader does not look at.
  */
 export type EmptyContentConfigReason = 'missing' | 'unread' | 'unparseable' | 'no-collections'
 
@@ -337,20 +357,16 @@ export type EmptyContentConfigReason = 'missing' | 'unread' | 'unparseable' | 'n
  * name even when a second one beside it reads cleanly and declares nothing.
  */
 export async function classifyEmptyContentConfig(fs: CmsFileSystem): Promise<EmptyContentConfigReason> {
-	let found = false
+	const loaded = await findLoadedContentConfig(fs)
+	if (loaded === null) return 'missing'
+	if (!isReadContentConfig(loaded)) return 'unread'
 	for (const configPath of CONTENT_CONFIG_PATHS) {
-		try {
-			await fs.stat(configPath)
-		} catch {
-			continue
-		}
-		found = true
+		if (!(await fs.exists(configPath))) continue
 		if (parseSource(await fs.readFile(configPath)) === null) {
 			return 'unparseable'
 		}
 	}
-	if (found) return 'no-collections'
-	return (await findUnreadContentConfigs(fs)).length > 0 ? 'unread' : 'missing'
+	return 'no-collections'
 }
 
 /**

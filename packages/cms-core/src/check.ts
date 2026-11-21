@@ -20,7 +20,8 @@ import { checkEditorWrites } from './check-write.ts'
 import {
 	classifyEmptyContentConfig,
 	CONTENT_CONFIG_PATHS,
-	findUnreadContentConfigs,
+	findLoadedContentConfig,
+	isReadContentConfig,
 	parseContentConfig,
 	type ParsedCollection,
 	type ParsedField,
@@ -216,6 +217,21 @@ function pathnameCollisions(collection: ParsedCollection, entries: LoadedEntry[]
 	return findings
 }
 
+function unreadConfigFinding(file: string): CheckFinding {
+	const legacy = file.startsWith('src/content/')
+		? ' Astro fails the build on a config under src/content/ unless its config sets `legacy.collectionsBackwardsCompat`.'
+		: ''
+	return {
+		severity: 'warning',
+		code: 'config/unread',
+		file,
+		message: `Astro takes the content collections from this file, which the check does not read (it reads ${
+			CONTENT_CONFIG_PATHS.join(' or ')
+		}). None of the collections or entries were checked.${legacy}`,
+		hint: 'Move the collections into src/content.config.ts and delete this file to have them checked.',
+	}
+}
+
 export interface CheckContentOptions {
 	/**
 	 * The project's real collection schemas. Given these, the check also reports what the
@@ -233,6 +249,12 @@ export interface CheckContentOptions {
  */
 export async function checkContent(fs: CmsFileSystem, options: CheckContentOptions = {}): Promise<CheckReport> {
 	const findings: CheckFinding[] = []
+	// The collections the build loads are the ones in the file Astro picks. When the reader does not read that file,
+	// a `.ts` config beside it is ignored by the build, so checking it would judge the site by the wrong schemas.
+	const loaded = await findLoadedContentConfig(fs)
+	if (loaded !== null && !isReadContentConfig(loaded)) {
+		return { findings: [unreadConfigFinding(loaded)], collections: 0, entries: 0 }
+	}
 	const config = await parseContentConfig(fs, new Map())
 
 	if (config.size === 0) {
@@ -241,19 +263,6 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 		const reason = await classifyEmptyContentConfig(fs)
 		if (reason === 'unparseable') {
 			findings.push({ severity: 'error', code: 'config/unreadable', file: 'src/content.config.ts', message: 'The content config could not be parsed.' })
-		} else if (reason === 'unread') {
-			// Astro loads this config and its collections, so they build; this check saw none of them.
-			for (const file of await findUnreadContentConfigs(fs)) {
-				findings.push({
-					severity: 'warning',
-					code: 'config/unread',
-					file,
-					message: `This content config is not read by the check, which reads ${
-						CONTENT_CONFIG_PATHS.join(' or ')
-					}. None of its collections or entries were checked.`,
-					hint: `Rename it to ${file.startsWith('src/content/') ? 'src/content/config.ts' : 'src/content.config.ts'} to have them checked.`,
-				})
-			}
 		} else if (reason === 'missing' && (await fs.glob(`src/content/${DEFAULT_ENTRY_PATTERN}`)).length > 0) {
 			findings.push({
 				severity: 'warning',

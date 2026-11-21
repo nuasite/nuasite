@@ -217,24 +217,52 @@ export const collections = { people${extra ? ', articles' : ''} }
 		expect(report.findings.map(f => [f.severity, f.code])).toEqual([['warning', 'config/missing']])
 	})
 
-	// Astro loads collections from these names too, so the entries build and render; only the check is blind to them.
-	test.each([
-		['src/content.config.mjs', 'src/content.config.ts'],
-		['src/content.config.js', 'src/content.config.ts'],
-		['src/content/config.mjs', 'src/content/config.ts'],
-	])('a config at %s is named as unread, not reported missing', async (configPath, rename) => {
-		await write({
-			[configPath]:
-				`import { defineCollection, z } from 'astro:content'\nexport const collections = { people: defineCollection({ schema: z.object({ name: z.string() }) }) }\n`,
-			'src/content/people/ada.md': '---\nname: Ada\n---\n',
-		})
+	const PEOPLE_MJS =
+		`import { defineCollection, z } from 'astro:content'\nexport const collections = { people: defineCollection({ schema: z.object({ name: z.string() }) }) }\n`
+	const ADA = { 'src/content/people/ada.md': '---\nname: Ada\n---\n' }
+
+	// Astro loads collections from these names too, so the entries are there; only the check is blind to them.
+	test.each(['src/content.config.mjs', 'src/content.config.js', 'src/content.config.mts', 'src/content/config.mjs'])(
+		'a config at %s is named as unread, not reported missing',
+		async configPath => {
+			await write({ [configPath]: PEOPLE_MJS, ...ADA })
+
+			const report = await check()
+			expect(report.findings.map(f => [f.severity, f.code, f.file])).toEqual([['warning', 'config/unread', configPath]])
+			expect(report.findings[0]!.hint).toBe('Move the collections into src/content.config.ts and delete this file to have them checked.')
+			expect(report.collections).toBe(0)
+		},
+	)
+
+	// Astro 7 refuses the legacy location unless the project opts back in, and the warning has to say so.
+	test('an unread config under src/content/ says the build fails on it', async () => {
+		await write({ 'src/content/config.js': PEOPLE_MJS, ...ADA })
 
 		const report = await check()
-		expect(report.findings.map(f => [f.severity, f.code, f.file])).toEqual([['warning', 'config/unread', configPath]])
-		expect(report.findings[0]!.hint).toBe(`Rename it to ${rename} to have them checked.`)
+		expect(report.findings[0]!.message).toContain('legacy.collectionsBackwardsCompat')
+	})
+
+	// Astro takes the .mjs and ignores the .ts, so the .ts collections are not what the build loads.
+	test.each([
+		// Checked, this one would reject the entry: `name` is text, its schema says number.
+		['declares collections', config('n.object({ name: n.number() })')],
+		['declares none', `export const collections = {}\n`],
+	])('a .ts config that %s beside an .mjs one is not checked in its place', async (_label, tsConfig) => {
+		await write({ 'src/content.config.ts': tsConfig, 'src/content.config.mjs': PEOPLE_MJS, ...ADA })
+
+		const report = await check()
+		expect(report.findings.map(f => [f.code, f.file])).toEqual([['config/unread', 'src/content.config.mjs']])
 		expect(report.collections).toBe(0)
 	})
 
+	test('of two unread configs only the one Astro loads is named', async () => {
+		await write({ 'src/content.config.js': PEOPLE_MJS, 'src/content.config.mjs': PEOPLE_MJS })
+
+		const report = await check()
+		expect(report.findings.map(f => f.file)).toEqual(['src/content.config.mjs'])
+	})
+
+	// Unread, it cannot be told apart from a config declaring nothing, so it is named rather than passed.
 	test('an unread config is named even when no entries exist yet', async () => {
 		await write({ 'src/content.config.mjs': 'export const collections = {}\n' })
 
