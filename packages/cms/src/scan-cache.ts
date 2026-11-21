@@ -19,5 +19,7 @@ export async function scanCollections(contentDir?: string, overrides?: Collectio
 /** What the content scan finds, before the overrides; for a caller that keeps the scan and lays the overrides over it each time. */
 export async function scanCollectionsWithoutOverrides(contentDir?: string): Promise<Record<string, CollectionDefinition>> {
 	const context = currentProjectContext()
-	return await coreScanCollections(context.fs, contentDir, context.state.contentConfigParses)
+	return await coreScanCollections(context.fs, contentDir, context.state.contentConfigParses, {
+		frontmatterCache: context.state.frontmatterParses,
+	})
 }

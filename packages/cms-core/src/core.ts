@@ -15,7 +15,7 @@ import type {
 	RedirectOperationResponse,
 	UpdateRedirectRequest,
 } from '@nuasite/cms-types'
-import { collectionScanReport, scanCollections } from './collection-scanner.ts'
+import { collectionScanReport, type FrontmatterCache, scanCollections } from './collection-scanner.ts'
 import { scanComponentDefinitions } from './component-registry.ts'
 import { type ParseCache } from './content-config-ast.ts'
 import { type CmsCommit, createStagedFileSystem } from './fs/staged.ts'
@@ -132,6 +132,8 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 	const commit = opts.commit
 	// One mtime-keyed content-config parse cache per core instance (per project root).
 	const parseCache: ParseCache = new Map()
+	// Each entry's parsed frontmatter, so a rescan after one save parses only that entry.
+	const frontmatterCache: FrontmatterCache = new Map()
 
 	function entryDeps(over: CmsFileSystem): EntryOpsDeps {
 		return {
@@ -156,7 +158,7 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 
 	return {
 		scanCollections(options) {
-			return scanCollections(fs, contentDir, parseCache, { report: options?.report ?? false })
+			return scanCollections(fs, contentDir, parseCache, { report: options?.report ?? false, frontmatterCache })
 		},
 		collectionScanReport,
 		scanComponents() {
