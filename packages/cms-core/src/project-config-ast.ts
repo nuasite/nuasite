@@ -1,6 +1,9 @@
 import { parse } from '@babel/parser'
 import type { ArrayExpression, File, Node, ObjectExpression } from '@babel/types'
 import type { CmsConfig, CmsListStyle } from '@nuasite/cms-types'
+import path from 'node:path'
+import { normalizeBasePath } from './base-path.ts'
+import { configOptionMentions, findLoadedContentConfig } from './content-config-ast.ts'
 import type { CmsFileSystem } from './fs/types.ts'
 
 type Bindings = Map<string, Node>
@@ -312,18 +315,93 @@ export function parseProjectCmsConfigSource(source: string): CmsConfig {
 	return { listStyles: parseConfigListStyles(cmsConfig, bindings), ...(locale ? { locale } : {}) }
 }
 
-const ASTRO_CONFIG_FILES = ['astro.config.ts', 'astro.config.mts', 'astro.config.mjs', 'astro.config.js']
+/** Where Astro looks for its config, in its order (`astro/dist/core/config/config.js`): it takes the first there is. */
+const ASTRO_CONFIG_FILES = ['astro.config.mjs', 'astro.config.js', 'astro.config.ts', 'astro.config.mts']
 
-/** Read and parse the consuming project's Astro config, tolerating absence or malformed config. */
-export async function parseProjectCmsConfig(fs: CmsFileSystem): Promise<CmsConfig> {
+/** The code of the Astro config file Astro uses, or `null` when the project has none. */
+async function readAstroConfigSource(fs: CmsFileSystem): Promise<string | null> {
 	for (const file of ASTRO_CONFIG_FILES) {
-		let source: string
 		try {
-			source = await fs.readFile(file)
+			return await fs.readFile(file)
 		} catch {
 			continue
 		}
-		return parseProjectCmsConfigSource(source)
 	}
-	return EMPTY_CONFIG
+	return null
+}
+
+/** Read and parse the consuming project's Astro config, tolerating absence or malformed config. */
+export async function parseProjectCmsConfig(fs: CmsFileSystem): Promise<CmsConfig> {
+	const source = await readAstroConfigSource(fs)
+	return source === null ? EMPTY_CONFIG : parseProjectCmsConfigSource(source)
+}
+
+/**
+ * The project's source directory, root-relative: `src` by default, or `null` when where Astro loads content from
+ * cannot be told.
+ *
+ * Read off the code of the one config file Astro uses. Two of its options decide the place:
+ * `srcDir`, where the content config and the content directory are, and `root`, which every
+ * loader's `base` is resolved against. Which mention of either name is Astro's option cannot
+ * be told without evaluating the file (it may name another plugin's option, a variable, a
+ * member), so every one of them has to be a property given a plain string: all `srcDir`s the
+ * same directory inside the project, every `root` the project root itself, which the scan
+ * takes it to be. Either name given an object literal is not Astro's option, which is a string.
+ */
+export async function readAstroSrcDir(fs: CmsFileSystem): Promise<string | null> {
+	const source = await readAstroConfigSource(fs)
+	if (source === null) return 'src'
+	const roots = configOptionMentions(source, 'root')
+	const srcDirs = configOptionMentions(source, 'srcDir')
+	if (roots === null || srcDirs === null) return null
+	if (roots.some(root => root === null || normalizeBasePath(root) !== '.')) return null
+	if (srcDirs.length === 0) return 'src'
+	const [srcDir, ...others] = srcDirs.map(literal => (literal === null ? null : normalizeBasePath(literal)))
+	if (srcDir === null || srcDir === undefined || others.some(other => other !== srcDir)) return null
+	return path.isAbsolute(srcDir) || srcDir.startsWith('..') ? null : srcDir
+}
+
+/**
+ * The source directory a content check judges: a custom `srcDir` only when a content config is there. The mention
+ * {@link readAstroSrcDir} took for it may be another option of that name, and then `src` is where the config is. Where
+ * the directory cannot be told, `src` as well.
+ */
+export async function contentSrcDir(fs: CmsFileSystem): Promise<string> {
+	const srcDir = await readAstroSrcDir(fs)
+	if (srcDir === null || srcDir === 'src') return 'src'
+	return (await findLoadedContentConfig(fs, srcDir)) === null ? 'src' : srcDir
+}
+
+/**
+ * Whether the Astro config turns on `legacy.collectionsBackwardsCompat`, without which Astro 7 fails the build on a
+ * content config at the legacy `src/content/config.*`. `null` when that cannot be read off the code.
+ *
+ * Off unless the config says so, as in Astro. `defineConfig` of `@nuasite/nua/config` turns it on, and a `legacy` key
+ * of the config's own replaces that default whole (`{ ...defaults, ...config }`), so only the key's own value counts
+ * once it is there.
+ */
+export function parseLegacyCollectionsOptInSource(source: string): boolean | null {
+	const ast = parseSource(source)
+	if (!ast) return null
+	const bindings = collectBindings(ast)
+	const configObject = configObjectFromDefaultExport(ast, bindings)
+	if (!configObject) return null
+	const hasSpread = (object: ObjectExpression): boolean => object.properties.some(property => property.type === 'SpreadElement')
+
+	const legacy = objectPropertyValue(configObject, 'legacy', bindings)
+	if (legacy === null) {
+		if (hasSpread(configObject)) return null
+		const wrapper = defaultExportWrapper(ast, bindings)
+		return wrapper === 'unknown' ? null : wrapper === 'nua'
+	}
+	if (legacy.type !== 'ObjectExpression') return null
+	const optIn = objectPropertyValue(legacy, 'collectionsBackwardsCompat', bindings)
+	if (optIn === null) return hasSpread(legacy) ? null : false
+	return optIn.type === 'BooleanLiteral' ? optIn.value : null
+}
+
+/** {@link parseLegacyCollectionsOptInSource} of the Astro config Astro uses. Without one Astro runs on its defaults: off. */
+export async function readLegacyCollectionsOptIn(fs: CmsFileSystem): Promise<boolean | null> {
+	const source = await readAstroConfigSource(fs)
+	return source === null ? false : parseLegacyCollectionsOptInSource(source)
 }

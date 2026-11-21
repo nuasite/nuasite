@@ -157,7 +157,7 @@ describe('loadLiveSchemas', () => {
 	}, 60_000)
 
 	// Astro's own precedence, and a monorepo's two roots sharing one hoisted Astro install.
-	test('the legacy location and the non-.ts extensions are found in Astro order', async () => {
+	test('the legacy location, the non-.ts extensions and a custom srcDir are found as Astro finds them', async () => {
 		const legacy = await project('legacy', {
 			'src/content/config.ts': `
 				import { defineCollection, z } from 'astro:content'
@@ -171,13 +171,27 @@ describe('loadLiveSchemas', () => {
 			`,
 			'src/content.config.ts': `export const collections = { fromTs: { schema: null } }`,
 		})
+		// The config under the custom srcDir is the one Astro loads; the one under src is a stray file.
+		const customSrcDir = await project('custom-src-dir', {
+			'astro.config.mjs': `export default { srcDir: './app' }`,
+			'app/content.config.ts': `
+				import { defineCollection, z } from 'astro:content'
+				export const collections = { fromApp: defineCollection({ schema: z.object({ title: z.string() }) }) }
+			`,
+			'src/content.config.ts': `export const collections = { fromSrc: { schema: null } }`,
+		})
 
-		const [first, second] = await run([{ root: legacy, probes: [{ collection: 'notes', value: { title: 42 } }] }, { root: mixed }])
+		const [first, second, third] = await run([
+			{ root: legacy, probes: [{ collection: 'notes', value: { title: 42 } }] },
+			{ root: mixed },
+			{ root: customSrcDir },
+		])
 
 		expect(first?.collections).toEqual(['notes'])
 		expect(issuesOf(first, 0)[0]?.path).toEqual(['title'])
 		// `.mjs` is what Astro would load; picking `.ts` here would check a file the build ignores.
 		expect(second?.collections).toEqual(['fromMjs'])
+		expect(third?.collections).toEqual(['fromApp'])
 	}, 60_000)
 
 	// Astro's reference() takes a lookup object as well as an id string; a narrower stub would report

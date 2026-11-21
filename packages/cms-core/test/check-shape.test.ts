@@ -75,7 +75,7 @@ const inputOf = (collections: Record<string, CollectionSpec>, schemas: LiveSchem
 		config.set(name, { name, fields: spec.fields, loaderBase: `./src/content/${name}` })
 		loaded.set(name, { name, base: `src/content/${name}`, exists: true, entries: spec.entries ?? [] })
 	}
-	return { config, collections: loaded, schemas }
+	return { config, configFile: 'src/content.config.ts', collections: loaded, schemas }
 }
 
 const codes = async (input: ShapeCheckInput): Promise<string[]> => (await checkFieldShapes(input)).map(finding => finding.code)

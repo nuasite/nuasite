@@ -24,12 +24,11 @@ import { acceptsMissing, firstAcceptedEntry, governsPath, pointAt, rejectsValueA
 
 export interface ShapeCheckInput {
 	config: ParsedConfig
+	/** The content config file `config` was read from. Findings about a schema, not about any one entry, name it. */
+	configFile: string
 	collections: LoadedCollections
 	schemas: LiveSchemas
 }
-
-/** These findings are about the schema, not about any one entry — `check.ts` names the same file for its config findings. */
-const CONFIG_FILE = 'src/content.config.ts'
 
 /**
  * Strings diverse enough that anything still refusing all of them refuses text as a kind.
@@ -55,8 +54,8 @@ const anyEntryHasValue = (entries: LoadedEntry[], field: string): boolean =>
  * a consequence that `cms/empty-write` states precisely (the create it breaks), and saying it
  * twice under two codes makes one defect look like two.
  */
-async function requiredDrift(name: string, field: ParsedField, seed: Record<string, unknown>, schemas: LiveSchemas): Promise<CheckFinding | null> {
-	const schema = schemaFor(schemas, name)
+async function requiredDrift(name: string, field: ParsedField, seed: Record<string, unknown>, input: ShapeCheckInput): Promise<CheckFinding | null> {
+	const schema = schemaFor(input.schemas, name)
 	// `blankRequiredFields` skips hidden fields, so an over-strict parser costs nothing there.
 	if (!schema || !field.required || field.layout?.hidden) return null
 
@@ -69,7 +68,7 @@ async function requiredDrift(name: string, field: ParsedField, seed: Record<stri
 	return {
 		severity: 'warning',
 		code: 'cms/required-drift',
-		file: CONFIG_FILE,
+		file: input.configFile,
 		field: `${name}.${field.name}`,
 		message: `The editor treats "${name}.${field.name}" as required and refuses to save it blank, but the schema accepts an entry without it.`,
 		hint:
@@ -103,7 +102,7 @@ async function degradedField(name: string, field: ParsedField, seed: Record<stri
 	return {
 		severity: 'error',
 		code: 'cms/field-degraded',
-		file: CONFIG_FILE,
+		file: input.configFile,
 		field: `${name}.${field.name}`,
 		message:
 			`The editor will render "${name}.${field.name}" as a plain text input — the parser pinned no type and no entry supplies one — and the schema rejects text there.`,
@@ -126,7 +125,7 @@ export async function checkFieldShapes(input: ShapeCheckInput): Promise<CheckFin
 		if (!seed) continue
 
 		for (const field of collection.fields) {
-			const drift = await requiredDrift(name, field, seed, input.schemas)
+			const drift = await requiredDrift(name, field, seed, input)
 			if (drift) findings.push(drift)
 			const degraded = await degradedField(name, field, seed, input)
 			if (degraded) findings.push(degraded)

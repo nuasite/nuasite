@@ -298,13 +298,13 @@ function parseSource(source: string): t.File | null {
 	}
 }
 
-/** Where a project may keep its content config, in the order the parser prefers them. */
-export const CONTENT_CONFIG_PATHS = ['src/content/config.ts', 'src/content.config.ts'] as const
+/** The content config names this reader reads, in Astro's order. The other names Astro loads are JavaScript. */
+export const CONTENT_CONFIG_PATHS = ['src/content.config.ts', 'src/content/config.ts'] as const
 
 /**
  * Every content config file name, in the order Astro 7 looks for them: it loads the first that exists. It looks at
  * the legacy `src/content/config.*` names only when none of the others exists, and then fails the build unless the
- * Astro config sets `legacy.collectionsBackwardsCompat`.
+ * Astro config sets `legacy.collectionsBackwardsCompat`. The names are under the default source directory `src`.
  */
 export const ASTRO_CONTENT_CONFIG_ORDER = [
 	'src/content.config.mjs',
@@ -327,16 +327,27 @@ export const UNREAD_CONTENT_CONFIG_PATHS: readonly string[] = ASTRO_CONTENT_CONF
 	!READ_CONTENT_CONFIG_PATHS.has(configPath)
 )
 
-/** The content config file Astro loads, or `null` when the project has none. */
-export async function findLoadedContentConfig(fs: CmsFileSystem): Promise<string | null> {
+/** One of the content config names above, under the source directory `srcDir` instead of `src`. */
+export const inSrcDir = (configPath: string, srcDir: string): string => `${srcDir}${configPath.slice('src'.length)}`
+
+/** The content config file Astro loads. */
+export interface LoadedContentConfig {
+	/** Root-relative path. */
+	file: string
+	/** Whether this reader reads it. */
+	read: boolean
+	/** One of the legacy `content/config.*` names, which Astro 7 loads only with `legacy.collectionsBackwardsCompat`. */
+	legacy: boolean
+}
+
+/** The content config file Astro loads from the source directory `srcDir`, or `null` when the project has none. */
+export async function findLoadedContentConfig(fs: CmsFileSystem, srcDir = 'src'): Promise<LoadedContentConfig | null> {
 	for (const configPath of ASTRO_CONTENT_CONFIG_ORDER) {
-		if (await fs.exists(configPath)) return configPath
+		const file = inSrcDir(configPath, srcDir)
+		if (await fs.exists(file)) return { file, read: READ_CONTENT_CONFIG_PATHS.has(configPath), legacy: configPath.startsWith('src/content/') }
 	}
 	return null
 }
-
-/** Whether this reader reads the content config at `configPath`. */
-export const isReadContentConfig = (configPath: string): boolean => READ_CONTENT_CONFIG_PATHS.has(configPath)
 
 /**
  * Why `parseContentConfig` came back empty. Four different facts share that one return value, and only two of them
@@ -345,23 +356,12 @@ export const isReadContentConfig = (configPath: string): boolean => READ_CONTENT
  */
 export type EmptyContentConfigReason = 'missing' | 'unread' | 'unparseable' | 'no-collections'
 
-/**
- * Tell the four apart, for a caller that has to report the empty map rather than just handle it.
- *
- * A parse failure anywhere wins over an empty parse: a config that will not read is a problem to
- * name even when a second one beside it reads cleanly and declares nothing.
- */
-export async function classifyEmptyContentConfig(fs: CmsFileSystem): Promise<EmptyContentConfigReason> {
-	const loaded = await findLoadedContentConfig(fs)
+/** Tell the four apart, for a caller that has to report the empty map rather than just handle it. */
+export async function classifyEmptyContentConfig(fs: CmsFileSystem, srcDir = 'src'): Promise<EmptyContentConfigReason> {
+	const loaded = await findLoadedContentConfig(fs, srcDir)
 	if (loaded === null) return 'missing'
-	if (!isReadContentConfig(loaded)) return 'unread'
-	for (const configPath of CONTENT_CONFIG_PATHS) {
-		if (!(await fs.exists(configPath))) continue
-		if (parseSource(await fs.readFile(configPath)) === null) {
-			return 'unparseable'
-		}
-	}
-	return 'no-collections'
+	if (!loaded.read) return 'unread'
+	return parseSource(await fs.readFile(loaded.file)) === null ? 'unparseable' : 'no-collections'
 }
 
 /**
@@ -370,38 +370,38 @@ export async function classifyEmptyContentConfig(fs: CmsFileSystem): Promise<Emp
  * file exists or parsing fails. The mtime-keyed cache (via `fs.stat()`) skips
  * re-reading and re-parsing an unchanged config file.
  */
-export async function parseContentConfig(fs: CmsFileSystem, cache: ParseCache): Promise<ParsedConfig> {
-	return (await readContentConfig(fs, cache)).parsed
+export async function parseContentConfig(fs: CmsFileSystem, cache: ParseCache, srcDir = 'src'): Promise<ParsedConfig> {
+	return (await readContentConfig(fs, cache, srcDir)).parsed
 }
 
 /**
  * {@link parseContentConfig}, plus every collection name the config declares — including the
  * ones the parsed map leaves out because neither a schema nor a glob pattern could be read.
  * Same file choice and the same cache.
+ *
+ * The file is the first of {@link CONTENT_CONFIG_PATHS} there is, Astro's order, and only that one: Astro does not
+ * load a legacy config beside a current one. Where Astro loads a JavaScript config, this still reads the `.ts` beside
+ * it; `checkContent` reports that case before it reads anything.
  */
-export async function readContentConfig(fs: CmsFileSystem, cache: ParseCache): Promise<ContentConfigRead> {
-	// A config whose parsed map came back empty may still declare names, all of them unreadable
-	// declarations, or export a `collections` the reader cannot see into. The first such read
-	// is the answer when no config parses to anything.
-	let unparsed: ContentConfigRead | undefined
+export async function readContentConfig(fs: CmsFileSystem, cache: ParseCache, srcDir = 'src'): Promise<ContentConfigRead> {
 	for (const configPath of CONTENT_CONFIG_PATHS) {
+		const file = inSrcDir(configPath, srcDir)
 		let stat: Awaited<ReturnType<CmsFileSystem['stat']>>
 		try {
-			stat = await fs.stat(configPath)
+			stat = await fs.stat(file)
 		} catch {
 			continue
 		}
 
-		let cached = cache.get(configPath)
+		let cached = cache.get(file)
 		if (!cached || cached.mtimeMs !== stat.mtimeMs) {
-			const content = await fs.readFile(configPath)
+			const content = await fs.readFile(file)
 			cached = { mtimeMs: stat.mtimeMs, ...readConfigSource(content) }
-			cache.set(configPath, cached)
+			cache.set(file, cached)
 		}
-		if (cached.parsed.size > 0) return cached
-		if (!unparsed && (cached.declared.length > 0 || cached.exportsCollections)) unparsed = cached
+		return cached
 	}
-	return unparsed ?? { parsed: new Map(), declared: [], partial: false, exportsCollections: false }
+	return { parsed: new Map(), declared: [], partial: false, exportsCollections: false }
 }
 
 /** Exported for unit testing — operates on a source string directly. */

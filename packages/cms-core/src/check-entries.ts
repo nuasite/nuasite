@@ -97,12 +97,15 @@ export function collectionKind(collection: LoadedCollection, loaderPattern: stri
 	return loaderPattern === undefined || /\bmdx?\b/.test(loaderPattern) ? 'markdown' : 'data'
 }
 
-/** Every declared collection's files, read and parsed. Reports nothing — the callers judge. */
-export async function loadCollections(fs: CmsFileSystem, config: ParsedConfig): Promise<LoadedCollections> {
+/**
+ * Every declared collection's files, read and parsed. Reports nothing — the callers judge.
+ * `contentDir` is where a collection without a loader base is, `<srcDir>/content`.
+ */
+export async function loadCollections(fs: CmsFileSystem, config: ParsedConfig, contentDir: string): Promise<LoadedCollections> {
 	const loaded: LoadedCollections = new Map()
 
 	for (const [name, collection] of config) {
-		const base = normalizeBase(collection.loaderBase ?? `src/content/${name}`)
+		const base = normalizeBase(collection.loaderBase ?? `${contentDir}/${name}`)
 
 		if (!(await fs.exists(base))) {
 			loaded.set(name, { name, base, exists: false, entries: [] })

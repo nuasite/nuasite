@@ -78,7 +78,7 @@ const inputOf = (collections: Record<string, CollectionSpec>, schemas: LiveSchem
 		config.set(name, { name, fields: spec.fields, loaderBase: `./src/content/${name}` })
 		loaded.set(name, { name, base: `src/content/${name}`, exists: true, entries: spec.entries ?? [] })
 	}
-	return { config, collections: loaded, schemas, today }
+	return { config, configFile: 'src/content.config.ts', collections: loaded, schemas, today }
 }
 
 /**
