@@ -217,6 +217,31 @@ export const collections = { people${extra ? ', articles' : ''} }
 		expect(report.findings.map(f => [f.severity, f.code])).toEqual([['warning', 'config/missing']])
 	})
 
+	// Astro loads collections from these names too, so the entries build and render; only the check is blind to them.
+	test.each([
+		['src/content.config.mjs', 'src/content.config.ts'],
+		['src/content.config.js', 'src/content.config.ts'],
+		['src/content/config.mjs', 'src/content/config.ts'],
+	])('a config at %s is named as unread, not reported missing', async (configPath, rename) => {
+		await write({
+			[configPath]:
+				`import { defineCollection, z } from 'astro:content'\nexport const collections = { people: defineCollection({ schema: z.object({ name: z.string() }) }) }\n`,
+			'src/content/people/ada.md': '---\nname: Ada\n---\n',
+		})
+
+		const report = await check()
+		expect(report.findings.map(f => [f.severity, f.code, f.file])).toEqual([['warning', 'config/unread', configPath]])
+		expect(report.findings[0]!.hint).toBe(`Rename it to ${rename} to have them checked.`)
+		expect(report.collections).toBe(0)
+	})
+
+	test('an unread config is named even when no entries exist yet', async () => {
+		await write({ 'src/content.config.mjs': 'export const collections = {}\n' })
+
+		const report = await check()
+		expect(report.findings.map(f => [f.severity, f.code])).toEqual([['warning', 'config/unread']])
+	})
+
 	// Errors are what fails the build. A site with no collections builds, so calling it an error
 	// refused to publish every static site and gave the agent a defect to chase that was not there.
 	test('a config that reads fine and declares no collections passes clean', async () => {

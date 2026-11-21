@@ -314,14 +314,24 @@ export const UNREAD_CONTENT_CONFIG_PATHS = [
 	'src/content/config.mts',
 ] as const
 
-/**
- * Why `parseContentConfig` came back empty. Three different facts share that one return value, and
- * only two of them are a defect: a site with no content collections is a legitimate site.
- */
-export type EmptyContentConfigReason = 'missing' | 'unparseable' | 'no-collections'
+/** The configs at {@link UNREAD_CONTENT_CONFIG_PATHS} the project has. */
+export async function findUnreadContentConfigs(fs: CmsFileSystem): Promise<string[]> {
+	const found: string[] = []
+	for (const configPath of UNREAD_CONTENT_CONFIG_PATHS) {
+		if (await fs.exists(configPath)) found.push(configPath)
+	}
+	return found
+}
 
 /**
- * Tell the three apart, for a caller that has to report the empty map rather than just handle it.
+ * Why `parseContentConfig` came back empty. Four different facts share that one return value: a site
+ * with no content collections is a legitimate site, and an `unread` config is one Astro loads from a
+ * file name the reader does not look at.
+ */
+export type EmptyContentConfigReason = 'missing' | 'unread' | 'unparseable' | 'no-collections'
+
+/**
+ * Tell the four apart, for a caller that has to report the empty map rather than just handle it.
  *
  * A parse failure anywhere wins over an empty parse: a config that will not read is a problem to
  * name even when a second one beside it reads cleanly and declares nothing.
@@ -339,7 +349,8 @@ export async function classifyEmptyContentConfig(fs: CmsFileSystem): Promise<Emp
 			return 'unparseable'
 		}
 	}
-	return found ? 'no-collections' : 'missing'
+	if (found) return 'no-collections'
+	return (await findUnreadContentConfigs(fs)).length > 0 ? 'unread' : 'missing'
 }
 
 /**

@@ -20,6 +20,7 @@ import { checkEditorWrites } from './check-write.ts'
 import {
 	classifyEmptyContentConfig,
 	CONTENT_CONFIG_PATHS,
+	findUnreadContentConfigs,
 	parseContentConfig,
 	type ParsedCollection,
 	type ParsedField,
@@ -240,6 +241,19 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 		const reason = await classifyEmptyContentConfig(fs)
 		if (reason === 'unparseable') {
 			findings.push({ severity: 'error', code: 'config/unreadable', file: 'src/content.config.ts', message: 'The content config could not be parsed.' })
+		} else if (reason === 'unread') {
+			// Astro loads this config and its collections, so they build; this check saw none of them.
+			for (const file of await findUnreadContentConfigs(fs)) {
+				findings.push({
+					severity: 'warning',
+					code: 'config/unread',
+					file,
+					message: `This content config is not read by the check, which reads ${
+						CONTENT_CONFIG_PATHS.join(' or ')
+					}. None of its collections or entries were checked.`,
+					hint: `Rename it to ${file.startsWith('src/content/') ? 'src/content/config.ts' : 'src/content.config.ts'} to have them checked.`,
+				})
+			}
 		} else if (reason === 'missing' && (await fs.glob(`src/content/${DEFAULT_ENTRY_PATTERN}`)).length > 0) {
 			findings.push({
 				severity: 'warning',
