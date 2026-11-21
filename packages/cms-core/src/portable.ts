@@ -45,6 +45,9 @@ export {
 	type ContentConfigRead,
 	type DeclaredCollection,
 	type EmptyContentConfigReason,
+	findLoadedContentConfig,
+	inSrcDir,
+	type LoadedContentConfig,
 	type ParseCache,
 	parseConfigSource,
 	parseContentConfig,
@@ -126,7 +129,7 @@ export {
 	type S3StorageOptions,
 	uploadsDirRelativeToRoot,
 } from './media/index.ts'
-export { parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast.ts'
+export { contentSrcDir, parseProjectCmsConfig, parseProjectCmsConfigSource } from './project-config-ast.ts'
 export {
 	CLOUDFLARE_REDIRECT_LIMITS,
 	CMS_REDIRECTS_FILE,

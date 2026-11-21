@@ -2,7 +2,8 @@ import type { CollectionEntryInfo, ComponentDefinition, MutationResult } from '@
 import path from 'node:path'
 import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths.ts'
-import { normalizeBasePath, scanCollections } from '../collection-scanner.ts'
+import { normalizeBasePath } from '../base-path.ts'
+import { scanCollections } from '../collection-scanner.ts'
 import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast.ts'
 import {
 	blankRequiredFields,

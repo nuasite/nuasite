@@ -48,14 +48,13 @@ import { firstAcceptedEntry } from './schema-probe.ts'
 
 export interface WriteCheckInput {
 	config: ParsedConfig
+	/** The content config file `config` was read from. Findings about a schema, not about any one entry, name it. */
+	configFile: string
 	collections: LoadedCollections
 	schemas: LiveSchemas
 	/** Injected so a date-defaulted field does not make the report depend on the day it ran. */
 	today?: () => Date
 }
-
-/** These findings are about the schema, not about any one entry — `check.ts` names the same file for its config findings. */
-const CONFIG_FILE = 'src/content.config.ts'
 
 /** `parseContentConfig` reports `hidden` under `layout`; the write model wants it at the top level. */
 const toWriteModelField = (field: ParsedField): WriteModelField => ({ name: field.name, type: field.type, hidden: field.layout?.hidden })
@@ -127,12 +126,18 @@ function hintFor(action: WriteAction, found: ReturnType<typeof valueAt>): string
 }
 
 /** One rejected write, phrased as the editorial action that causes it. `action` reads as the subject of the sentence. */
-function rejectionFinding(action: string, issue: LiveIssue, kind: WriteAction, written: Record<string, unknown>): CheckFinding {
+function rejectionFinding(
+	configFile: string,
+	action: string,
+	issue: LiveIssue,
+	kind: WriteAction,
+	written: Record<string, unknown>,
+): CheckFinding {
 	const { field, message } = describeIssue(issue)
 	const finding: CheckFinding = {
 		severity: 'error',
 		code: 'cms/empty-write',
-		file: CONFIG_FILE,
+		file: configFile,
 		message: `${action} produces a write the schema rejects. ${message}`,
 	}
 	if (field !== undefined) finding.field = field
@@ -141,10 +146,10 @@ function rejectionFinding(action: string, issue: LiveIssue, kind: WriteAction, w
 }
 
 /** A throw is a verdict too: `astro sync` runs the same schema over the same record and dies the same way. */
-const throwFinding = (action: string, threw: string): CheckFinding => ({
+const throwFinding = (configFile: string, action: string, threw: string): CheckFinding => ({
 	severity: 'error',
 	code: 'cms/empty-write',
-	file: CONFIG_FILE,
+	file: configFile,
 	message: `${action} produces a write the schema throws on: ${threw}`,
 	hint:
 		'A schema that throws instead of returning an issue is usually a refinement reading a field this write does not carry. Guard it against a missing value — `astro sync` runs the same schema over the same record.',
@@ -233,7 +238,7 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 			report(createKey, {
 				severity: 'warning',
 				code: 'cms/empty-write-unchecked',
-				file: CONFIG_FILE,
+				file: input.configFile,
 				field: name,
 				message:
 					`Could not check what creating a new entry in "${name}" writes: its schema is not readable from the content config, so there are no fields to predict the write from.`,
@@ -266,12 +271,12 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 		const createAction = `Creating a new entry in "${name}"`
 		const createVerdict = await parseWrite(schema, created)
 		if ('threw' in createVerdict) {
-			report(createKey, throwFinding(createAction, createVerdict.threw))
+			report(createKey, throwFinding(input.configFile, createAction, createVerdict.threw))
 		} else {
 			for (const issue of createVerdict.issues) {
 				const top = issue.path[0]
 				if (typeof top === 'string' && guarded.has(top)) continue
-				report(createKey, rejectionFinding(createAction, issue, 'create', created))
+				report(createKey, rejectionFinding(input.configFile, createAction, issue, 'create', created))
 			}
 		}
 
@@ -293,7 +298,7 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 				report(key, {
 					severity: 'warning',
 					code: 'cms/empty-write-unchecked',
-					file: CONFIG_FILE,
+					file: input.configFile,
 					field: field.name,
 					message: `Could not check what "+ Add" on "${name}.${field.name}" writes: ${reason}.`,
 					hint: hasEntries
@@ -313,10 +318,10 @@ export async function checkEditorWrites(input: WriteCheckInput): Promise<CheckFi
 				const written = withoutBlankArrayItems({ ...seed, [field.name]: [...existing, item] })
 				const verdict = await parseWrite(schema, written)
 				if ('threw' in verdict) {
-					report(key, throwFinding(action, verdict.threw))
+					report(key, throwFinding(input.configFile, action, verdict.threw))
 					continue
 				}
-				for (const issue of verdict.issues) report(key, rejectionFinding(action, issue, 'add', written))
+				for (const issue of verdict.issues) report(key, rejectionFinding(input.configFile, action, issue, 'add', written))
 			}
 		}
 	}

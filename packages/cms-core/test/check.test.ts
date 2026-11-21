@@ -222,7 +222,7 @@ export const collections = { people${extra ? ', articles' : ''} }
 	const ADA = { 'src/content/people/ada.md': '---\nname: Ada\n---\n' }
 
 	// Astro loads collections from these names too, so the entries are there; only the check is blind to them.
-	test.each(['src/content.config.mjs', 'src/content.config.js', 'src/content.config.mts', 'src/content/config.mjs'])(
+	test.each(['src/content.config.mjs', 'src/content.config.js', 'src/content.config.mts'])(
 		'a config at %s is named as unread, not reported missing',
 		async configPath => {
 			await write({ [configPath]: PEOPLE_MJS, ...ADA })
@@ -234,13 +234,115 @@ export const collections = { people${extra ? ', articles' : ''} }
 		},
 	)
 
-	// Astro 7 refuses the legacy location unless the project opts back in, and the warning has to say so.
-	test('an unread config under src/content/ says the build fails on it', async () => {
-		await write({ 'src/content/config.js': PEOPLE_MJS, ...ADA })
+	const ASTRO_CONFIG = `import { defineConfig } from 'astro/config'\nexport default defineConfig({})\n`
+	const OPTED_IN = `import { defineConfig } from 'astro/config'\nexport default defineConfig({ legacy: { collectionsBackwardsCompat: true } })\n`
 
-		const report = await check()
-		expect(report.findings.map(f => [f.code, f.file])).toEqual([['config/unread', 'src/content/config.js']])
-		expect(report.findings[0]!.message).toContain('legacy.collectionsBackwardsCompat')
+	// Astro 7 fails the build on a legacy `src/content/config.*` unless the Astro config opts back in.
+	describe('a content config at the legacy location', () => {
+		test.each([
+			['an Astro config without the option', ASTRO_CONFIG],
+			[
+				'the option set to false',
+				`import { defineConfig } from 'astro/config'\nexport default defineConfig({ legacy: { collectionsBackwardsCompat: false } })\n`,
+			],
+			// nua's defineConfig sets it, and a `legacy` key of the config's own replaces that default whole.
+			['a legacy key of its own under nua', `import { defineConfig } from '@nuasite/nua/config'\nexport default defineConfig({ legacy: {} })\n`],
+		])('is an error with %s, and its collections are still checked', async (_label, astroConfig) => {
+			await write({ 'astro.config.mjs': astroConfig, 'src/content/config.ts': config('n.object({ name: n.number() })'), ...ADA })
+
+			const report = await check()
+			expect(report.findings.map(f => [f.severity, f.code, f.file])).toEqual([
+				['error', 'config/legacy-location', 'src/content/config.ts'],
+				['error', 'entry/field-type', 'src/content/people/ada.md'],
+			])
+			expect(report.findings[0]!.hint).toContain('src/content.config.ts')
+			expect(report.findings[0]!.hint).toContain('collectionsBackwardsCompat: true')
+			expect(report.collections).toBe(1)
+		})
+
+		test('is an error without any Astro config: Astro runs on its defaults', async () => {
+			await write({ 'src/content/config.ts': config('n.object({ name: n.text() })'), ...ADA })
+
+			const report = await check()
+			expect(report.findings.map(f => [f.severity, f.code])).toEqual([['error', 'config/legacy-location']])
+		})
+
+		test.each([
+			['legacy.collectionsBackwardsCompat set', OPTED_IN],
+			['a plain object export setting it', `export default { legacy: { collectionsBackwardsCompat: true } }\n`],
+			[
+				'the defineConfig of @nuasite/nua/config',
+				`import { defineConfig } from '@nuasite/nua/config'\nexport default defineConfig({ nua: { cms: false } })\n`,
+			],
+			// `nua: false` drops the integration, not nua's Astro defaults.
+			['nua turned off in its defineConfig', `import { defineConfig } from '@nuasite/nua/config'\nexport default defineConfig({ nua: false })\n`],
+		])('is no finding with %s', async (_label, astroConfig) => {
+			await write({ 'astro.config.ts': astroConfig, 'src/content/config.ts': config('n.object({ name: n.text() })'), ...ADA })
+
+			const report = await check()
+			expect(report.findings).toEqual([])
+			expect(report.collections).toBe(1)
+		})
+
+		test.each([
+			[
+				'a value that is not a literal',
+				`import { defineConfig } from 'astro/config'\nexport default defineConfig({ legacy: { collectionsBackwardsCompat: process.env.LEGACY === '1' } })\n`,
+			],
+			[
+				'a config built by a wrapper',
+				`import { defineConfig } from 'astro/config'\nimport { withSentry } from './sentry'\nexport default withSentry(defineConfig({}))\n`,
+			],
+			[
+				'a spread that may carry the option',
+				`import { defineConfig } from 'astro/config'\nimport shared from './shared'\nexport default defineConfig({ ...shared })\n`,
+			],
+			[
+				'a spread after the option, which may override it',
+				`import { defineConfig } from 'astro/config'\nimport shared from './shared'\nexport default defineConfig({ legacy: { collectionsBackwardsCompat: false }, ...shared })\n`,
+			],
+			[
+				'the option set to false inside a wrapper, which may rewrite it',
+				`import { withSentry } from './sentry'\nexport default withSentry({ legacy: { collectionsBackwardsCompat: false } })\n`,
+			],
+		])('is a warning when the option cannot be read: %s', async (_label, astroConfig) => {
+			await write({ 'astro.config.mjs': astroConfig, 'src/content/config.ts': config('n.object({ name: n.text() })'), ...ADA })
+
+			const report = await check()
+			expect(report.findings.map(f => [f.severity, f.code])).toEqual([['warning', 'config/legacy-location']])
+			expect(report.findings[0]!.message).toContain('could not be read')
+		})
+
+		// Astro takes the first of astro.config.{mjs,js,ts,mts}.
+		test('the option is read from the Astro config Astro uses', async () => {
+			await write({
+				'astro.config.mjs': OPTED_IN,
+				'astro.config.ts': ASTRO_CONFIG,
+				'src/content/config.ts': config('n.object({ name: n.text() })'),
+				...ADA,
+			})
+
+			const report = await check()
+			expect(report.findings).toEqual([])
+		})
+
+		test('unread, it is the error and the unread warning, without the opt-in', async () => {
+			await write({ 'astro.config.mjs': ASTRO_CONFIG, 'src/content/config.mjs': PEOPLE_MJS, ...ADA })
+
+			const report = await check()
+			expect(report.findings.map(f => [f.severity, f.code, f.file])).toEqual([
+				['error', 'config/legacy-location', 'src/content/config.mjs'],
+				['warning', 'config/unread', 'src/content/config.mjs'],
+			])
+		})
+
+		test('unread, it is only the unread warning with the opt-in', async () => {
+			await write({ 'astro.config.mjs': OPTED_IN, 'src/content/config.mjs': PEOPLE_MJS, ...ADA })
+
+			const report = await check()
+			expect(report.findings.map(f => [f.severity, f.code, f.file])).toEqual([['warning', 'config/unread', 'src/content/config.mjs']])
+			expect(report.findings[0]!.hint).toBe('Move the collections into src/content.config.ts and delete this file to have them checked.')
+		})
 	})
 
 	// Astro's order: the current names before the legacy ones, and among the legacy ones `.ts` first.
@@ -248,11 +350,85 @@ export const collections = { people${extra ? ', articles' : ''} }
 		['src/content.config.ts', 'src/content/config.mjs'],
 		['src/content/config.ts', 'src/content/config.js'],
 	])('%s is loaded before %s, so the check reads it', async (loadedPath, ignoredPath) => {
-		await write({ [loadedPath]: config('n.object({ name: n.text() })'), [ignoredPath]: PEOPLE_MJS, ...ADA })
+		await write({ 'astro.config.mjs': OPTED_IN, [loadedPath]: config('n.object({ name: n.text() })'), [ignoredPath]: PEOPLE_MJS, ...ADA })
 
 		const report = await check()
 		expect(report.findings).toEqual([])
 		expect(report.collections).toBe(1)
+	})
+
+	// Astro loads src/content.config.ts and never looks at the legacy file; checked, the legacy schema would reject Ada.
+	test('with both .ts configs, the check judges by src/content.config.ts, the one Astro loads', async () => {
+		await write({
+			'astro.config.mjs': ASTRO_CONFIG,
+			'src/content/config.ts': config('n.object({ name: n.number() })'),
+			'src/content.config.ts': config('n.object({ name: n.text() })'),
+			...ADA,
+		})
+
+		const report = await check()
+		expect(report.findings).toEqual([])
+		expect(report.collections).toBe(1)
+		expect(report.entries).toBe(1)
+	})
+
+	describe('a custom srcDir', () => {
+		const APP_CONFIG = `import { defineConfig } from 'astro/config'\nexport default defineConfig({ srcDir: './app' })\n`
+		// No loader: the collection is the directory of its name under <srcDir>/content.
+		const noLoaderConfig = (schema: string) =>
+			`import { defineCmsCollection, n } from '@nuasite/cms'\nexport const collections = { people: defineCmsCollection({ schema: ${schema} }) }\n`
+
+		test('the check reads its content config and collections', async () => {
+			await write({
+				'astro.config.mjs': APP_CONFIG,
+				'app/content.config.ts': noLoaderConfig('n.object({ name: n.number() })'),
+				'app/content/people/ada.md': '---\nname: Ada\n---\n',
+			})
+
+			const report = await check()
+			expect(report.findings.map(f => [f.code, f.file])).toEqual([['entry/field-type', 'app/content/people/ada.md']])
+			expect(report.collections).toBe(1)
+			expect(report.entries).toBe(1)
+		})
+
+		test('findings about the config name the config under it', async () => {
+			await write({ 'astro.config.mjs': APP_CONFIG, 'app/content.config.ts': noLoaderConfig('n.object({ name: n.text() })') })
+
+			const report = await check()
+			expect(report.findings.map(f => [f.code, f.file])).toEqual([['config/missing-dir', 'app/content.config.ts']])
+		})
+
+		test('a legacy config under it is judged like one under src', async () => {
+			await write({ 'astro.config.mjs': APP_CONFIG, 'app/content/config.mjs': PEOPLE_MJS })
+
+			const report = await check()
+			expect(report.findings.map(f => [f.severity, f.code, f.file])).toEqual([
+				['error', 'config/legacy-location', 'app/content/config.mjs'],
+				['warning', 'config/unread', 'app/content/config.mjs'],
+			])
+			expect(report.findings[1]!.message).toContain('app/content.config.ts or app/content/config.ts')
+		})
+
+		// Astro's own key: Astro looks only under app/, finds no config and builds, whatever is left under src.
+		test('a srcDir key of the config is trusted with no content config under it', async () => {
+			await write({ 'astro.config.mjs': APP_CONFIG, 'src/content/config.ts': config('n.object({ name: n.number() })'), ...ADA })
+
+			const report = await check()
+			expect(report.findings).toEqual([])
+			expect(report.collections).toBe(0)
+		})
+
+		// The mention may be another option of that name (a plugin's), so `src` stays the place when nothing is under it.
+		test('with no content config under it, src is judged', async () => {
+			await write({
+				'astro.config.mjs': `import { defineConfig } from 'astro/config'\nexport default defineConfig({ integrations: [pwa({ srcDir: 'public' })] })\n`,
+				'src/content.config.ts': config('n.object({ name: n.number() })'),
+				...ADA,
+			})
+
+			const report = await check()
+			expect(report.findings.map(f => [f.code, f.file])).toEqual([['entry/field-type', 'src/content/people/ada.md']])
+		})
 	})
 
 	// Astro takes the .mjs and ignores the .ts, so the .ts collections are not what the build loads.

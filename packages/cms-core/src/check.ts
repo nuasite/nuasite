@@ -21,12 +21,14 @@ import {
 	classifyEmptyContentConfig,
 	CONTENT_CONFIG_PATHS,
 	findLoadedContentConfig,
-	isReadContentConfig,
+	inSrcDir,
+	type LoadedContentConfig,
 	parseContentConfig,
 	type ParsedCollection,
 	type ParsedField,
 } from './content-config-ast.ts'
 import type { CmsFileSystem } from './fs/types.ts'
+import { contentSrcDir, readLegacyCollectionsOptIn } from './project-config-ast.ts'
 import { type LiveSchemas, schemaFor } from './schema-port.ts'
 import { computePathnameFromSpec } from './shared.ts'
 
@@ -217,17 +219,36 @@ function pathnameCollisions(collection: ParsedCollection, entries: LoadedEntry[]
 	return findings
 }
 
-function unreadConfigFinding(file: string): CheckFinding {
-	const reads = `the check does not read it (it reads ${CONTENT_CONFIG_PATHS.join(' or ')}), so none of the collections or entries were checked`
-	const message = file.startsWith('src/content/')
-		? `Astro loads the content collections from this legacy file only when its config sets \`legacy.collectionsBackwardsCompat\`, and fails the build otherwise; ${reads}.`
-		: `Astro loads the content collections from this file; ${reads}.`
+/** The content config names the check reads, under the source directory. */
+const readConfigNames = (srcDir: string): string => CONTENT_CONFIG_PATHS.map(configPath => inSrcDir(configPath, srcDir)).join(' or ')
+
+function unreadConfigFinding(loaded: LoadedContentConfig, srcDir: string): CheckFinding {
+	const reads = `the check does not read it (it reads ${readConfigNames(srcDir)}), so none of the collections or entries were checked`
 	return {
 		severity: 'warning',
 		code: 'config/unread',
+		file: loaded.file,
+		// Whether Astro takes the collections from a legacy file is `config/legacy-location`'s to say.
+		message: loaded.legacy ? `This is the content config Astro looks at; ${reads}.` : `Astro loads the content collections from this file; ${reads}.`,
+		hint: `Move the collections into ${srcDir}/content.config.ts and delete this file to have them checked.`,
+	}
+}
+
+/**
+ * Astro 7 fails the build on a content config at the legacy `content/config.*` unless the Astro config sets
+ * `legacy.collectionsBackwardsCompat`: an error when the Astro config does not, a warning when that cannot be read off it.
+ */
+async function legacyConfigFinding(fs: CmsFileSystem, file: string, srcDir: string): Promise<CheckFinding | null> {
+	const optIn = await readLegacyCollectionsOptIn(fs)
+	if (optIn === true) return null
+	return {
+		severity: optIn === false ? 'error' : 'warning',
+		code: 'config/legacy-location',
 		file,
-		message,
-		hint: 'Move the collections into src/content.config.ts and delete this file to have them checked.',
+		message: optIn === false
+			? 'Astro fails the build on a content config at this legacy location: the Astro config does not set `legacy.collectionsBackwardsCompat`.'
+			: 'Astro fails the build on a content config at this legacy location unless the Astro config sets `legacy.collectionsBackwardsCompat`, and whether it does could not be read off the Astro config.',
+		hint: `Move the collections into ${srcDir}/content.config.ts, or set \`legacy: { collectionsBackwardsCompat: true }\` in the Astro config.`,
 	}
 }
 
@@ -248,33 +269,41 @@ export interface CheckContentOptions {
  */
 export async function checkContent(fs: CmsFileSystem, options: CheckContentOptions = {}): Promise<CheckReport> {
 	const findings: CheckFinding[] = []
+	const srcDir = await contentSrcDir(fs)
 	// The collections the build loads are the ones in the file Astro picks. When the reader does not read that file,
 	// a `.ts` config beside it is ignored by the build, so checking it would judge the site by the wrong schemas.
-	const loaded = await findLoadedContentConfig(fs)
-	if (loaded !== null && !isReadContentConfig(loaded)) {
-		return { findings: [unreadConfigFinding(loaded)], collections: 0, entries: 0 }
+	const loaded = await findLoadedContentConfig(fs, srcDir)
+	if (loaded?.legacy) {
+		const legacy = await legacyConfigFinding(fs, loaded.file, srcDir)
+		if (legacy) findings.push(legacy)
 	}
-	const config = await parseContentConfig(fs, new Map())
+	if (loaded !== null && !loaded.read) {
+		findings.push(unreadConfigFinding(loaded, srcDir))
+		return { findings, collections: 0, entries: 0 }
+	}
+	const config = await parseContentConfig(fs, new Map(), srcDir)
+	const configFile = loaded?.file ?? `${srcDir}/content.config.ts`
+	const contentDir = `${srcDir}/content`
 
 	if (config.size === 0) {
 		// The build loads no collection without a declaring config, so a site without one builds: by this
-		// function's contract that is no error. Entries left under src/content then render nothing — a warning.
-		const reason = await classifyEmptyContentConfig(fs)
+		// function's contract that is no error. Entries left under the content directory then render nothing — a warning.
+		const reason = await classifyEmptyContentConfig(fs, srcDir)
 		if (reason === 'unparseable') {
-			findings.push({ severity: 'error', code: 'config/unreadable', file: 'src/content.config.ts', message: 'The content config could not be parsed.' })
-		} else if (reason === 'missing' && (await fs.glob(`src/content/${DEFAULT_ENTRY_PATTERN}`)).length > 0) {
+			findings.push({ severity: 'error', code: 'config/unreadable', file: configFile, message: 'The content config could not be parsed.' })
+		} else if (reason === 'missing' && (await fs.glob(`${contentDir}/${DEFAULT_ENTRY_PATTERN}`)).length > 0) {
 			findings.push({
 				severity: 'warning',
 				code: 'config/missing',
-				file: 'src/content.config.ts',
-				message: `No content config found — expected one of ${CONTENT_CONFIG_PATHS.join(' or ')}. The build loads none of the entries under src/content.`,
+				file: configFile,
+				message: `No content config found — expected one of ${readConfigNames(srcDir)}. The build loads none of the entries under ${contentDir}.`,
 			})
 		}
 		return { findings, collections: 0, entries: 0 }
 	}
 
 	// Read everything first: a reference can point at a collection checked later.
-	const collections = await loadCollections(fs, config)
+	const collections = await loadCollections(fs, config, contentDir)
 	const stems = new Map<string, Set<string>>()
 
 	for (const [name, loaded] of collections) {
@@ -283,7 +312,7 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 			findings.push({
 				severity: 'error',
 				code: 'config/missing-dir',
-				file: 'src/content.config.ts',
+				file: configFile,
 				field: name,
 				message: `Collection "${name}" loads from ${loaded.base}/, which does not exist.`,
 			})
@@ -408,7 +437,7 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 	}
 
 	if (options.schemas) {
-		const input = { config, collections, schemas: options.schemas }
+		const input = { config, configFile, collections, schemas: options.schemas }
 		findings.push(...await checkAgainstSchemas(input), ...await checkEditorWrites(input), ...await checkFieldShapes(input))
 	}
 

@@ -1870,10 +1870,9 @@ export const collections = { docs, moved: defineCollection({ loader: glob({ base
 			expect(report).toEqual({ contentConfig: 'partial', unresolved: [] })
 		})
 
-		test('with two config files, the names come from the one the parse came from', async () => {
+		test('with both .ts config files, the reader reads the one Astro loads: src/content.config.ts', async () => {
 			await write({
-				// Read first, and parses to nothing: no schema and no glob pattern.
-				'src/content/config.ts': config(`old: defineCollection({ loader: file('data/old.json') })`),
+				'src/content/config.ts': config(`old: ${NEWS_LOADED}`),
 				'src/content.config.ts': config(`news: ${NEWS_LOADED}`),
 			})
 			const nodeFs = createNodeFs(root)
@@ -1881,9 +1880,10 @@ export const collections = { docs, moved: defineCollection({ loader: glob({ base
 			expect([...(await parseContentConfig(nodeFs, new Map())).keys()]).toEqual(['news'])
 			expect((await readContentConfig(nodeFs, new Map())).declared.map(d => d.name)).toEqual(['news'])
 
-			// When neither parses to anything, the first one that declares names is the answer.
+			// Astro does not fall back to the legacy file when the current one declares nothing it can read, so neither does the reader.
 			await write({ 'src/content.config.ts': config(`other: defineCollection({ loader: file('data/other.json') })`) })
-			expect((await readContentConfig(nodeFs, new Map())).declared.map(d => d.name)).toEqual(['old'])
+			expect((await parseContentConfig(nodeFs, new Map())).size).toBe(0)
+			expect((await readContentConfig(nodeFs, new Map())).declared.map(d => d.name)).toEqual(['other'])
 		})
 	})
 })

@@ -8,9 +8,9 @@ import type {
 } from '@nuasite/cms-types'
 import path from 'node:path'
 import { isMap, isPair, isScalar, parse as parseYaml, parseDocument } from 'yaml'
+import { normalizeBasePath } from './base-path.ts'
 import {
 	classifyEmptyContentConfig,
-	configOptionMentions,
 	CONTENT_CONFIG_PATHS,
 	type ContentConfigRead,
 	type DeclaredCollection,
@@ -21,6 +21,7 @@ import {
 	UNREAD_CONTENT_CONFIG_PATHS,
 } from './content-config-ast.ts'
 import type { CmsFileSystem, GlobOptions } from './fs/types.ts'
+import { readAstroSrcDir } from './project-config-ast.ts'
 import { resolvePathnameFromSpec, slugifyHref } from './shared.ts'
 
 /** Regex patterns for type inference */
@@ -1151,16 +1152,6 @@ async function scanDataCollection(
 }
 
 /**
- * Normalize a glob loader `base` (`./src/content/x`, `src/content/x/`) into a
- * root-relative path comparable with a collection definition's `path`. The project
- * root comes out as `.`. Entry reads and writes resolve their directory with this too,
- * so they land where the scan reports a collection.
- */
-export function normalizeBasePath(basePath: string): string {
-	return path.normalize(basePath.replace(/^\.[/\\]+/, '')).replace(/[/\\]+$/, '')
-}
-
-/**
  * A loader pattern that selects the whole base directory rather than a slice of it:
  * no subdirectory or filename prefix. `*`, `*.md`, `*.{md,mdx}` and `**\/*.md` qualify;
  * `otazky/*.md` and `otazky-*.md` do not, because they pick a subset.
@@ -1487,38 +1478,6 @@ function mayTakeDotPath(pattern: string, file: string): boolean {
 	return (!dotFile || takesDot(pattern.slice(cut + 1))) && (!dotDirectory || takesDot(pattern.slice(0, Math.max(cut, 0))))
 }
 
-/** Where Astro looks for its own config. It takes the first one there is. */
-const ASTRO_CONFIG_PATHS = ['astro.config.mjs', 'astro.config.js', 'astro.config.ts', 'astro.config.mts']
-
-/**
- * The project's source directory when the Astro config moves it from `src`: the directory,
- * `undefined` for the default, or `null` when where Astro loads content from cannot be told.
- *
- * Read off the code of the one config file Astro uses. Two of its options decide the place:
- * `srcDir`, where the content config and the content directory are, and `root`, which every
- * loader's `base` is resolved against. Which mention of either name is Astro's option cannot
- * be told without evaluating the file (it may name another plugin's option, a variable, a
- * member), so every one of them has to be a property given a plain string: all `srcDir`s the
- * same directory inside the project, every `root` the project root itself, which the scan
- * takes it to be. Either name given an object literal is not Astro's option, which is a string.
- */
-async function customSrcDir(fs: CmsFileSystem): Promise<string | null | undefined> {
-	for (const configPath of ASTRO_CONFIG_PATHS) {
-		const source = await fs.readFile(configPath).catch(() => null)
-		if (source === null) continue
-		const roots = configOptionMentions(source, 'root')
-		const srcDirs = configOptionMentions(source, 'srcDir')
-		if (roots === null || srcDirs === null) return null
-		if (roots.some(root => root === null || normalizeBasePath(root) !== '.')) return null
-		if (srcDirs.length === 0) return undefined
-		const [srcDir, ...others] = srcDirs.map(literal => (literal === null ? null : normalizeBasePath(literal)))
-		if (srcDir === null || srcDir === undefined || others.some(other => other !== srcDir)) return null
-		if (srcDir === 'src') return undefined
-		return path.isAbsolute(srcDir) || srcDir.startsWith('..') ? null : srcDir
-	}
-	return undefined
-}
-
 /**
  * How much of the content config was read, for the report. Astro takes the config from more
  * file names than the reader looks at, and from another directory when `srcDir` says so, so
@@ -1526,11 +1485,11 @@ async function customSrcDir(fs: CmsFileSystem): Promise<string | null | undefine
  */
 async function contentConfigStatus(fs: CmsFileSystem, config: ContentConfigRead): Promise<CollectionScanReport['contentConfig']> {
 	const configPaths = [...CONTENT_CONFIG_PATHS, ...UNREAD_CONTENT_CONFIG_PATHS]
-	const srcDir = await customSrcDir(fs)
+	const srcDir = await readAstroSrcDir(fs)
 	// Where Astro loads from cannot be told, so neither can whether a config is there, nor
 	// whether what the scan found under the project root is what Astro loads.
 	if (srcDir === null) return 'unreadable'
-	if (srcDir !== undefined) {
+	if (srcDir !== 'src') {
 		// The reader only looks under `src`, so a config found here was not read. Nothing here
 		// settles nothing: the mention may not have been Astro's option, and then `src` is
 		// where the config is, so `src` is judged as usual.
