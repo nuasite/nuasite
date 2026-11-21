@@ -50,8 +50,11 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 	return typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date)
 }
 
+/** The entry files a collection's loader reads when its config names no pattern. */
+export const DEFAULT_ENTRY_PATTERN = '**/*.{md,mdx,json,yaml,yml}'
+
 async function collectEntryFiles(fs: CmsFileSystem, collection: ParsedCollection, base: string): Promise<string[]> {
-	const pattern = collection.loaderPattern ?? '**/*.{md,mdx,json,yaml,yml}'
+	const pattern = collection.loaderPattern ?? DEFAULT_ENTRY_PATTERN
 	const files = await fs.glob(`${base}/${pattern}`)
 	return files.filter(file => !path.basename(file).startsWith('_')).sort()
 }
