@@ -298,9 +298,6 @@ function parseSource(source: string): t.File | null {
 	}
 }
 
-/** The content config names this reader reads, in Astro's order. The other names Astro loads are JavaScript. */
-export const CONTENT_CONFIG_PATHS = ['src/content.config.ts', 'src/content/config.ts'] as const
-
 /**
  * Every content config file name, in the order Astro 7 looks for them: it loads the first that exists. It looks at
  * the legacy `src/content/config.*` names only when none of the others exists, and then fails the build unless the
@@ -316,6 +313,9 @@ export const ASTRO_CONTENT_CONFIG_ORDER = [
 	'src/content/config.mjs',
 	'src/content/config.mts',
 ] as const
+
+/** The content config names this reader reads, in Astro's order. The other names Astro loads are JavaScript. */
+export const CONTENT_CONFIG_PATHS: readonly string[] = ASTRO_CONTENT_CONFIG_ORDER.filter(configPath => configPath.endsWith('.ts'))
 
 const READ_CONTENT_CONFIG_PATHS: ReadonlySet<string> = new Set(CONTENT_CONFIG_PATHS)
 

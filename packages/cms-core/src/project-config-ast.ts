@@ -350,7 +350,10 @@ export async function parseProjectCmsConfig(fs: CmsFileSystem): Promise<CmsConfi
  */
 export async function readAstroSrcDir(fs: CmsFileSystem): Promise<string | null> {
 	const source = await readAstroConfigSource(fs)
-	if (source === null) return 'src'
+	return source === null ? 'src' : astroSrcDirOf(source)
+}
+
+function astroSrcDirOf(source: string): string | null {
 	const roots = configOptionMentions(source, 'root')
 	const srcDirs = configOptionMentions(source, 'srcDir')
 	if (roots === null || srcDirs === null) return null
@@ -362,13 +365,28 @@ export async function readAstroSrcDir(fs: CmsFileSystem): Promise<string | null>
 }
 
 /**
- * The source directory a content check judges: a custom `srcDir` only when a content config is there. The mention
- * {@link readAstroSrcDir} took for it may be another option of that name, and then `src` is where the config is. Where
- * the directory cannot be told, `src` as well.
+ * Whether the config object Astro gets has a `srcDir` key of its own: the config is a plain object or goes through
+ * Astro's or nua's `defineConfig`, so the key cannot be another plugin's option.
+ */
+function hasOwnSrcDirKey(source: string): boolean {
+	const ast = parseSource(source)
+	if (!ast) return false
+	const bindings = collectBindings(ast)
+	const configObject = configObjectFromDefaultExport(ast, bindings)
+	return configObject !== null && defaultExportWrapper(ast, bindings) !== 'unknown' && objectPropertyValue(configObject, 'srcDir', bindings) !== null
+}
+
+/**
+ * The source directory a content check judges. A custom `srcDir` that is a key of the config itself is Astro's.
+ * One mentioned elsewhere may be another option of that name, so it counts only when a content config is there, and
+ * otherwise `src` is where the config is. Where the directory cannot be told, `src` as well.
  */
 export async function contentSrcDir(fs: CmsFileSystem): Promise<string> {
-	const srcDir = await readAstroSrcDir(fs)
+	const source = await readAstroConfigSource(fs)
+	if (source === null) return 'src'
+	const srcDir = astroSrcDirOf(source)
 	if (srcDir === null || srcDir === 'src') return 'src'
+	if (hasOwnSrcDirKey(source)) return srcDir
 	return (await findLoadedContentConfig(fs, srcDir)) === null ? 'src' : srcDir
 }
 
@@ -385,20 +403,19 @@ export function parseLegacyCollectionsOptInSource(source: string): boolean | nul
 	if (!ast) return null
 	const bindings = collectBindings(ast)
 	const configObject = configObjectFromDefaultExport(ast, bindings)
-	if (!configObject) return null
-	const hasSpread = (object: ObjectExpression): boolean => object.properties.some(property => property.type === 'SpreadElement')
+	// A spread may set or override the option, and a wrapper this reader does not know may rewrite it.
+	const wrapper = defaultExportWrapper(ast, bindings)
+	if (!configObject || hasSpread(configObject) || wrapper === 'unknown') return null
 
 	const legacy = objectPropertyValue(configObject, 'legacy', bindings)
-	if (legacy === null) {
-		if (hasSpread(configObject)) return null
-		const wrapper = defaultExportWrapper(ast, bindings)
-		return wrapper === 'unknown' ? null : wrapper === 'nua'
-	}
-	if (legacy.type !== 'ObjectExpression') return null
+	if (legacy === null) return wrapper === 'nua'
+	if (legacy.type !== 'ObjectExpression' || hasSpread(legacy)) return null
 	const optIn = objectPropertyValue(legacy, 'collectionsBackwardsCompat', bindings)
-	if (optIn === null) return hasSpread(legacy) ? null : false
+	if (optIn === null) return false
 	return optIn.type === 'BooleanLiteral' ? optIn.value : null
 }
+
+const hasSpread = (object: ObjectExpression): boolean => object.properties.some(property => property.type === 'SpreadElement')
 
 /** {@link parseLegacyCollectionsOptInSource} of the Astro config Astro uses. Without one Astro runs on its defaults: off. */
 export async function readLegacyCollectionsOptIn(fs: CmsFileSystem): Promise<boolean | null> {

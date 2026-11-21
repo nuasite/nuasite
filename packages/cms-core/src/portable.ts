@@ -46,6 +46,7 @@ export {
 	type DeclaredCollection,
 	type EmptyContentConfigReason,
 	findLoadedContentConfig,
+	inSrcDir,
 	type LoadedContentConfig,
 	type ParseCache,
 	parseConfigSource,

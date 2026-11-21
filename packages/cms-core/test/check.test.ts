@@ -274,6 +274,8 @@ export const collections = { people${extra ? ', articles' : ''} }
 				'the defineConfig of @nuasite/nua/config',
 				`import { defineConfig } from '@nuasite/nua/config'\nexport default defineConfig({ nua: { cms: false } })\n`,
 			],
+			// `nua: false` drops the integration, not nua's Astro defaults.
+			['nua turned off in its defineConfig', `import { defineConfig } from '@nuasite/nua/config'\nexport default defineConfig({ nua: false })\n`],
 		])('is no finding with %s', async (_label, astroConfig) => {
 			await write({ 'astro.config.ts': astroConfig, 'src/content/config.ts': config('n.object({ name: n.text() })'), ...ADA })
 
@@ -295,12 +297,33 @@ export const collections = { people${extra ? ', articles' : ''} }
 				'a spread that may carry the option',
 				`import { defineConfig } from 'astro/config'\nimport shared from './shared'\nexport default defineConfig({ ...shared })\n`,
 			],
+			[
+				'a spread after the option, which may override it',
+				`import { defineConfig } from 'astro/config'\nimport shared from './shared'\nexport default defineConfig({ legacy: { collectionsBackwardsCompat: false }, ...shared })\n`,
+			],
+			[
+				'the option set to false inside a wrapper, which may rewrite it',
+				`import { withSentry } from './sentry'\nexport default withSentry({ legacy: { collectionsBackwardsCompat: false } })\n`,
+			],
 		])('is a warning when the option cannot be read: %s', async (_label, astroConfig) => {
 			await write({ 'astro.config.mjs': astroConfig, 'src/content/config.ts': config('n.object({ name: n.text() })'), ...ADA })
 
 			const report = await check()
 			expect(report.findings.map(f => [f.severity, f.code])).toEqual([['warning', 'config/legacy-location']])
 			expect(report.findings[0]!.message).toContain('could not be read')
+		})
+
+		// Astro takes the first of astro.config.{mjs,js,ts,mts}.
+		test('the option is read from the Astro config Astro uses', async () => {
+			await write({
+				'astro.config.mjs': OPTED_IN,
+				'astro.config.ts': ASTRO_CONFIG,
+				'src/content/config.ts': config('n.object({ name: n.text() })'),
+				...ADA,
+			})
+
+			const report = await check()
+			expect(report.findings).toEqual([])
 		})
 
 		test('unread, it is the error and the unread warning, without the opt-in', async () => {
@@ -384,6 +407,15 @@ export const collections = { people${extra ? ', articles' : ''} }
 				['warning', 'config/unread', 'app/content/config.mjs'],
 			])
 			expect(report.findings[1]!.message).toContain('app/content.config.ts or app/content/config.ts')
+		})
+
+		// Astro's own key: Astro looks only under app/, finds no config and builds, whatever is left under src.
+		test('a srcDir key of the config is trusted with no content config under it', async () => {
+			await write({ 'astro.config.mjs': APP_CONFIG, 'src/content/config.ts': config('n.object({ name: n.number() })'), ...ADA })
+
+			const report = await check()
+			expect(report.findings).toEqual([])
+			expect(report.collections).toBe(0)
 		})
 
 		// The mention may be another option of that name (a plugin's), so `src` stays the place when nothing is under it.
