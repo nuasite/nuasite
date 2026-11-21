@@ -39,6 +39,7 @@ export { checkContent, type CheckContentOptions, type CheckFinding, type CheckRe
 export { collectionScanReport, type FrontmatterCache, scanCollections } from './collection-scanner.ts'
 export { scanComponentDefinitions } from './component-registry.ts'
 export {
+	ASTRO_CONTENT_CONFIG_ORDER,
 	classifyEmptyContentConfig,
 	CONTENT_CONFIG_PATHS,
 	type ContentConfigRead,

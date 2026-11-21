@@ -20,6 +20,8 @@ import { checkEditorWrites } from './check-write.ts'
 import {
 	classifyEmptyContentConfig,
 	CONTENT_CONFIG_PATHS,
+	findLoadedContentConfig,
+	isReadContentConfig,
 	parseContentConfig,
 	type ParsedCollection,
 	type ParsedField,
@@ -215,6 +217,20 @@ function pathnameCollisions(collection: ParsedCollection, entries: LoadedEntry[]
 	return findings
 }
 
+function unreadConfigFinding(file: string): CheckFinding {
+	const reads = `the check does not read it (it reads ${CONTENT_CONFIG_PATHS.join(' or ')}), so none of the collections or entries were checked`
+	const message = file.startsWith('src/content/')
+		? `Astro loads the content collections from this legacy file only when its config sets \`legacy.collectionsBackwardsCompat\`, and fails the build otherwise; ${reads}.`
+		: `Astro loads the content collections from this file; ${reads}.`
+	return {
+		severity: 'warning',
+		code: 'config/unread',
+		file,
+		message,
+		hint: 'Move the collections into src/content.config.ts and delete this file to have them checked.',
+	}
+}
+
 export interface CheckContentOptions {
 	/**
 	 * The project's real collection schemas. Given these, the check also reports what the
@@ -232,6 +248,12 @@ export interface CheckContentOptions {
  */
 export async function checkContent(fs: CmsFileSystem, options: CheckContentOptions = {}): Promise<CheckReport> {
 	const findings: CheckFinding[] = []
+	// The collections the build loads are the ones in the file Astro picks. When the reader does not read that file,
+	// a `.ts` config beside it is ignored by the build, so checking it would judge the site by the wrong schemas.
+	const loaded = await findLoadedContentConfig(fs)
+	if (loaded !== null && !isReadContentConfig(loaded)) {
+		return { findings: [unreadConfigFinding(loaded)], collections: 0, entries: 0 }
+	}
 	const config = await parseContentConfig(fs, new Map())
 
 	if (config.size === 0) {
