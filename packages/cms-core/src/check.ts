@@ -239,7 +239,9 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 		// builds, so by this function's own contract it is not an error — and reporting it as one
 		// blocked the publish of every such site and sent the agent chasing a defect that was not there.
 		const reason = await classifyEmptyContentConfig(fs)
-		if (reason !== 'no-collections') {
+		// No config and nothing under `src/content` is the same site without collections.
+		const withoutCollections = reason === 'no-collections' || (reason === 'missing' && (await fs.list('src/content')).length === 0)
+		if (!withoutCollections) {
 			findings.push({
 				severity: 'error',
 				code: reason === 'missing' ? 'config/missing' : 'config/unreadable',

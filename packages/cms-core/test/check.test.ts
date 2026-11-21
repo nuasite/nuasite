@@ -192,7 +192,22 @@ export const collections = { people${extra ? ', articles' : ''} }
 		expect(report.findings[0]!.file).toBe('src/content/articles/two.md')
 	})
 
-	test('no content config at all is an error, not an empty pass', async () => {
+	test('no content config and no content directory passes clean', async () => {
+		await write({ 'src/pages/index.astro': '<h1>Home</h1>\n' })
+
+		const report = await check()
+		expect(report.findings).toEqual([])
+		expect(report.collections).toBe(0)
+	})
+
+	test('no content config beside an empty content directory passes clean', async () => {
+		await fs.mkdir(path.join(root, 'src/content'), { recursive: true })
+
+		const report = await check()
+		expect(report.findings).toEqual([])
+	})
+
+	test('no content config while entries exist is an error, not an empty pass', async () => {
 		await write({ 'src/content/people/ada.md': '---\nname: Ada\n---\n' })
 
 		const report = await check()
