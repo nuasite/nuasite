@@ -1,4 +1,4 @@
-import type { ParseCache } from '@nuasite/cms-core'
+import type { FrontmatterCache, ParseCache } from '@nuasite/cms-core'
 import path from 'node:path'
 import type { ImportAliases } from '../source-finder/import-aliases.ts'
 import type { CachedParsedFile, ImageIndexEntry, SearchIndexEntry, SourceLocation } from '../source-finder/types.ts'
@@ -52,6 +52,8 @@ export class ProjectState {
 	collectionRoutes: Map<string, CollectionRouteInfo> | null = null
 	/** Content-config parse cache for standalone collection scans. */
 	readonly contentConfigParses: ParseCache = new Map()
+	/** Parsed entry frontmatter for standalone collection scans; a rescan parses only changed entries. */
+	readonly frontmatterParses: FrontmatterCache = new Map()
 	/** Per-file write locks, by absolute path. */
 	readonly fileLocks = new Map<string, Promise<void>>()
 

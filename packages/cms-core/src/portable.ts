@@ -36,7 +36,7 @@ export {
 } from './check-source.ts'
 export { checkEditorWrites, type WriteCheckInput } from './check-write.ts'
 export { checkContent, type CheckContentOptions, type CheckFinding, type CheckReport, type CheckSeverity, formatCheckReport } from './check.ts'
-export { collectionScanReport, scanCollections } from './collection-scanner.ts'
+export { collectionScanReport, type FrontmatterCache, scanCollections } from './collection-scanner.ts'
 export { scanComponentDefinitions } from './component-registry.ts'
 export {
 	classifyEmptyContentConfig,

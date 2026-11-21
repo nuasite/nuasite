@@ -132,10 +132,36 @@ function extractFrontmatterBlock(content: string): string | null {
 	return match?.[1] ?? null
 }
 
-function parseFrontmatter(content: string): Record<string, unknown> | null {
+/**
+ * Parsed frontmatter of each markdown entry, by root-relative file path, with the block it was
+ * parsed from. A scan reuses an entry's parse while its frontmatter block is unchanged and drops
+ * the paths it no longer finds, so the memo never outlives the files it describes.
+ */
+export type FrontmatterCache = Map<string, { block: string; data: Record<string, unknown> | null }>
+
+/** One scan's view of a {@link FrontmatterCache}: the paths this scan parsed, to sweep the rest. */
+interface FrontmatterMemo {
+	cache: FrontmatterCache
+	seen: Set<string>
+}
+
+function parseFrontmatter(content: string, filePath: string, memo: FrontmatterMemo | undefined): Record<string, unknown> | null {
 	const block = extractFrontmatterBlock(content)
 	if (!block) return null
-	return parseYaml(block) as Record<string, unknown> | null
+	memo?.seen.add(filePath)
+	const cached = memo?.cache.get(filePath)
+	// Copies out of the memo, so a scan's caller can mutate its entries without changing the next scan's.
+	if (cached?.block === block) return structuredClone(cached.data)
+	const data = parseYaml(block) as Record<string, unknown> | null
+	if (!memo) return data
+	memo.cache.set(filePath, { block, data })
+	return structuredClone(data)
+}
+
+function sweepFrontmatterMemo(memo: FrontmatterMemo): void {
+	for (const filePath of memo.cache.keys()) {
+		if (!memo.seen.has(filePath)) memo.cache.delete(filePath)
+	}
 }
 
 /**
@@ -446,6 +472,7 @@ async function buildCollectionDefinition(
 	sources: Array<{ slug: string; relPath: string }>,
 	collectionName: string,
 	contentDir: string,
+	frontmatterMemo: FrontmatterMemo | undefined,
 ): Promise<CollectionDefinition | null> {
 	if (sources.length === 0) return null
 
@@ -469,7 +496,7 @@ async function buildCollectionDefinition(
 		const source = sources[i]!
 		const content = fileContents[i]!
 		if (content === null) continue
-		const frontmatter = parseFrontmatter(content)
+		const frontmatter = parseFrontmatter(content, path.join(basePath, source.relPath), frontmatterMemo)
 
 		const directives = parseFieldDirectives(content)
 		for (const [key, value] of Object.entries(directives)) {
@@ -582,6 +609,7 @@ async function scanCollection(
 	collectionPath: string,
 	collectionName: string,
 	contentDir: string,
+	frontmatterMemo: FrontmatterMemo | undefined,
 ): Promise<CollectionDefinition | null> {
 	const dirEntries = await fs.list(collectionPath)
 	if (dirEntries.length === 0) return null
@@ -614,7 +642,7 @@ async function scanCollection(
 	}
 
 	if (sources.length === 0) return null
-	return await buildCollectionDefinition(fs, collectionPath, sources, collectionName, contentDir)
+	return await buildCollectionDefinition(fs, collectionPath, sources, collectionName, contentDir, frontmatterMemo)
 }
 
 /**
@@ -650,6 +678,7 @@ async function scanGlobCollection(
 	baseRel: string,
 	pattern: string,
 	contentDir: string,
+	frontmatterMemo: FrontmatterMemo | undefined,
 ): Promise<CollectionDefinition | null> {
 	const rels = await globLoaderFiles(fs, baseRel, pattern)
 
@@ -660,7 +689,7 @@ async function scanGlobCollection(
 		.filter(relToBase => relToBase.endsWith('.md') || relToBase.endsWith('.mdx'))
 		.map(relToBase => ({ slug: relToBase.replace(/\.(md|mdx)$/, ''), relPath: relToBase }))
 	if (mdSources.length > 0) {
-		return await buildCollectionDefinition(fs, baseRel, mdSources, collectionName, contentDir)
+		return await buildCollectionDefinition(fs, baseRel, mdSources, collectionName, contentDir, frontmatterMemo)
 	}
 
 	const dataSources = rels
@@ -1157,15 +1186,17 @@ function patternCoversWholeCollection(pattern: string, definition: CollectionDef
  *
  * `contentDir` is a root-relative directory (default `src/content`); all I/O is
  * resolved against the injected `CmsFileSystem`'s root. `parseCache` keeps the
- * mtime-keyed content-config parse result across calls within one core instance.
+ * mtime-keyed content-config parse result across calls within one core instance, and
+ * `options.frontmatterCache` each entry's parsed frontmatter (see {@link FrontmatterCache}).
  */
 export async function scanCollections(
 	fs: CmsFileSystem,
 	contentDir: string = 'src/content',
 	parseCache: ParseCache = new Map(),
-	options: { report?: boolean } = {},
+	options: { report?: boolean; frontmatterCache?: FrontmatterCache } = {},
 ): Promise<Record<string, CollectionDefinition>> {
 	const collections: Record<string, CollectionDefinition> = {}
+	const frontmatterMemo: FrontmatterMemo | undefined = options.frontmatterCache ? { cache: options.frontmatterCache, seen: new Set() } : undefined
 	/** Collections whose scan threw, by name, as they go into the scan report. */
 	const failedScans = new Map<string, UnresolvedCollection>()
 
@@ -1178,7 +1209,7 @@ export async function scanCollections(
 		.map(async entry => {
 			try {
 				const collectionPath = path.join(contentDir, entry.name)
-				const definition = await scanCollection(fs, collectionPath, entry.name, contentDir)
+				const definition = await scanCollection(fs, collectionPath, entry.name, contentDir, frontmatterMemo)
 					?? await scanDataCollection(fs, collectionPath, entry.name, contentDir)
 				if (definition) {
 					collections[entry.name] = definition
@@ -1228,7 +1259,14 @@ export async function scanCollections(
 
 		let definition: CollectionDefinition | null
 		try {
-			definition = await scanGlobCollection(fs, collectionName, parsedCollection.loaderBase, parsedCollection.loaderPattern, contentDir)
+			definition = await scanGlobCollection(
+				fs,
+				collectionName,
+				parsedCollection.loaderBase,
+				parsedCollection.loaderPattern,
+				contentDir,
+				frontmatterMemo,
+			)
 		} catch (error) {
 			console.warn(`[cms] Skipping glob collection "${collectionName}" — scan failed:`, error)
 			failedScans.set(collectionName, {
@@ -1249,6 +1287,7 @@ export async function scanCollections(
 		}
 		collections[collectionName] = definition
 	}
+	if (frontmatterMemo) sweepFrontmatterMemo(frontmatterMemo)
 
 	applyParsedConfig(collections, parsed)
 	detectReferenceFields(collections, parsed)
