@@ -140,6 +140,22 @@ ${lines.join('\n')}
 		expect(after['pages']!.entryCount).toBe(1)
 	})
 
+	test('a private file the scan skips does not set the layout of the first entry', async () => {
+		await write({
+			// The port's `**/index.md` also matches `_index.md`, which the scan never lists.
+			'src/data/docs/_index.md': '---\ntitle: Section\n---\n',
+			'src/content.config.ts': config(['docs', '**/index.{md,mdx}', './src/data/docs']),
+		})
+		const core = createCmsCore(nodeFs())
+		const docs = (await core.scanCollections())['docs']!
+		expect(docs.entryCount).toBe(0)
+
+		const result = await core.createEntry({ collection: 'docs', slug: 'intro', frontmatter: { title: 'Intro' }, fileExtension: docs.fileExtension })
+
+		expect(result).toEqual({ success: true, sourcePath: 'src/data/docs/intro/index.md' })
+		expect((await core.scanCollections())['docs']!.entryCount).toBe(1)
+	})
+
 	test('a collection with entries scans as before', async () => {
 		await write({
 			'src/content/blog/a.md': '---\ntitle: A\n---\n',

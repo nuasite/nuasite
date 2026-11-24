@@ -3,7 +3,7 @@ import path from 'node:path'
 import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths.ts'
 import { normalizeBasePath } from '../base-path.ts'
-import { isIndexStyleGlobPattern, portRunsLoaderPattern, scanCollections } from '../collection-scanner.ts'
+import { isIndexStyleGlobPattern, isPrivateEntryPath, portRunsLoaderPattern, scanCollections } from '../collection-scanner.ts'
 import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast.ts'
 import {
 	blankRequiredFields,
@@ -317,14 +317,14 @@ async function inferLayoutFromExistingEntries(deps: EntryOpsDeps, collection: st
 
 /**
  * Whether the collection's loader loads a file, by its path relative to the loader base. Files
- * it does not load (a sibling collection's on a shared base, a README) must not set the layout.
- * Every file counts when the port cannot run the pattern as Astro does.
+ * it does not load (a sibling collection's on a shared base, a README) or the scan skips
+ * (`_index.md`) must not set the layout. Every file counts when the port cannot run the pattern.
  */
 async function loaderPatternTest(deps: EntryOpsDeps, collection: string): Promise<(relPath: string) => boolean> {
 	const pattern = (await parseContentConfig(deps.fs, deps.parseCache)).get(collection)?.loaderPattern
 	if (!pattern || !portRunsLoaderPattern(pattern)) return () => true
 	const matcher = globToRegExp(path.posix.normalize(pattern))
-	return relPath => matcher.test(relPath)
+	return relPath => !isPrivateEntryPath(relPath) && matcher.test(relPath)
 }
 
 async function inferLayoutFromContentConfig(deps: EntryOpsDeps, collection: string): Promise<MarkdownCollectionLayout | null> {

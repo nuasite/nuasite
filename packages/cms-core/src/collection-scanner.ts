@@ -661,6 +661,11 @@ async function scanCollection(
 	return await buildCollectionDefinition(fs, collectionPath, sources, collectionName, contentDir, frontmatterMemo)
 }
 
+/** A path (relative to a loader base) with a `_` or `.` segment: private or hidden, never an entry of the scan. */
+export function isPrivateEntryPath(relToBase: string): boolean {
+	return relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.'))
+}
+
 /**
  * The files a glob loader matches, relative to its base. The scan leaves symbolic links out;
  * the scan report follows them, as Astro does, to see what that left out.
@@ -675,13 +680,12 @@ async function globLoaderFiles(
 	// The scanner ignores files/dirs whose path segments start with `_` or `.` (private/hidden),
 	// matching the directory-walk behavior of the original scanner — the glob pattern alone
 	// would otherwise match them.
-	const isPrivate = (relToBase: string) => relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.'))
 	// Such a directory is not walked either, so one that cannot be read does not cost the
 	// collection: none of its files would be kept.
-	const matches = await fs.glob(path.join(baseRel, pattern), { ...options, skipDirectory: dir => isPrivate(path.relative(baseRel, dir)) })
+	const matches = await fs.glob(path.join(baseRel, pattern), { ...options, skipDirectory: dir => isPrivateEntryPath(path.relative(baseRel, dir)) })
 	return matches
 		.map(rel => path.relative(baseRel, rel))
-		.filter(relToBase => !isPrivate(relToBase))
+		.filter(relToBase => !isPrivateEntryPath(relToBase))
 }
 
 /**
