@@ -711,15 +711,18 @@ export const collections = { blog: posts, news: posts }
 			const { collections, report } = await scan()
 
 			// Astro's glob loads a `_` file its pattern matches; the scan keeps skipping it.
+			// `drafts` is listed with no entries (its only file is a `_` one); `settings` is not,
+			// as the editor cannot write a TOML entry.
 			expect(listed(collections)).toEqual({
 				docs: ['data/docs/a.md'],
+				drafts: [],
 				hidden: ['.data/hidden/a.md'],
 				mixed: ['data/mixed/a.md'],
 				notes: ['data/notes/a.md'],
 			})
 			expect(report.unresolved).toEqual([
 				{ name: 'docs', reason: 'unlisted-entries', base: 'data/docs', pattern: '**/*.md' },
-				// Not among the scanned collections at all, and not empty either.
+				// Listed with no entries, but not empty either.
 				{ name: 'drafts', reason: 'unlisted-entries', base: 'data/drafts', pattern: '*.md' },
 				// A dot in the base is where the loader looks, not a dotfile it skips.
 				{ name: 'hidden', reason: 'unlisted-entries', base: '.data/hidden', pattern: '*.md' },
@@ -922,8 +925,12 @@ export const collections = { blog: posts, news: posts }
 
 			const { collections, report } = await scan()
 
-			// As before: an empty collection is not in the scan result…
-			expect(Object.keys(collections)).toEqual(['blog'])
+			// A glob collection that loads nothing is listed empty, so its first entry can be created.
+			// Not one whose pattern the scan cannot run or that matches nothing by construction, and
+			// not one without a loader…
+			expect(Object.keys(collections)).toEqual(['blog', 'news', 'missing'])
+			expect(collections['news']!.entries).toEqual([])
+			expect(collections['missing']!.entries).toEqual([])
 			// …and it is not unresolved either. A consumer tells the two apart by the list a name is in.
 			expect(report).toEqual(NOTHING)
 		})

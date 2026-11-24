@@ -20,6 +20,7 @@ import {
 	readContentConfig,
 	UNREAD_CONTENT_CONFIG_PATHS,
 } from './content-config-ast.ts'
+import { globToRegExp } from './fs/glob.ts'
 import type { CmsFileSystem, GlobOptions } from './fs/types.ts'
 import { readAstroSrcDir } from './project-config-ast.ts'
 import { resolvePathnameFromSpec, slugifyHref } from './shared.ts'
@@ -660,6 +661,11 @@ async function scanCollection(
 	return await buildCollectionDefinition(fs, collectionPath, sources, collectionName, contentDir, frontmatterMemo)
 }
 
+/** A path (relative to a loader base) with a `_` or `.` segment: private or hidden, never an entry of the scan. */
+export function isPrivateEntryPath(relToBase: string): boolean {
+	return relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.'))
+}
+
 /**
  * The files a glob loader matches, relative to its base. The scan leaves symbolic links out;
  * the scan report follows them, as Astro does, to see what that left out.
@@ -674,13 +680,12 @@ async function globLoaderFiles(
 	// The scanner ignores files/dirs whose path segments start with `_` or `.` (private/hidden),
 	// matching the directory-walk behavior of the original scanner — the glob pattern alone
 	// would otherwise match them.
-	const isPrivate = (relToBase: string) => relToBase.split('/').some(seg => seg.startsWith('_') || seg.startsWith('.'))
 	// Such a directory is not walked either, so one that cannot be read does not cost the
 	// collection: none of its files would be kept.
-	const matches = await fs.glob(path.join(baseRel, pattern), { ...options, skipDirectory: dir => isPrivate(path.relative(baseRel, dir)) })
+	const matches = await fs.glob(path.join(baseRel, pattern), { ...options, skipDirectory: dir => isPrivateEntryPath(path.relative(baseRel, dir)) })
 	return matches
 		.map(rel => path.relative(baseRel, rel))
-		.filter(relToBase => !isPrivate(relToBase))
+		.filter(relToBase => !isPrivateEntryPath(relToBase))
 }
 
 /**
@@ -714,7 +719,52 @@ async function scanGlobCollection(
 		return await buildDataCollectionDefinition(fs, baseRel, dataSources, collectionName, contentDir)
 	}
 
-	return null
+	// No entries yet, or no folder: still a declared collection, so the editor can create its
+	// first entry. Not when the port cannot run the pattern — then no match proves nothing.
+	if (!portRunsLoaderPattern(pattern)) return null
+	const fileExtension = entryExtensionOfPattern(pattern)
+	if (!fileExtension) return null
+	const isData = fileExtension === 'json' || fileExtension === 'yaml' || fileExtension === 'yml'
+	if (!loadsCreatedEntry(pattern, fileExtension, isData)) return null
+	return assembleCollectionDefinition(collectionName, contentDir, new Map(), [], 0, {
+		path: getCollectionSourceBasePath(baseRel, collectionName, contentDir),
+		fileExtension,
+		...(isData ? { type: 'data' as const } : {}),
+	})
+}
+
+/**
+ * Whether the loader loads the first entry `createEntry` writes under its base: `<slug>.<ext>`,
+ * or `<slug>/index.<ext>` for an index-style markdown pattern. One that selects a slice of the
+ * base (`otazky/*.md`, `faq-*.md`, `*.en.md`) or matches nothing (`!**\/*.md`) does not, and
+ * the entry would land in no collection or in a sibling sharing the base.
+ */
+function loadsCreatedEntry(pattern: string, fileExtension: CollectionDefinition['fileExtension'], isData: boolean): boolean {
+	const matcher = globToRegExp(path.posix.normalize(pattern))
+	const indexLayout = !isData && isIndexStyleGlobPattern(pattern)
+	// Two unrelated slugs, so a pattern that happens to match one name (`e*.md`) is not taken for one that matches any.
+	return ['entry', 'x-1'].every(slug => matcher.test(indexLayout ? `${slug}/index.${fileExtension}` : `${slug}.${fileExtension}`))
+}
+
+/** Whether a markdown collection's loader pattern lays entries out as `<slug>/index.<ext>`; `createEntry` follows it too. */
+export function isIndexStyleGlobPattern(pattern: string): boolean {
+	return pattern.includes('index.{') || pattern.includes('*/index') || pattern.includes('**/index')
+}
+
+/** Entry extensions in the order an empty collection picks its file extension from a pattern. */
+const PATTERN_ENTRY_EXTENSIONS = ['md', 'mdx', 'json', 'yaml', 'yml'] as const
+
+/**
+ * The extension a new entry gets in a collection with no entries to copy it from: the first
+ * one the pattern's file name names (`*.mdx`, `**\/*.{json,yaml}`), markdown when it names
+ * none. `null` when it names only formats the editor cannot write (`*.toml`).
+ */
+function entryExtensionOfPattern(pattern: string): CollectionDefinition['fileExtension'] | null {
+	const fileName = pattern.slice(pattern.lastIndexOf('/') + 1)
+	const match = fileName.match(/\.(?:\{([^{}]*)\}|([A-Za-z0-9]+))$/)
+	if (!match) return 'md'
+	const named = new Set((match[1] ?? match[2] ?? '').split(',').map(ext => ext.trim().replace(/^\./, '')))
+	return PATTERN_ENTRY_EXTENSIONS.find(ext => named.has(ext)) ?? null
 }
 
 /**
@@ -1349,6 +1399,11 @@ export function collectionScanReport(collections: Record<string, CollectionDefin
  */
 const UNSUPPORTED_GLOB_SYNTAX = /[[\]()\\|]|\}\+|\{[^}]*(?:\{|\.\.|[*?]|,,)|\{,|,\}|\{[^,}]*\}|(?:^|[/{},])\.\.(?:[/{},]|$)|\/$|^(?:\.\/)+!|.\/\*\*$/
 
+/** Whether the port runs a loader pattern as Astro does: as spelled, and as the port joins it to the base (dropping `.` segments and doubled slashes). */
+export function portRunsLoaderPattern(pattern: string): boolean {
+	return !UNSUPPORTED_GLOB_SYNTAX.test(pattern) && !UNSUPPORTED_GLOB_SYNTAX.test(path.posix.normalize(pattern))
+}
+
 /**
  * A `..` segment in a pattern leads out of the base, so the files under the base do not bound
  * it. A brace next to the dots may be what makes them a segment.
@@ -1438,8 +1493,7 @@ async function declaredEntryFiles(
 	const patterns = pattern !== undefined ? [pattern] : declaration.loaderPatterns
 	// A pattern that cannot be read may lead anywhere.
 	if (patterns === undefined) return null
-	// As spelled and as the port joins it to the base, which drops `.` segments and doubled slashes.
-	const exact = pattern !== undefined && !UNSUPPORTED_GLOB_SYNTAX.test(pattern) && !UNSUPPORTED_GLOB_SYNTAX.test(path.posix.normalize(pattern))
+	const exact = pattern !== undefined && portRunsLoaderPattern(pattern)
 	// Patterns the scan cannot evaluate select among the files under the base: all of them
 	// are candidates. Unless one leads out of the base, and the whole project is not walked
 	// on that off chance either.

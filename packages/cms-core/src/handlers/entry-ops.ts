@@ -3,7 +3,7 @@ import path from 'node:path'
 import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths.ts'
 import { normalizeBasePath } from '../base-path.ts'
-import { scanCollections } from '../collection-scanner.ts'
+import { isIndexStyleGlobPattern, isPrivateEntryPath, portRunsLoaderPattern, scanCollections } from '../collection-scanner.ts'
 import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast.ts'
 import {
 	blankRequiredFields,
@@ -16,6 +16,7 @@ import {
 	withoutBlankArrayItems,
 	withRenamedEntrySlug,
 } from '../editor-write-model.ts'
+import { globToRegExp } from '../fs/glob.ts'
 import type { CmsFileSystem } from '../fs/types.ts'
 import { mimeFromExt } from '../media/mime.ts'
 import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared.ts'
@@ -285,6 +286,7 @@ async function inferLayoutFromExistingEntries(deps: EntryOpsDeps, collection: st
 
 	const dirEntries = await deps.fs.list(collectionPath)
 	if (dirEntries.length === 0) return null
+	const loads = await loaderPatternTest(deps, collection)
 
 	let flatCount = 0
 	const flatSlugs = new Set<string>()
@@ -292,7 +294,7 @@ async function inferLayoutFromExistingEntries(deps: EntryOpsDeps, collection: st
 	for (const entry of dirEntries) {
 		if (entry.isDirectory) continue
 		const match = entry.name.match(/^(.+)\.(md|mdx)$/)
-		if (!match) continue
+		if (!match || !loads(entry.name)) continue
 		flatCount++
 		flatSlugs.add(match[1]!)
 	}
@@ -301,7 +303,8 @@ async function inferLayoutFromExistingEntries(deps: EntryOpsDeps, collection: st
 	const indexLookups = await Promise.all(subdirs.map(async dir => {
 		if (flatSlugs.has(dir.name)) return false
 		for (const ext of MARKDOWN_EXTENSIONS) {
-			if (await deps.fs.exists(path.posix.join(collectionPath, dir.name, `index.${ext}`))) return true
+			const relPath = path.posix.join(dir.name, `index.${ext}`)
+			if (loads(relPath) && await deps.fs.exists(path.posix.join(collectionPath, relPath))) return true
 		}
 		return false
 	}))
@@ -312,15 +315,23 @@ async function inferLayoutFromExistingEntries(deps: EntryOpsDeps, collection: st
 	return null
 }
 
+/**
+ * Whether the collection's loader loads a file, by its path relative to the loader base. Files
+ * it does not load (a sibling collection's on a shared base, a README) or the scan skips
+ * (`_index.md`) must not set the layout. Every file counts when the port cannot run the pattern.
+ */
+async function loaderPatternTest(deps: EntryOpsDeps, collection: string): Promise<(relPath: string) => boolean> {
+	const pattern = (await parseContentConfig(deps.fs, deps.parseCache)).get(collection)?.loaderPattern
+	if (!pattern || !portRunsLoaderPattern(pattern)) return () => true
+	const matcher = globToRegExp(path.posix.normalize(pattern))
+	return relPath => !isPrivateEntryPath(relPath) && matcher.test(relPath)
+}
+
 async function inferLayoutFromContentConfig(deps: EntryOpsDeps, collection: string): Promise<MarkdownCollectionLayout | null> {
 	const parsed = await parseContentConfig(deps.fs, deps.parseCache)
 	const pattern = parsed.get(collection)?.loaderPattern
 	if (!pattern) return null
 	return isIndexStyleGlobPattern(pattern) ? 'index' : 'flat'
-}
-
-function isIndexStyleGlobPattern(pattern: string): boolean {
-	return pattern.includes('index.{') || pattern.includes('*/index') || pattern.includes('**/index')
 }
 
 // ============================================================================
