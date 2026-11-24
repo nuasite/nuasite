@@ -150,6 +150,24 @@ ${lines.join('\n')}
 		expect(collections['negated']).toBeUndefined()
 	})
 
+	test('a pattern that would not load the created entry is not listed', async () => {
+		await write({
+			'src/content/jsem/index.md': '---\ntitle: Jsem\n---\n',
+			'src/content.config.ts': config(
+				// Shares its base with `jsem`: an entry created at the base would become a `jsem` entry.
+				['jsem-otazky', 'otazky/*.md', './src/content/jsem'],
+				['faq', 'faq-*.md', './src/data/faq'],
+				['english', '**/*.en.md', './src/data/english'],
+				['upper', '*.MD', './src/data/upper'],
+			),
+		})
+
+		const collections = await scanCollections(nodeFs())
+
+		expect(collections['jsem']!.entryCount).toBe(1)
+		for (const name of ['jsem-otazky', 'faq', 'english', 'upper']) expect(collections[name]).toBeUndefined()
+	})
+
 	test('a pattern the scan cannot run is not listed as empty', async () => {
 		// The port reads `[^_]` literally, so it matches none of the files Astro loads here.
 		await write({

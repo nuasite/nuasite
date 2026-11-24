@@ -3,7 +3,7 @@ import path from 'node:path'
 import yaml from 'yaml'
 import { assetBaseDir, resolveAssetCandidates } from '../asset-paths.ts'
 import { normalizeBasePath } from '../base-path.ts'
-import { scanCollections } from '../collection-scanner.ts'
+import { isIndexStyleGlobPattern, scanCollections } from '../collection-scanner.ts'
 import { type ParseCache, parseContentConfig, type ParsedField } from '../content-config-ast.ts'
 import {
 	blankRequiredFields,
@@ -317,10 +317,6 @@ async function inferLayoutFromContentConfig(deps: EntryOpsDeps, collection: stri
 	const pattern = parsed.get(collection)?.loaderPattern
 	if (!pattern) return null
 	return isIndexStyleGlobPattern(pattern) ? 'index' : 'flat'
-}
-
-function isIndexStyleGlobPattern(pattern: string): boolean {
-	return pattern.includes('index.{') || pattern.includes('*/index') || pattern.includes('**/index')
 }
 
 // ============================================================================

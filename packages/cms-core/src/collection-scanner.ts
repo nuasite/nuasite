@@ -20,6 +20,7 @@ import {
 	readContentConfig,
 	UNREAD_CONTENT_CONFIG_PATHS,
 } from './content-config-ast.ts'
+import { globToRegExp } from './fs/glob.ts'
 import type { CmsFileSystem, GlobOptions } from './fs/types.ts'
 import { readAstroSrcDir } from './project-config-ast.ts'
 import { resolvePathnameFromSpec, slugifyHref } from './shared.ts'
@@ -719,11 +720,29 @@ async function scanGlobCollection(
 	if (!portRunsLoaderPattern(pattern)) return null
 	const fileExtension = entryExtensionOfPattern(pattern)
 	if (!fileExtension) return null
+	const isData = fileExtension === 'json' || fileExtension === 'yaml' || fileExtension === 'yml'
+	if (!loadsCreatedEntry(pattern, fileExtension, isData)) return null
 	return assembleCollectionDefinition(collectionName, contentDir, new Map(), [], 0, {
 		path: getCollectionSourceBasePath(baseRel, collectionName, contentDir),
 		fileExtension,
-		...(fileExtension === 'json' || fileExtension === 'yaml' || fileExtension === 'yml' ? { type: 'data' as const } : {}),
+		...(isData ? { type: 'data' as const } : {}),
 	})
+}
+
+/**
+ * Whether the loader loads the first entry `createEntry` writes under its base: `<slug>.<ext>`,
+ * or `<slug>/index.<ext>` for an index-style markdown pattern. One that selects a slice of the
+ * base (`otazky/*.md`, `faq-*.md`, `*.en.md`) or matches nothing (`!**\/*.md`) does not, and
+ * the entry would land in no collection or in a sibling sharing the base.
+ */
+function loadsCreatedEntry(pattern: string, fileExtension: CollectionDefinition['fileExtension'], isData: boolean): boolean {
+	const created = !isData && isIndexStyleGlobPattern(pattern) ? `entry/index.${fileExtension}` : `entry.${fileExtension}`
+	return globToRegExp(path.posix.normalize(pattern.trim())).test(created)
+}
+
+/** Whether a markdown collection's loader pattern lays entries out as `<slug>/index.<ext>`; `createEntry` follows it too. */
+export function isIndexStyleGlobPattern(pattern: string): boolean {
+	return pattern.includes('index.{') || pattern.includes('*/index') || pattern.includes('**/index')
 }
 
 /** Entry extensions in the order an empty collection picks its file extension from a pattern. */
@@ -732,15 +751,13 @@ const PATTERN_ENTRY_EXTENSIONS = ['md', 'mdx', 'json', 'yaml', 'yml'] as const
 /**
  * The extension a new entry gets in a collection with no entries to copy it from: the first
  * one the pattern's file name names (`*.mdx`, `**\/*.{json,yaml}`), markdown when it names
- * none. `null` when no entry the editor writes would load: the pattern names only formats it
- * cannot write (`*.toml`), or it is a lone negation, which matches nothing.
+ * none. `null` when it names only formats the editor cannot write (`*.toml`).
  */
 function entryExtensionOfPattern(pattern: string): CollectionDefinition['fileExtension'] | null {
-	if (pattern.trim().startsWith('!')) return null
 	const fileName = pattern.slice(pattern.lastIndexOf('/') + 1)
 	const match = fileName.match(/\.(?:\{([^{}]*)\}|([A-Za-z0-9]+))$/)
 	if (!match) return 'md'
-	const named = new Set((match[1] ?? match[2] ?? '').split(',').map(ext => ext.trim().replace(/^\./, '').toLowerCase()))
+	const named = new Set((match[1] ?? match[2] ?? '').split(',').map(ext => ext.trim().replace(/^\./, '')))
 	return PATTERN_ENTRY_EXTENSIONS.find(ext => named.has(ext)) ?? null
 }
 
