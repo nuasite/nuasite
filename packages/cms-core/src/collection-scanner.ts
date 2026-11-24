@@ -714,7 +714,34 @@ async function scanGlobCollection(
 		return await buildDataCollectionDefinition(fs, baseRel, dataSources, collectionName, contentDir)
 	}
 
-	return null
+	// No entries yet, or no folder: still a declared collection, so the editor can create its
+	// first entry. Not when the port cannot run the pattern — then no match proves nothing.
+	if (!portRunsLoaderPattern(pattern)) return null
+	const fileExtension = entryExtensionOfPattern(pattern)
+	if (!fileExtension) return null
+	return assembleCollectionDefinition(collectionName, contentDir, new Map(), [], 0, {
+		path: getCollectionSourceBasePath(baseRel, collectionName, contentDir),
+		fileExtension,
+		...(fileExtension === 'json' || fileExtension === 'yaml' || fileExtension === 'yml' ? { type: 'data' as const } : {}),
+	})
+}
+
+/** Entry extensions in the order an empty collection picks its file extension from a pattern. */
+const PATTERN_ENTRY_EXTENSIONS = ['md', 'mdx', 'json', 'yaml', 'yml'] as const
+
+/**
+ * The extension a new entry gets in a collection with no entries to copy it from: the first
+ * one the pattern's file name names (`*.mdx`, `**\/*.{json,yaml}`), markdown when it names
+ * none. `null` when no entry the editor writes would load: the pattern names only formats it
+ * cannot write (`*.toml`), or it is a lone negation, which matches nothing.
+ */
+function entryExtensionOfPattern(pattern: string): CollectionDefinition['fileExtension'] | null {
+	if (pattern.trim().startsWith('!')) return null
+	const fileName = pattern.slice(pattern.lastIndexOf('/') + 1)
+	const match = fileName.match(/\.(?:\{([^{}]*)\}|([A-Za-z0-9]+))$/)
+	if (!match) return 'md'
+	const named = new Set((match[1] ?? match[2] ?? '').split(',').map(ext => ext.trim().replace(/^\./, '').toLowerCase()))
+	return PATTERN_ENTRY_EXTENSIONS.find(ext => named.has(ext)) ?? null
 }
 
 /**
@@ -1349,6 +1376,11 @@ export function collectionScanReport(collections: Record<string, CollectionDefin
  */
 const UNSUPPORTED_GLOB_SYNTAX = /[[\]()\\|]|\}\+|\{[^}]*(?:\{|\.\.|[*?]|,,)|\{,|,\}|\{[^,}]*\}|(?:^|[/{},])\.\.(?:[/{},]|$)|\/$|^(?:\.\/)+!|.\/\*\*$/
 
+/** Whether the port runs a loader pattern as Astro does: as spelled, and as the port joins it to the base (dropping `.` segments and doubled slashes). */
+function portRunsLoaderPattern(pattern: string): boolean {
+	return !UNSUPPORTED_GLOB_SYNTAX.test(pattern) && !UNSUPPORTED_GLOB_SYNTAX.test(path.posix.normalize(pattern))
+}
+
 /**
  * A `..` segment in a pattern leads out of the base, so the files under the base do not bound
  * it. A brace next to the dots may be what makes them a segment.
@@ -1438,8 +1470,7 @@ async function declaredEntryFiles(
 	const patterns = pattern !== undefined ? [pattern] : declaration.loaderPatterns
 	// A pattern that cannot be read may lead anywhere.
 	if (patterns === undefined) return null
-	// As spelled and as the port joins it to the base, which drops `.` segments and doubled slashes.
-	const exact = pattern !== undefined && !UNSUPPORTED_GLOB_SYNTAX.test(pattern) && !UNSUPPORTED_GLOB_SYNTAX.test(path.posix.normalize(pattern))
+	const exact = pattern !== undefined && portRunsLoaderPattern(pattern)
 	// Patterns the scan cannot evaluate select among the files under the base: all of them
 	// are candidates. Unless one leads out of the base, and the whole project is not walked
 	// on that off chance either.
