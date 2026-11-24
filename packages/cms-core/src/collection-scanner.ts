@@ -736,8 +736,10 @@ async function scanGlobCollection(
  * the entry would land in no collection or in a sibling sharing the base.
  */
 function loadsCreatedEntry(pattern: string, fileExtension: CollectionDefinition['fileExtension'], isData: boolean): boolean {
-	const created = !isData && isIndexStyleGlobPattern(pattern) ? `entry/index.${fileExtension}` : `entry.${fileExtension}`
-	return globToRegExp(path.posix.normalize(pattern.trim())).test(created)
+	const matcher = globToRegExp(path.posix.normalize(pattern))
+	const indexLayout = !isData && isIndexStyleGlobPattern(pattern)
+	// Two unrelated slugs, so a pattern that happens to match one name (`e*.md`) is not taken for one that matches any.
+	return ['entry', 'x-1'].every(slug => matcher.test(indexLayout ? `${slug}/index.${fileExtension}` : `${slug}.${fileExtension}`))
 }
 
 /** Whether a markdown collection's loader pattern lays entries out as `<slug>/index.<ext>`; `createEntry` follows it too. */
@@ -1394,7 +1396,7 @@ export function collectionScanReport(collections: Record<string, CollectionDefin
 const UNSUPPORTED_GLOB_SYNTAX = /[[\]()\\|]|\}\+|\{[^}]*(?:\{|\.\.|[*?]|,,)|\{,|,\}|\{[^,}]*\}|(?:^|[/{},])\.\.(?:[/{},]|$)|\/$|^(?:\.\/)+!|.\/\*\*$/
 
 /** Whether the port runs a loader pattern as Astro does: as spelled, and as the port joins it to the base (dropping `.` segments and doubled slashes). */
-function portRunsLoaderPattern(pattern: string): boolean {
+export function portRunsLoaderPattern(pattern: string): boolean {
 	return !UNSUPPORTED_GLOB_SYNTAX.test(pattern) && !UNSUPPORTED_GLOB_SYNTAX.test(path.posix.normalize(pattern))
 }
 

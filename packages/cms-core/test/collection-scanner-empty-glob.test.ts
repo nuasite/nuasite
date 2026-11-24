@@ -121,6 +121,25 @@ ${lines.join('\n')}
 		expect(result).toEqual({ success: true, sourcePath: 'src/content/docs/intro/index.md' })
 	})
 
+	test('files on the base the pattern does not load do not set the layout of the first entry', async () => {
+		await write({
+			// `pages` owns the flat files of the shared base; `guides` is empty and index-style.
+			'src/data/docs/a.md': '---\ntitle: A\n---\n',
+			'src/data/docs/README.md': '# Docs\n',
+			'src/content.config.ts': config(['pages', 'a*.md', './src/data/docs'], ['guides', '*/index.md', './src/data/docs']),
+		})
+		const core = createCmsCore(nodeFs())
+		const guides = (await core.scanCollections())['guides']!
+		expect(guides.entryCount).toBe(0)
+
+		const result = await core.createEntry({ collection: 'guides', slug: 'intro', frontmatter: { title: 'Intro' }, fileExtension: guides.fileExtension })
+
+		expect(result).toEqual({ success: true, sourcePath: 'src/data/docs/intro/index.md' })
+		const after = await core.scanCollections()
+		expect(after['guides']!.entries!.map(entry => entry.sourcePath)).toEqual([path.join('src/data/docs', 'intro', 'index.md')])
+		expect(after['pages']!.entryCount).toBe(1)
+	})
+
 	test('a collection with entries scans as before', async () => {
 		await write({
 			'src/content/blog/a.md': '---\ntitle: A\n---\n',
@@ -159,13 +178,15 @@ ${lines.join('\n')}
 				['faq', 'faq-*.md', './src/data/faq'],
 				['english', '**/*.en.md', './src/data/english'],
 				['upper', '*.MD', './src/data/upper'],
+				['one-name', 'e*.md', './src/data/one-name'],
+				['spaced', ' **/*.md', './src/data/spaced'],
 			),
 		})
 
 		const collections = await scanCollections(nodeFs())
 
 		expect(collections['jsem']!.entryCount).toBe(1)
-		for (const name of ['jsem-otazky', 'faq', 'english', 'upper']) expect(collections[name]).toBeUndefined()
+		for (const name of ['jsem-otazky', 'faq', 'english', 'upper', 'one-name', 'spaced']) expect(collections[name]).toBeUndefined()
 	})
 
 	test('a pattern the scan cannot run is not listed as empty', async () => {
