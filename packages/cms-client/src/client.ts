@@ -163,6 +163,16 @@ export class CmsClientError extends Error {
 	get isNotFound(): boolean {
 		return this.code === 'not_found' || this.status === 404
 	}
+
+	/** The entry changed since the `baseHash` the write carried, or under the write itself. */
+	get isConflict(): boolean {
+		return this.code === 'conflict' || this.status === 409
+	}
+}
+
+/** The version a delete or rename is checked against: the `sourceHash` the client saw. */
+export interface EntryWriteOptions {
+	baseHash?: string
 }
 
 // ============================================================================
@@ -234,8 +244,10 @@ export interface CmsClient {
 	 */
 	updateEntry(collection: string, slug: string, input: UpdateEntryInput): Promise<UpdateEntryResult>
 	createEntry(collection: string, input: CreateEntryInput): Promise<MutationResult>
-	deleteEntry(collection: string, slug: string): Promise<MutationResult>
-	renameEntry(collection: string, slug: string, to: string): Promise<MutationResult>
+	/** With `baseHash`, a stale view is refused: it throws a {@link CmsClientError} whose `isConflict` is true. */
+	deleteEntry(collection: string, slug: string, options?: EntryWriteOptions): Promise<MutationResult>
+	/** With `baseHash`, a stale view is refused: it throws a {@link CmsClientError} whose `isConflict` is true. */
+	renameEntry(collection: string, slug: string, to: string, options?: EntryWriteOptions): Promise<MutationResult>
 	addArrayItem(collection: string, slug: string, field: string, value: unknown, index?: number): Promise<MutationResult>
 	removeArrayItem(collection: string, slug: string, field: string, index: number): Promise<MutationResult>
 
@@ -412,11 +424,13 @@ export function createClient(apiBase: string): CmsClient {
 		createEntry(collection, input) {
 			return mutate<MutationResult>(`/collections/${encodeURIComponent(collection)}/entries`, 'POST', input)
 		},
-		deleteEntry(collection, slug) {
-			return mutate<MutationResult>(entryPath(collection, slug), 'DELETE')
+		deleteEntry(collection, slug, options) {
+			const body = options?.baseHash === undefined ? undefined : { baseHash: options.baseHash }
+			return mutate<MutationResult>(entryPath(collection, slug), 'DELETE', body)
 		},
-		renameEntry(collection, slug, to) {
-			return mutate<MutationResult>(`${entryPath(collection, slug)}/rename`, 'POST', { to })
+		renameEntry(collection, slug, to, options) {
+			const body = options?.baseHash === undefined ? { to } : { to, baseHash: options.baseHash }
+			return mutate<MutationResult>(`${entryPath(collection, slug)}/rename`, 'POST', body)
 		},
 		addArrayItem(collection, slug, field, value, index) {
 			const body = index === undefined ? { field, value } : { field, value, index }

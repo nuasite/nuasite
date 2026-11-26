@@ -103,8 +103,8 @@ ${lines.join('\n')}
 			fileExtension: before['team']!.fileExtension,
 		})
 
-		expect(news).toEqual({ success: true, sourcePath: 'src/data/news/first.md' })
-		expect(team).toEqual({ success: true, sourcePath: 'src/data/team/alice.json' })
+		expect(news).toEqual({ success: true, sourcePath: 'src/data/news/first.md', sourceHash: expect.stringMatching(/^sha256:/) })
+		expect(team).toEqual({ success: true, sourcePath: 'src/data/team/alice.json', sourceHash: expect.stringMatching(/^sha256:/) })
 		expect(await read('src/data/team/alice.json')).toBe('{\n  "title": "Alice"\n}\n')
 		const after = await core.scanCollections()
 		expect(after['news']!.entries!.map(entry => entry.sourcePath)).toEqual([path.join('src/data/news', 'first.md')])
@@ -118,7 +118,7 @@ ${lines.join('\n')}
 
 		const result = await core.createEntry({ collection: 'docs', slug: 'intro', frontmatter: { title: 'Intro' }, fileExtension: docs.fileExtension })
 
-		expect(result).toEqual({ success: true, sourcePath: 'src/content/docs/intro/index.md' })
+		expect(result).toEqual({ success: true, sourcePath: 'src/content/docs/intro/index.md', sourceHash: expect.stringMatching(/^sha256:/) })
 	})
 
 	test('files on the base the pattern does not load do not set the layout of the first entry', async () => {
@@ -134,7 +134,7 @@ ${lines.join('\n')}
 
 		const result = await core.createEntry({ collection: 'guides', slug: 'intro', frontmatter: { title: 'Intro' }, fileExtension: guides.fileExtension })
 
-		expect(result).toEqual({ success: true, sourcePath: 'src/data/docs/intro/index.md' })
+		expect(result).toEqual({ success: true, sourcePath: 'src/data/docs/intro/index.md', sourceHash: expect.stringMatching(/^sha256:/) })
 		const after = await core.scanCollections()
 		expect(after['guides']!.entries!.map(entry => entry.sourcePath)).toEqual([path.join('src/data/docs', 'intro', 'index.md')])
 		expect(after['pages']!.entryCount).toBe(1)
@@ -152,7 +152,7 @@ ${lines.join('\n')}
 
 		const result = await core.createEntry({ collection: 'docs', slug: 'intro', frontmatter: { title: 'Intro' }, fileExtension: docs.fileExtension })
 
-		expect(result).toEqual({ success: true, sourcePath: 'src/data/docs/intro/index.md' })
+		expect(result).toEqual({ success: true, sourcePath: 'src/data/docs/intro/index.md', sourceHash: expect.stringMatching(/^sha256:/) })
 		expect((await core.scanCollections())['docs']!.entryCount).toBe(1)
 	})
 

@@ -1,8 +1,8 @@
 /**
  * The optimistic-concurrency half of an entry editor.
  *
- * `GET …/entries/:slug` exposes no hash, so the first save sends no `baseHash` (the sidecar skips
- * the check) and adopts `MutationResult.sourceHash` as the token; later saves carry it. A `409`
+ * The editor hands it the `sourceHash` of the entry it loaded (`adopt`), so the first save is checked
+ * like every later one; each save then adopts `MutationResult.sourceHash`. A `409`
  * hands back the server's version, and the editor offers "use theirs" (adopt the server copy and
  * its hash) or "keep mine" (re-`PATCH` with `baseHash = serverHash`, which force-writes over it).
  *
@@ -31,7 +31,10 @@ export type EntrySaveOutcome =
 	| { status: 'error'; message: string; cause: unknown }
 
 export interface EntrySaver {
-	/** The current optimistic-concurrency token — `undefined` until the first successful save. */
+	/**
+	 * The current optimistic-concurrency token: the hash of the version the editor shows. `undefined`
+	 * when it knows none (a server that sends no hash), and the next save is then unchecked.
+	 */
 	readonly baseHash: string | undefined
 	/** `PATCH` the draft with the token held. */
 	save(draft: EntryDraft): Promise<EntrySaveOutcome>
@@ -39,7 +42,9 @@ export interface EntrySaver {
 	overwrite(draft: EntryDraft, conflict: CmsConflict): Promise<EntrySaveOutcome>
 	/** Adopt the server's version: returns the draft to show and takes on the server's hash. */
 	adoptServer(conflict: CmsConflict, fields: FieldDefinition[]): EntryDraft
-	/** Forget the token — the editor moved to another entry, or reloaded this one. */
+	/** Take on the hash of the version the editor now shows: the entry's `sourceHash` from a load or reload. */
+	adopt(hash: string | undefined): void
+	/** Forget the token: the editor shows no version yet. */
 	reset(): void
 }
 
@@ -69,6 +74,9 @@ export function createEntrySaver(client: Pick<CmsClient, 'updateEntry'>, collect
 		adoptServer: (conflict, fields) => {
 			baseHash = conflict.serverHash
 			return draftFromServerFrontmatter(conflict.serverFrontmatter, conflict.serverBody, fields)
+		},
+		adopt: hash => {
+			baseHash = hash
 		},
 		reset: () => {
 			baseHash = undefined

@@ -41,6 +41,7 @@ import {
 	type ConflictResponse,
 	type CreateEntryBody,
 	type CreateFolderBody,
+	type DeleteEntryBody,
 	type EntriesListResult,
 	type EntriesQuery,
 	type ErrorCode,
@@ -159,6 +160,23 @@ async function parseJson<T>(req: Request): Promise<{ ok: true; value: T } | { ok
 	} catch {
 		return { ok: false, response: error('validation', 'Invalid JSON body') }
 	}
+}
+
+/** A body that may be absent: no body reads as `null`, anything else must be JSON. */
+async function parseOptionalJson<T>(req: Request): Promise<{ ok: true; value: T | null } | { ok: false; response: Response }> {
+	const text = await req.text()
+	if (text.trim() === '') return { ok: true, value: null }
+	try {
+		// See `parseJson`: the route validates every field it reads.
+		const value: T = JSON.parse(text)
+		return { ok: true, value }
+	} catch {
+		return { ok: false, response: error('validation', 'Invalid JSON body') }
+	}
+}
+
+function isOptionalHash(value: unknown): value is string | undefined {
+	return value === undefined || typeof value === 'string'
 }
 
 function parseEntriesQuery(url: URL): EntriesQuery {
@@ -660,6 +678,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			frontmatter,
 			body: result.content,
 			bodyStartLine: 0,
+			sourceHash: result.sourceHash,
 		}
 		return json(entry)
 	}
@@ -687,26 +706,10 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		const existing = await core.getEntry(collection, slug)
 		if (!existing) return error('not_found', `Entry not found: ${collection}/${slug}`)
 		const sourcePath = existing.sourcePath
-		const existingFrontmatter = existing.frontmatter
-
-		/** The 409 with the entry as it is now, so the client can offer "use server" vs "use ours". */
-		async function conflictResponse(serverHash: string): Promise<Response> {
-			const current = await core.getEntry(collection, slug)
-			const conflict: ConflictResponse = {
-				code: 'conflict',
-				serverHash,
-				serverFrontmatter: current?.frontmatter ?? existingFrontmatter,
-			}
-			if (current && current.content !== '') conflict.serverBody = current.content
-			return json(conflict, STATUS_BY_CODE.conflict)
-		}
 
 		return mutex.runExclusive(sourcePath, async () => {
 			// Re-hash under the lock so a concurrent writer cannot slip in between.
-			const serverHash = await hashSource(fs, sourcePath)
-			if (body.baseHash !== undefined && serverHash !== null && body.baseHash !== serverHash) {
-				return conflictResponse(serverHash)
-			}
+			if (await isStale(sourcePath, body.baseHash)) return conflictResponse(collection, slug)
 
 			let result: MutationResult
 			try {
@@ -719,18 +722,37 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			} catch (cause) {
 				// The core's commit found the file changed by a writer outside this server's lock.
 				if (!(cause instanceof CmsCommitConflictError)) throw cause
-				const currentHash = await hashSource(fs, sourcePath)
 				// Removed meanwhile: there is no server version to offer, only the plain conflict.
-				if (currentHash === null) throw cause
-				return conflictResponse(currentHash)
+				if (await hashSource(fs, sourcePath) === null) throw cause
+				return conflictResponse(collection, slug)
 			}
-			if (!result.success) return mutationResponse(result)
-
-			const newHash = await hashSource(fs, result.sourcePath ?? sourcePath)
-			const enriched: MutationResult = { ...result }
-			if (newHash !== null) enriched.sourceHash = newHash
-			return json(enriched)
+			// The result carries the hash of the bytes the core wrote; hashing the file again here
+			// could pick up a write that landed after it.
+			return mutationResponse(result)
 		})
+	}
+
+	/** Whether `baseHash` was given and no longer matches the file. Call under the file's lock. */
+	async function isStale(sourcePath: string, baseHash: string | undefined): Promise<boolean> {
+		if (baseHash === undefined) return false
+		const serverHash = await hashSource(fs, sourcePath)
+		return serverHash !== null && serverHash !== baseHash
+	}
+
+	/**
+	 * The 409 with the entry as it is now, so the client can offer "use server" vs "use ours". The
+	 * hash and the version come from one read, so they always describe the same bytes.
+	 */
+	async function conflictResponse(collection: string, slug: string): Promise<Response> {
+		const current = await core.getEntry(collection, slug)
+		if (current === null) return error('conflict', `Entry changed and was removed meanwhile: ${collection}/${slug}`)
+		const conflict: ConflictResponse = {
+			code: 'conflict',
+			serverHash: current.sourceHash,
+			serverFrontmatter: current.frontmatter,
+		}
+		if (current.content !== '') conflict.serverBody = current.content
+		return json(conflict, STATUS_BY_CODE.conflict)
 	}
 
 	async function fetchHandler(req: Request): Promise<Response> {
@@ -841,7 +863,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			if (action === undefined) {
 				if (method === 'GET') return entryDetail(collection, slug)
 				if (method === 'PATCH') return updateEntryRoute(collection, slug, req)
-				if (method === 'DELETE') return deleteEntryRoute(collection, slug)
+				if (method === 'DELETE') return deleteEntryRoute(collection, slug, req)
 				return error('unsupported', `Unsupported: ${method} /collections/${collection}/entries/${slug}`)
 			}
 
@@ -896,12 +918,8 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 			body: body.body,
 			fileExtension: body.fileExtension,
 		})
-		if (!result.success) return mutationResponse(result)
-
-		const newHash = result.sourcePath ? await hashSource(fs, result.sourcePath) : null
-		const enriched: MutationResult = { ...result }
-		if (newHash !== null) enriched.sourceHash = newHash
-		return json(enriched)
+		// The result carries the hash of the bytes the core wrote.
+		return mutationResponse(result)
 	}
 
 	async function updateEntryRoute(collection: string, slug: string, req: Request): Promise<Response> {
@@ -910,10 +928,15 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		return patchEntry(collection, slug, parsed.value)
 	}
 
-	async function deleteEntryRoute(collection: string, slug: string): Promise<Response> {
+	async function deleteEntryRoute(collection: string, slug: string, req: Request): Promise<Response> {
+		// The body is optional: a client that sends no `baseHash` deletes unchecked, as before.
+		const parsed = await parseOptionalJson<DeleteEntryBody>(req)
+		if (!parsed.ok) return parsed.response
+		if (!isOptionalHash(parsed.value?.baseHash)) return error('validation', '"baseHash" must be a string')
 		const existing = await core.getEntry(collection, slug)
 		if (!existing) return error('not_found', `Entry not found: ${collection}/${slug}`)
 		return mutex.runExclusive(existing.sourcePath, async () => {
+			if (await isStale(existing.sourcePath, parsed.value?.baseHash)) return conflictResponse(collection, slug)
 			const result = await core.deleteEntry(collection, slug)
 			return mutationResponse(result)
 		})
@@ -925,15 +948,13 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		if (typeof parsed.value.to !== 'string' || parsed.value.to.trim() === '') {
 			return error('validation', 'A non-empty "to" slug is required')
 		}
+		if (!isOptionalHash(parsed.value.baseHash)) return error('validation', '"baseHash" must be a string')
 		const existing = await core.getEntry(collection, slug)
 		if (!existing) return error('not_found', `Entry not found: ${collection}/${slug}`)
 		return mutex.runExclusive(existing.sourcePath, async () => {
-			const result = await core.renameEntry(collection, slug, parsed.value.to)
-			if (!result.success) return mutationResponse(result)
-			const newHash = result.sourcePath ? await hashSource(fs, result.sourcePath) : null
-			const enriched: MutationResult = { ...result }
-			if (newHash !== null) enriched.sourceHash = newHash
-			return json(enriched)
+			if (await isStale(existing.sourcePath, parsed.value.baseHash)) return conflictResponse(collection, slug)
+			// The result carries the hash of the bytes the core wrote at the new path.
+			return mutationResponse(await core.renameEntry(collection, slug, parsed.value.to))
 		})
 	}
 

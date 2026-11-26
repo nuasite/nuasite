@@ -18,7 +18,7 @@ import type {
 import { collectionScanReport, type FrontmatterCache, scanCollections } from './collection-scanner.ts'
 import { scanComponentDefinitions } from './component-registry.ts'
 import { type ParseCache } from './content-config-ast.ts'
-import { type CmsCommit, createStagedFileSystem } from './fs/staged.ts'
+import { type CmsCommit, createStagedFileSystem, recordWrites, writtenDigest } from './fs/staged.ts'
 import type { CmsFileSystem } from './fs/types.ts'
 import {
 	addArrayItem as addArrayItemOp,
@@ -156,6 +156,29 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 		return result
 	}
 
+	/**
+	 * An entry mutation reports the hash of the bytes it wrote to the entry's file, taken from what it
+	 * wrote: hashing the file again afterwards could pick up a later write by someone else.
+	 */
+	async function mutateEntry(operation: (over: CmsFileSystem) => Promise<MutationResult>): Promise<MutationResult> {
+		let digestOf: (path: string) => string | undefined
+		let result: MutationResult
+		if (commit === undefined) {
+			const recording = recordWrites(fs)
+			result = await operation(recording)
+			digestOf = path => recording.writtenDigest(path)
+		} else {
+			const staged = createStagedFileSystem(fs)
+			result = await operation(staged)
+			const changeset = staged.changeset()
+			await commit(changeset)
+			digestOf = path => writtenDigest(changeset, path)
+		}
+		if (!result.success || result.sourcePath === undefined) return result
+		const sourceHash = digestOf(result.sourcePath)
+		return sourceHash === undefined ? result : { ...result, sourceHash }
+	}
+
 	return {
 		scanCollections(options) {
 			return scanCollections(fs, contentDir, parseCache, { report: options?.report ?? false, frontmatterCache })
@@ -174,22 +197,22 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 			return getProjectAssetOp(readDeps, assetPath)
 		},
 		createEntry(input) {
-			return mutate(over => createEntryOp(entryDeps(over), input))
+			return mutateEntry(over => createEntryOp(entryDeps(over), input))
 		},
 		updateEntry(input) {
-			return mutate(over => updateEntryOp(entryDeps(over), input))
+			return mutateEntry(over => updateEntryOp(entryDeps(over), input))
 		},
 		deleteEntry(collection, slug) {
-			return mutate(over => deleteEntryOp(entryDeps(over), collection, slug))
+			return mutateEntry(over => deleteEntryOp(entryDeps(over), collection, slug))
 		},
 		renameEntry(collection, from, to) {
-			return mutate(over => renameEntryOp(entryDeps(over), collection, from, to))
+			return mutateEntry(over => renameEntryOp(entryDeps(over), collection, from, to))
 		},
 		addArrayItem(input) {
-			return mutate(over => addArrayItemOp(entryDeps(over), input))
+			return mutateEntry(over => addArrayItemOp(entryDeps(over), input))
 		},
 		removeArrayItem(input) {
-			return mutate(over => removeArrayItemOp(entryDeps(over), input))
+			return mutateEntry(over => removeArrayItemOp(entryDeps(over), input))
 		},
 		createPage(input) {
 			return mutate(over => createPageOp({ fs: over }, input))

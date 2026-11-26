@@ -17,6 +17,7 @@ import {
 	withRenamedEntrySlug,
 } from '../editor-write-model.ts'
 import { globToRegExp } from '../fs/glob.ts'
+import { digestBytes } from '../fs/staged.ts'
 import type { CmsFileSystem } from '../fs/types.ts'
 import { mimeFromExt } from '../media/mime.ts'
 import { computeDerivedFieldUpdates, isPlainRecord, relativeImportPath, slugify } from '../shared.ts'
@@ -31,7 +32,12 @@ export interface GetEntryResult {
 	frontmatter: Record<string, unknown>
 	/** Source file path, root-relative. */
 	sourcePath: string
+	/** Hash of the bytes this result was parsed from: the version a later write is checked against. */
+	sourceHash: string
 }
+
+/** Keeps a byte order mark, as a text read of the file does, so the parse sees what it always saw. */
+const UTF8 = new TextDecoder('utf-8', { ignoreBOM: true })
 
 export interface EntryOpsDeps {
 	fs: CmsFileSystem
@@ -512,7 +518,10 @@ export async function getEntry(deps: EntryOpsDeps, collection: string, slug: str
 	const sourcePath = await resolveEntryPath(deps, collection, slug)
 	if (!sourcePath) return null
 
-	const raw = await deps.fs.readFile(sourcePath)
+	// One read for both the parse and the hash: two reads could straddle someone else's write.
+	const bytes = await deps.fs.readBytes(sourcePath)
+	const raw = UTF8.decode(bytes)
+	const sourceHash = digestBytes(bytes)
 
 	if (isDataFile(sourcePath)) {
 		const data = sourcePath.endsWith('.json') ? JSON.parse(raw) : yaml.parse(raw)
@@ -520,11 +529,12 @@ export async function getEntry(deps: EntryOpsDeps, collection: string, slug: str
 			content: '',
 			frontmatter: (data && typeof data === 'object') ? data : {},
 			sourcePath,
+			sourceHash,
 		}
 	}
 
 	const { frontmatter, content } = parseFrontmatter(raw)
-	return { content, frontmatter, sourcePath }
+	return { content, frontmatter, sourcePath, sourceHash }
 }
 
 export async function createEntry(deps: EntryOpsDeps, input: CreateEntryInput): Promise<MutationResult> {

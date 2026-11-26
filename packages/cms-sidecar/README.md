@@ -48,7 +48,12 @@ tested or changed (`absent`, `present`, or a `sha256:` content digest) and the f
 writes or removes. The commit applies the changes only when all those versions still hold,
 and otherwise rejects with `CmsCommitConflictError` and applies nothing. The server answers
 that with a `409`: for `PATCH` an entry, the usual `ConflictResponse` with the current
-version. `commitChangeset(fs)` is a reference implementation; it is atomic only when nothing
+version.
+
+Every entry read (`GET …/entries/:slug`) carries `sourceHash`, the digest of the bytes it
+parsed, and every mutation returns the digest of the bytes it wrote. `PATCH`, `DELETE` and
+`POST …/rename` take that value back as an optional `baseHash` and answer `409` when the file
+changed since. `commitChangeset(fs)` is a reference implementation; it is atomic only when nothing
 else writes between its awaits, so a host with concurrent writers runs the same check
 (`versionOf`, `versionMatches`) and the writes inside its own critical section.
 

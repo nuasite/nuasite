@@ -364,6 +364,11 @@ export interface CollectionEntry {
 	bodyStartLine: number
 	/** ID of the wrapper element containing the rendered markdown */
 	wrapperId?: string
+	/**
+	 * Hash of the file this entry was read from: send it as `baseHash` with the next write, which is
+	 * refused with `409` when the file changed since. Absent from servers that predate it.
+	 */
+	sourceHash?: string
 }
 
 // ============================================================================

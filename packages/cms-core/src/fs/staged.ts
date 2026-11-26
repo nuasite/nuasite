@@ -213,6 +213,74 @@ export function versionMatches(recorded: CmsFileVersion, current: CmsFileVersion
 	return current.kind === 'content' && current.digest === recorded.digest
 }
 
+/** The digest of what the changeset writes to `path`, or `undefined` when it does not end up writing it. */
+export function writtenDigest(changeset: CmsChangeset, path: string): string | undefined {
+	const target = normalize(path)
+	let digest: string | undefined
+	for (const change of changeset.changes) {
+		if (change.path !== target) continue
+		digest = change.kind === 'write' ? digestBytes(change.content) : undefined
+	}
+	return digest
+}
+
+/** The digest of a file's bytes, or `undefined` for a directory or a path that is not there. */
+async function fileDigest(fs: CmsFileSystem, path: string): Promise<string | undefined> {
+	try {
+		return digestBytes(await fs.readBytes(path))
+	} catch {
+		return undefined
+	}
+}
+
+export interface WriteRecordingFileSystem extends CmsFileSystem {
+	/** The digest of what was last written to `path` through this view, or `undefined` when it was not written or no longer holds it. */
+	writtenDigest(path: string): string | undefined
+}
+
+/**
+ * Writes straight through to `base` and remembers the digest of each file's last write, following
+ * renames, including a directory's: the version a mutation without a staged commit reports.
+ */
+export function recordWrites(base: CmsFileSystem): WriteRecordingFileSystem {
+	const written = new Map<string, string>()
+	const encoder = new TextEncoder()
+	return {
+		...base,
+		async writeFile(path, content) {
+			await base.writeFile(path, content)
+			written.set(normalize(path), digestBytes(encoder.encode(content)))
+		},
+		async writeBytes(path, content) {
+			await base.writeBytes(path, content)
+			written.set(normalize(path), digestBytes(content))
+		},
+		async remove(path) {
+			await base.remove(path)
+			written.delete(normalize(path))
+		},
+		async rename(rawFrom, rawTo) {
+			const from = normalize(rawFrom)
+			const to = normalize(rawTo)
+			// A file moved as it is keeps its bytes. They are read before the move, never after: a write
+			// landing in between then leaves the reported version older than the file, and the next
+			// write is refused rather than allowed over a version nobody saw.
+			const moved = written.get(from) ?? await fileDigest(base, from)
+			await base.rename(rawFrom, rawTo)
+			written.delete(to)
+			if (moved !== undefined) written.set(from, moved)
+			for (const [path, digest] of [...written]) {
+				if (path !== from && !isBelow(path, from)) continue
+				written.delete(path)
+				written.set(to + path.slice(from.length), digest)
+			}
+		},
+		writtenDigest(path) {
+			return written.get(normalize(path))
+		},
+	}
+}
+
 /**
  * A commit over `fs` that checks the recorded versions and then applies the changes. It is atomic
  * only when nothing else writes to `fs` between its awaits; a host with concurrent writers does
