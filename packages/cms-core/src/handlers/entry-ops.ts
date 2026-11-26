@@ -699,6 +699,14 @@ export async function renameEntry(deps: EntryOpsDeps, collection: string, from: 
 		return { success: false, error: 'Invalid slug' }
 	}
 
+	// Read before anything moves: the version a rename reports is the one it moved, and this read is
+	// how the filesystem it runs over learns it (a staged commit also holds the file to it).
+	try {
+		await deps.fs.readBytes(sourcePath)
+	} catch {
+		return { success: false, error: `Entry not found: ${collection}/${from}` }
+	}
+
 	const { moveFrom, moveTo, previousSlug, newSourcePath } = renameTarget(sourcePath, from, normalizedSlug)
 
 	if (moveFrom === moveTo) {

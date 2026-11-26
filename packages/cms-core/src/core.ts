@@ -18,7 +18,7 @@ import type {
 import { collectionScanReport, type FrontmatterCache, scanCollections } from './collection-scanner.ts'
 import { scanComponentDefinitions } from './component-registry.ts'
 import { type ParseCache } from './content-config-ast.ts'
-import { type CmsCommit, createStagedFileSystem, recordWrites, writtenDigest } from './fs/staged.ts'
+import { changesetDigest, type CmsCommit, createStagedFileSystem, recordVersions } from './fs/staged.ts'
 import type { CmsFileSystem } from './fs/types.ts'
 import {
 	addArrayItem as addArrayItemOp,
@@ -164,15 +164,15 @@ export function createCmsCore(fs: CmsFileSystem, opts: CmsCoreOptions = {}): Cms
 		let digestOf: (path: string) => string | undefined
 		let result: MutationResult
 		if (commit === undefined) {
-			const recording = recordWrites(fs)
+			const recording = recordVersions(fs)
 			result = await operation(recording)
-			digestOf = path => recording.writtenDigest(path)
+			digestOf = path => recording.digest(path)
 		} else {
 			const staged = createStagedFileSystem(fs)
 			result = await operation(staged)
 			const changeset = staged.changeset()
 			await commit(changeset)
-			digestOf = path => writtenDigest(changeset, path)
+			digestOf = path => changesetDigest(changeset, path)
 		}
 		if (!result.success || result.sourcePath === undefined) return result
 		const sourceHash = digestOf(result.sourcePath)

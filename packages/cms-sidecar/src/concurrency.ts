@@ -10,7 +10,10 @@ import { createHash } from 'node:crypto'
  * the bytes a subsequent `getEntry` would parse.
  */
 
-/** Stable content hash of a UTF-8 string: `sha256:<hex>`. */
+/**
+ * Stable content hash of a UTF-8 string: `sha256:<hex>`. Equal to the `sourceHash` of a file only when
+ * the file is valid UTF-8 that decodes to `content`; the server hashes the bytes (`hashSource`).
+ */
 export function hashContent(content: string): string {
 	return `sha256:${createHash('sha256').update(content, 'utf-8').digest('hex')}`
 }

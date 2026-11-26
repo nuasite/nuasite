@@ -33,7 +33,7 @@ import type {
 	MediaTypeFilter,
 	MutationResult,
 } from '@nuasite/cms-types'
-import { hashContent, hashSource, KeyedMutex, SharedRun } from './concurrency.ts'
+import { hashSource, KeyedMutex, SharedRun } from './concurrency.ts'
 import {
 	type AddArrayItemBody,
 	type ApiError,
@@ -162,10 +162,10 @@ async function parseJson<T>(req: Request): Promise<{ ok: true; value: T } | { ok
 	}
 }
 
-/** A body that may be absent: no body reads as `null`, anything else must be JSON. */
-async function parseOptionalJson<T>(req: Request): Promise<{ ok: true; value: T | null } | { ok: false; response: Response }> {
+/** A body that may be absent: no body reads as `undefined`, anything else must be JSON. */
+async function parseOptionalJson<T>(req: Request): Promise<{ ok: true; value: T | undefined } | { ok: false; response: Response }> {
 	const text = await req.text()
-	if (text.trim() === '') return { ok: true, value: null }
+	if (text.trim() === '') return { ok: true, value: undefined }
 	try {
 		// See `parseJson`: the route validates every field it reads.
 		const value: T = JSON.parse(text)
@@ -176,7 +176,12 @@ async function parseOptionalJson<T>(req: Request): Promise<{ ok: true; value: T 
 }
 
 function isOptionalHash(value: unknown): value is string | undefined {
-	return value === undefined || typeof value === 'string'
+	return value === undefined || (typeof value === 'string' && value !== '')
+}
+
+/** A JSON object, the only shape a request body takes. */
+function isBodyObject(value: unknown): value is object {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function parseEntriesQuery(url: URL): EntriesQuery {
@@ -932,7 +937,8 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		// The body is optional: a client that sends no `baseHash` deletes unchecked, as before.
 		const parsed = await parseOptionalJson<DeleteEntryBody>(req)
 		if (!parsed.ok) return parsed.response
-		if (!isOptionalHash(parsed.value?.baseHash)) return error('validation', '"baseHash" must be a string')
+		if (parsed.value !== undefined && !isBodyObject(parsed.value)) return error('validation', 'The body must be a JSON object')
+		if (!isOptionalHash(parsed.value?.baseHash)) return error('validation', '"baseHash" must be a non-empty string')
 		const existing = await core.getEntry(collection, slug)
 		if (!existing) return error('not_found', `Entry not found: ${collection}/${slug}`)
 		return mutex.runExclusive(existing.sourcePath, async () => {
@@ -948,7 +954,7 @@ export function createServer(opts: CreateServerOptions): CmsSidecarServer {
 		if (typeof parsed.value.to !== 'string' || parsed.value.to.trim() === '') {
 			return error('validation', 'A non-empty "to" slug is required')
 		}
-		if (!isOptionalHash(parsed.value.baseHash)) return error('validation', '"baseHash" must be a string')
+		if (!isOptionalHash(parsed.value.baseHash)) return error('validation', '"baseHash" must be a non-empty string')
 		const existing = await core.getEntry(collection, slug)
 		if (!existing) return error('not_found', `Entry not found: ${collection}/${slug}`)
 		return mutex.runExclusive(existing.sourcePath, async () => {

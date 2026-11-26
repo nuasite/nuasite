@@ -412,8 +412,13 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 			<div className="nua-cadmin-editor-toolbar">
 				<StatusBadge status={status} />
 				<span className="nua-cadmin-spacer" />
-				<button type="button" className="nua-cadmin-btn nua-cadmin-btn-ghost" onClick={() => void onRename()}>Rename</button>
-				<button type="button" className="nua-cadmin-btn nua-cadmin-btn-danger" onClick={() => void onDelete()}>Delete</button>
+				{/* A save in flight is about to change the version these would carry, and be refused for it. */}
+				<button type="button" className="nua-cadmin-btn nua-cadmin-btn-ghost" disabled={status.kind === 'saving'} onClick={() => void onRename()}>
+					Rename
+				</button>
+				<button type="button" className="nua-cadmin-btn nua-cadmin-btn-danger" disabled={status.kind === 'saving'} onClick={() => void onDelete()}>
+					Delete
+				</button>
 			</div>
 
 			{title || header.length > 0

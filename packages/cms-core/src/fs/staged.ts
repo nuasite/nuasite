@@ -213,70 +213,74 @@ export function versionMatches(recorded: CmsFileVersion, current: CmsFileVersion
 	return current.kind === 'content' && current.digest === recorded.digest
 }
 
-/** The digest of what the changeset writes to `path`, or `undefined` when it does not end up writing it. */
-export function writtenDigest(changeset: CmsChangeset, path: string): string | undefined {
+/**
+ * The digest of the version a changeset leaves at `path`: its last write, else the content it read
+ * there (the commit holds that read), or `undefined` when it removes the path or never read its content.
+ */
+export function changesetDigest(changeset: CmsChangeset, path: string): string | undefined {
 	const target = normalize(path)
-	let digest: string | undefined
-	for (const change of changeset.changes) {
-		if (change.path !== target) continue
-		digest = change.kind === 'write' ? digestBytes(change.content) : undefined
-	}
-	return digest
+	const changed = changeset.changes.findLast(change => change.path === target)
+	if (changed !== undefined) return changed.kind === 'write' ? digestBytes(changed.content) : undefined
+	const read = changeset.reads.get(target)
+	return read?.kind === 'content' ? read.digest : undefined
 }
 
-/** The digest of a file's bytes, or `undefined` for a directory or a path that is not there. */
-async function fileDigest(fs: CmsFileSystem, path: string): Promise<string | undefined> {
-	try {
-		return digestBytes(await fs.readBytes(path))
-	} catch {
-		return undefined
-	}
-}
-
-export interface WriteRecordingFileSystem extends CmsFileSystem {
-	/** The digest of what was last written to `path` through this view, or `undefined` when it was not written or no longer holds it. */
-	writtenDigest(path: string): string | undefined
+export interface VersionRecordingFileSystem extends CmsFileSystem {
+	/**
+	 * The digest of the version this view last left at `path`: what it wrote there, else the bytes it
+	 * first read there, following renames; `undefined` when it removed the path or knows no content.
+	 */
+	digest(path: string): string | undefined
 }
 
 /**
- * Writes straight through to `base` and remembers the digest of each file's last write, following
- * renames, including a directory's: the version a mutation without a staged commit reports.
+ * Passes every call through to `base` and records the version of each file it reads or writes: the
+ * version a mutation without a staged commit reports. A version comes from the bytes read or
+ * written, never from reading the file again after a write, which could pick up a later write.
  */
-export function recordWrites(base: CmsFileSystem): WriteRecordingFileSystem {
-	const written = new Map<string, string>()
+export function recordVersions(base: CmsFileSystem): VersionRecordingFileSystem {
+	const versions = new Map<string, string>()
 	const encoder = new TextEncoder()
 	return {
-		...base,
+		readFile: path => base.readFile(path),
+		async readBytes(path) {
+			const content = await base.readBytes(path)
+			// The first read stands: a later one may already see someone else's write.
+			const key = normalize(path)
+			if (!versions.has(key)) versions.set(key, digestBytes(content))
+			return content
+		},
 		async writeFile(path, content) {
 			await base.writeFile(path, content)
-			written.set(normalize(path), digestBytes(encoder.encode(content)))
+			versions.set(normalize(path), digestBytes(encoder.encode(content)))
 		},
 		async writeBytes(path, content) {
 			await base.writeBytes(path, content)
-			written.set(normalize(path), digestBytes(content))
+			versions.set(normalize(path), digestBytes(content))
 		},
 		async remove(path) {
 			await base.remove(path)
-			written.delete(normalize(path))
+			versions.delete(normalize(path))
 		},
 		async rename(rawFrom, rawTo) {
+			await base.rename(rawFrom, rawTo)
 			const from = normalize(rawFrom)
 			const to = normalize(rawTo)
-			// A file moved as it is keeps its bytes. They are read before the move, never after: a write
-			// landing in between then leaves the reported version older than the file, and the next
-			// write is refused rather than allowed over a version nobody saw.
-			const moved = written.get(from) ?? await fileDigest(base, from)
-			await base.rename(rawFrom, rawTo)
-			written.delete(to)
-			if (moved !== undefined) written.set(from, moved)
-			for (const [path, digest] of [...written]) {
+			for (const path of [...versions.keys()]) {
+				if (path === to || isBelow(path, to)) versions.delete(path)
+			}
+			for (const [path, digest] of [...versions]) {
 				if (path !== from && !isBelow(path, from)) continue
-				written.delete(path)
-				written.set(to + path.slice(from.length), digest)
+				versions.delete(path)
+				versions.set(to + path.slice(from.length), digest)
 			}
 		},
-		writtenDigest(path) {
-			return written.get(normalize(path))
+		exists: path => base.exists(path),
+		list: dir => base.list(dir),
+		glob: (pattern, options) => base.glob(pattern, options),
+		stat: path => base.stat(path),
+		digest(path) {
+			return versions.get(normalize(path))
 		},
 	}
 }
