@@ -135,6 +135,33 @@ describe('createClient — mutations', () => {
 		}
 	})
 
+	test('deleteEntry and renameEntry send the baseHash they are given', async () => {
+		const { client, calls } = withFetch([() => jsonResponse({ success: true }), () => jsonResponse({ success: true })])
+
+		await client.deleteEntry('blog', 'hello', { baseHash: 'sha256:a' })
+		await client.renameEntry('blog', 'hello', 'moved', { baseHash: 'sha256:b' })
+
+		expect(calls.map(call => [call.method, call.body])).toEqual([['DELETE', { baseHash: 'sha256:a' }], ['POST', { to: 'moved', baseHash: 'sha256:b' }]])
+	})
+
+	test('deleteEntry without a baseHash sends no body, as before', async () => {
+		const { client, calls } = withFetch([() => jsonResponse({ success: true })])
+
+		await client.deleteEntry('blog', 'hello')
+
+		expect(calls[0]?.rawBody).toBeUndefined()
+	})
+
+	test('a delete refused for a stale baseHash throws a conflict error', async () => {
+		const conflict = { code: 'conflict', serverHash: 'sha256:srv', serverFrontmatter: { title: 'Server' } }
+		const { client } = withFetch([() => jsonResponse(conflict, 409)])
+
+		const error = await client.deleteEntry('blog', 'hello', { baseHash: 'sha256:old' }).catch((caught: unknown) => caught)
+
+		expect(error).toBeInstanceOf(CmsClientError)
+		expect(error instanceof CmsClientError && error.isConflict).toBe(true)
+	})
+
 	test('updateEntry → non-409 error throws CmsClientError', async () => {
 		const { client } = withFetch([() => jsonResponse({ error: 'boom', code: 'io_error' }, 500)])
 		await expect(client.updateEntry('blog', 'hello', {})).rejects.toBeInstanceOf(CmsClientError)

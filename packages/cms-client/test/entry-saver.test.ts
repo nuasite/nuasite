@@ -31,12 +31,23 @@ function patcher(outcomes: (UpdateEntryResult | Error)[]): Pick<CmsClient, 'upda
 }
 
 describe('createEntrySaver', () => {
-	test('the first save carries no token — GET exposes no hash, so the sidecar skips the check', async () => {
+	test('the first save carries the hash the entry was read with', async () => {
 		const client = patcher([ok('h1')])
 		const saver = createEntrySaver(client, 'articles', 'hello')
+		saver.adopt('read-hash')
 
 		expect(await saver.save(draft('mine'))).toEqual({ status: 'saved', result: { success: true, sourceHash: 'h1' } })
-		expect(client.calls[0]).toEqual({ frontmatter: { title: 'mine' }, body: 'body', baseHash: undefined })
+		expect(client.calls[0]).toEqual({ frontmatter: { title: 'mine' }, body: 'body', baseHash: 'read-hash' })
+	})
+
+	test('a saver that adopted no hash (a sidecar that sends none) saves without a token, unchecked', async () => {
+		const client = patcher([ok('h1')])
+		const saver = createEntrySaver(client, 'articles', 'hello')
+		saver.adopt(undefined)
+
+		await saver.save(draft('mine'))
+
+		expect(client.calls[0]?.baseHash).toBeUndefined()
 	})
 
 	test('each successful save adopts the hash the next one is checked against', async () => {

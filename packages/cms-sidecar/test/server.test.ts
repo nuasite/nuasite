@@ -1480,13 +1480,78 @@ describe('cms-sidecar merged media listing (?includeProjectImages)', () => {
 })
 
 describe('cms-sidecar optimistic concurrency (baseHash / sourceHash)', () => {
+	const ENTRY_FILE = 'src/content/blog/hello-world.md'
+	const OUTSIDE_SOURCE = '---\ntitle: Written Elsewhere\n---\nAnother body.\n'
+
+	/** The hash a client gets when it opens the entry. */
 	async function currentHash(server: CmsSidecarServer): Promise<string> {
-		// The detail route does not expose a hash; recompute from the raw source via a PATCH probe.
-		// Instead, derive it the way the sidecar does: hash the serialized on-disk source.
-		// We get it from a no-op PATCH (no baseHash) which returns the post-write sourceHash.
-		const res = await call(server, 'PATCH', '/collections/blog/entries/hello-world', {})
-		return (await jsonOf<{ sourceHash: string }>(res)).sourceHash
+		const detail = await jsonOf<CollectionEntry>(await call(server, 'GET', '/collections/blog/entries/hello-world'))
+		if (detail.sourceHash === undefined) throw new Error('the entry detail carries no sourceHash')
+		return detail.sourceHash
 	}
+
+	test('GET …/entries/:slug carries the hash of the file it was read from', async () => {
+		const { server, root } = await freshServer()
+
+		expect(await currentHash(server)).toBe(hashContent(await fs.readFile(path.join(root, ENTRY_FILE), 'utf-8')))
+	})
+
+	test('the first save, with the hash from the read, is refused when the entry changed since', async () => {
+		const { server, root } = await freshServer()
+		const opened = await currentHash(server)
+		await fs.writeFile(path.join(root, ENTRY_FILE), OUTSIDE_SOURCE)
+
+		const res = await call(server, 'PATCH', '/collections/blog/entries/hello-world', { frontmatter: { title: 'Mine' }, baseHash: opened })
+
+		expect(res.status).toBe(409)
+		const conflict = await jsonOf<ConflictResponse>(res)
+		expect(conflict.serverHash).toBe(hashContent(OUTSIDE_SOURCE))
+		expect(conflict.serverFrontmatter.title).toBe('Written Elsewhere')
+		expect(await fs.readFile(path.join(root, ENTRY_FILE), 'utf-8')).toBe(OUTSIDE_SOURCE)
+	})
+
+	test('DELETE with a stale baseHash → 409 with the server version, and the entry stays', async () => {
+		const { server, root } = await freshServer()
+		const opened = await currentHash(server)
+		await fs.writeFile(path.join(root, ENTRY_FILE), OUTSIDE_SOURCE)
+
+		const res = await call(server, 'DELETE', '/collections/blog/entries/hello-world', { baseHash: opened })
+
+		expect(res.status).toBe(409)
+		expect((await jsonOf<ConflictResponse>(res)).serverHash).toBe(hashContent(OUTSIDE_SOURCE))
+		expect(await fs.readFile(path.join(root, ENTRY_FILE), 'utf-8')).toBe(OUTSIDE_SOURCE)
+	})
+
+	test('DELETE with the fresh baseHash removes the entry', async () => {
+		const { server, root } = await freshServer()
+
+		const res = await call(server, 'DELETE', '/collections/blog/entries/hello-world', { baseHash: await currentHash(server) })
+
+		expect(res.status).toBe(200)
+		expect(existsSync(path.join(root, ENTRY_FILE))).toBe(false)
+	})
+
+	test('rename with a stale baseHash → 409, and nothing moves', async () => {
+		const { server, root } = await freshServer()
+		const opened = await currentHash(server)
+		await fs.writeFile(path.join(root, ENTRY_FILE), OUTSIDE_SOURCE)
+
+		const res = await call(server, 'POST', '/collections/blog/entries/hello-world/rename', { to: 'moved', baseHash: opened })
+
+		expect(res.status).toBe(409)
+		expect(await fs.readFile(path.join(root, ENTRY_FILE), 'utf-8')).toBe(OUTSIDE_SOURCE)
+		expect(existsSync(path.join(root, 'src/content/blog/moved.md'))).toBe(false)
+	})
+
+	test('rename with the fresh baseHash moves the entry and returns the hash of the moved file', async () => {
+		const { server, root } = await freshServer()
+		const source = await fs.readFile(path.join(root, ENTRY_FILE), 'utf-8')
+
+		const res = await call(server, 'POST', '/collections/blog/entries/hello-world/rename', { to: 'moved', baseHash: await currentHash(server) })
+
+		expect(res.status).toBe(200)
+		expect((await jsonOf<{ sourceHash: string }>(res)).sourceHash).toBe(hashContent(source))
+	})
 
 	test('PATCH with a stale baseHash → 409 ConflictResponse carrying the server version', async () => {
 		const { server } = await freshServer()
@@ -1557,6 +1622,27 @@ describe('cms-sidecar over a core that commits through a fence', () => {
 		expect(res.status).toBe(409)
 		expect((await jsonOf<ApiError>(res)).code).toBe('conflict')
 		expect(await fs.readFile(path.join(root, 'src/content/blog/hello-world.md'), 'utf-8')).toBe(AGENT_SOURCE)
+	})
+
+	test('the hash a PATCH returns is of what it wrote, not of an outside write that landed right after', async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), 'cms-sidecar-after-'))
+		await fs.cp(FIXTURE_ROOT, root, { recursive: true })
+		cleanups.push(root)
+		const nodeFs = createNodeFs(root)
+		const entryFile = path.join(root, 'src/content/blog/hello-world.md')
+		let written = ''
+		const commit: CmsCommit = async changeset => {
+			await commitChangeset(nodeFs)(changeset)
+			written = await fs.readFile(entryFile, 'utf-8')
+			await fs.writeFile(entryFile, AGENT_SOURCE)
+		}
+		const core = createCmsCore(nodeFs, { componentDirs: ['src/components'], commit })
+		const server = createServer({ core, fs: nodeFs, root, coreVersion: '0.42.1' })
+
+		const res = await call(server, 'PATCH', '/collections/blog/entries/hello-world', { frontmatter: { title: 'Editor Title' } })
+
+		expect(res.status).toBe(200)
+		expect((await jsonOf<{ sourceHash: string }>(res)).sourceHash).toBe(hashContent(written))
 	})
 
 	test('without an outside write the mutation lands', async () => {
