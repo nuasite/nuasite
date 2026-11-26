@@ -6,7 +6,7 @@
 // cms-core), so the proven byte output is committed here as golden literals.
 // Each test runs cms-core against a fresh fixture copy and asserts the exact bytes
 // written — keeping mutation coverage without importing deleted code.
-import { createCmsCore, createNodeFs } from '@nuasite/cms-core'
+import { createCmsCore, createNodeFs, digestBytes } from '@nuasite/cms-core'
 import { afterEach, describe, expect, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
@@ -37,6 +37,11 @@ async function readFile(root: string, rel: string): Promise<string> {
 	return fs.readFile(path.join(root, rel), 'utf-8')
 }
 
+/** The source hash of a file as the mutation left it: the digest of its bytes. */
+async function fileHash(root: string, rel: string): Promise<string> {
+	return digestBytes(await fs.readFile(path.join(root, rel)))
+}
+
 async function fileExists(root: string, rel: string): Promise<boolean> {
 	try {
 		await fs.access(path.join(root, rel))
@@ -65,7 +70,7 @@ describe('cms-core mutations — committed golden output (proven byte-parity wit
 			},
 			body: '# New Post\n\nBody here.',
 		})
-		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/new-post.md' })
+		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/new-post.md', sourceHash: await fileHash(root, 'src/content/blog/new-post.md') })
 		expect(await readFile(root, 'src/content/blog/new-post.md')).toBe(
 			"---\ntitle: New Post\ndate: '2024-06-01'\ndraft: false\ncover: ./new-post.jpg\ntags:\n  - alpha\n  - beta\nauthor: jane-doe\n---\n# New Post\n\nBody here.",
 		)
@@ -79,7 +84,7 @@ describe('cms-core mutations — committed golden output (proven byte-parity wit
 			frontmatter: { name: 'Carol', role: 'Designer' },
 			fileExtension: 'json',
 		})
-		expect(res).toEqual({ success: true, sourcePath: 'src/content/team/carol.json' })
+		expect(res).toEqual({ success: true, sourcePath: 'src/content/team/carol.json', sourceHash: await fileHash(root, 'src/content/team/carol.json') })
 		expect(await readFile(root, 'src/content/team/carol.json')).toBe('{\n  "name": "Carol",\n  "role": "Designer"\n}\n')
 	})
 
@@ -92,7 +97,11 @@ describe('cms-core mutations — committed golden output (proven byte-parity wit
 			frontmatter: { title: 'Hello (edited)', tags: ['intro', 'news', 'update'] },
 			body: '# Hello World\n\nEdited body.',
 		})
-		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/hello-world.md' })
+		expect(res).toEqual({
+			success: true,
+			sourcePath: 'src/content/blog/hello-world.md',
+			sourceHash: await fileHash(root, 'src/content/blog/hello-world.md'),
+		})
 		expect(await readFile(root, 'src/content/blog/hello-world.md')).toBe(
 			"---\ntitle: Hello (edited)\ndate: '2024-01-15'\ndraft: false\ncover: ./hello.jpg\ntags:\n  - intro\n  - news\n  - update\nauthor: jane-doe\n---\n# Hello World\n\nEdited body.",
 		)
@@ -101,7 +110,11 @@ describe('cms-core mutations — committed golden output (proven byte-parity wit
 	test('updateEntry (data/yaml) merges and writes the golden output', async () => {
 		const { core, root } = await freshCore()
 		const res = await core.updateEntry({ collection: 'settings', slug: 'site', frontmatter: { tagline: 'We ship things' } })
-		expect(res).toEqual({ success: true, sourcePath: 'src/content/settings/site.yaml' })
+		expect(res).toEqual({
+			success: true,
+			sourcePath: 'src/content/settings/site.yaml',
+			sourceHash: await fileHash(root, 'src/content/settings/site.yaml'),
+		})
 		expect(await readFile(root, 'src/content/settings/site.yaml')).toBe(
 			'name: Acme Site\ntagline: We ship things\ncontactEmail: hello@acme.test\nsocial:\n  twitter: acme\n  github: acme-org\n',
 		)
@@ -141,7 +154,11 @@ describe('cms-core mutations — committed golden output (proven byte-parity wit
 		const { core, root } = await freshCore()
 		const before = await readFile(root, 'src/content/blog/hello-world.md')
 		const res = await core.renameEntry('blog', 'hello-world', 'hello-renamed')
-		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/hello-renamed.md' })
+		expect(res).toEqual({
+			success: true,
+			sourcePath: 'src/content/blog/hello-renamed.md',
+			sourceHash: await fileHash(root, 'src/content/blog/hello-renamed.md'),
+		})
 		expect(await fileExists(root, 'src/content/blog/hello-world.md')).toBe(false)
 		expect(await readFile(root, 'src/content/blog/hello-renamed.md')).toBe(before)
 	})
@@ -150,7 +167,11 @@ describe('cms-core mutations — committed golden output (proven byte-parity wit
 	test('addArrayItem (markdown frontmatter) appends and writes the golden output', async () => {
 		const { core, root } = await freshCore()
 		const res = await core.addArrayItem({ collection: 'blog', slug: 'hello-world', field: 'tags', value: 'release' })
-		expect(res).toEqual({ success: true, sourcePath: 'src/content/blog/hello-world.md' })
+		expect(res).toEqual({
+			success: true,
+			sourcePath: 'src/content/blog/hello-world.md',
+			sourceHash: await fileHash(root, 'src/content/blog/hello-world.md'),
+		})
 		expect(await readFile(root, 'src/content/blog/hello-world.md')).toBe(
 			"---\ntitle: Hello World\ndate: '2024-01-15'\ndraft: false\ncover: ./hello.jpg\ntags:\n  - intro\n  - news\n  - release\nauthor: jane-doe\n---\n# Hello World\n\nThis is the first post.\n",
 		)

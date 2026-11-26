@@ -214,6 +214,78 @@ export function versionMatches(recorded: CmsFileVersion, current: CmsFileVersion
 }
 
 /**
+ * The digest of the version a changeset leaves at `path`: its last write, else the content it read
+ * there (the commit holds that read), or `undefined` when it removes the path or never read its content.
+ */
+export function changesetDigest(changeset: CmsChangeset, path: string): string | undefined {
+	const target = normalize(path)
+	const changed = changeset.changes.findLast(change => change.path === target)
+	if (changed !== undefined) return changed.kind === 'write' ? digestBytes(changed.content) : undefined
+	const read = changeset.reads.get(target)
+	return read?.kind === 'content' ? read.digest : undefined
+}
+
+export interface VersionRecordingFileSystem extends CmsFileSystem {
+	/**
+	 * The digest of the version this view last left at `path`: what it wrote there, else the bytes it
+	 * first read there, following renames; `undefined` when it removed the path or knows no content.
+	 */
+	digest(path: string): string | undefined
+}
+
+/**
+ * Passes every call through to `base` and records the version of each file it reads or writes: the
+ * version a mutation without a staged commit reports. A version comes from the bytes read or
+ * written, never from reading the file again after a write, which could pick up a later write.
+ */
+export function recordVersions(base: CmsFileSystem): VersionRecordingFileSystem {
+	const versions = new Map<string, string>()
+	const encoder = new TextEncoder()
+	return {
+		readFile: path => base.readFile(path),
+		async readBytes(path) {
+			const content = await base.readBytes(path)
+			// The first read stands: a later one may already see someone else's write.
+			const key = normalize(path)
+			if (!versions.has(key)) versions.set(key, digestBytes(content))
+			return content
+		},
+		async writeFile(path, content) {
+			await base.writeFile(path, content)
+			versions.set(normalize(path), digestBytes(encoder.encode(content)))
+		},
+		async writeBytes(path, content) {
+			await base.writeBytes(path, content)
+			versions.set(normalize(path), digestBytes(content))
+		},
+		async remove(path) {
+			await base.remove(path)
+			versions.delete(normalize(path))
+		},
+		async rename(rawFrom, rawTo) {
+			await base.rename(rawFrom, rawTo)
+			const from = normalize(rawFrom)
+			const to = normalize(rawTo)
+			for (const path of [...versions.keys()]) {
+				if (path === to || isBelow(path, to)) versions.delete(path)
+			}
+			for (const [path, digest] of [...versions]) {
+				if (path !== from && !isBelow(path, from)) continue
+				versions.delete(path)
+				versions.set(to + path.slice(from.length), digest)
+			}
+		},
+		exists: path => base.exists(path),
+		list: dir => base.list(dir),
+		glob: (pattern, options) => base.glob(pattern, options),
+		stat: path => base.stat(path),
+		digest(path) {
+			return versions.get(normalize(path))
+		},
+	}
+}
+
+/**
  * A commit over `fs` that checks the recorded versions and then applies the changes. It is atomic
  * only when nothing else writes to `fs` between its awaits; a host with concurrent writers does
  * both steps inside its own critical section instead.

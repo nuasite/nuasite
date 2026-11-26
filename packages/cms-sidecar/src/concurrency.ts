@@ -1,4 +1,4 @@
-import type { CmsFileSystem } from '@nuasite/cms-core'
+import { type CmsFileSystem, digestBytes } from '@nuasite/cms-core'
 import { createHash } from 'node:crypto'
 
 /**
@@ -10,19 +10,22 @@ import { createHash } from 'node:crypto'
  * the bytes a subsequent `getEntry` would parse.
  */
 
-/** Stable content hash of a UTF-8 string: `sha256:<hex>`. */
+/**
+ * Stable content hash of a UTF-8 string: `sha256:<hex>`. Equal to the `sourceHash` of a file only when
+ * the file is valid UTF-8 that decodes to `content`; the server hashes the bytes (`hashSource`).
+ */
 export function hashContent(content: string): string {
 	return `sha256:${createHash('sha256').update(content, 'utf-8').digest('hex')}`
 }
 
 /**
  * Hash the current on-disk source at `sourcePath`, or `null` when the file does
- * not exist. Reads via the port so the hash matches the bytes cms-core sees.
+ * not exist. Hashes the bytes, as cms-core does for a read and a write, so the
+ * values compare exactly.
  */
 export async function hashSource(fs: CmsFileSystem, sourcePath: string): Promise<string | null> {
 	if (!(await fs.exists(sourcePath))) return null
-	const raw = await fs.readFile(sourcePath)
-	return hashContent(raw)
+	return digestBytes(await fs.readBytes(sourcePath))
 }
 
 /**

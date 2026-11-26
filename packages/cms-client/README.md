@@ -31,8 +31,10 @@ const entry = await client.getEntry('posts', 'hello-world')
   `setDraftField`, `coerceInput`, `parseWireValue`, and `valueTo*` readers. Pure,
   unit-testable wire ↔ native mapping for the entry editor.
 - **`createEntrySaver(client, collection, slug)`** — holds the `baseHash` optimistic-concurrency
-  token and runs the `409` protocol (`save`, `overwrite`, `adoptServer`). _When_ to save — a
-  debounce, a Save button — stays with the UI; the token handling does not.
+  token and runs the `409` protocol (`save`, `overwrite`, `adoptServer`). Seed it with
+  `adopt(entry.sourceHash)` from the read, so the first save is checked too; pass `saver.baseHash`
+  to `deleteEntry` and `renameEntry` for the same check. _When_ to save — a debounce, a Save
+  button — stays with the UI; the token handling does not.
 - **`loadAllEntries(client, collection, fields, cap?)`** — exhausts the cursor for a host that
   sorts, searches or counts across the whole collection, reporting `truncated` when a `cap` cut it short.
 - **`mediaPreviewSrc` / `looksLikeImage`** — which origin an `image`/`file` value loads from

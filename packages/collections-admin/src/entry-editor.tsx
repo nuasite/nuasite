@@ -175,6 +175,12 @@ function ConflictDialog({ onUseServer, onUseOurs, onDismiss }: {
 // Status badge
 // ============================================================================
 
+/** What to tell the user when a delete or rename failed; a stale view names the fix. */
+function writeFailure(err: unknown, fallback: string): string {
+	if (!(err instanceof CmsClientError)) return fallback
+	return err.isConflict ? 'This entry changed since you opened it. Reopen it to see the current version.' : err.message
+}
+
 function StatusBadge({ status }: { status: SaveStatus }) {
 	switch (status.kind) {
 		case 'saving':
@@ -233,7 +239,10 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 		setStatus({ kind: 'idle' })
 		client.getEntry(collection, slug).then(
 			entry => {
-				if (active) setDraft(draftFromEntry(entry, fields))
+				if (!active) return
+				// The first save is checked against the version this draft was built from.
+				saver.adopt(entry.sourceHash)
+				setDraft(draftFromEntry(entry, fields))
 			},
 			(err: unknown) => {
 				if (active) setLoadError(err instanceof Error ? err : new Error(String(err)))
@@ -360,24 +369,24 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 	const onDelete = useCallback(async () => {
 		if (typeof window !== 'undefined' && !window.confirm(`Delete entry "${slug}"? This cannot be undone.`)) return
 		try {
-			await client.deleteEntry(collection, slug)
+			await client.deleteEntry(collection, slug, { baseHash: saver.baseHash })
 			onDeleted()
 		} catch (err: unknown) {
-			setStatus({ kind: 'error', message: err instanceof CmsClientError ? err.message : 'Delete failed' })
+			setStatus({ kind: 'error', message: writeFailure(err, 'Delete failed') })
 		}
-	}, [client, collection, slug, onDeleted])
+	}, [client, collection, slug, onDeleted, saver])
 
 	const onRename = useCallback(async () => {
 		if (typeof window === 'undefined') return
 		const to = window.prompt('Rename entry to (new slug):', slug)
 		if (to === null || to.trim() === '' || to === slug) return
 		try {
-			await client.renameEntry(collection, slug, to.trim())
+			await client.renameEntry(collection, slug, to.trim(), { baseHash: saver.baseHash })
 			onRenamed(to.trim())
 		} catch (err: unknown) {
-			setStatus({ kind: 'error', message: err instanceof CmsClientError ? err.message : 'Rename failed' })
+			setStatus({ kind: 'error', message: writeFailure(err, 'Rename failed') })
 		}
-	}, [client, collection, slug, onRenamed])
+	}, [client, collection, slug, onRenamed, saver])
 
 	if (loadError) {
 		return (
@@ -403,8 +412,13 @@ export function EntryEditor({ client, definition, collection, slug, onDeleted, o
 			<div className="nua-cadmin-editor-toolbar">
 				<StatusBadge status={status} />
 				<span className="nua-cadmin-spacer" />
-				<button type="button" className="nua-cadmin-btn nua-cadmin-btn-ghost" onClick={() => void onRename()}>Rename</button>
-				<button type="button" className="nua-cadmin-btn nua-cadmin-btn-danger" onClick={() => void onDelete()}>Delete</button>
+				{/* A save in flight is about to change the version these would carry, and be refused for it. */}
+				<button type="button" className="nua-cadmin-btn nua-cadmin-btn-ghost" disabled={status.kind === 'saving'} onClick={() => void onRename()}>
+					Rename
+				</button>
+				<button type="button" className="nua-cadmin-btn nua-cadmin-btn-danger" disabled={status.kind === 'saving'} onClick={() => void onDelete()}>
+					Delete
+				</button>
 			</div>
 
 			{title || header.length > 0

@@ -52,6 +52,12 @@ version. `commitChangeset(fs)` is a reference implementation; it is atomic only 
 else writes between its awaits, so a host with concurrent writers runs the same check
 (`versionOf`, `versionMatches`) and the writes inside its own critical section.
 
+Every entry read (`GET …/entries/:slug`) carries `sourceHash`, the digest of the bytes it
+parsed. An entry mutation returns the digest of the bytes it wrote, or for a rename of the
+bytes it moved, taken from those bytes rather than by reading the file again. `PATCH`,
+`DELETE` and `POST …/rename` take that value back as an optional `baseHash` and answer `409`
+when the file changed since.
+
 ## Collections the scan cannot vouch for
 
 `GET /cms/v1/collections` lists the collections the scan could read. The scan is a walk

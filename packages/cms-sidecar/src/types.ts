@@ -40,8 +40,8 @@ export const STATUS_BY_CODE: Record<ErrorCode, number> = {
 }
 
 /**
- * Returned with `409` when a `PATCH`'s `baseHash` no longer matches the file on
- * disk (an agent or a human wrote in between). Carries the current server
+ * Returned with `409` when a write's `baseHash` (`PATCH`, `DELETE`, rename) no longer
+ * matches the file on disk (an agent or a human wrote in between). Carries the current server
  * version so the client can offer "use server" vs "use ours".
  */
 export interface ConflictResponse {
@@ -73,6 +73,13 @@ export interface CreateEntryBody {
 
 export interface RenameEntryBody {
 	to: string
+	/** Hash of the entry source the client saw; `409` on drift. Without it the rename is unchecked. */
+	baseHash?: string
+}
+
+export interface DeleteEntryBody {
+	/** Hash of the entry source the client saw; `409` on drift. Without it the delete is unchecked. */
+	baseHash?: string
 }
 
 export interface AddArrayItemBody {
