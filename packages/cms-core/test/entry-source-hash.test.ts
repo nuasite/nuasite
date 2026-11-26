@@ -86,6 +86,50 @@ describe('the entry source hash', () => {
 		expect(renamed.sourceHash).toBe(hashOf(SOURCE))
 	})
 
+	test('a rename reports the hash of the file it moved, read before the move, not of a write that landed after it', async () => {
+		const base = createNodeFs(root)
+		const core = createCmsCore({
+			...base,
+			rename: async (from, to) => {
+				await base.rename(from, to)
+				await fs.writeFile(path.join(root, to), OUTSIDE)
+			},
+		})
+
+		const renamed = await core.renameEntry('blog', 'hello', 'renamed')
+
+		expect(renamed.sourceHash).toBe(hashOf(SOURCE))
+	})
+
+	test('a folder-style entry reports the hash of its file after the folder moves', async () => {
+		const folderEntry = 'src/content/blog/post/index.md'
+		await fs.mkdir(path.join(root, 'src/content/blog/post'), { recursive: true })
+		await fs.writeFile(path.join(root, folderEntry), SOURCE)
+		const core = createCmsCore(createNodeFs(root))
+
+		const renamed = await core.renameEntry('blog', 'post', 'moved')
+
+		expect(renamed.sourcePath).toBe('src/content/blog/moved/index.md')
+		expect(renamed.sourceHash).toBe(hashOf(SOURCE))
+	})
+
+	test('a rename to the slug the entry already has reports the hash of its file', async () => {
+		const core = createCmsCore(createNodeFs(root))
+
+		const renamed = await core.renameEntry('blog', 'hello', 'hello')
+
+		expect(renamed.sourceHash).toBe(hashOf(SOURCE))
+	})
+
+	test('a filesystem written as a class keeps its methods under the CMS', async () => {
+		const core = createCmsCore(new ClassFileSystem(createNodeFs(root)))
+
+		const result = await core.updateEntry({ collection: 'blog', slug: 'hello', frontmatter: { title: 'Edited' } })
+
+		expect(result.success).toBe(true)
+		expect(result.sourceHash).toBe(hashOf(await writtenByCms('Edited')))
+	})
+
 	test('a mutation without a host commit still writes the file', async () => {
 		const core = createCmsCore(createNodeFs(root))
 
@@ -94,6 +138,41 @@ describe('the entry source hash', () => {
 		expect(await fs.readFile(path.join(root, ENTRY), 'utf-8')).toContain('title: Edited')
 	})
 })
+
+/** A filesystem whose methods live on its prototype, as the `CmsFileSystem` interface allows. */
+class ClassFileSystem implements CmsFileSystem {
+	constructor(private readonly base: CmsFileSystem) {}
+	readFile(file: string) {
+		return this.base.readFile(file)
+	}
+	readBytes(file: string) {
+		return this.base.readBytes(file)
+	}
+	writeFile(file: string, content: string) {
+		return this.base.writeFile(file, content)
+	}
+	writeBytes(file: string, content: Uint8Array) {
+		return this.base.writeBytes(file, content)
+	}
+	rename(from: string, to: string) {
+		return this.base.rename(from, to)
+	}
+	remove(file: string) {
+		return this.base.remove(file)
+	}
+	exists(file: string) {
+		return this.base.exists(file)
+	}
+	list(dir: string) {
+		return this.base.list(dir)
+	}
+	glob(...args: Parameters<CmsFileSystem['glob']>) {
+		return this.base.glob(...args)
+	}
+	stat(file: string) {
+		return this.base.stat(file)
+	}
+}
 
 /** What the CMS writes for the fixture entry with `title`, read from a separate copy that nobody else touches. */
 async function writtenByCms(title: string): Promise<string> {

@@ -1531,6 +1531,26 @@ describe('cms-sidecar optimistic concurrency (baseHash / sourceHash)', () => {
 		expect(existsSync(path.join(root, ENTRY_FILE))).toBe(false)
 	})
 
+	for (const body of [null, 'hello-world', [], { baseHash: '' }, { baseHash: 42 }]) {
+		test(`DELETE with the body ${JSON.stringify(body)} → 400, and the entry stays`, async () => {
+			const { server, root } = await freshServer()
+
+			const res = await call(server, 'DELETE', '/collections/blog/entries/hello-world', body)
+
+			expect(res.status).toBe(400)
+			expect(existsSync(path.join(root, ENTRY_FILE))).toBe(true)
+		})
+	}
+
+	test('rename with an empty baseHash → 400, and nothing moves', async () => {
+		const { server, root } = await freshServer()
+
+		const res = await call(server, 'POST', '/collections/blog/entries/hello-world/rename', { to: 'moved', baseHash: '' })
+
+		expect(res.status).toBe(400)
+		expect(existsSync(path.join(root, ENTRY_FILE))).toBe(true)
+	})
+
 	test('rename with a stale baseHash → 409, and nothing moves', async () => {
 		const { server, root } = await freshServer()
 		const opened = await currentHash(server)
