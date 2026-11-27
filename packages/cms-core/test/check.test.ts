@@ -201,36 +201,72 @@ export const collections = { people${extra ? ', articles' : ''} }
 		expect(report.findings.map(f => [f.severity, f.code])).toEqual([['error', 'config/missing-dir']])
 	})
 
-	// Each of these neighbours holds files the check does not see a collection load. None is evidence of a typo.
-	test('content beside a missing directory that is not a misspelling of it, or that a collection owns, leaves it empty', async () => {
+	const blogConfig = (base: string, extra = '', names = '') =>
+		`import { defineCmsCollection, n } from '@nuasite/cms'
+import { glob, file } from 'astro/loaders'
+const blog = defineCmsCollection({ loader: glob({ pattern: '**/*.md', base: '${base}' }), schema: n.object({ title: n.text() }) })
+${extra}
+export const collections = { blog${names} }
+`
+
+	test('two swapped letters in a short name are a misspelling', async () => {
+		await write({ 'src/content.config.ts': blogConfig('./src/content/blgo'), 'src/content/blog/one.md': '---\ntitle: One\n---\n' })
+
+		const report = await check()
+		expect(report.findings.map(f => [f.severity, f.code, f.field])).toEqual([['error', 'config/missing-dir', 'blog']])
+	})
+
+	// Each neighbour is one edit from `blog` and holds a markdown file no collection loads, in a folder a collection owns.
+	test('a misspelled neighbour that a declared collection owns is no evidence of a wrong path', async () => {
+		// Named apart from the folder: a collection of the folder's name would load the file by its name alone.
+		const cases: [string, string][] = [
+			['feed', `const feed = defineCmsCollection({ loader: glob({ pattern: '*.json', base: './src/content/blogs' }), schema: n.object({}) })`],
+			['feed', `const feed = defineCmsCollection({ loader: glob({ pattern: 'src/content/blogs/*.json' }), schema: n.object({}) })`],
+			['feed', `const feed = defineCmsCollection({ loader: file('src/content/blogs/list.json'), schema: n.object({}) })`],
+		]
+		for (const [name, declaration] of cases) {
+			await fs.rm(path.join(root, 'src'), { recursive: true, force: true })
+			await write({
+				'src/content.config.ts': blogConfig('./src/content/blog', declaration, `, ${name}`),
+				'src/content/blogs/notes.md': '---\ntitle: Notes\n---\n',
+			})
+
+			const report = await check()
+			expect(report.findings.filter(f => f.field === 'blog').map(f => [f.severity, f.code])).toEqual([['warning', 'config/empty-collection']])
+		}
+	})
+
+	// It may read any folder, a misspelled neighbour included, so "nothing owns it" cannot be told.
+	test('a loader the check cannot read leaves a missing directory empty', async () => {
 		await write({
-			'src/content.config.ts': `import { defineCmsCollection, n } from '@nuasite/cms'
-import { glob } from 'astro/loaders'
-import { docsLoader } from '@astrojs/starlight/loaders'
-import { docsSchema } from '@astrojs/starlight/schema'
-const people = defineCmsCollection({
-	loader: glob({ pattern: '**/*.md', base: './src/content/people' }),
-	schema: n.object({ name: n.text() }),
-})
-const blog = defineCmsCollection({
-	loader: glob({ pattern: '*.md', base: './src/content/blog' }),
-	schema: n.object({ title: n.text() }),
-})
-// A loader the check cannot read, under a name one edit from the missing one.
-const peoples = defineCollection({ loader: docsLoader(), schema: docsSchema() })
-const guides = defineCollection({ loader: glob({ pattern: ['**/*.md', '!drafts/**'], base: './src/content/guides' }) })
-export const collections = { people, blog, peoples, guides }
-`,
-			'src/content/peoples/index.md': '---\ntitle: Home\n---\n',
-			'src/content/blog/one.md': '---\ntitle: One\n---\n',
-			// Outside `blog`'s narrower pattern, but inside `people`'s.
-			'src/content/blog/archive/old.md': '---\ntitle: Old\n---\n',
-			'src/content/guides/start.md': '---\ntitle: Start\n---\n',
+			'src/content.config.ts': blogConfig(
+				'./src/content/blog',
+				`import { docsLoader } from '@astrojs/starlight/loaders'
+const docs = defineCollection({ loader: docsLoader() })`,
+				', docs',
+			),
+			'src/content/blogs/notes.md': '---\ntitle: Notes\n---\n',
+		})
+
+		const report = await check()
+		expect(report.findings.filter(f => f.field === 'blog').map(f => [f.severity, f.code])).toEqual([['warning', 'config/empty-collection']])
+	})
+
+	test('a dissimilar neighbour is not read as a misspelling, whatever it holds', async () => {
+		await write({
+			'src/content.config.ts': blogConfig('./src/content/blog'),
 			'src/content/archive/old.md': '---\ntitle: Old\n---\n',
 		})
 
 		const report = await check()
-		expect(report.findings.filter(f => f.field === 'people').map(f => [f.severity, f.code])).toEqual([['warning', 'config/empty-collection']])
+		expect(report.findings.map(f => [f.severity, f.code])).toEqual([['warning', 'config/empty-collection']])
+	})
+
+	test('a missing directory outside the project is empty, not a crash', async () => {
+		await write({ 'src/content.config.ts': blogConfig('../shared/blog') })
+
+		const report = await check()
+		expect(report.findings.map(f => [f.severity, f.code, f.file])).toEqual([['warning', 'config/empty-collection', '../shared/blog']])
 	})
 
 	test('a missing directory at the root or under src is not judged by the routes, strings or public files beside it', async () => {

@@ -20,7 +20,7 @@ import {
 	type LoadedCollections,
 	type LoadedEntry,
 	misspelledBaseEntries,
-	normalizeBase,
+	ownedDirectories,
 } from './check-entries.ts'
 import { checkAgainstSchemas } from './check-live.ts'
 import { checkFieldShapes } from './check-shape.ts'
@@ -278,9 +278,9 @@ async function missingDirFinding(
 	base: string,
 	collections: LoadedCollections,
 	configFile: string,
-	ownedDirectories: Set<string>,
+	owned: Set<string> | null,
 ): Promise<CheckFinding> {
-	const strays = await misspelledBaseEntries(fs, loaderPattern, base, collections, dir => ownedDirectories.has(dir))
+	const strays = owned === null ? [] : await misspelledBaseEntries(fs, loaderPattern, base, collections, dir => owned.has(dir))
 	if (strays.length === 0) {
 		// On the base, as for an existing empty one: `--strict --fail-on <config>` must not refuse it either.
 		return {
@@ -333,7 +333,7 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 		findings.push(unreadConfigFinding(loaded, srcDir))
 		return { findings, collections: 0, entries: 0 }
 	}
-	const { parsed: config, declared } = await readContentConfig(fs, new Map(), srcDir)
+	const { parsed: config, declared, partial } = await readContentConfig(fs, new Map(), srcDir)
 	const configFile = loaded?.file ?? `${srcDir}/content.config.ts`
 	const contentDir = `${srcDir}/content`
 
@@ -357,13 +357,12 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 	// Read everything first: a reference can point at a collection checked later.
 	const collections = await loadCollections(fs, config, contentDir)
 	const stems = new Map<string, Set<string>>()
-	// Every directory a declared collection reads, its loader readable or not (a Starlight `docs`, a `file()`, none at all).
-	const ownedDirectories = new Set(declared.map(one => one.loaderBase === undefined ? `${contentDir}/${one.name}` : normalizeBase(one.loaderBase)))
+	const owned = ownedDirectories(declared, partial, contentDir)
 
 	for (const [name, loaded] of collections) {
 		stems.set(name, new Set(loaded.entries.map(entry => entry.stem)))
 		if (!loaded.exists) {
-			findings.push(await missingDirFinding(fs, name, config.get(name)?.loaderPattern, loaded.base, collections, configFile, ownedDirectories))
+			findings.push(await missingDirFinding(fs, name, config.get(name)?.loaderPattern, loaded.base, collections, configFile, owned))
 			continue
 		}
 		if (loaded.unreadable !== undefined) {
