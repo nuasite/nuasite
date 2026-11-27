@@ -59,25 +59,26 @@ async function collectEntryFiles(fs: CmsFileSystem, loaderPattern: string | unde
 }
 
 /**
- * Entry files beside a collection's missing base, by directory: in each directory next to it, the files
- * its loader would read there that no declared collection loads. They are the evidence that the base is a wrong
- * path rather than a folder its first entry has not created yet. `skipDirectory` names directories
- * that hold no collection content (the routes under `<srcDir>/pages`).
+ * The entry files of a likely misspelling of a collection's missing base: a directory next to it whose name is
+ * one or two edits from the base's (`peple` for `people`, `News` for `news`), that no declared collection owns,
+ * holding files the collection's loader would read there and no collection loads. A dissimilar neighbour is no
+ * evidence: it is content the check does not track (a Starlight `docs`, `i18n` strings, routes).
  */
-export async function strayEntriesBeside(
+export async function misspelledBaseEntries(
 	fs: CmsFileSystem,
 	loaderPattern: string | undefined,
 	base: string,
 	collections: LoadedCollections,
-	skipDirectory: (dir: string) => boolean,
+	ownsDirectory: (dir: string) => boolean,
 ): Promise<{ dir: string; files: string[] }[]> {
 	const parent = path.posix.dirname(base)
+	const name = path.posix.basename(base)
 	const loaded = new Set([...collections.values()].flatMap(one => one.entries.map(entry => entry.file)))
 	const strays: { dir: string; files: string[] }[] = []
 	for (const child of await fs.list(parent)) {
-		if (!child.isDirectory || child.name.startsWith('.') || child.name === 'node_modules') continue
+		if (!child.isDirectory || !isLikelyMisspelling(child.name, name)) continue
 		const dir = parent === '.' ? child.name : `${parent}/${child.name}`
-		if (skipDirectory(dir)) continue
+		if (ownsDirectory(dir)) continue
 		let files: string[]
 		try {
 			files = await collectEntryFiles(fs, loaderPattern, dir)
@@ -90,6 +91,36 @@ export async function strayEntriesBeside(
 		if (unloaded.length > 0) strays.push({ dir, files: unloaded })
 	}
 	return strays
+}
+
+/** Case aside, one edit for a name of up to five characters, two for a longer one; a name under three only by case. */
+function isLikelyMisspelling(candidate: string, name: string): boolean {
+	const a = candidate.toLowerCase()
+	const b = name.toLowerCase()
+	if (a === b) return candidate !== name
+	const shorter = Math.min(a.length, b.length)
+	if (shorter < 3) return false
+	return editDistance(a, b) <= (shorter > 5 ? 2 : 1)
+}
+
+/** Levenshtein distance, by code point. */
+function editDistance(a: string, b: string): number {
+	const target = Array.from(b)
+	let previous = Array.from({ length: target.length + 1 }, (_, index) => index)
+	let distance = target.length
+	for (const [i, char] of Array.from(a).entries()) {
+		let diagonal = i
+		let left = i + 1
+		const current = [left]
+		for (const [j, above] of previous.slice(1).entries()) {
+			left = Math.min(above + 1, left + 1, diagonal + (char === target[j] ? 0 : 1))
+			current.push(left)
+			diagonal = above
+		}
+		previous = current
+		distance = left
+	}
+	return distance
 }
 
 export function parseEntry(file: string, raw: string): { frontmatter: Record<string, unknown> } | { error: string } {

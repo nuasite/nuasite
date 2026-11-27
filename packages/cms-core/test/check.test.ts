@@ -164,17 +164,17 @@ export const collections = { people${extra ? ', articles' : ''} }
 
 	// Astro builds it (the glob loader warns and loads nothing), and the CMS lists it and creates the folder
 	// with its first entry. An error here refused every commit of a site that declared a collection before writing to it.
-	test('a declared collection whose directory is missing and nothing beside it is empty, not broken', async () => {
+	test('a declared collection whose directory is missing and has no entries is empty, not broken', async () => {
 		await write({ 'src/content.config.ts': config('n.object({ name: n.text() })') })
 
 		const report = await check()
 		expect(report.findings.map(f => [f.severity, f.code, f.file, f.field])).toEqual([
-			['warning', 'config/empty-collection', 'src/content.config.ts', 'people'],
+			['warning', 'config/empty-collection', 'src/content/people', 'people'],
 		])
-		expect(report.findings[0]!.message).toContain('src/content/people/ does not exist')
+		expect(report.findings[0]!.message).toBe('Collection "people" has no entries yet: src/content/people/ does not exist. Its first entry creates it.')
 	})
 
-	test('a missing directory beside one that holds entries no collection loads is a wrong path', async () => {
+	test('a missing directory beside a misspelling of it that holds entries is a wrong path', async () => {
 		await write({
 			'src/content.config.ts': config('n.object({ name: n.text() })'),
 			'src/content/peple/ada.md': '---\nname: Ada\n---\n',
@@ -188,36 +188,69 @@ export const collections = { people${extra ? ', articles' : ''} }
 		expect(report.findings[0]!.message).toBe(
 			'Collection "people" loads from src/content/people/, which does not exist, while src/content/peple/ next to it holds 2 entries no collection loads.',
 		)
-		expect(report.findings[0]!.hint).toBeDefined()
+		expect(report.findings[0]!.hint).toBe("If that folder holds this collection's entries, point the loader's base at it.")
 	})
 
-	test('entries beside a missing directory that another collection loads are no evidence of a wrong path', async () => {
+	test('a neighbour that differs from the missing directory only in case is a wrong path', async () => {
 		await write({
-			'src/content.config.ts': config(
-				'n.object({ name: n.text() })',
-				`const articles = defineCmsCollection({
-	loader: glob({ pattern: '*.md', base: './src/content/articles' }),
+			'src/content.config.ts': config('n.object({ name: n.text() })'),
+			'src/content/People/ada.md': '---\nname: Ada\n---\n',
+		})
+
+		const report = await check()
+		expect(report.findings.map(f => [f.severity, f.code])).toEqual([['error', 'config/missing-dir']])
+	})
+
+	// Each of these neighbours holds files the check does not see a collection load. None is evidence of a typo.
+	test('content beside a missing directory that is not a misspelling of it, or that a collection owns, leaves it empty', async () => {
+		await write({
+			'src/content.config.ts': `import { defineCmsCollection, n } from '@nuasite/cms'
+import { glob } from 'astro/loaders'
+import { docsLoader } from '@astrojs/starlight/loaders'
+import { docsSchema } from '@astrojs/starlight/schema'
+const people = defineCmsCollection({
+	loader: glob({ pattern: '**/*.md', base: './src/content/people' }),
+	schema: n.object({ name: n.text() }),
+})
+const blog = defineCmsCollection({
+	loader: glob({ pattern: '*.md', base: './src/content/blog' }),
 	schema: n.object({ title: n.text() }),
-})`,
-			),
-			'src/content/articles/one.md': '---\ntitle: One\n---\n',
-			// Neither the collection's own pattern nor a loader reads these: no entries of `people` gone astray.
-			'src/content/articles/_draft.md': '---\ntitle: Draft\n---\n',
-			'src/content/images/notes.json': '{}',
+})
+// A loader the check cannot read, under a name one edit from the missing one.
+const peoples = defineCollection({ loader: docsLoader(), schema: docsSchema() })
+const guides = defineCollection({ loader: glob({ pattern: ['**/*.md', '!drafts/**'], base: './src/content/guides' }) })
+export const collections = { people, blog, peoples, guides }
+`,
+			'src/content/peoples/index.md': '---\ntitle: Home\n---\n',
+			'src/content/blog/one.md': '---\ntitle: One\n---\n',
+			// Outside `blog`'s narrower pattern, but inside `people`'s.
+			'src/content/blog/archive/old.md': '---\ntitle: Old\n---\n',
+			'src/content/guides/start.md': '---\ntitle: Start\n---\n',
+			'src/content/archive/old.md': '---\ntitle: Old\n---\n',
 		})
 
 		const report = await check()
-		expect(report.findings.map(f => [f.severity, f.code, f.field])).toEqual([['warning', 'config/empty-collection', 'people']])
+		expect(report.findings.filter(f => f.field === 'people').map(f => [f.severity, f.code])).toEqual([['warning', 'config/empty-collection']])
 	})
 
-	test('the pages beside a missing directory under src are routes, not entries of the collection', async () => {
+	test('a missing directory at the root or under src is not judged by the routes, strings or public files beside it', async () => {
 		await write({
-			'src/content.config.ts': config('n.object({ name: n.text() })').replace('./src/content/people', './src/people'),
+			'src/content.config.ts': `import { defineCmsCollection, n } from '@nuasite/cms'
+import { glob } from 'astro/loaders'
+const news = defineCmsCollection({ loader: glob({ pattern: '**/*.md', base: './news' }), schema: n.object({ title: n.text() }) })
+const team = defineCmsCollection({ loader: glob({ pattern: '*.json', base: './src/team' }), schema: n.object({ name: n.text() }) })
+export const collections = { news, team }
+`,
 			'src/pages/about.md': '---\ntitle: About\n---\n',
+			'src/i18n/en.json': '{}',
+			'public/site.json': '{}',
 		})
 
 		const report = await check()
-		expect(report.findings.map(f => [f.severity, f.code])).toEqual([['warning', 'config/empty-collection']])
+		expect(report.findings.map(f => [f.severity, f.code, f.field])).toEqual([
+			['warning', 'config/empty-collection', 'news'],
+			['warning', 'config/empty-collection', 'team'],
+		])
 	})
 
 	// `reference()` validates the shape, not the target — a wrong id builds green and renders
