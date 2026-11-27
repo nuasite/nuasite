@@ -13,7 +13,14 @@
  */
 
 import { assetBaseDir, resolveAssetCandidates } from './asset-paths.ts'
-import { DEFAULT_ENTRY_PATTERN, isPlainObject, loadCollections, type LoadedEntry } from './check-entries.ts'
+import {
+	DEFAULT_ENTRY_PATTERN,
+	isPlainObject,
+	loadCollections,
+	type LoadedCollections,
+	type LoadedEntry,
+	strayEntriesBeside,
+} from './check-entries.ts'
 import { checkAgainstSchemas } from './check-live.ts'
 import { checkFieldShapes } from './check-shape.ts'
 import { checkEditorWrites } from './check-write.ts'
@@ -252,6 +259,49 @@ async function legacyConfigFinding(fs: CmsFileSystem, file: string, srcDir: stri
 	}
 }
 
+/** How many of the directories that hold stray entries a finding names. */
+const STRAY_DIRS_SHOWN = 3
+
+/**
+ * A declared collection whose loader base does not exist.
+ *
+ * Astro builds it: the glob loader warns and loads nothing. So alone it is a collection whose first
+ * entry has not been written yet (the CMS lists it and creates the folder with that entry), and it
+ * must not refuse a commit. Entries beside the base that no collection loads make it a wrong path:
+ * the build then silently drops content that is there, which is worth an error.
+ */
+async function missingDirFinding(
+	fs: CmsFileSystem,
+	name: string,
+	loaderPattern: string | undefined,
+	base: string,
+	collections: LoadedCollections,
+	configFile: string,
+	pagesDir: string,
+): Promise<CheckFinding> {
+	const strays = await strayEntriesBeside(fs, loaderPattern, base, collections, dir => dir === pagesDir)
+	if (strays.length === 0) {
+		return {
+			severity: 'warning',
+			code: 'config/empty-collection',
+			file: configFile,
+			field: name,
+			message: `Collection "${name}" has no entries yet: ${base}/ does not exist. Its first entry creates it.`,
+		}
+	}
+	const count = strays.reduce((sum, stray) => sum + stray.files.length, 0)
+	const named = strays.slice(0, STRAY_DIRS_SHOWN).map(stray => `${stray.dir}/`).join(', ') + (strays.length > STRAY_DIRS_SHOWN ? ', …' : '')
+	return {
+		severity: 'error',
+		code: 'config/missing-dir',
+		file: configFile,
+		field: name,
+		message: `Collection "${name}" loads from ${base}/, which does not exist, while ${named} next to it ${strays.length === 1 ? 'holds' : 'hold'} `
+			+ `${count} ${count === 1 ? 'entry' : 'entries'} no collection loads.`,
+		hint: `Point the loader's base at the folder that holds this collection's entries.`,
+	}
+}
+
 export interface CheckContentOptions {
 	/**
 	 * The project's real collection schemas. Given these, the check also reports what the
@@ -309,13 +359,7 @@ export async function checkContent(fs: CmsFileSystem, options: CheckContentOptio
 	for (const [name, loaded] of collections) {
 		stems.set(name, new Set(loaded.entries.map(entry => entry.stem)))
 		if (!loaded.exists) {
-			findings.push({
-				severity: 'error',
-				code: 'config/missing-dir',
-				file: configFile,
-				field: name,
-				message: `Collection "${name}" loads from ${loaded.base}/, which does not exist.`,
-			})
+			findings.push(await missingDirFinding(fs, name, config.get(name)?.loaderPattern, loaded.base, collections, configFile, `${srcDir}/pages`))
 			continue
 		}
 		if (loaded.unreadable !== undefined) {

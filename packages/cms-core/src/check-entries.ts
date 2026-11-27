@@ -9,7 +9,7 @@
 
 import path from 'node:path'
 import yaml from 'yaml'
-import type { ParsedCollection, ParsedConfig } from './content-config-ast.ts'
+import type { ParsedConfig } from './content-config-ast.ts'
 import type { CollectionKind } from './editor-write-model.ts'
 import { UnreadableDirectoryError } from './fs/glob.ts'
 import type { CmsFileSystem } from './fs/types.ts'
@@ -53,10 +53,43 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 /** The entry files a collection's loader reads when its config names no pattern. */
 export const DEFAULT_ENTRY_PATTERN = '**/*.{md,mdx,json,yaml,yml}'
 
-async function collectEntryFiles(fs: CmsFileSystem, collection: ParsedCollection, base: string): Promise<string[]> {
-	const pattern = collection.loaderPattern ?? DEFAULT_ENTRY_PATTERN
-	const files = await fs.glob(`${base}/${pattern}`)
+async function collectEntryFiles(fs: CmsFileSystem, loaderPattern: string | undefined, base: string): Promise<string[]> {
+	const files = await fs.glob(`${base}/${loaderPattern ?? DEFAULT_ENTRY_PATTERN}`)
 	return files.filter(file => !path.basename(file).startsWith('_')).sort()
+}
+
+/**
+ * Entry files beside a collection's missing base, by directory: in each directory next to it, the files
+ * its loader would read there that no declared collection loads. They are the evidence that the base is a wrong
+ * path rather than a folder its first entry has not created yet. `skipDirectory` names directories
+ * that hold no collection content (the routes under `<srcDir>/pages`).
+ */
+export async function strayEntriesBeside(
+	fs: CmsFileSystem,
+	loaderPattern: string | undefined,
+	base: string,
+	collections: LoadedCollections,
+	skipDirectory: (dir: string) => boolean,
+): Promise<{ dir: string; files: string[] }[]> {
+	const parent = path.posix.dirname(base)
+	const loaded = new Set([...collections.values()].flatMap(one => one.entries.map(entry => entry.file)))
+	const strays: { dir: string; files: string[] }[] = []
+	for (const child of await fs.list(parent)) {
+		if (!child.isDirectory || child.name.startsWith('.') || child.name === 'node_modules') continue
+		const dir = parent === '.' ? child.name : `${parent}/${child.name}`
+		if (skipDirectory(dir)) continue
+		let files: string[]
+		try {
+			files = await collectEntryFiles(fs, loaderPattern, dir)
+		} catch (error) {
+			if (!(error instanceof UnreadableDirectoryError)) throw error
+			// What an unreadable directory holds is unknown, so it is no evidence either way.
+			continue
+		}
+		const unloaded = files.filter(file => !loaded.has(file))
+		if (unloaded.length > 0) strays.push({ dir, files: unloaded })
+	}
+	return strays
 }
 
 export function parseEntry(file: string, raw: string): { frontmatter: Record<string, unknown> } | { error: string } {
@@ -114,7 +147,7 @@ export async function loadCollections(fs: CmsFileSystem, config: ParsedConfig, c
 
 		let files: string[]
 		try {
-			files = await collectEntryFiles(fs, collection, base)
+			files = await collectEntryFiles(fs, collection.loaderPattern, base)
 		} catch (error) {
 			// Anything else (a path traversal, a bug) is not a fact about the content: let it surface.
 			if (!(error instanceof UnreadableDirectoryError)) throw error

@@ -162,11 +162,62 @@ export const collections = { people${extra ? ', articles' : ''} }
 		await expect(check()).rejects.toThrow('Path traversal detected')
 	})
 
-	test('a declared collection whose directory is missing is an error', async () => {
+	// Astro builds it (the glob loader warns and loads nothing), and the CMS lists it and creates the folder
+	// with its first entry. An error here refused every commit of a site that declared a collection before writing to it.
+	test('a declared collection whose directory is missing and nothing beside it is empty, not broken', async () => {
 		await write({ 'src/content.config.ts': config('n.object({ name: n.text() })') })
 
 		const report = await check()
-		expect(report.findings.map(f => f.code)).toEqual(['config/missing-dir'])
+		expect(report.findings.map(f => [f.severity, f.code, f.file, f.field])).toEqual([
+			['warning', 'config/empty-collection', 'src/content.config.ts', 'people'],
+		])
+		expect(report.findings[0]!.message).toContain('src/content/people/ does not exist')
+	})
+
+	test('a missing directory beside one that holds entries no collection loads is a wrong path', async () => {
+		await write({
+			'src/content.config.ts': config('n.object({ name: n.text() })'),
+			'src/content/peple/ada.md': '---\nname: Ada\n---\n',
+			'src/content/peple/bob.md': '---\nname: Bob\n---\n',
+		})
+
+		const report = await check()
+		expect(report.findings.map(f => [f.severity, f.code, f.file, f.field])).toEqual([
+			['error', 'config/missing-dir', 'src/content.config.ts', 'people'],
+		])
+		expect(report.findings[0]!.message).toBe(
+			'Collection "people" loads from src/content/people/, which does not exist, while src/content/peple/ next to it holds 2 entries no collection loads.',
+		)
+		expect(report.findings[0]!.hint).toBeDefined()
+	})
+
+	test('entries beside a missing directory that another collection loads are no evidence of a wrong path', async () => {
+		await write({
+			'src/content.config.ts': config(
+				'n.object({ name: n.text() })',
+				`const articles = defineCmsCollection({
+	loader: glob({ pattern: '*.md', base: './src/content/articles' }),
+	schema: n.object({ title: n.text() }),
+})`,
+			),
+			'src/content/articles/one.md': '---\ntitle: One\n---\n',
+			// Neither the collection's own pattern nor a loader reads these: no entries of `people` gone astray.
+			'src/content/articles/_draft.md': '---\ntitle: Draft\n---\n',
+			'src/content/images/notes.json': '{}',
+		})
+
+		const report = await check()
+		expect(report.findings.map(f => [f.severity, f.code, f.field])).toEqual([['warning', 'config/empty-collection', 'people']])
+	})
+
+	test('the pages beside a missing directory under src are routes, not entries of the collection', async () => {
+		await write({
+			'src/content.config.ts': config('n.object({ name: n.text() })').replace('./src/content/people', './src/people'),
+			'src/pages/about.md': '---\ntitle: About\n---\n',
+		})
+
+		const report = await check()
+		expect(report.findings.map(f => [f.severity, f.code])).toEqual([['warning', 'config/empty-collection']])
 	})
 
 	// `reference()` validates the shape, not the target — a wrong id builds green and renders
@@ -392,7 +443,11 @@ export const collections = { people${extra ? ', articles' : ''} }
 		})
 
 		test('findings about the config name the config under it', async () => {
-			await write({ 'astro.config.mjs': APP_CONFIG, 'app/content.config.ts': noLoaderConfig('n.object({ name: n.text() })') })
+			await write({
+				'astro.config.mjs': APP_CONFIG,
+				'app/content.config.ts': noLoaderConfig('n.object({ name: n.text() })'),
+				'app/content/peple/ada.md': '---\nname: Ada\n---\n',
+			})
 
 			const report = await check()
 			expect(report.findings.map(f => [f.code, f.file])).toEqual([['config/missing-dir', 'app/content.config.ts']])
